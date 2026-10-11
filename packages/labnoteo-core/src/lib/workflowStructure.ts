@@ -6,6 +6,7 @@ import * as path from '../util/posixPath';
 import { getSeoulDateString } from './dateUtils';
 import { sanitizePathSegment } from './regexUtils';
 import { parseFrontMatterYaml, serializeFrontMatterEntry } from '../sections/frontMatter';
+import { getExperimentDir } from './labnoteStructure';
 
 /**
  * Workflow information for creating workflow files
@@ -55,6 +56,63 @@ export function isValidWorkflowPath(filePath: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * The workflow file name a format-breaking rename most likely meant, or
+ * undefined when there is no safe guess.
+ *
+ * Obsidian's rename box hides only the final `.md`, so `.labnote` reads as part
+ * of the name and text typed at the end lands after it
+ * (`001_X.labnote v3.md`). Moving that `.labnote` back to the end keeps what
+ * the user typed: `001_X v3.labnote.md`. A name without the `###_` prefix is
+ * not guessed at — the prefix carries the workflow's position.
+ */
+export function suggestWorkflowFileName(baseName: string): string | undefined {
+  if (!/^\d{3}_/.test(baseName) || !/\.md$/i.test(baseName)) return undefined;
+  if (baseName.toLowerCase().endsWith('.labnote.md')) return undefined;
+  return `${baseName.slice(0, -'.md'.length).replace(/\.labnote/i, '')}.labnote.md`;
+}
+
+/** What a vault rename means for the README checklist; see {@link classifyWorkflowRename}. */
+export type WorkflowRenameEffect =
+  /** Workflow note renamed to another valid name: relink `from` → `to`. */
+  | { kind: 'renamed'; dir: string; from: string; to: string }
+  /** Workflow note renamed out of the `###_*.labnote.md` format. */
+  | { kind: 'broken'; dir: string; origin: string; suggestion?: string }
+  /** A previously broken note is a workflow note again: relink its original name. */
+  | { kind: 'restored'; dir: string; from: string; to: string }
+  /** A broken note renamed to another broken name; keep tracking its origin. */
+  | { kind: 'strayMoved'; dir: string; origin: string };
+
+/**
+ * Classify a rename inside one experiment folder. `strayOrigin` is the original
+ * workflow name of `oldPath` when an earlier rename broke its format — without
+ * it a broken-to-valid rename cannot be tied back to a README entry. Renames
+ * across folders or below the experiment folder are not handled (null).
+ */
+export function classifyWorkflowRename(
+  oldPath: string,
+  newPath: string,
+  strayOrigin?: string
+): WorkflowRenameEffect | null {
+  const dir = path.dirname(newPath);
+  if (dir !== path.dirname(oldPath) || getExperimentDir(newPath) !== dir) return null;
+
+  const from = path.basename(oldPath);
+  const to = path.basename(newPath);
+  const wasValid = isValidWorkflowPath(oldPath);
+  const isValid = isValidWorkflowPath(newPath);
+
+  if (wasValid && isValid) return { kind: 'renamed', dir, from, to };
+  if (wasValid) {
+    const suggestion = suggestWorkflowFileName(to);
+    return suggestion ? { kind: 'broken', dir, origin: from, suggestion } : { kind: 'broken', dir, origin: from };
+  }
+  if (!strayOrigin) return null;
+  return isValid
+    ? { kind: 'restored', dir, from: strayOrigin, to }
+    : { kind: 'strayMoved', dir, origin: strayOrigin };
 }
 
 /**

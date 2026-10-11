@@ -92,7 +92,7 @@ Obsidian reads the release's `versions.json` from the repository, so there is no
 | Toggle MCP server | Start/stop the local MCP server (see [Copilot guide](docs/COPILOT.md)) |
 | Open workflow view / Open sample view | Reveal the sidebar views |
 
-> Renaming a workflow file in the file explorer automatically reorders the README checklist to match the new number prefix; deleting one removes its checklist entry and prunes the samples it defined.
+> Renaming a workflow file in the file explorer automatically reorders the README checklist to match the new number prefix; deleting one removes its checklist entry and prunes the samples it defined. If a rename breaks the `###_….labnote.md` format, you are warned and offered a fixed name; once the format is back (by accepting the offer or fixing it by hand), the checklist follows the file again.
 
 ## Research automation
 

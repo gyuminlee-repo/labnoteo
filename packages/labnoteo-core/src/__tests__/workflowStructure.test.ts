@@ -9,6 +9,8 @@ import {
   planWorkflowRenumber,
   buildRenumberStagingName,
   collapseWorkflowRenames,
+  suggestWorkflowFileName,
+  classifyWorkflowRename,
 } from '../lib/workflowStructure';
 import { sanitizeTitle } from '../lib/labnoteStructure';
 
@@ -319,6 +321,108 @@ describe('reconcileWorkflowChecklist with staged renames', () => {
     ]);
     const order = parseWorkflowChecklistFromReadme(res.content).map(i => i.fileName);
     expect(order).toEqual(['001_WD010_A.labnote.md', '002_WD020_B.labnote.md']);
+  });
+});
+
+describe('suggestWorkflowFileName', () => {
+  it('moves .labnote back to the end when text was typed after it (#33)', () => {
+    expect(suggestWorkflowFileName('001_WB030_Gibson.labnote v3.md')).toBe(
+      '001_WB030_Gibson v3.labnote.md'
+    );
+    expect(suggestWorkflowFileName('001_WB030_Gibson.labnote_재조립.md')).toBe(
+      '001_WB030_Gibson_재조립.labnote.md'
+    );
+  });
+
+  it('adds .labnote when it was removed', () => {
+    expect(suggestWorkflowFileName('001_WB030_Gibson v3.md')).toBe('001_WB030_Gibson v3.labnote.md');
+  });
+
+  it('matches .labnote case-insensitively', () => {
+    expect(suggestWorkflowFileName('001_WB030_Gibson.LABNOTE v3.md')).toBe(
+      '001_WB030_Gibson v3.labnote.md'
+    );
+  });
+
+  it('does not guess without the ###_ prefix or for an already valid name', () => {
+    expect(suggestWorkflowFileName('WB030_Gibson.labnote v3.md')).toBeUndefined();
+    expect(suggestWorkflowFileName('001_WB030_Gibson.labnote.md')).toBeUndefined();
+  });
+});
+
+describe('classifyWorkflowRename', () => {
+  const dir = 'labnote/001_Exp';
+  const valid = `${dir}/001_WB030_Gibson.labnote.md`;
+  const broken = `${dir}/001_WB030_Gibson.labnote v3.md`;
+  const fixed = `${dir}/001_WB030_Gibson v3.labnote.md`;
+
+  it('relinks a valid → valid rename', () => {
+    expect(classifyWorkflowRename(valid, fixed)).toEqual({
+      kind: 'renamed',
+      dir,
+      from: '001_WB030_Gibson.labnote.md',
+      to: '001_WB030_Gibson v3.labnote.md',
+    });
+  });
+
+  it('reports a valid → invalid rename as broken, with a suggested name', () => {
+    expect(classifyWorkflowRename(valid, broken)).toEqual({
+      kind: 'broken',
+      dir,
+      origin: '001_WB030_Gibson.labnote.md',
+      suggestion: '001_WB030_Gibson v3.labnote.md',
+    });
+  });
+
+  it('reports a broken rename without a suggestion when none is safe', () => {
+    expect(classifyWorkflowRename(valid, `${dir}/Gibson notes.md`)).toEqual({
+      kind: 'broken',
+      dir,
+      origin: '001_WB030_Gibson.labnote.md',
+    });
+  });
+
+  it('restores from the original name once a broken note is valid again', () => {
+    expect(classifyWorkflowRename(broken, fixed, '001_WB030_Gibson.labnote.md')).toEqual({
+      kind: 'restored',
+      dir,
+      from: '001_WB030_Gibson.labnote.md',
+      to: '001_WB030_Gibson v3.labnote.md',
+    });
+  });
+
+  it('keeps tracking a broken note renamed to another broken name', () => {
+    expect(
+      classifyWorkflowRename(broken, `${dir}/001_WB030_Gibson v4.md`, '001_WB030_Gibson.labnote.md')
+    ).toEqual({ kind: 'strayMoved', dir, origin: '001_WB030_Gibson.labnote.md' });
+  });
+
+  it('ignores invalid → valid without a known origin (as before)', () => {
+    expect(classifyWorkflowRename(broken, fixed)).toBeNull();
+  });
+
+  it('ignores moves to another folder or into a subfolder', () => {
+    expect(classifyWorkflowRename(valid, 'labnote/002_Other/001_WB030_Gibson.labnote.md')).toBeNull();
+    expect(classifyWorkflowRename(valid, `${dir}/sub/001_WB030_Gibson.labnote.md`)).toBeNull();
+  });
+
+  it('relinks the README entry after broken → restored', () => {
+    const readme = readmeWith([
+      '- [ ] [Gibson](./001_WB030_Gibson.labnote.md)',
+      '- [ ] [Next](./002_WB040_Next.labnote.md)',
+    ]);
+    const breakIt = classifyWorkflowRename(valid, broken);
+    expect(breakIt?.kind).toBe('broken');
+    const origin = breakIt?.kind === 'broken' ? breakIt.origin : undefined;
+    const restore = classifyWorkflowRename(broken, fixed, origin);
+    expect(restore?.kind).toBe('restored');
+    if (restore?.kind !== 'restored') return;
+
+    const res = reconcileWorkflowChecklist(readme, [{ from: restore.from, to: restore.to }]);
+    expect(parseWorkflowChecklistFromReadme(res.content).map(i => i.fileName)).toEqual([
+      '001_WB030_Gibson v3.labnote.md',
+      '002_WB040_Next.labnote.md',
+    ]);
   });
 });
 

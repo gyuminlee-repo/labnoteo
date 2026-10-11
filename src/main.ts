@@ -12,7 +12,7 @@ import type { LabnoteHost, Translator } from '@labnoteo/core';
 import { findSampleReferenceAt, rebuildUnitOpToc, minimalReplacement } from '@labnoteo/core';
 import { getSeoulDateString, getSeoulDateTimeString } from '@labnoteo/core/lib/dateUtils';
 import { getSampleDisplayMeta, isCatalogSampleType } from '@labnoteo/core/lib/sampleUtils';
-import { isValidWorkflowPath } from '@labnoteo/core/lib/workflowStructure';
+import { classifyWorkflowRename, isValidWorkflowPath } from '@labnoteo/core/lib/workflowStructure';
 import { saveSamplesFromDocument, getLabsamplesFolder } from '@labnoteo/core/lib/sampleStorage';
 import { VaultFileSystem } from './vaultFileSystem';
 import { createObsidianTranslator } from './i18n';
@@ -80,6 +80,10 @@ export default class LabnotePlugin extends Plugin {
     { renames: { from: string; to: string }[]; deletes: string[] }
   >();
   private readonly readmeSyncTimers = new Map<string, number>();
+  // Workflow notes renamed out of the `###_*.labnote.md` format: current path →
+  // original file name, so fixing the name later relinks the README entry.
+  // Memory only — after a restart such a note is no longer followed.
+  private readonly strayWorkflows = new Map<string, string>();
   // Pending unit-op TOC auto-sync flushes, coalesced per workflow-note path.
   private readonly unitOpTocTimers = new Map<string, number>();
   // Whether each note's latest editor change was an undo/redo, so the TOC sync
@@ -133,6 +137,8 @@ export default class LabnotePlugin extends Plugin {
     }
     this.readmeSyncTimers.clear();
     this.readmeSyncQueue.clear();
+    // Also drops any name-fix prompt still waiting for a modal to close.
+    this.strayWorkflows.clear();
     // Same for pending unit-op TOC auto-sync flushes.
     for (const handle of this.unitOpTocTimers.values()) {
       window.clearTimeout(handle);
@@ -425,7 +431,10 @@ export default class LabnotePlugin extends Plugin {
    * the file explorer:
    *  - renaming a workflow file inside its folder reorders the README checklist
    *    to the new `NNN` order (and relinks the entry),
-   *  - deleting one removes its checklist entry and prunes samples it defined.
+   *  - deleting one removes its checklist entry and prunes samples it defined,
+   *  - renaming one out of the `###_*.labnote.md` format warns and offers the
+   *    likely intended name; once the format is back (via the prompt or by
+   *    hand) the README entry is relinked from the original name.
    *
    * Events are coalesced per experiment folder (~400ms) so bulk operations — or
    * Obsidian's own backlink update racing our write — settle into a single
@@ -439,27 +448,101 @@ export default class LabnotePlugin extends Plugin {
       this.app.vault.on('rename', (file, oldPath) => {
         if (!(file instanceof TFile)) return;
         const newPath = file.path;
-        // Only same-folder workflow-file renames auto-reorder the README.
-        if (!isValidWorkflowPath(newPath) || !isValidWorkflowPath(oldPath)) return;
-        const dir = getExperimentDir(newPath);
-        if (!dir || dir !== getExperimentDir(oldPath)) return;
-        this.queueReadmeSync(dir).renames.push({
-          from: posix.basename(oldPath),
-          to: posix.basename(newPath),
-        });
-        this.scheduleReadmeSync(dir);
+        const strayOrigin = this.strayWorkflows.get(oldPath);
+        this.strayWorkflows.delete(oldPath);
+        // Only same-folder workflow-file renames touch the README.
+        const effect = classifyWorkflowRename(oldPath, newPath, strayOrigin);
+        if (!effect) return;
+        switch (effect.kind) {
+          case 'renamed':
+          case 'restored':
+            this.queueReadmeSync(effect.dir).renames.push({ from: effect.from, to: effect.to });
+            this.scheduleReadmeSync(effect.dir);
+            return;
+          case 'strayMoved':
+            this.strayWorkflows.set(newPath, effect.origin);
+            return;
+          case 'broken':
+            // Recorded synchronously so a follow-up rename finds the origin.
+            this.strayWorkflows.set(newPath, effect.origin);
+            this.run(() => this.offerWorkflowNameFix(file, effect.suggestion));
+            return;
+        }
       })
     );
 
     this.registerEvent(
       this.app.vault.on('delete', file => {
-        if (!(file instanceof TFile) || !isValidWorkflowPath(file.path)) return;
-        const dir = getExperimentDir(file.path);
+        if (!(file instanceof TFile)) return;
+        // A stray note's README entry and sample sources still use its original name.
+        const origin = this.strayWorkflows.get(file.path);
+        this.strayWorkflows.delete(file.path);
+        const path = origin ? posix.join(posix.dirname(file.path), origin) : file.path;
+        if (!isValidWorkflowPath(path)) return;
+        const dir = getExperimentDir(path);
         if (!dir) return;
-        this.queueReadmeSync(dir).deletes.push(file.path);
+        this.queueReadmeSync(dir).deletes.push(path);
         this.scheduleReadmeSync(dir);
       })
     );
+  }
+
+  /**
+   * Tell the user a workflow note fell out of the naming format and, when a
+   * fix is known and its name is free, offer to rename it. The prompt waits for
+   * open modals to close: a file-explorer rename opens Obsidian's "update
+   * links" prompt at the same time, and answering ours first would make that
+   * one rewrite links for the stale rename.
+   */
+  private async offerWorkflowNameFix(file: TFile, suggestion: string | undefined): Promise<void> {
+    const brokenPath = file.path;
+    const name = file.name;
+    const target = suggestion ? posix.join(posix.dirname(brokenPath), suggestion) : undefined;
+    const warn = (): void =>
+      this.host.notify(
+        'warn',
+        this.t(
+          '"{0}" is no longer a workflow note: its name must start with ###_ and end in .labnote.md, so the README checklist stopped following it.',
+          name
+        )
+      );
+    if (!suggestion || !target || this.app.vault.getAbstractFileByPath(target)) {
+      warn();
+      return;
+    }
+
+    const settled = await this.waitForNoModal();
+    // Renamed again, deleted, or the plugin unloaded while waiting.
+    if (!this.strayWorkflows.has(brokenPath) || file.path !== brokenPath) return;
+    if (!settled || this.app.vault.getAbstractFileByPath(target)) {
+      warn();
+      return;
+    }
+
+    const ok = await this.host.confirm(
+      this.t(
+        '"{0}" is no longer a workflow note: its name must end in .labnote.md, so the README checklist stopped following it. Rename it to "{1}"?',
+        name,
+        suggestion
+      ),
+      { confirmLabel: this.t('Fix name') }
+    );
+    if (!ok || file.path !== brokenPath || this.app.vault.getAbstractFileByPath(target)) return;
+    await this.app.fileManager.renameFile(file, target);
+  }
+
+  /** Resolve true once no modal is open (checked every 250ms), false after 30s. */
+  private waitForNoModal(): Promise<boolean> {
+    const deadline = Date.now() + 30_000;
+    return new Promise(resolve => {
+      const check = (): void => {
+        if (!document.querySelector('.modal-container')) resolve(true);
+        else if (Date.now() >= deadline) resolve(false);
+        else window.setTimeout(check, 250);
+      };
+      // Obsidian opens its own rename prompt right after the event; let it appear.
+      window.setTimeout(check, 250);
+    });
   }
 
   /**

@@ -57,6 +57,11 @@ const obsidianKo: Record<string, string> = {
   'Workflow numbering is already sequential.': '워크플로 번호가 이미 순서대로입니다.',
   'Renumber {0} workflow file(s) in {1}?': '{1}의 워크플로 파일 {0}개의 번호를 다시 매길까요?',
   'Renumbered {0} workflow file(s).': '워크플로 파일 {0}개의 번호를 다시 매겼습니다.',
+  '"{0}" is no longer a workflow note: its name must end in .labnote.md, so the README checklist stopped following it. Rename it to "{1}"?':
+    '"{0}"은(는) 이름이 .labnote.md로 끝나지 않아 워크플로 노트에서 빠졌고, README 체크리스트도 더 이상 따라가지 않습니다. "{1}"(으)로 이름을 고칠까요?',
+  '"{0}" is no longer a workflow note: its name must start with ###_ and end in .labnote.md, so the README checklist stopped following it.':
+    '"{0}"은(는) 이름이 ###_로 시작하고 .labnote.md로 끝나야 워크플로 노트로 인식됩니다. README 체크리스트가 더 이상 따라가지 않습니다.',
+  'Fix name': '이름 고치기',
   'Experiment status changed: {0}': '실험 상태가 변경되었습니다: {0}',
   'Flagged for discussion. An issue opens on the next push.':
     '논의 표시를 설정했습니다. 다음 push 때 이슈가 생성됩니다.',
