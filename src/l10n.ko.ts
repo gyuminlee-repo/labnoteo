@@ -138,7 +138,7 @@ const obsidianKo: Record<string, string> = {
   'Enter the {0} sample ID': '{0} 샘플 ID를 입력하세요',
   'e.g. {0}-12345': '예: {0}-12345',
   'Invalid ID. Expected {0}-<number>.': '잘못된 ID입니다. {0}-<숫자> 형식이어야 합니다.',
-  'Enter an alias for the new {0} sample': '새 {0} 샘플의 별칭을 입력하세요',
+  'Enter an alias for the new {0} sample (optional)': '새 {0} 샘플의 별칭을 입력하세요 (선택)',
   'e.g. Sample-A': '예: Sample-A',
   'Enter a description (optional)': '설명을 입력하세요 (선택)',
   'e.g. Sample used in experiment 1': '예: 실험 1에서 사용한 샘플',

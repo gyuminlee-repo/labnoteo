@@ -61,8 +61,9 @@ export interface CreatedSample {
 /**
  * Interactively create a sample (generate a new id or enter one manually),
  * persist it, and return the created record + its `@type;id;...` definition
- * text. Returns undefined only when the ID step is cancelled; alias/description
- * are optional (blank allowed).
+ * text. Returns undefined, registering nothing, when any step is cancelled
+ * (Escape / closing the prompt); alias/description/location are optional, so
+ * submitting a prompt empty leaves that field blank.
  */
 export async function createSampleInteractive(
   app: App,
@@ -89,17 +90,20 @@ export async function createSampleInteractive(
   }
 
   const aliasRaw = await promptModal(app, {
-    title: plugin.t('Enter an alias for the new {0} sample', type),
+    title: plugin.t('Enter an alias for the new {0} sample (optional)', type),
     placeholder: plugin.t('e.g. Sample-A'),
   });
+  if (aliasRaw === undefined) return undefined;
   const descRaw = await promptModal(app, {
     title: plugin.t('Enter a description (optional)'),
     placeholder: plugin.t('e.g. Sample used in experiment 1'),
   });
+  if (descRaw === undefined) return undefined;
   const locationRaw = await promptModal(app, {
     title: plugin.t('Enter a storage location (optional)'),
     placeholder: plugin.t('e.g. Freezer-2 / Box-3 / A1'),
   });
+  if (locationRaw === undefined) return undefined;
   const alias = clean(aliasRaw);
   const description = clean(descRaw);
   const location = clean(locationRaw);
