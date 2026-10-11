@@ -96,6 +96,17 @@ export function __setRequestUrlHandler(
   requestUrlHandler = handler;
 }
 
+/**
+ * `getLanguage` only exists from Obsidian 1.8.7, so it is a swappable binding
+ * rather than a function: unset (the default) reproduces an older Obsidian.
+ */
+export let getLanguage: (() => string) | undefined = undefined;
+
+/** Test helper: install (or clear, with `undefined`) `getLanguage`. */
+export function __setGetLanguage(fn: (() => string) | undefined): void {
+  getLanguage = fn;
+}
+
 export class App {}
 
 export class Modal {

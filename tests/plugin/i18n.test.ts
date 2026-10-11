@@ -6,6 +6,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { getObsidianLanguage, createObsidianTranslator } from '../../src/i18n';
 import obsidianKo from '../../src/l10n.ko';
+import { __setGetLanguage } from '../stubs/obsidian';
 
 /** Fake just enough of `window` for `localStorage.getItem('language')`. */
 const stubLanguage = (value: string | null): void => {
@@ -14,9 +15,24 @@ const stubLanguage = (value: string | null): void => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  __setGetLanguage(undefined);
 });
 
 describe('getObsidianLanguage', () => {
+  it("uses Obsidian's getLanguage() even when localStorage has no language (#32)", () => {
+    __setGetLanguage(() => 'ko');
+    stubLanguage(null);
+    expect(getObsidianLanguage()).toBe('ko');
+  });
+
+  it('prefers getLanguage() over a stale localStorage value', () => {
+    __setGetLanguage(() => 'ko');
+    stubLanguage('en');
+    expect(getObsidianLanguage()).toBe('ko');
+  });
+
+  // The cases below run without getLanguage, as on Obsidian before 1.8.7.
+
   it('reads the language Obsidian persists in localStorage', () => {
     stubLanguage('ko');
     expect(getObsidianLanguage()).toBe('ko');
@@ -38,6 +54,11 @@ describe('createObsidianTranslator', () => {
     const t = createObsidianTranslator('ko');
     expect(t('Create experiment')).toBe(obsidianKo['Create experiment']);
     expect(t('Create experiment')).not.toBe('Create experiment');
+  });
+
+  it('treats a region-tagged Korean code as Korean', () => {
+    const t = createObsidianTranslator('ko-KR');
+    expect(t('Create experiment')).toBe(obsidianKo['Create experiment']);
   });
 
   it('returns the key verbatim for English', () => {
