@@ -19,7 +19,7 @@ labnoteo 내장 AI 명령과는 다른 층입니다: 내장 AI는 Obsidian *안�
 
 ## Copilot 플러그인 설치
 
-1. 설정 → **커뮤니티 플러그인 → 찾아보기**에서 `Copilot`(제작자 logancyang, **V4**)을
+1. 설정 → **커뮤니티 플러그인 → 탐색**에서 `Copilot`(제작자 Logan Yang, **V4**)을
    설치·활성화합니다.
 2. 활성화하면 왼쪽 리본에 Agent Chat 아이콘이 생깁니다.
 
@@ -85,7 +85,8 @@ Claude.ai 플랜으로는 동작하지 않습니다). Copilot 연동에는 **Cla
 2. 터미널에서 `claude`를 실행하고 브라우저 로그인을 마칩니다. `/status`로 인증 상태를
    확인할 수 있습니다.
 3. 설정 → Copilot → **Basic → Agents → Claude → Configure**에서 **Auto-detect**를
-   누릅니다. 못 찾으면 `claude` 실행 파일의 절대 경로를 입력하고 **Apply**.
+   누릅니다. 못 찾으면 `claude` 실행 파일의 절대 경로를 입력하고 **Apply**. 이미 경로가
+   채워져 **Ready**라면 그대로 두면 됩니다.
 4. 대화창이 **Sign in**을 요구하면 눌러 로그인합니다.
 
 > - 환경변수 `ANTHROPIC_API_KEY`가 있으면 구독 로그인보다 **우선 적용**되어 그 키로
@@ -116,9 +117,22 @@ Codex 백엔드는 Codex CLI와 네이티브 `codex-acp` 어댑터가 모두 필
 3. 노트에서 텍스트를 선택하면 에이전트 모드의 컨텍스트 컨트롤로 선택 텍스트·활성
    노트를 대화에 추가할 수 있습니다.
 
-> Claude/opencode의 **Auto mode permissions**(`Auto` / `Accept edits` /
-> `Bypass permissions` 등)는 에이전트가 보관함을 고치는 권한입니다.
-> `Bypass permissions`는 권장하지 않습니다.
+**권한 모드** — 대화창 입력창 아래 버튼에서 **Safe / Plan / Auto**를 고릅니다.
+에이전트마다 고를 수 있는 것이 다릅니다: Claude는 셋 다, opencode는 Safe와 Auto만(Plan
+없음), Codex는 설치된 어댑터가 지원하는 것만 보입니다.
+
+- **Safe**(기본) — 에이전트의 승인 규칙대로 동작합니다. 편집마다 묻는다는 뜻이 아니라서,
+  **노트 편집은 확인 없이 바로 적용될 수 있습니다**(Claude에서 확인: 명령 실행에만
+  `Permission required`가 뜨고 README 편집은 바로 적용됨).
+- **Plan** — 계획을 먼저 보여 주고 승인을 받은 뒤 고칩니다(Claude·Codex). **노트를
+  고치기 전에 보고 싶으면 Plan**을 고르세요. Codex는 계획을 승인하면 그 뒤로 Auto로
+  이어서 진행합니다.
+- **Auto** — 확인을 더 줄입니다. Claude는 설정 → Copilot → **Basic → Agents → Claude**의
+  **Auto mode permissions**(`Auto` / `Accept edits` / `Bypass permissions`)로 Auto가
+  어디까지 자동 승인할지 정합니다. `Bypass permissions`는 권장하지 않습니다.
+
+> Plan이 없는 opencode나 Safe에서 작업했다면, 커밋하기 전에 에이전트에게 "바뀐 내용
+> 보여줘"라고 하거나 `git diff`로 변경을 확인하세요.
 
 ## AGENTS.md 공유 규칙
 
