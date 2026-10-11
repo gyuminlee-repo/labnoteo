@@ -174,8 +174,8 @@ export async function pickCatalogReference(
 
 /**
  * Interactively edit a sample's alias/description (prefilled), persist to JSON,
- * and best-effort update the definition in the active note if present so the
- * document and JSON do not diverge. Returns false when cancelled.
+ * and best-effort update the `@type;` definition in the active note if present
+ * so the document and JSON do not diverge. Returns false when cancelled.
  */
 export async function editSampleInteractive(
   app: App,
@@ -209,7 +209,8 @@ export async function editSampleInteractive(
   await upsertSampleRecord(plugin.fs, folder, type, id, { alias, description, location });
   plugin.refreshSampleViews();
 
-  // Best-effort: keep the active note's definition in sync (single file only).
+  // Best-effort: keep the active note's `@type;` definition in sync (single
+  // file only). Plain `id;alias` references are left as written.
   const target = plugin.host.editTarget();
   if (target) {
     const text = await target.getText();

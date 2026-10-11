@@ -6,8 +6,9 @@
 
 import * as path from '../util/posixPath';
 import type { LabnoteFs } from '../fs/labnoteFs';
-import { SAMPLE_TYPES, SampleType } from './sampleUtils';
+import { SAMPLE_TYPES, SampleType, isCatalogSampleType } from './sampleUtils';
 import { escapeRegExp } from './regexUtils';
+import { getExperimentLabsamplesFolder } from './labnoteStructure';
 
 /**
  * Extracted sample information from document text
@@ -17,6 +18,12 @@ export interface SampleInfo {
   type: SampleType;
   alias: string | null;
   description: string | null;
+  /**
+   * True for an `@type;ID…` definition. Anything else is a reference: its alias
+   * has no end marker in the text (`ID;alias` runs to the end of the line), so
+   * it may seed a record that does not exist yet but never overwrites one.
+   */
+  definition: boolean;
 }
 
 /**
@@ -171,10 +178,10 @@ export function extractSampleInfoFromText(text: string, additionalTypes?: string
   // Collected in appearance order. `seenByLower` maps the case-normalized id to
   // its slot so `DNA-55` and `dna-55` collapse to one sample (the match regex is
   // case-insensitive but a case-sensitive Set would split them into two JSON
-  // keys). Each slot tracks whether it came from a *definition* (an `@type;`
-  // prefix or an explicit alias/description) so a real definition appearing
-  // after a bare reference upgrades that slot instead of being dropped.
-  const collected: Array<{ info: SampleInfo; index: number; isDef: boolean }> = [];
+  // keys). Each slot tracks a rank — `@type;` definition (2) > reference with
+  // an alias/description (1) > bare id (0) — so a stronger occurrence appearing
+  // later upgrades that slot instead of being dropped.
+  const collected: Array<{ info: SampleInfo; index: number; rank: number }> = [];
   const seenByLower = new Map<string, number>();
 
   const allTypes: string[] = [...SAMPLE_TYPES, ...(additionalTypes ?? []).filter(t => !(SAMPLE_TYPES as readonly string[]).includes(t))];
@@ -202,24 +209,25 @@ export function extractSampleInfoFromText(text: string, additionalTypes?: string
         description = match[4].trim();
       }
 
-      // A definition carries authoritative alias/description: it either uses the
-      // `@type;` prefix (match[0] starts with '@') or supplies an alias/legacy
-      // description. Bare references (`DNA-2`) do not.
-      const isDef = match[0].startsWith('@') || match[2] != null || match[4] != null;
-      const info: SampleInfo = { id, type: type as SampleType, alias, description };
+      // Only the `@type;` prefix makes a definition. An alias after a plain
+      // reference (`DNA-2;pUC19 …`) is not trustworthy: nothing marks where it
+      // ends, so trailing prose on the line is captured with it.
+      const definition = match[0].startsWith('@');
+      const rank = definition ? 2 : match[2] != null || match[4] != null ? 1 : 0;
+      const info: SampleInfo = { id, type: type as SampleType, alias, description, definition };
       const key = id.toLowerCase();
       const slot = seenByLower.get(key);
 
       if (slot === undefined) {
         seenByLower.set(key, collected.length);
-        collected.push({ info, index: match.index, isDef });
-      } else if (isDef && !collected[slot].isDef) {
-        // Upgrade an earlier bare reference to the definition (its casing is the
+        collected.push({ info, index: match.index, rank });
+      } else if (rank > collected[slot].rank) {
+        // Upgrade the earlier, weaker occurrence (its casing becomes the
         // canonical JSON key), but keep the earliest position for ordering.
         collected[slot] = {
           info,
           index: Math.min(collected[slot].index, match.index),
-          isDef: true,
+          rank,
         };
       }
     }
@@ -259,13 +267,24 @@ export function buildSampleDatabase(
   return db;
 }
 
+/** Key of a `(type, id)` pair in {@link mergeSampleDatabases}' `referenceOnly` set. */
+export function sampleReferenceKey(type: string, id: string): string {
+  return `${type}|${id.toLowerCase()}`;
+}
+
 /**
  * Merge two sample databases
- * New data overwrites alias, but descriptions and sources are combined
+ * New data overwrites alias, but descriptions and sources are combined.
+ *
+ * Ids in `opts.referenceOnly` (keys from {@link sampleReferenceKey}) came from
+ * plain document references: when a record already exists (matched ignoring
+ * case) only their sources are added, so the registry's alias/descriptions
+ * stay authoritative. They still create records that do not exist yet.
  */
 export function mergeSampleDatabases(
   existing: SampleDatabase,
-  newData: SampleDatabase
+  newData: SampleDatabase,
+  opts: { referenceOnly?: ReadonlySet<string> } = {}
 ): SampleDatabase {
   const merged: SampleDatabase = JSON.parse(JSON.stringify(existing));
 
@@ -273,23 +292,33 @@ export function mergeSampleDatabases(
     if (!merged[type]) {
       merged[type] = {};
     }
+    const target = merged[type];
 
     for (const [id, record] of Object.entries(samples)) {
-      if (merged[type][id]) {
+      const referenceOnly = opts.referenceOnly?.has(sampleReferenceKey(type, id)) ?? false;
+      const existingId =
+        id in target
+          ? id
+          : referenceOnly
+            ? Object.keys(target).find((k) => k.toLowerCase() === id.toLowerCase())
+            : undefined;
+      if (existingId !== undefined) {
         // Merge existing record
-        const existingRecord = merged[type][id];
-        
-        // New alias overwrites (if provided)
-        if (record.alias) {
-          existingRecord.alias = record.alias;
-        }
+        const existingRecord = target[existingId];
 
-        // Put current document's descriptions first so sidebar shows latest (descriptions[0])
-        const fromNew = record.descriptions || [];
-        const fromExisting = (existingRecord.descriptions || []).filter(
-          (d) => !fromNew.includes(d)
-        );
-        existingRecord.descriptions = [...fromNew, ...fromExisting];
+        if (!referenceOnly) {
+          // New alias overwrites (if provided)
+          if (record.alias) {
+            existingRecord.alias = record.alias;
+          }
+
+          // Put current document's descriptions first so sidebar shows latest (descriptions[0])
+          const fromNew = record.descriptions || [];
+          const fromExisting = (existingRecord.descriptions || []).filter(
+            (d) => !fromNew.includes(d)
+          );
+          existingRecord.descriptions = [...fromNew, ...fromExisting];
+        }
 
         // Combine sources (unique)
         for (const source of record.sources) {
@@ -299,7 +328,7 @@ export function mergeSampleDatabases(
         }
       } else {
         // Add new record
-        merged[type][id] = { ...record };
+        target[id] = { ...record };
       }
     }
   }
@@ -311,6 +340,8 @@ export function mergeSampleDatabases(
  * Find the range of a sample definition in document text for replacement.
  * Returns { start, length } of the first matching definition, or null.
  * - General types: matches @type:ID with optional |alias:description (same pattern as extractSampleInfoFromText).
+ *   Plain references (`ID;alias`) are skipped: their match runs to the end of
+ *   the line, so replacing it would delete the prose that follows.
  * - Equip: if no match by id, tries @equip:|currentAlias with optional :description (definition without ID in text).
  */
 export function findSampleDefinitionMatch(
@@ -324,7 +355,7 @@ export function findSampleDefinitionMatch(
   const idPattern = buildSampleDefinitionPattern(type);
   let match = idPattern.exec(text);
   while (match) {
-    if (match[1] === id) {
+    if (match[1] === id && match[0].startsWith('@')) {
       return { start: match.index, length: match[0].length };
     }
     match = idPattern.exec(text);
@@ -577,6 +608,8 @@ export async function saveSamplesFromDocument(
 
   // Build new database from extracted samples
   const newDb = buildSampleDatabase(samples, sourceFile);
+  const references = samples.filter((s) => !s.definition);
+  const referenceOnly = new Set(references.map((s) => sampleReferenceKey(s.type, s.id)));
 
   const globalFolderResolved = globalLabsamplesFolder
     ? path.normalizeForCompare(globalLabsamplesFolder).toLowerCase()
@@ -601,10 +634,36 @@ export async function saveSamplesFromDocument(
       globalIds = new Set(Object.keys(globalSamples));
     }
 
+    // A catalog-type reference that seeds a new local record takes the
+    // catalog's alias instead of the text after `ID;` (which may be the rest of
+    // the sentence). Same folders as the catalog search that inserted it.
+    const catalogRefs = isCatalogSampleType(type)
+      ? references.filter((s) => s.type === type)
+      : [];
+    if (catalogRefs.length > 0) {
+      const catalogFolder = getExperimentLabsamplesFolder(documentPath) ?? labsamplesFolder;
+      const catalog = {
+        ...(globalLabsamplesFolder
+          ? await loadReferenceSamplesByType(fs, globalLabsamplesFolder, type)
+          : {}),
+        ...(await loadReferenceSamplesByType(fs, catalogFolder, type)),
+      };
+      for (const ref of catalogRefs) {
+        const entry = catalog[ref.id];
+        if (!entry) continue;
+        newDb[type][ref.id].alias = entry.alias;
+        newDb[type][ref.id].descriptions = [];
+      }
+    }
+
     const filePath = path.join(labsamplesFolder, `${type}.json`);
     await fs.modify(filePath, (raw) => {
       const existing = parseSampleRecords(raw);
-      const merged = mergeSampleDatabases({ [type]: existing }, { [type]: newDb[type] });
+      const merged = mergeSampleDatabases(
+        { [type]: existing },
+        { [type]: newDb[type] },
+        { referenceOnly }
+      );
       if (globalIds) {
         for (const id of globalIds) {
           if (merged[type][id]) {

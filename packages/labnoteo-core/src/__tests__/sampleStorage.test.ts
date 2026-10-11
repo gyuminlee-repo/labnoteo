@@ -7,7 +7,9 @@
 // and flip these to normal `it(...)`.
 import {
   extractSampleInfoFromText,
+  findSampleDefinitionMatch,
   mergeSampleDatabases,
+  sampleReferenceKey,
   buildSampleDatabase,
   saveSamplesFromDocument,
   loadSamplesByType,
@@ -24,13 +26,29 @@ describe('extractSampleInfoFromText', () => {
   it('extracts a full @type;id;alias;description definition', () => {
     const out = extractSampleInfoFromText('@DNA;DNA-1;pUC19;my plasmid');
     expect(out).toEqual([
-      { id: 'DNA-1', type: 'DNA', alias: 'pUC19', description: 'my plasmid' },
+      { id: 'DNA-1', type: 'DNA', alias: 'pUC19', description: 'my plasmid', definition: true },
     ]);
   });
 
   it('extracts a bare id reference with no alias/description', () => {
     const out = extractSampleInfoFromText('see DNA-2 in the fridge');
-    expect(out).toEqual([{ id: 'DNA-2', type: 'DNA', alias: null, description: null }]);
+    expect(out).toEqual([
+      { id: 'DNA-2', type: 'DNA', alias: null, description: null, definition: false },
+    ]);
+  });
+
+  it('marks an `id;alias` reference as a non-definition (#37)', () => {
+    const out = extractSampleInfoFromText('같게Plasmid-1;pBFC-Lower 유지하며 올린다');
+    expect(out).toHaveLength(1);
+    expect(out[0].definition).toBe(false);
+  });
+
+  it('prefers a later @ definition over an earlier aliased reference (#37)', () => {
+    const out = extractSampleInfoFromText(
+      'Plasmid-1;pX 를 썼다\n@plasmid;Plasmid-1;pBFC-Lower;vector\n'
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ alias: 'pBFC-Lower', description: 'vector', definition: true });
   });
 
   it('extracts multiple types from one document', () => {
@@ -97,6 +115,122 @@ describe('mergeSampleDatabases', () => {
     });
     expect(existing.DNA['DNA-1'].alias).toBe('old');
     expect(existing.DNA['DNA-1'].sources).toEqual(['fileA']);
+  });
+
+  it('only adds sources for reference-only ids, matching the existing key ignoring case', () => {
+    const existing: SampleDatabase = {
+      DNA: { 'DNA-1': { type: 'DNA', alias: 'keep', descriptions: ['d1'], sources: ['fileA'] } },
+    };
+    const merged = mergeSampleDatabases(
+      existing,
+      { DNA: { 'dna-1': { type: 'DNA', alias: 'prose', descriptions: ['junk'], sources: ['fileB'] } } },
+      { referenceOnly: new Set([sampleReferenceKey('DNA', 'dna-1')]) }
+    );
+    expect(Object.keys(merged.DNA)).toEqual(['DNA-1']);
+    expect(merged.DNA['DNA-1']).toEqual({
+      type: 'DNA',
+      alias: 'keep',
+      descriptions: ['d1'],
+      sources: ['fileA', 'fileB'],
+    });
+  });
+});
+
+describe('document references never overwrite the registry (#37)', () => {
+  const DOC = 'labnote/001_Exp/001_WF.labnote.md';
+  const FOLDER = 'labnote/001_Exp/resources/labsamples';
+  const MID_LINE =
+    '3차 계대 기록: 나머지 조건은 앞 계대와 같게Plasmid-1;pBFC-Lower 유지하며 용매 농도만 한 단계 올린다';
+
+  it('keeps the modal-entered alias/description when a mid-line reference is scanned', async () => {
+    const fs = new MemFileSystem();
+    await upsertSampleRecord(fs, FOLDER, 'Plasmid', 'Plasmid-1', {
+      alias: 'pBFC-Lower',
+      description: '하류 경로 발현 벡터',
+      location: '냉장고-1 / 박스-2 / B5',
+    });
+    await saveSamplesFromDocument(fs, DOC, MID_LINE);
+
+    const records = await loadSamplesByType(fs, FOLDER, 'Plasmid');
+    expect(records['Plasmid-1']).toEqual({
+      type: 'Plasmid',
+      alias: 'pBFC-Lower',
+      descriptions: ['하류 경로 발현 벡터'],
+      sources: ['001_WF.labnote.md'],
+      location: '냉장고-1 / 박스-2 / B5',
+    });
+  });
+
+  it('does not revert an edited alias from a stale `id;old alias` reference', async () => {
+    const fs = new MemFileSystem();
+    await upsertSampleRecord(fs, FOLDER, 'Plasmid', 'Plasmid-1', { alias: 'old', description: null });
+    await saveSamplesFromDocument(fs, DOC, 'Plasmid-1;old');
+    await upsertSampleRecord(fs, FOLDER, 'Plasmid', 'Plasmid-1', { alias: 'new', description: null });
+    await saveSamplesFromDocument(fs, DOC, 'Plasmid-1;old');
+
+    const records = await loadSamplesByType(fs, FOLDER, 'Plasmid');
+    expect(records['Plasmid-1'].alias).toBe('new');
+  });
+
+  it('still lets an @ definition overwrite the alias', async () => {
+    const fs = new MemFileSystem();
+    await upsertSampleRecord(fs, FOLDER, 'Plasmid', 'Plasmid-1', { alias: 'old', description: null });
+    await saveSamplesFromDocument(fs, DOC, '@plasmid;Plasmid-1;new');
+
+    const records = await loadSamplesByType(fs, FOLDER, 'Plasmid');
+    expect(records['Plasmid-1'].alias).toBe('new');
+  });
+
+  it('seeds a record that does not exist yet from the reference text', async () => {
+    const fs = new MemFileSystem();
+    await saveSamplesFromDocument(fs, DOC, 'Plasmid-9;pUC19');
+
+    const records = await loadSamplesByType(fs, FOLDER, 'Plasmid');
+    expect(records['Plasmid-9'].alias).toBe('pUC19');
+    expect(records['Plasmid-9'].sources).toEqual(['001_WF.labnote.md']);
+  });
+
+  it('seeds a catalog-type record from the catalog, not the trailing prose', async () => {
+    const fs = new MemFileSystem();
+    await fs.write(
+      `${FOLDER}/Reagent_vendor.json`,
+      JSON.stringify({ 'Reagent-7': { type: 'Reagent', alias: 'LB broth', descriptions: ['Sigma'] } })
+    );
+    await saveSamplesFromDocument(fs, DOC, '배지는 Reagent-7;LB broth 를 썼고; 37도에서 배양');
+
+    const records = await loadSamplesByType(fs, FOLDER, 'Reagent');
+    expect(records['Reagent-7'].alias).toBe('LB broth');
+    expect(records['Reagent-7'].descriptions).toEqual([]);
+  });
+
+  it('adds only a source when the reference differs from the stored id in case', async () => {
+    const fs = new MemFileSystem();
+    await upsertSampleRecord(fs, FOLDER, 'Plasmid', 'Plasmid-1', { alias: 'pBFC-Lower', description: 'd' });
+    await saveSamplesFromDocument(fs, DOC, 'plasmid-1;pBFC-Lower 유지하며; 올린다');
+
+    const records = await loadSamplesByType(fs, FOLDER, 'Plasmid');
+    expect(Object.keys(records)).toEqual(['Plasmid-1']);
+    expect(records['Plasmid-1']).toMatchObject({
+      alias: 'pBFC-Lower',
+      descriptions: ['d'],
+      sources: ['001_WF.labnote.md'],
+    });
+  });
+});
+
+describe('findSampleDefinitionMatch (#37)', () => {
+  it('skips a plain reference so the prose after it is never replaced', () => {
+    const text = '같게Plasmid-1;pBFC-Lower 유지하며 용매 농도만 한 단계 올린다';
+    expect(findSampleDefinitionMatch(text, 'Plasmid', 'Plasmid-1', 'pBFC-Lower')).toBeNull();
+  });
+
+  it('returns the range of an @ definition after a reference', () => {
+    const def = '@plasmid;Plasmid-1;pBFC-Lower;vector';
+    const text = `Plasmid-1;pBFC-Lower 를 썼다\n${def}\n`;
+    expect(findSampleDefinitionMatch(text, 'Plasmid', 'Plasmid-1')).toEqual({
+      start: text.indexOf(def),
+      length: def.length,
+    });
   });
 });
 
