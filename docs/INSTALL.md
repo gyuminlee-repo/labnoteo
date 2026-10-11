@@ -42,8 +42,8 @@ Obsidian 외에 **git**과 **GitHub 계정**이 필요합니다. GitHub 자동�
 
 [obsidian.md/download](https://obsidian.md/download)에서 운영체제에 맞는 설치본을
 받아 설치합니다. Windows·macOS·Linux를 모두 지원합니다. 이 플러그인은 Obsidian
-`1.5.0` 이상에서 동작하며, 최신 안정판(현재 1.13.x) 사용을 권장합니다. 더 새로운
-1.14 계열은 early access(catalyst)로만 배포 중이니 안정판이면 충분합니다.
+`1.5.0` 이상에서 동작하며, 최신 안정판(현재 1.14.x) 사용을 권장합니다. early
+access(catalyst) 버전은 쓰지 않아도 됩니다.
 
 **✅ 확인** — Obsidian이 실행되고 시작 화면이 보입니다.
 
@@ -87,8 +87,9 @@ GitHub 릴리스에서 받습니다. 보관함마다 한 번씩 해야 합니다
 ### 4-2. BRAT로 Labnote Assistant 추가
 
 1. 명령 팔레트(`Ctrl/Cmd + P`)에서
-   **`BRAT: Plugins: Add a beta plugin for testing`**을 실행합니다.
-   (BRAT 버전에 따라 `BRAT: Add a beta plugin for testing`로 보일 수도 있습니다.)
+   **`BRAT: Plugins: Add a beta plugin for testing (with or without version)`**을
+   실행합니다. `beta plugin`으로 검색하면 빨리 찾습니다. (옛 BRAT에서는
+   `BRAT: Add a beta plugin for testing`로 보입니다.)
 2. 저장소 칸에 `sblabkribb/labnoteo`(또는 전체 URL
    `https://github.com/sblabkribb/labnoteo`, 끝에 `/` 없이)를 입력합니다.
 3. 버전은 **Latest version**으로 두고, **Enable after installing the plugin**

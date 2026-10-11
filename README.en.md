@@ -35,7 +35,7 @@ Follow these steps top to bottom. Steps 1–5 are enough to start taking notes; 
 3. **Turn on community plugins** — Settings → Community plugins → **Turn on community plugins** (this turns off Restricted Mode).
 4. **Install Labnote Assistant via BRAT** (it is not in the community directory yet):
    1. In **Browse**, search for `BRAT`, install **Obsidian42 - BRAT** (by TfTHacker), and enable it.
-   2. Run **`BRAT: Plugins: Add a beta plugin for testing`** from the command palette (older BRAT shows it as `BRAT: Add a beta plugin for testing`).
+   2. Run **`BRAT: Plugins: Add a beta plugin for testing (with or without version)`** from the command palette — searching `beta plugin` finds it (older BRAT shows it as `BRAT: Add a beta plugin for testing`).
    3. Enter `sblabkribb/labnoteo`, leave the version at **Latest version** with **Enable after installing the plugin** checked, and click **Add Plugin**.
    4. If needed, refresh Settings → Community plugins and confirm **Labnote Assistant** is enabled.
 5. **Verify** — run **`Create experiment`** from the command palette; a note opens. That is all you need for note-taking.
