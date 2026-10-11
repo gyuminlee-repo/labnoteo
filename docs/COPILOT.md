@@ -33,7 +33,8 @@ Copilot은 최소 한 개의 에이전트를 연결하면 됩니다. **어느 �
 따로 설치할 것이 없습니다. 이미 Claude Code나 Codex를 쓰고 있다면 그쪽을 연결하세요.
 
 > **구독별 자연스러운 선택**: Claude 구독이 있으면 **Claude Code**, ChatGPT 구독이면
-> **Codex**, API 키·로컬 모델만 있으면 **opencode**.
+> **Codex**, API 키·로컬 모델만 있으면 **opencode** — 단, 아래 opencode 3단계에서
+> **Default model을 반드시 지정**하세요. 지정하지 않으면 클라우드 무료 모델로 시작합니다.
 
 ### opencode (권장 · 기본)
 
@@ -43,7 +44,19 @@ Copilot은 최소 한 개의 에이전트를 연결하면 됩니다. **어느 �
 3. 상태가 **Ready**가 되면 쓸 모델을 고르고 **Default model**을 지정합니다.
    - Copilot-hosted 모델은 Basic 탭의 **Copilot License**에, 직접 키를 쓸 모델은
      **BYOK**에 등록하면 목록에 나타납니다.
+   - Default model을 지정하지 않으면(`Agent default`) 새 세션이 opencode가 운영하는
+     클라우드의 무료 모델(예: `opencode/Big Pickle`)로 시작합니다.
 4. **Default backend**를 opencode로 둡니다.
+
+> **노트를 외부로 보내지 않으려면** — opencode의 Free 모델에 보낸 내용은 opencode
+> 클라우드로 전송되고, Big Pickle 등 일부는 무료 기간 동안 보낸 데이터를 모델 개선에
+> 쓸 수 있습니다([opencode Zen 개인정보 안내](https://opencode.ai/docs/zen/#privacy)).
+> Copilot-hosted 모델과 클라우드 BYOK(OpenAI 등)도 외부 서비스입니다. 노트가 이
+> 컴퓨터를 떠나지 않는 것은 **로컬 모델(Ollama, LM Studio)** 뿐입니다.
+>
+> 1. **BYOK → Add provider**에서 `Self Host`의 Ollama(또는 LM Studio)를 등록합니다.
+> 2. **Basic → Agents → opencode → Default model**을 그 로컬 모델로 지정합니다.
+> 3. 새 세션을 열 때마다 입력창 아래 모델 이름이 로컬 모델인지 확인한 뒤 보내세요.
 
 ### Claude Code (이미 쓰고 있다면)
 
