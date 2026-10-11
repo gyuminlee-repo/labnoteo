@@ -193,10 +193,15 @@ AI가 필요한 판단은 GitHub Actions가 아니라 **로컬 AI 에이전트**
   `wiki-sync.yml`이 GitHub Wiki로 발행합니다.
 - **Claude Code 사용자**: `CLAUDE.md`의 `@AGENTS.md` import로 위 규칙이 자동 로드됩니다.
   터미널이든 Copilot 에이전트 모드든 같은 `claude` CLI라면 동일하게 적용됩니다.
-- **에이전트 상태 폴더**(`.claude/`, `.copilot/`, `.opencode/`, `.agents/`)는 설치된
-  `.gitignore`가 커밋에서 제외합니다. 다만 **스킬은 예외로 커밋됩니다** — 정본은
+- **에이전트 상태 폴더**(`.claude/`, `.copilot/`, `.opencode/`, `.agents/`)와 Copilot
+  플러그인 폴더 `copilot/`(대화 기록·메모리·프롬프트)은 설치된 `.gitignore`가 커밋에서
+  제외합니다. 다만 **스킬은 예외로 커밋됩니다** — 정본은
   `.agents/skills/`(Codex·Cursor가 읽음)이고, Claude Code용으로는 `.claude/skills/`에
   얇은 포인터를 둡니다. 스킬은 `AGENTS.md`의 "자동화와의 경계"를 무효화할 수 없습니다.
+  Copilot의 스킬 공유 폴더 `copilot/skills/`도 커밋되는데, 여기에는 Copilot이 만드는
+  내장 스킬(`copilot-web-search` 등)도 들어 있어 연구원마다 Copilot 버전이 다르면 그
+  파일에 diff가 생길 수 있습니다. Copilot 설정에서 폴더 위치(Copilot folder location)를
+  바꿨다면 `.gitignore`의 `copilot/*`, `!copilot/skills/` 두 줄도 그 이름으로 바꾸세요.
 
 연구원 관점의 사용 절차(실험 생성 → 논의 표시 → 커밋 → 이슈 확인 → Wiki)는
 `QUICKSTART.md`에 있습니다.
@@ -242,6 +247,29 @@ push 자체는 `labnote/`를 건드리지 않으므로 워크플로우가 돌지
       `git grep -c '@issue;' -- 'labnote/**/*.labnote.md'`로 세어 보세요.
 - [ ] 마커 ID가 폴더 안에서 겹치면 이제 `validate`가 실패합니다. 실패하면 보고된
       줄에서 한쪽 마커를 지우고 *Insert issue marker*로 새로 넣으세요.
+
+### 0.90.7 이전 보관함에서 올라올 때 (한 번만)
+
+Copilot 플러그인 폴더(`copilot/`)의 대화 기록·메모리가 그동안 커밋 대상이었습니다.
+재설정하면 `.gitignore`에 `copilot/*`·`!copilot/skills/`가 추가되지만, **이미 커밋된
+파일은 무시 규칙만으로 추적에서 빠지지 않습니다.**
+
+- [ ] 보관함에 `copilot/` 폴더가 있으면(Copilot 플러그인을 썼다면) 아래 명령으로
+      `copilot/`을 추적에서 뺀 뒤, 무시되지 않는 것(스킬)만 다시 추가합니다. 파일
+      자체는 지우지 않습니다. 폴더가 없으면 이 단계는 건너뜁니다.
+
+  ```sh
+  git rm -r -q --cached --ignore-unmatch copilot
+  git add copilot
+  git status   # copilot-conversations/·memory/ 등은 "deleted", skills/만 남는지 확인
+  git commit -m "chore: Copilot 대화 기록을 추적에서 제외"
+  ```
+
+- [ ] 팀이 Copilot 사용자 명령(`copilot/copilot-custom-prompts/`)을 일부러 공유해
+      왔다면, `.gitignore`의 `copilot/*` 줄 아래에 `!copilot/copilot-custom-prompts/`를
+      추가한 뒤 위 명령을 실행하세요.
+- [ ] 이미 push된 대화는 원격 저장소 기록에 남습니다. 지워야 할 내용이 있으면 관리자와
+      기록 정리 여부를 상의하세요.
 
 ### 0.82.0 이전 보관함에서 올라올 때 (한 번만)
 

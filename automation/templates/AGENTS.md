@@ -28,8 +28,10 @@ Claude Code, Codex, Cursor 등)는 아래 규칙을 따라 작업합니다.
 - 대용량 원시데이터 (`*.fastq*`, `*.bam`, `raw-data/` 등 — `.gitignore` 참고).
 - 시크릿/토큰/API 키.
 - Obsidian 개인 상태 (`.obsidian/workspace.json`, `workspace-mobile.json`).
-- AI 에이전트 **상태** 폴더 (`.claude/`, `.copilot/`, `.opencode/`, `.agents/`).
-  단, **스킬(`.agents/skills/`, `.claude/skills/`)은 공유 자산이므로 커밋합니다** (아래 "스킬" 절).
+- AI 에이전트 **상태** 폴더 (`.claude/`, `.copilot/`, `.opencode/`, `.agents/`)와
+  Copilot 플러그인 폴더 `copilot/`(대화 기록·메모리).
+  단, **스킬(`.agents/skills/`, `.claude/skills/`, `copilot/skills/`)은 공유 자산이므로
+  커밋합니다** (아래 "스킬" 절).
 
 ## 연구노트 규칙
 
@@ -121,6 +123,8 @@ Reagent/Labware, 재사용 장치면 Equipment.**
 - Claude Code는 `.claude/skills/`만 읽습니다. 필요하면 `.claude/skills/<이름>/SKILL.md`를
   **얇은 포인터**로 두고 본문에서 정본을 읽게 하세요 — 내용을 복사하지 않습니다
   (`AGENTS.md` ↔ `CLAUDE.md`와 같은 방식).
+- Copilot 플러그인은 `copilot/skills/`를 자기 공유 폴더로 쓰고 각 에이전트 폴더에 링크를
+  둡니다. Copilot이 만든 스킬(내장 스킬 포함)은 그 자리에 두고 옮기지 마세요.
 - 스킬은 팀 공유 자산이므로 **커밋합니다**. 커밋되지 않는다면 `.gitignore`에 남아 있는
   `.claude/` 또는 `.agents/` 단독 줄을 지우세요(`.claude/*` + `!.claude/skills/` 형태여야 함).
 - **스킬은 아래 "자동화와의 경계"를 무효화할 수 없습니다.** 스킬이 더 구체적이고 나중에

@@ -120,6 +120,12 @@ Copilot 설정의 *Custom vault instructions* 칸은 **보관함 루트 `AGENTS.
   시작**해야 반영됩니다.
 - Copilot이 에이전트에 심는 **Skills**는 설정 → Copilot → **Skills**에서 에이전트별로
   켜고 끌 수 있습니다.
+- Copilot은 대화를 보관함의 `copilot/copilot-conversations/`에 저장합니다(메모리·사용자
+  명령도 `copilot/` 아래). 연구노트 자동화가 설치한 `.gitignore`는 `copilot/skills/`만
+  남기고 이 폴더를 커밋에서 제외합니다. 내장 스킬(`copilot-web-search` 등)도 함께
+  커밋되므로, 연구원마다 Copilot 버전이 다르면 그 파일에 diff가 생길 수 있습니다.
+  설정 → Copilot → Basic → **Copilot folder location**을 바꿨다면 `.gitignore`의 두 줄도
+  그 이름으로 바꾸세요.
 
 ## Copilot LLM 설정
 

@@ -161,6 +161,17 @@ describe('.gitignore snippet', () => {
     expect(lines).toContain('!.agents/skills/');
   });
 
+  it("excludes the Copilot plugin's conversations but keeps its shared skills (#34)", () => {
+    // Copilot saves chats under `copilot/copilot-conversations/`. A blanket
+    // `copilot/` would also make the skills negation dead, and a negation
+    // placed before the exclusion is overridden by it.
+    expect(lines).not.toContain('copilot/');
+    const exclude = lines.indexOf('copilot/*');
+    const keepSkills = lines.indexOf('!copilot/skills/');
+    expect(exclude).toBeGreaterThanOrEqual(0);
+    expect(keepSkills).toBeGreaterThan(exclude);
+  });
+
   it('excludes plugin settings, which hold the LLM API key in plain text', () => {
     // `.obsidian` stays under version control for the shared settings, so the
     // one file carrying a secret has to be named explicitly.
