@@ -104,6 +104,65 @@ describe('create_sample / get_sample / list_samples', () => {
     });
     expect(res.ok).toBe(false);
   });
+
+  it('stores a storage location and lists it', async () => {
+    const location = '-80 냉동고 2 / Box-3 / A3';
+    await tool('create_sample').handler(ctx, { type: 'RNA', id: 'RNA-1', location, documentPath: NOTE_PATH });
+
+    const got = await tool('get_sample').handler(ctx, { type: 'RNA', id: 'RNA-1', documentPath: NOTE_PATH });
+    expect(got.data).toMatchObject({ location });
+    const listed = await tool('list_samples').handler(ctx, { type: 'RNA', documentPath: NOTE_PATH });
+    expect(listed.data).toEqual([{ id: 'RNA-1', alias: null, description: null, location }]);
+  });
+
+  it('keeps an existing location when a later call omits it or leaves it empty', async () => {
+    const location = 'Freezer-2 / Box-3 / A1';
+    await tool('create_sample').handler(ctx, { type: 'RNA', id: 'RNA-1', location, documentPath: NOTE_PATH });
+    await tool('create_sample').handler(ctx, { type: 'RNA', id: 'RNA-1', alias: 'R1', documentPath: NOTE_PATH });
+    await tool('create_sample').handler(ctx, { type: 'RNA', id: 'RNA-1', location: '', documentPath: NOTE_PATH });
+
+    const got = await tool('get_sample').handler(ctx, { type: 'RNA', id: 'RNA-1', documentPath: NOTE_PATH });
+    expect(got.data).toMatchObject({ location });
+  });
+});
+
+describe('runTool — unsupported arguments', () => {
+  it('runs the tool and warns about arguments it ignored', async () => {
+    const res = await runTool(createLabnoteTools(), 'create_sample', ctx, {
+      type: 'RNA',
+      id: 'RNA-1',
+      freezer: 'F2',
+      documentPath: NOTE_PATH,
+    });
+    expect(res.ok).toBe(true);
+    expect(res.warnings).toHaveLength(1);
+    expect(res.warnings![0]).toContain('freezer');
+    expect(res.warnings![0]).toContain('Supported: type, id, alias, description, location, documentPath');
+  });
+
+  it('adds no warnings when every argument is declared', async () => {
+    const res = await runTool(createLabnoteTools(), 'create_sample', ctx, {
+      type: 'RNA',
+      documentPath: NOTE_PATH,
+    });
+    expect(res.warnings).toBeUndefined();
+  });
+
+  it('warns on a failed call too', async () => {
+    const res = await runTool(createLabnoteTools(), 'get_sample', ctx, { type: 'DNA', id: 'DNA-999', foo: 1 });
+    expect(res.ok).toBe(false);
+    expect(res.warnings![0]).toContain('foo');
+  });
+
+  it('does not treat an array argument as named arguments', async () => {
+    const res = await runTool(
+      createLabnoteTools(),
+      'list_samples',
+      ctx,
+      ['DNA'] as unknown as Record<string, unknown>
+    );
+    expect(res.warnings).toBeUndefined();
+  });
 });
 
 describe('get_unit_operation', () => {

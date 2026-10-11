@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest';
 import {
   MCP_PROTOCOL_VERSION,
   buildInitializeResult,
+  buildToolCallResult,
   isAllowedOrigin,
   timingSafeEqual,
 } from '../../src/llm/mcpServer';
@@ -84,5 +85,32 @@ describe('timingSafeEqual', () => {
 
   it('rejects a correct prefix, which a short-circuit compare would accept', () => {
     expect(timingSafeEqual('Bearer ab', 'Bearer abc')).toBe(false);
+  });
+});
+
+describe('buildToolCallResult', () => {
+  it('carries the data as a single text item', () => {
+    expect(buildToolCallResult({ ok: true, data: { id: 'RNA-1' } })).toEqual({
+      isError: false,
+      content: [{ type: 'text', text: '{"id":"RNA-1"}' }],
+    });
+  });
+
+  it('appends warnings after the data, leaving the first item as before', () => {
+    const { content } = buildToolCallResult({
+      ok: true,
+      data: { id: 'RNA-1' },
+      warnings: ['Ignored unsupported argument(s): foo. Supported: type.'],
+    });
+    expect(content).toHaveLength(2);
+    expect(content[0].text).toBe('{"id":"RNA-1"}');
+    expect(content[1].text).toBe('Warning: Ignored unsupported argument(s): foo. Supported: type.');
+  });
+
+  it('flags a failed call as an error', () => {
+    expect(buildToolCallResult({ ok: false, error: 'boom' })).toEqual({
+      isError: true,
+      content: [{ type: 'text', text: '"boom"' }],
+    });
   });
 });

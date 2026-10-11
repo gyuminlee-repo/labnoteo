@@ -101,7 +101,17 @@ export async function runAgent(
       }
 
       const res = await runTool(tools, call.name, deps.ctx, call.arguments);
-      history.push(resultMessage(call, res.ok ? (res.data ?? null) : { error: res.error }));
+      const payload = res.ok ? (res.data ?? null) : { error: res.error };
+      // Wrapped only when there is something to say, so the common payload
+      // stays exactly what the tool returned.
+      history.push(
+        resultMessage(
+          call,
+          res.warnings?.length
+            ? { ...(res.ok ? { data: payload } : payload), warnings: res.warnings }
+            : payload
+        )
+      );
       executed.push({ call, ok: res.ok });
     }
   }

@@ -77,6 +77,8 @@ export interface ToolResult {
   ok: boolean;
   data?: unknown;
   error?: string;
+  /** Non-fatal notes for the caller, e.g. arguments the tool ignored. */
+  warnings?: string[];
 }
 
 export interface JsonSchema {
@@ -208,6 +210,7 @@ export function createLabnoteTools(): ToolDef[] {
           id,
           alias: rec.alias,
           description: rec.descriptions?.[0] ?? null,
+          location: rec.location ?? null,
         }));
         return { ok: true, data };
       },
@@ -217,7 +220,7 @@ export function createLabnoteTools(): ToolDef[] {
       name: 'create_sample',
       mutates: true,
       description:
-        'Create (or overwrite) a sample definition in the document-local labsamples folder. Generates an id when none is given.',
+        'Create (or overwrite) a sample definition in the document-local labsamples folder, optionally with its storage location. Generates an id when none is given.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -225,6 +228,11 @@ export function createLabnoteTools(): ToolDef[] {
           id: { type: 'string', description: 'Optional; auto-generated when omitted.' },
           alias: { type: 'string' },
           description: { type: 'string' },
+          location: {
+            type: 'string',
+            description:
+              'Storage location, e.g. "Freezer-2 / Box-3 / A1". Omit (or leave empty) to keep the existing one.',
+          },
           documentPath: { type: 'string', description: 'Note the sample belongs to (defines the folder + source).' },
         },
         required: ['type', 'documentPath'],
@@ -238,6 +246,10 @@ export function createLabnoteTools(): ToolDef[] {
         const id = str(args, 'id') ?? generateSampleId(type);
         const alias = str(args, 'alias') ?? null;
         const description = str(args, 'description') ?? null;
+        // Unlike alias/description, an absent location is kept rather than
+        // overwritten, so a client that predates the field cannot wipe a
+        // location entered in Obsidian by re-creating the sample.
+        const location = str(args, 'location');
 
         // Atomic upsert (binds this note as the sample's source), replacing the
         // previous load → mutate → saveSamplesByType round-trip that raced the
@@ -246,6 +258,7 @@ export function createLabnoteTools(): ToolDef[] {
           alias,
           description,
           sources: [posix.basename(documentPath)],
+          location,
         });
         return { ok: true, data: { id, type } };
       },
@@ -363,7 +376,28 @@ export function createLabnoteTools(): ToolDef[] {
   ];
 }
 
-/** Invoke a tool by name; returns a structured {@link ToolResult}. */
+/**
+ * Arguments the tool's schema does not declare. Handlers read only declared
+ * keys, so these are silently dropped; the caller should hear about it rather
+ * than believe e.g. a field was saved. Only a plain-object `args` is checked —
+ * MCP passes `arguments` through unvalidated, and an array's indices are not
+ * argument names.
+ */
+function unsupportedArgsWarning(tool: ToolDef, args: unknown): string | undefined {
+  if (!args || typeof args !== 'object' || Array.isArray(args)) return undefined;
+  const supported = Object.keys(tool.inputSchema.properties);
+  const unsupported = Object.keys(args).filter(k => !supported.includes(k));
+  if (unsupported.length === 0) return undefined;
+  return (
+    `Ignored unsupported argument(s): ${unsupported.join(', ')}. ` +
+    `Supported: ${supported.join(', ') || '(none)'}.`
+  );
+}
+
+/**
+ * Invoke a tool by name; returns a structured {@link ToolResult}. Unsupported
+ * arguments never fail the call — they are reported in `warnings`.
+ */
 export async function runTool(
   tools: ToolDef[],
   name: string,
@@ -372,9 +406,12 @@ export async function runTool(
 ): Promise<ToolResult> {
   const tool = tools.find(t => t.name === name);
   if (!tool) return { ok: false, error: `Unknown tool: ${name}` };
+  let result: ToolResult;
   try {
-    return await tool.handler(ctx, args);
+    result = await tool.handler(ctx, args);
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    result = { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
+  const warning = unsupportedArgsWarning(tool, args);
+  return warning ? { ...result, warnings: [...(result.warnings ?? []), warning] } : result;
 }

@@ -23,7 +23,13 @@
  * the module still loads on mobile (where the feature is simply unavailable).
  */
 import { Notice, Platform } from 'obsidian';
-import { createLabnoteTools, runTool, type ToolContext, type ToolDef } from '@labnoteo/core';
+import {
+  createLabnoteTools,
+  runTool,
+  type ToolContext,
+  type ToolDef,
+  type ToolResult,
+} from '@labnoteo/core';
 import type LabnotePlugin from '../main';
 import { writeNoteThroughVault } from '../commands';
 
@@ -225,14 +231,7 @@ export class LabnoteMcpServer {
       }
 
       const result = await runTool(this.tools, name, this.context(), args);
-      return sendJson(res, 200, {
-        jsonrpc: '2.0',
-        id,
-        result: {
-          isError: !result.ok,
-          content: [{ type: 'text', text: JSON.stringify(result.data ?? result.error ?? null) }],
-        },
-      });
+      return sendJson(res, 200, { jsonrpc: '2.0', id, result: buildToolCallResult(result) });
     }
 
     return sendJson(res, 200, jsonRpcError(id, -32601, `Method not found: ${rpc.method}`));
@@ -240,6 +239,19 @@ export class LabnoteMcpServer {
 }
 
 // --- helpers ---------------------------------------------------------------
+
+/**
+ * The `CallToolResult` for a `tools/call` request. Warnings (e.g. ignored
+ * arguments) go in extra text items so `content[0]` keeps the shape existing
+ * clients already parse.
+ */
+export function buildToolCallResult(result: ToolResult) {
+  const content = [{ type: 'text', text: JSON.stringify(result.data ?? result.error ?? null) }];
+  for (const warning of result.warnings ?? []) {
+    content.push({ type: 'text', text: `Warning: ${warning}` });
+  }
+  return { isError: !result.ok, content };
+}
 
 /**
  * The `InitializeResult` handed back to a client's `initialize` request.

@@ -204,6 +204,29 @@ describe('runAgent', () => {
     expect(run.executed).toEqual([]);
   });
 
+  it('tells the model which arguments the tool ignored', async () => {
+    const { tools, ran } = makeTools();
+    const provider = new ScriptedProvider([turn([call('read_thing', { foo: 1 })])]);
+
+    await runAgent([{ role: 'user', content: 'go' }], { provider, ctx: ctx(), tools, confirm: allow });
+
+    expect(ran).toEqual(['read_thing']);
+    const second = provider.seen[1];
+    const payload = JSON.parse(second[second.length - 1].content);
+    expect(payload.data).toEqual({ value: 42 });
+    expect(payload.warnings[0]).toContain('foo');
+  });
+
+  it('passes the tool data through unchanged when there is nothing to warn about', async () => {
+    const { tools } = makeTools();
+    const provider = new ScriptedProvider([turn([call('read_thing')])]);
+
+    await runAgent([{ role: 'user', content: 'go' }], { provider, ctx: ctx(), tools, confirm: allow });
+
+    const second = provider.seen[1];
+    expect(second[second.length - 1].content).toBe('{"value":42}');
+  });
+
   it('echoes the assistant turn back before the tool results', async () => {
     const { tools } = makeTools();
     const provider = new ScriptedProvider([turn([call('read_thing')])]);
