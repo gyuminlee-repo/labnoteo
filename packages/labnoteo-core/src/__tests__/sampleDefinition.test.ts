@@ -80,14 +80,20 @@ describe('sampleSuggestActions', () => {
     expect(sampleSuggestActions(t)).toEqual({ generate: true, manual: true, catalog: false });
   });
 
-  it('offers only catalog for Equip (reference-DB type)', () => {
+  // #40: without a catalog file, catalog-only left the user inventing an ID.
+  it('offers catalog plus generate + manual for Equip (reference-DB type)', () => {
     const t = parseSampleTrigger('@equip:', TYPES)!;
-    expect(sampleSuggestActions(t)).toEqual({ generate: false, manual: false, catalog: true });
+    expect(sampleSuggestActions(t)).toEqual({ generate: true, manual: true, catalog: true });
   });
 
-  it('offers only catalog for @item (Labware, reference-DB type)', () => {
+  it('offers catalog plus generate + manual for @item (Labware, reference-DB type)', () => {
     const t = parseSampleTrigger('@item:', TYPES)!;
-    expect(sampleSuggestActions(t)).toEqual({ generate: false, manual: false, catalog: true });
+    expect(sampleSuggestActions(t)).toEqual({ generate: true, manual: true, catalog: true });
+  });
+
+  it('offers catalog plus generate + manual for Reagent', () => {
+    const t = parseSampleTrigger('@reagent;', TYPES)!;
+    expect(sampleSuggestActions(t)).toEqual({ generate: true, manual: true, catalog: true });
   });
 
   it('offers no actions for @sample (multi-type)', () => {

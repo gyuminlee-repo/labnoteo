@@ -92,8 +92,9 @@ export function isCatalogSampleType(type: string): boolean {
  * trigger. Mirrors the VS Code completion provider:
  * - a concrete authored single type gets `generate` ("Generate new ID") and
  *   `manual` ("Enter info") actions,
- * - a concrete catalog type (Reagent/Labware/Equip) gets a single `catalog`
- *   ("Search catalog") action instead — its definitions are curated, not authored,
+ * - a concrete catalog type (Reagent/Labware/Equip) additionally gets `catalog`
+ *   ("Search catalog"): picking a curated product is preferred, but a vault
+ *   without a catalog must still be able to register one (#40),
  * - `@sample` expands to many types, so it gets no actions.
  *
  * Typed structurally (not against `SampleTrigger`) to avoid a module cycle
@@ -104,10 +105,7 @@ export function sampleSuggestActions(trigger: {
 }): { generate: boolean; manual: boolean; catalog: boolean } {
   const specific = trigger.typesToSearch.length === 1 ? trigger.typesToSearch[0] : null;
   if (!specific) return { generate: false, manual: false, catalog: false };
-  if (isCatalogSampleType(specific)) {
-    return { generate: false, manual: false, catalog: true };
-  }
-  return { generate: true, manual: true, catalog: false };
+  return { generate: true, manual: true, catalog: isCatalogSampleType(specific) };
 }
 
 /**

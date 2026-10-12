@@ -128,7 +128,8 @@ export async function createSampleInteractive(
  * (Reagent/Labware/Equip) and return the chosen entry's reference text
  * (`id;alias`). Merges the document's local catalog with the vault-global one
  * (local wins). When no catalog exists, guides the user and falls back to
- * manually registering a sample (returning its reference).
+ * registering a sample with a generated id, as the sample view does (returning
+ * its reference).
  */
 export async function pickCatalogReference(
   app: App,
@@ -155,11 +156,11 @@ export async function pickCatalogReference(
     new Notice(
       plugin.t('No {0} catalog found. Add resources/labsamples/{0}_*.json.', type)
     );
-    // Fallback: register a custom sample manually, then reference it.
+    // Fallback: register a custom sample with a generated id, then reference it.
     const created = await createSampleInteractive(app, plugin, {
       type,
       folder: localFolder,
-      mode: 'manual',
+      mode: 'generate',
     });
     return created?.referenceText;
   }

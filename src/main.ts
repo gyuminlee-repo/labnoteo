@@ -406,8 +406,8 @@ export default class LabnotePlugin extends Plugin {
     );
     if (!type) return;
 
-    // Catalog types (Reagent/Labware/Equip) are curated, not authored: search
-    // the read-only product catalog instead of generating a new id.
+    // Catalog types (Reagent/Labware/Equip) are curated: search the read-only
+    // product catalog first; without one, a generated id is registered instead.
     let referenceText: string | undefined;
     if (isCatalogSampleType(type)) {
       referenceText = await pickCatalogReference(this.app, this, {

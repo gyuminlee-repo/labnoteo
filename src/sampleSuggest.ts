@@ -139,9 +139,10 @@ export class SampleEditorSuggest extends EditorSuggest<SuggestEntry> {
     if (trigger.typesToSearch.length === 1) {
       const type = trigger.typesToSearch[0];
       const flags = sampleSuggestActions(trigger);
+      // A curated product is the preferred pick for catalog types, so it leads.
+      if (flags.catalog) actions.push({ kind: 'catalog', type });
       if (flags.generate) actions.push({ kind: 'generate', type });
       if (flags.manual) actions.push({ kind: 'manual', type });
-      if (flags.catalog) actions.push({ kind: 'catalog', type });
     }
 
     return [...existing, ...actions];
