@@ -7,6 +7,7 @@ import {
   generateWorkflowChecklist,
   sanitizeWorkflowName,
   planWorkflowRenumber,
+  planRenumberMoves,
   buildRenumberStagingName,
   collapseWorkflowRenames,
   suggestWorkflowFileName,
@@ -307,6 +308,113 @@ describe('buildRenumberStagingName', () => {
     for (const name of staged) {
       expect(renames.some(r => r.from === name)).toBe(false);
     }
+  });
+});
+
+describe('planRenumberMoves', () => {
+  /** Apply `moves` to `names`, failing if a move lands on a name still taken. */
+  function simulate(names: string[], moves: { from: string; to: string }[]): Set<string> {
+    const disk = new Set(names);
+    for (const { from, to } of moves) {
+      expect(disk.has(from)).toBe(true);
+      expect(disk.has(to)).toBe(false);
+      disk.delete(from);
+      disk.add(to);
+    }
+    return disk;
+  }
+
+  function expectedNames(names: string[]): Set<string> {
+    const plan = planWorkflowRenumber(names);
+    const disk = new Set(names);
+    for (const { from } of plan) disk.delete(from);
+    for (const { to } of plan) disk.add(to);
+    return disk;
+  }
+
+  // #41: one rename per file, so Obsidian asks about links once per file and
+  // no `_staging` name ever shows up.
+  it('moves straight to the target when closing gaps', () => {
+    const names = [
+      'README.labnote.md',
+      '001_WD070_A.labnote.md',
+      '003_WB030_B.labnote.md',
+      '007_WT020_C.labnote.md',
+    ];
+    const moves = planRenumberMoves(planWorkflowRenumber(names), names);
+    expect(moves).toEqual(planWorkflowRenumber(names));
+    expect(moves.some(m => m.to.includes('_staging'))).toBe(false);
+    expect(simulate(names, moves)).toEqual(expectedNames(names));
+  });
+
+  it('parks a file only while its target is still taken', () => {
+    // The duplicated 001_WD010_B moves up to 002_WD010_B, a name the next file
+    // still holds until it moves on to 003.
+    const names = [
+      '001_WD010_A.labnote.md',
+      '001_WD010_B.labnote.md',
+      '002_WD010_B.labnote.md',
+    ];
+    const moves = planRenumberMoves(planWorkflowRenumber(names), names);
+    expect(moves).toEqual([
+      { from: '001_WD010_B.labnote.md', to: '002_WD010_B_staging0.labnote.md' },
+      { from: '002_WD010_B.labnote.md', to: '003_WD010_B.labnote.md' },
+      { from: '002_WD010_B_staging0.labnote.md', to: '002_WD010_B.labnote.md' },
+    ]);
+    expect(simulate(names, moves)).toEqual(expectedNames(names));
+  });
+
+  it('plans nothing for an already sequential folder', () => {
+    const names = ['001_WD010_A.labnote.md', '002_WD010_B.labnote.md'];
+    expect(planRenumberMoves(planWorkflowRenumber(names), names)).toEqual([]);
+  });
+});
+
+describe('reconcileWorkflowChecklist with a baseline', () => {
+  // #41 review: two workflows with the same id and name. 001 was deleted, so
+  // P (002) becomes 001 and Q (003) becomes 002 — Q's new name is P's old one.
+  const P_OLD = '002_WB030_웨스턴.labnote.md';
+  const Q_OLD = '003_WB030_웨스턴.labnote.md';
+  const P_NEW = '001_WB030_웨스턴.labnote.md';
+  const Q_NEW = '002_WB030_웨스턴.labnote.md';
+  const renames = [
+    { from: P_OLD, to: P_NEW },
+    { from: Q_OLD, to: Q_NEW },
+  ];
+  const before = readmeWith([`- [ ] [P](./${P_OLD})`, `- [ ] [Q](./${Q_OLD})`]);
+  const linksOf = (md: string): string[] =>
+    parseWorkflowChecklistFromReadme(md).map(i => `${i.title}:${i.fileName}`);
+
+  it('remaps an already-updated link a second time without a baseline', () => {
+    const updatedByObsidian = readmeWith([`- [ ] [P](${P_NEW})`, `- [ ] [Q](${Q_NEW})`]);
+    const res = reconcileWorkflowChecklist(updatedByObsidian, renames);
+    expect(linksOf(res.content)).not.toEqual([`P:${P_NEW}`, `Q:${Q_NEW}`]);
+  });
+
+  it('links each entry to its own file whether or not Obsidian updated the links', () => {
+    const updatedByObsidian = readmeWith([`- [ ] [P](${P_NEW})`, `- [ ] [Q](${Q_NEW})`]);
+    for (const current of [before, updatedByObsidian]) {
+      const res = reconcileWorkflowChecklist(current, renames, { baseline: before });
+      expect(linksOf(res.content)).toEqual([`P:${P_NEW}`, `Q:${Q_NEW}`]);
+    }
+  });
+
+  it('keeps the current text outside the checklist', () => {
+    const current = [
+      '# Experiment',
+      '',
+      '## Related Workflows',
+      '',
+      `- [ ] [P](${P_NEW})`,
+      `- [ ] [Q](${Q_NEW})`,
+      '',
+      '## Summary and Discussion',
+      '',
+      `요약 글 [[${Q_NEW}]]`,
+    ].join('\n');
+    const res = reconcileWorkflowChecklist(current, renames, { baseline: before });
+    expect(res.content).toContain('\n## Summary and Discussion\n\n요약 글 [[' + Q_NEW + ']]');
+    expect(linksOf(res.content)).toEqual([`P:${P_NEW}`, `Q:${Q_NEW}`]);
   });
 });
 

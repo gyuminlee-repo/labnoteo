@@ -52,7 +52,7 @@ import {
   parseExperimenterFromReadme,
   reconcileWorkflowChecklist,
   planWorkflowRenumber,
-  buildRenumberStagingName,
+  planRenumberMoves,
   type WorkflowRename,
 } from '@labnoteo/core/lib/workflowStructure';
 import { removeWorkflowFromReadme } from '@labnoteo/core/lib/workflowDelete';
@@ -549,26 +549,45 @@ export async function insertUnitOperationCommand(app: App, host: LabnoteHost): P
 }
 
 /**
+ * Control over the README auto-sync (see `registerWorkflowReadmeSync` in
+ * main.ts) for a command that renames workflow files in bulk.
+ */
+export interface ReadmeSyncControl {
+  /** Wait for the folder's pending and running syncs to be applied. */
+  flushNow(dir: string): Promise<void>;
+  /** Queue the folder's rename/delete events without writing the README. */
+  hold(dir: string): void;
+  /** Wait until no modal is open and Obsidian has applied confirmed link edits. */
+  settle(): Promise<void>;
+  /** Stop holding; drop the queued renames if the caller handled them, flush the rest. */
+  release(dir: string, opts?: { dropRenames?: boolean }): Promise<void>;
+}
+
+/**
  * Renumber an experiment's workflow files to a gap-free `001, 002, ...`
  * sequence, in their current order.
  *
- * Ordering and the target names come from `planWorkflowRenumber`; this wiring
- * only performs the renames. Files are moved in two passes — every file first
- * to a staging name, then to its target — because two files may trade numbers
- * and a direct rename would collide with a file that has not moved yet.
+ * Ordering and the target names come from `planWorkflowRenumber`, the rename
+ * sequence from `planRenumberMoves` (straight to the target, parked under a
+ * staging name only while the target is still taken).
  *
- * The README checklist is intentionally NOT rewritten here: `renameFile` fires
- * the vault 'rename' event that `registerWorkflowReadmeSync` already listens
- * for, and its debounced flush reorders and relinks the checklist from the new
- * `NNN` order. Both hops of each file are recorded, and
- * `reconcileWorkflowChecklist` collapses them, so the link lands on the final
- * name rather than the staging one.
+ * The README checklist is rewritten here once, after every move, rather than
+ * by the rename listeners: each `renameFile` may wait on Obsidian's "update
+ * links?" prompt, which then edits the README at offsets computed before the
+ * prompt, so a listener writing in between corrupts the README (#41). The
+ * entries are rebuilt from the README as it was before the first move, because
+ * whether Obsidian already relinked them depends on the user's answers.
  */
-export async function renumberWorkflowsCommand(app: App, host: LabnoteHost): Promise<void> {
+export async function renumberWorkflowsCommand(
+  app: App,
+  host: LabnoteHost,
+  readmeSync: ReadmeSyncControl
+): Promise<void> {
   const labnoteDir = await resolveLabnoteDir(app, host);
   if (!labnoteDir) return;
 
-  const renames = planWorkflowRenumber(await host.fs.list(labnoteDir));
+  const existing = await host.fs.list(labnoteDir);
+  const renames = planWorkflowRenumber(existing);
   if (renames.length === 0) {
     host.notify('info', host.t('Workflow numbering is already sequential.'));
     return;
@@ -583,23 +602,33 @@ export async function renumberWorkflowsCommand(app: App, host: LabnoteHost): Pro
   );
   if (!confirmed) return;
 
-  const staged: WorkflowRename[] = renames.map((rename, index) => ({
-    from: buildRenumberStagingName(rename, index),
-    to: rename.to,
-  }));
+  await readmeSync.flushNow(labnoteDir);
+  readmeSync.hold(labnoteDir);
+  const readmePath = posix.join(labnoteDir, README);
+  const baseline = (await host.fs.exists(readmePath)) ? await host.fs.read(readmePath) : undefined;
 
-  const move = async (from: string, to: string): Promise<void> => {
-    const file = app.vault.getFileByPath(posix.join(labnoteDir, from));
-    if (file instanceof TFile) {
-      await app.fileManager.renameFile(file, posix.join(labnoteDir, to));
+  const moved: WorkflowRename[] = [];
+  try {
+    for (const move of planRenumberMoves(renames, existing)) {
+      const file = app.vault.getFileByPath(posix.join(labnoteDir, move.from));
+      if (!(file instanceof TFile)) continue;
+      await app.fileManager.renameFile(file, posix.join(labnoteDir, move.to));
+      moved.push(move);
     }
-  };
-
-  for (const [index, rename] of renames.entries()) {
-    await move(rename.from, staged[index].from);
-  }
-  for (const rename of staged) {
-    await move(rename.from, rename.to);
+  } finally {
+    try {
+      await readmeSync.settle();
+      if (baseline !== undefined && moved.length > 0) {
+        await processNoteThroughVault(
+          app,
+          host,
+          readmePath,
+          content => reconcileWorkflowChecklist(content, moved, { baseline }).content
+        );
+      }
+    } finally {
+      await readmeSync.release(labnoteDir, { dropRenames: true });
+    }
   }
 
   host.notify('info', host.t('Renumbered {0} workflow file(s).', String(renames.length)));
@@ -610,8 +639,8 @@ export async function renumberWorkflowsCommand(app: App, host: LabnoteHost): Pro
 // Rather than mirror the file explorer with custom rename/delete commands, we
 // react to Obsidian's own rename/delete events (wired in main.ts) and keep the
 // README "Related Workflows" checklist — and, on delete, the sample tree — in
-// sync. `renumberWorkflowsCommand` rides on the same listeners: it only moves
-// files and lets the flush below reorder the checklist.
+// sync. `renumberWorkflowsCommand` holds these listeners while it moves files
+// and rewrites the checklist itself (see there).
 // The pure domain logic lives in `@labnoteo/core`
 // (reconcileWorkflowChecklist / removeWorkflowFromReadme / removeSourcesForDocument);
 // these helpers sequence the Obsidian-side reads/writes.
@@ -642,6 +671,31 @@ export async function writeNoteThroughVault(
 }
 
 /**
+ * Rewrite a note by applying `transform` to its content at write time, not to
+ * a copy read earlier. Obsidian may rewrite links in the same note after its
+ * "update links?" prompt, and overwriting with a stale copy would undo that.
+ * Does nothing (no save, no 'modify' event) when `transform` would not change
+ * the note. Returns whether a write happened.
+ */
+export async function processNoteThroughVault(
+  app: App,
+  host: LabnoteHost,
+  notePath: string,
+  transform: (content: string) => string
+): Promise<boolean> {
+  const current = await host.fs.read(notePath);
+  const next = transform(current);
+  if (next === current) return false;
+  const file = app.vault.getFileByPath(notePath);
+  if (file instanceof TFile) {
+    await app.vault.process(file, data => transform(data));
+  } else {
+    await host.fs.write(notePath, next);
+  }
+  return true;
+}
+
+/**
  * After workflow files were renamed in the file explorer, reorder the README
  * "Related Workflows" checklist to match the new `NNN` order. `renames` are the
  * old->new basenames accumulated for one experiment folder; passing them lets
@@ -656,11 +710,12 @@ export async function syncReadmeOrderOnRename(
 ): Promise<void> {
   const readmePath = posix.join(labnoteDir, README);
   if (!(await host.fs.exists(readmePath))) return;
-  const readme = await host.fs.read(readmePath);
-  const res = reconcileWorkflowChecklist(readme, renames);
-  if (res.changed) {
-    await writeNoteThroughVault(app, host, readmePath, res.content);
-  }
+  await processNoteThroughVault(
+    app,
+    host,
+    readmePath,
+    content => reconcileWorkflowChecklist(content, renames).content
+  );
 }
 
 /** Sample-tree cleanup context for {@link syncReadmeAndSamplesOnDelete}. */
@@ -688,16 +743,13 @@ export async function syncReadmeAndSamplesOnDelete(
   //    itself be gone (whole-folder delete); then there is nothing to prune.
   const readmePath = posix.join(labnoteDir, README);
   if (await host.fs.exists(readmePath)) {
-    let content = await host.fs.read(readmePath);
-    let changed = false;
-    for (const p of deletedPaths) {
-      const res = removeWorkflowFromReadme(content, posix.basename(p));
-      if (res.changed) {
-        content = res.content;
-        changed = true;
+    await processNoteThroughVault(app, host, readmePath, content => {
+      for (const p of deletedPaths) {
+        const res = removeWorkflowFromReadme(content, posix.basename(p));
+        if (res.changed) content = res.content;
       }
-    }
-    if (changed) await writeNoteThroughVault(app, host, readmePath, content);
+      return content;
+    });
   }
 
   // 2) Samples: a deleted document defines nothing, so pass empty text — every

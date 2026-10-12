@@ -30,6 +30,7 @@ import {
   syncReadmeOrderOnRename,
   syncReadmeAndSamplesOnDelete,
   setupResearchAutomationCommand,
+  type ReadmeSyncControl,
 } from './commands';
 import * as posix from '@labnoteo/core/posix';
 import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
@@ -81,6 +82,12 @@ export default class LabnotePlugin extends Plugin {
     { renames: { from: string; to: string }[]; deletes: string[] }
   >();
   private readonly readmeSyncTimers = new Map<string, number>();
+  // Folders whose README sync is paused (renumbering): events queue, no timer.
+  private readonly readmeSyncHolds = new Set<string>();
+  // The latest README flush per folder, so a new one runs after it, never beside it.
+  private readonly readmeSyncInFlight = new Map<string, Promise<void>>();
+  // Set on unload: a flush still waiting for a modal to close must not write.
+  private unloaded = false;
   // Workflow notes renamed out of the `###_*.labnote.md` format: current path →
   // original file name, so fixing the name later relinks the README entry.
   // Memory only — after a restart such a note is no longer followed.
@@ -138,6 +145,9 @@ export default class LabnotePlugin extends Plugin {
     }
     this.readmeSyncTimers.clear();
     this.readmeSyncQueue.clear();
+    this.readmeSyncHolds.clear();
+    this.readmeSyncInFlight.clear();
+    this.unloaded = true;
     // Also drops any name-fix prompt still waiting for a modal to close.
     this.strayWorkflows.clear();
     // Same for pending unit-op TOC auto-sync flushes.
@@ -227,7 +237,8 @@ export default class LabnotePlugin extends Plugin {
     this.addCommand({
       id: 'renumber-workflows',
       name: this.t('Renumber workflows'),
-      callback: () => this.run(() => renumberWorkflowsCommand(this.app, this.host)),
+      callback: () =>
+        this.run(() => renumberWorkflowsCommand(this.app, this.host, this.readmeSyncControl())),
     });
 
     this.addCommand({
@@ -437,9 +448,12 @@ export default class LabnotePlugin extends Plugin {
    *    likely intended name; once the format is back (via the prompt or by
    *    hand) the README entry is relinked from the original name.
    *
-   * Events are coalesced per experiment folder (~400ms) so bulk operations — or
-   * Obsidian's own backlink update racing our write — settle into a single
-   * README write. Our writes go through `vault.process` (a 'modify', never
+   * Events are coalesced per experiment folder (~400ms) so bulk operations
+   * settle into a single README write, and that write waits until no modal is
+   * open: with "Automatically update internal links" off, Obsidian asks before
+   * relinking and then edits the README at offsets it computed before asking,
+   * so writing first shifts those offsets and its edit eats the text after the
+   * link (#41). Our writes go through `vault.process` (a 'modify', never
    * rename/delete), so they cannot re-enter these listeners. Cross-folder moves
    * are intentionally not auto-listed in the destination README (documented
    * limitation — use "Insert workflow").
@@ -659,15 +673,88 @@ export default class LabnotePlugin extends Plugin {
 
   /** (Re)arm the per-folder debounce that flushes queued README-sync events. */
   private scheduleReadmeSync(dir: string): void {
-    const prev = this.readmeSyncTimers.get(dir);
-    if (prev !== undefined) window.clearTimeout(prev);
+    this.cancelReadmeSyncTimer(dir);
+    // A held folder keeps queueing; `release` flushes it.
+    if (this.readmeSyncHolds.has(dir)) return;
     const handle = window.setTimeout(() => {
       this.readmeSyncTimers.delete(dir);
-      const q = this.readmeSyncQueue.get(dir);
-      this.readmeSyncQueue.delete(dir);
-      if (q) void this.flushReadmeSync(dir, q);
+      void this.startReadmeFlush(dir);
     }, 400);
     this.readmeSyncTimers.set(dir, handle);
+  }
+
+  private cancelReadmeSyncTimer(dir: string): void {
+    const prev = this.readmeSyncTimers.get(dir);
+    if (prev !== undefined) window.clearTimeout(prev);
+    this.readmeSyncTimers.delete(dir);
+  }
+
+  /**
+   * Flush the folder's queue once any earlier flush of it has finished. The
+   * queue is taken only then, so events an earlier flush put back stay in order.
+   */
+  private startReadmeFlush(dir: string): Promise<void> {
+    const prev = this.readmeSyncInFlight.get(dir) ?? Promise.resolve();
+    const run = prev.then(async () => {
+      const q = this.readmeSyncQueue.get(dir);
+      this.readmeSyncQueue.delete(dir);
+      if (q) await this.flushReadmeSync(dir, q);
+    });
+    this.readmeSyncInFlight.set(dir, run);
+    void run.finally(() => {
+      if (this.readmeSyncInFlight.get(dir) === run) this.readmeSyncInFlight.delete(dir);
+    });
+    return run;
+  }
+
+  /** Put taken events back in front of anything queued since, keeping hop order. */
+  private requeueReadmeSync(
+    dir: string,
+    q: { renames: { from: string; to: string }[]; deletes: string[] }
+  ): void {
+    const later = this.readmeSyncQueue.get(dir);
+    this.readmeSyncQueue.set(dir, {
+      renames: [...q.renames, ...(later?.renames ?? [])],
+      deletes: [...q.deletes, ...(later?.deletes ?? [])],
+    });
+  }
+
+  /**
+   * Resolve true once no modal is open and Obsidian has had a moment to apply
+   * the link edits the user just confirmed; false if a modal is still (or
+   * again) open.
+   */
+  private async settleModals(): Promise<boolean> {
+    if (!(await this.waitForNoModal())) return false;
+    await new Promise(resolve => window.setTimeout(resolve, 300));
+    return !document.querySelector('.modal-container');
+  }
+
+  /** README-sync hooks for commands that rename workflow files in bulk. */
+  private readmeSyncControl(): ReadmeSyncControl {
+    return {
+      flushNow: async dir => {
+        this.cancelReadmeSyncTimer(dir);
+        await this.startReadmeFlush(dir);
+      },
+      hold: dir => {
+        this.readmeSyncHolds.add(dir);
+        this.cancelReadmeSyncTimer(dir);
+      },
+      settle: async () => {
+        await this.settleModals();
+      },
+      release: async (dir, opts = {}) => {
+        this.readmeSyncHolds.delete(dir);
+        const q = this.readmeSyncQueue.get(dir);
+        if (q && opts.dropRenames) q.renames = [];
+        if (q && (q.renames.length > 0 || q.deletes.length > 0)) {
+          await this.startReadmeFlush(dir);
+        } else {
+          this.readmeSyncQueue.delete(dir);
+        }
+      },
+    };
   }
 
   /** Apply all queued deletes (prune + sample cleanup) then renames (reorder). */
@@ -675,6 +762,13 @@ export default class LabnotePlugin extends Plugin {
     dir: string,
     q: { renames: { from: string; to: string }[]; deletes: string[] }
   ): Promise<void> {
+    const settled = await this.settleModals();
+    if (this.unloaded) return;
+    if (!settled || this.readmeSyncHolds.has(dir)) {
+      this.requeueReadmeSync(dir, q);
+      this.scheduleReadmeSync(dir);
+      return;
+    }
     try {
       if (q.deletes.length > 0) {
         const removed = await syncReadmeAndSamplesOnDelete(

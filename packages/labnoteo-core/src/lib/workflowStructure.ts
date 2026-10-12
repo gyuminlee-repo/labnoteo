@@ -473,12 +473,11 @@ export function planWorkflowRenumber(fileNames: readonly string[]): WorkflowRena
 /**
  * Build the intermediate name a file is parked under during a renumber.
  *
- * Two files can trade numbers (`001<->002`), so renaming straight to the target
- * would collide with a file that has not moved yet. Every file is therefore
- * staged first. The temporary name keeps the `NNN_ID_` shape so it still passes
- * `isValidWorkflowPath` and `parseWorkflowFileName` — the vault rename listener
- * only records events for valid workflow paths, and dropping one would break
- * the chain {@link collapseWorkflowRenames} needs to relink the README.
+ * A file can move onto a name another file has not vacated yet; it is then
+ * parked here first (see {@link planRenumberMoves}). The temporary name keeps
+ * the `NNN_ID_` shape so it still passes `isValidWorkflowPath` and
+ * `parseWorkflowFileName`: a parked note stays a workflow note, so the rename
+ * listeners do not mistake it for one renamed out of the format.
  */
 export function buildRenumberStagingName(rename: WorkflowRename, index: number): string {
   const parts = parseWorkflowFileName(rename.to);
@@ -487,14 +486,63 @@ export function buildRenumberStagingName(rename: WorkflowRename, index: number):
 }
 
 /**
+ * Turn a {@link planWorkflowRenumber} plan into the renames to actually run,
+ * in order.
+ *
+ * Every rename asks Obsidian to update links (a prompt when its "Automatically
+ * update internal links" setting is off), so a file is moved straight to its
+ * target whenever that name is free at that point, and parked under a
+ * {@link buildRenumberStagingName} name only when it is still taken. Closing
+ * gaps never needs parking: the k-th file's number is at least k, so walking
+ * the plan in order always finds the target vacated. Parking is left for
+ * duplicate numbers, where a file moves up onto a name not yet vacated.
+ * `existingNames` is the folder listing before any move.
+ */
+export function planRenumberMoves(
+  renames: readonly WorkflowRename[],
+  existingNames: readonly string[]
+): WorkflowRename[] {
+  const occupied = new Set(existingNames);
+  const moves: WorkflowRename[] = [];
+  const parked: WorkflowRename[] = [];
+  renames.forEach((rename, index) => {
+    occupied.delete(rename.from);
+    if (!occupied.has(rename.to)) {
+      moves.push(rename);
+      occupied.add(rename.to);
+      return;
+    }
+    const staging = buildRenumberStagingName(rename, index);
+    moves.push({ from: rename.from, to: staging });
+    occupied.add(staging);
+    parked.push({ from: staging, to: rename.to });
+  });
+  return [...moves, ...parked];
+}
+
+/** Options for {@link reconcileWorkflowChecklist}. */
+export interface ReconcileChecklistOptions {
+  /**
+   * README content to read the checklist entries from instead of
+   * `readmeContent`, e.g. a snapshot taken before a batch of renames. The
+   * rebuilt entries still replace the entries in `readmeContent`.
+   */
+  baseline?: string;
+}
+
+/**
  * Reorder the README "Related Workflows" checklist to match the on-disk `NNN`
  * order after workflow files were renamed in the file explorer.
  *
  * `renames` (old->new basenames captured from vault rename events) are applied
  * to each item's link first, so reordering is correct even when Obsidian's
- * "Automatically update internal links" setting is off. When that setting is
- * on, Obsidian has already rewritten the link and the remap is a harmless
- * no-op. Standard items are then sorted by the numeric `NNN` prefix of their
+ * "Automatically update internal links" setting is off. When Obsidian has
+ * already rewritten a link, the remap is usually a no-op — but not when one
+ * file's new name is another file's old name (two workflows with the same id
+ * and name, renumbered): the already-updated link is then remapped a second
+ * time onto the wrong file. Batches that can do that pass `opts.baseline`, the
+ * README as it was before the batch, so every link is remapped exactly once.
+ * Standard items are then sorted by the numeric `NNN` prefix of their
  * (remapped) filename (`001 < 010 < 100`, ties broken by name); non-standard or
  * manually authored links that `parseWorkflowFileName` cannot decode are kept,
  * in their original relative order, after the standard ones.
@@ -506,9 +554,10 @@ export function buildRenumberStagingName(rename: WorkflowRename, index: number):
  */
 export function reconcileWorkflowChecklist(
   readmeContent: string,
-  renames: WorkflowRename[]
+  renames: WorkflowRename[],
+  opts: ReconcileChecklistOptions = {}
 ): ReconcileChecklistResult {
-  const items = parseWorkflowChecklistFromReadme(readmeContent);
+  const items = parseWorkflowChecklistFromReadme(opts.baseline ?? readmeContent);
   if (items.length === 0) {
     return { changed: false, content: readmeContent };
   }
