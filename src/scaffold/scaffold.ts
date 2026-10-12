@@ -95,8 +95,13 @@ interface ScaffoldResult {
   removed: number;
 }
 
+/** Same text, ignoring CRLF vs LF (Git may check templates out either way). */
+function sameContent(a: string, b: string): boolean {
+  return a.replace(/\r\n/g, '\n') === b.replace(/\r\n/g, '\n');
+}
+
 /** Apply a single asset, returning which tally to bump. */
-async function applyAsset(
+export async function applyAsset(
   host: LabnoteHost,
   asset: ScaffoldAsset
 ): Promise<keyof ScaffoldResult | undefined> {
@@ -119,6 +124,9 @@ async function applyAsset(
   }
 
   if (exists) {
+    // Already up to date (e.g. QUICKSTART.md written by "Open user guide"):
+    // nothing to overwrite, so do not ask.
+    if (sameContent(await host.fs.read(asset.vaultPath), asset.content)) return undefined;
     const ok = await host.confirm(host.t('Overwrite {0}?', asset.vaultPath), {
       confirmLabel: host.t('Overwrite'),
     });

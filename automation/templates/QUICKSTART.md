@@ -1,6 +1,9 @@
 # 연구노트 퀵스타트 (연구원용)
 
 > 실험하는 연구원을 위한 문서입니다. 저장소 최초 설정(관리자용)은 `.labnoteo/SETUP.md`를 보세요.
+>
+> Git·GitHub 자동화를 쓰지 않는다면 [명령 찾는 법](#명령-찾는-법)·[기록하기](#기록하기)·[샘플 다루기](#샘플-다루기)만
+> 보면 됩니다. 이 문서는 명령 팔레트 → `Open user guide`(사용법 열기)로 언제든 다시 열 수 있습니다.
 
 **처음이라면 [5분 따라하기](#5분-따라하기)만 먼저 하세요.** 그 아래는 필요할 때 찾아보는 참조입니다.
 
@@ -154,6 +157,7 @@ push하고 잠시 뒤, GitHub 저장소의 **Issues 탭**을 열어 보세요.
 | 대용량 원시데이터 | Git에 넣지 말고 `raw-data/` 등 별도 보관(자동 제외됨), 노트에는 경로/ID만 기록 |
 | AI로 방법 초안/결과 요약 | 명령 팔레트 → `AI: Draft Method section` / `AI: Summarize results` |
 | 플러그인 업데이트 | BRAT가 앱 시작 시 자동 확인 · 수동은 `Check for updates to all beta plugins and UPDATE` |
+| 이 문서 다시 열기 | 명령 팔레트 → `Open user guide` (설정의 Labnote Assistant 탭 맨 위 버튼도 같음) |
 
 ---
 
@@ -179,6 +183,7 @@ push하고 잠시 뒤, GitHub 저장소의 **Issues 탭**을 열어 보세요.
 | Insert date / Insert date and time | 날짜 삽입 / 날짜 및 시간 삽입 |
 | Export tables to CSV | 표를 CSV로 내보내기 |
 | Open workflow view / Open sample view | 워크플로 뷰 열기 / 샘플 뷰 열기 |
+| Open user guide | 사용법 열기 |
 | AI: Draft Method section | AI: Method 섹션 초안 작성 |
 | AI: Summarize results | AI: 결과 요약 |
 | AI: Extract sample definitions | AI: 샘플 정의 추출 |

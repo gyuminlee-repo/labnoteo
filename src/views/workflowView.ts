@@ -26,6 +26,8 @@ export const WORKFLOW_VIEW_TYPE = 'labnote-workflow-view';
 
 export class WorkflowTreeView extends ItemView {
   private readonly expanded = new Set<string>();
+  /** Tree container; `renderTree` empties it, so the hint above survives. */
+  private treeEl: HTMLElement | null = null;
 
   constructor(leaf: WorkspaceLeaf, private readonly plugin: LabnotePlugin) {
     super(leaf);
@@ -44,6 +46,15 @@ export class WorkflowTreeView extends ItemView {
   }
 
   async onOpen(): Promise<void> {
+    this.contentEl.empty();
+    this.contentEl.createDiv({
+      cls: 'labnote-view-hint',
+      text: this.plugin.t(
+        'Right-click an item to create a workflow or insert a unit operation. No experiment yet? Run "{0}" first.',
+        this.plugin.t('Create experiment')
+      ),
+    });
+    this.treeEl = this.contentEl.createDiv();
     await this.refresh();
   }
 
@@ -66,7 +77,7 @@ export class WorkflowTreeView extends ItemView {
     });
 
     renderTree(
-      this.contentEl,
+      this.treeEl ?? this.contentEl,
       nodes,
       {
         expanded: this.expanded,

@@ -48,6 +48,7 @@ import { createOutlineDropTidy, type OutlineDropSnapshot } from './outlineDropTi
 import { WorkflowTreeView, WORKFLOW_VIEW_TYPE } from './views/workflowView';
 import { SampleTreeView, SAMPLE_VIEW_TYPE } from './views/sampleView';
 import { exportTablesToCsv, exportActiveNoteTablesToCsv } from './exportCsv';
+import { openUserGuide } from './userGuide';
 import { LabnoteSettingTab } from './settingsTab';
 import {
   draftMethodCommand,
@@ -715,6 +716,11 @@ export default class LabnotePlugin extends Plugin {
       id: 'open-sample-view',
       name: this.t('Open sample view'),
       callback: () => void this.activateView(SAMPLE_VIEW_TYPE),
+    });
+    this.addCommand({
+      id: 'open-user-guide',
+      name: this.t('Open user guide'),
+      callback: () => void openUserGuide(this.host),
     });
   }
 

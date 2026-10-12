@@ -114,6 +114,13 @@ export class SampleTreeView extends ItemView {
         this.renderCurrent();
       }, 200);
     });
+    this.contentEl.createDiv({
+      cls: 'labnote-view-hint',
+      text: this.plugin.t(
+        'Type @dna (or another type) in a note, or right-click → "{0}" to register a sample.',
+        this.plugin.t('Add sample')
+      ),
+    });
     this.treeEl = this.contentEl.createDiv({ cls: 'labnote-sample-tree-container' });
   }
 

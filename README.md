@@ -11,7 +11,7 @@
 ## 빠른 시작
 
 1. **[설치 가이드](docs/INSTALL.md)** — Obsidian 설치부터 첫 push까지 순서대로.
-2. 설치 후 일상 사용법은 보관함에 생성되는 `QUICKSTART.md`(연구원용)를 보세요.
+2. 설치 후 일상 사용법은 명령 팔레트 → **사용법 열기**(`Open user guide`)로 여는 `QUICKSTART.md`(연구원용)를 보세요. 없으면 보관함에 바로 만들어 주며, 연구노트 자동화 설정은 필요 없습니다.
 3. 커밋·이슈·Wiki를 AI 에이전트에게 맡기려면 **[Copilot 에이전트 가이드](docs/COPILOT.md)**.
 
 ## 주요 기능
@@ -69,6 +69,7 @@ Obsidian 설치와 git·GitHub 계정 준비부터 커뮤니티 플러그인·�
 | AI: 어시스턴트에게 요청 (`AI: Ask assistant (uses tools)`)        | 목표를 말하면 모델이 Labnote 툴로 수행                                               |
 | MCP 서버 토글 (`Toggle MCP server`)                          | 로컬 MCP 서버 시작/중지([Copilot 가이드](docs/COPILOT.md#선택-labnote-툴-연결--mcp) 참고) |
 | 워크플로/샘플 뷰 열기 (`Open workflow view` / `Open sample view`) | 사이드바 뷰 표시                                                               |
+| 사용법 열기 (`Open user guide`)                                  | 연구원용 퀵스타트(`QUICKSTART.md`)를 열고, 없으면 보관함에 만듦(연구노트 자동화 설정 불필요). 설정 탭 맨 위 버튼도 같음 |
 
 
 > 파일 탐색기에서 워크플로 파일 이름을 바꾸면 README 체크리스트가 새 번호(NNN) 순서로 자동 재정렬되고, 삭제하면 해당 체크리스트 항목과 그 파일이 정의한 샘플이 자동으로 정리됩니다. 이름을 바꾸다 `###_….labnote.md` 형식이 깨지면 경고하고 고칠 이름을 제안하며, 형식을 되찾으면(제안을 받아들이거나 직접 고쳐도) 체크리스트가 다시 그 파일을 따라갑니다.

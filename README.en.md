@@ -38,7 +38,7 @@ Follow these steps top to bottom. Steps 1–5 are enough to start taking notes; 
    2. Run **`BRAT: Plugins: Add a beta plugin for testing (with or without version)`** from the command palette — searching `beta plugin` finds it (older BRAT shows it as `BRAT: Add a beta plugin for testing`).
    3. Enter `sblabkribb/labnoteo`, leave the version at **Latest version** with **Enable after installing the plugin** checked, and click **Add Plugin**.
    4. If needed, refresh Settings → Community plugins and confirm **Labnote Assistant** is enabled.
-5. **Verify** — run **`Create experiment`** from the command palette; a note opens. That is all you need for note-taking.
+5. **Verify** — run **`Create experiment`** from the command palette; a note opens. That is all you need for note-taking. Run **`Open user guide`** for the researcher quick start.
 6. **(Automation) Run `Setup research automation`** — it writes `.labnoteo/`, `.github/`, `.gitignore`, `AGENTS.md`, `CLAUDE.md`, `QUICKSTART.md`, and `wiki-staging/` into the vault.
 7. **(Automation) Connect an AI agent (Copilot)** — after step 6 so `AGENTS.md` exists. The simplest path on Windows is opencode, which Copilot downloads and manages for you. Do this before step 8 to let the agent make the first commit. See the **[Copilot agents guide](docs/COPILOT.md)** (Korean). Skip it if you only use manual git.
 8. **(Automation) Create the repository and push** — after step 6 so `.gitignore` exists first:
@@ -91,6 +91,7 @@ Obsidian reads the release's `versions.json` from the repository, so there is no
 | AI: Ask assistant (uses tools) | State a goal and let the model reach it with Labnote's tools |
 | Toggle MCP server | Start/stop the local MCP server (see [Copilot guide](docs/COPILOT.md)) |
 | Open workflow view / Open sample view | Reveal the sidebar views |
+| Open user guide | Open the researcher quick start (`QUICKSTART.md`), creating it in the vault if missing (no Setup research automation needed). Also a button at the top of the settings tab |
 
 > Renaming a workflow file in the file explorer automatically reorders the README checklist to match the new number prefix; deleting one removes its checklist entry and prunes the samples it defined. If a rename breaks the `###_….labnote.md` format, you are warned and offered a fixed name; once the format is back (by accepting the offer or fixing it by hand), the checklist follows the file again.
 

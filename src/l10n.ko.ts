@@ -22,6 +22,7 @@ const obsidianKo: Record<string, string> = {
   'Export tables to CSV': '표를 CSV로 내보내기',
   'Open workflow view': '워크플로 뷰 열기',
   'Open sample view': '샘플 뷰 열기',
+  'Open user guide': '사용법 열기',
   'Toggle MCP server': 'MCP 서버 켜기/끄기',
   'AI: Draft Method section': 'AI: Method 섹션 초안 작성',
   'AI: Summarize results': 'AI: 결과 요약',
@@ -38,6 +39,13 @@ const obsidianKo: Record<string, string> = {
   // View titles / ribbon
   'Workflows': '워크플로',
   'Samples': '샘플',
+
+  // User guide / view hints
+  'Created the user guide: {0}': '사용법 문서를 만들었습니다: {0}',
+  'Right-click an item to create a workflow or insert a unit operation. No experiment yet? Run "{0}" first.':
+    '항목을 우클릭해 워크플로를 만들거나 유닛 오퍼레이션을 넣습니다. 실험이 없다면 먼저 "{0}"을(를) 실행하세요.',
+  'Type @dna (or another type) in a note, or right-click → "{0}" to register a sample.':
+    '노트에서 @dna처럼 입력하거나 우클릭 → "{0}"(으)로 샘플을 등록합니다.',
 
   // Pickers / prompts
   'New experiment': '새 실험',
@@ -167,6 +175,9 @@ const obsidianKo: Record<string, string> = {
   'Overwrite': '덮어쓰기',
 
   // Settings tab
+  'User guide': '사용법',
+  'New here? Open the quick-start guide. Searching "Labnote" in the command palette lists every command.':
+    '처음이라면 퀵스타트 안내서를 여세요. 명령 팔레트에서 "Labnote"로 검색하면 모든 명령이 모입니다.',
   'Sample tracking': '샘플 추적',
   'Autocomplete, highlighting and {Type}.json sync. Reload to apply.':
     '자동완성, 하이라이팅 및 {Type}.json 동기화. 적용하려면 다시 로드하세요.',

@@ -7,6 +7,7 @@
 import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
 import type LabnotePlugin from './main';
 import { DEFAULT_SETTINGS, type LlmProviderKind } from './settings';
+import { openUserGuide } from './userGuide';
 
 export class LabnoteSettingTab extends PluginSettingTab {
   constructor(app: App, private readonly plugin: LabnotePlugin) {
@@ -19,6 +20,24 @@ export class LabnoteSettingTab extends PluginSettingTab {
 
     const s = this.plugin.settings;
     const save = () => void this.plugin.saveSettings();
+
+    new Setting(containerEl)
+      .setName(this.plugin.t('User guide'))
+      .setDesc(
+        this.plugin.t(
+          'New here? Open the quick-start guide. Searching "Labnote" in the command palette lists every command.'
+        )
+      )
+      .addButton(b =>
+        b
+          .setButtonText(this.plugin.t('Open user guide'))
+          .setCta()
+          .onClick(() => {
+            // Settings is a modal: close it or the guide opens hidden behind it.
+            (this.app as unknown as { setting?: { close(): void } }).setting?.close();
+            void openUserGuide(this.plugin.host);
+          })
+      );
 
     new Setting(containerEl).setName(this.plugin.t('Samples')).setHeading();
 

@@ -86,6 +86,12 @@ export const SETUP_DOC_PATH = `${LABNOTEO_DIR}/SETUP.md`;
 export const QUICKSTART_DOC_PATH = 'QUICKSTART.md';
 
 /**
+ * The quick-start guide's embedded text. Exported on its own so "Open user
+ * guide" can provide it without installing the Git automation.
+ */
+export const QUICKSTART_DOC_CONTENT: string = quickstartDoc;
+
+/**
  * Vault path of the workflow that opens Issues from `@issue` markers and the
  * `discuss` flag; its presence is how the commands tell automation is set up.
  */
@@ -145,7 +151,7 @@ export const SCAFFOLD_ASSETS: ScaffoldAsset[] = [
   { vaultPath: `${LABNOTEO_DIR}/scripts/check-large-files.mjs`, content: checkLargeFilesScript },
   { vaultPath: `${HOOKS_DIR_PATH}/pre-commit`, content: preCommitHook },
   { vaultPath: SETUP_DOC_PATH, content: setupReadme },
-  { vaultPath: QUICKSTART_DOC_PATH, content: quickstartDoc },
+  { vaultPath: QUICKSTART_DOC_PATH, content: QUICKSTART_DOC_CONTENT },
   { vaultPath: '.gitignore', content: gitignoreSnippet, merge: 'append-missing' },
 
   // Phase 3 — deterministic validation.

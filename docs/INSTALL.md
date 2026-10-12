@@ -122,14 +122,15 @@ GitHub 릴리스에서 받습니다. 보관함마다 한 번씩 해야 합니다
 
 **✅ 확인** — 실험 노트가 열립니다. 여기까지가 **노트 작성에 필요한 전부**입니다.
 GitHub 자동화가 필요 없다면 [QUICKSTART](https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md)로
-일상 사용법을 익히면 됩니다. 자동화를 쓰려면 6번으로 이어집니다.
+일상 사용법을 익히면 됩니다. 명령 팔레트 → **`Open user guide`**(사용법 열기)를 실행하면
+같은 문서를 보관함에 바로 만들어 엽니다. 자동화를 쓰려면 6번으로 이어집니다.
 
 ## 6. 연구노트 자동화 설정
 
 명령 팔레트에서 **`Setup research automation`**(연구노트 자동화 설정)을 실행합니다.
 `.labnoteo/`(스크립트·훅), `.github/`(워크플로), `.gitignore`, `AGENTS.md`,
 `CLAUDE.md`, `QUICKSTART.md`, `wiki-staging/`를 현재 보관함에 씁니다. 덮어쓰기 전에는
-확인을 받고, 기존 `.gitignore`에는 누락된 줄만 추가합니다.
+확인을 받고(내용이 이미 같은 파일은 묻지 않고 건너뜀), 기존 `.gitignore`에는 누락된 줄만 추가합니다.
 
 자세한 내용은 [연구노트 자동화](../README.md#연구노트-자동화)와 설치 후 보관함에
 생기는 관리자 문서 `.labnoteo/SETUP.md`를 참고하세요.
@@ -215,5 +216,6 @@ Obsidian *안에서* 방법 초안·결과 요약을 하려면 설정 → **Labn
 
 ---
 
-설치가 끝나면 일상 사용법은 보관함에 생성된 `QUICKSTART.md`(연구원용)를, 저장소
+설치가 끝나면 일상 사용법은 보관함에 생성된 `QUICKSTART.md`(연구원용, 명령 팔레트 →
+`Open user guide`로 열기)를, 저장소
 관리는 `.labnoteo/SETUP.md`(관리자용)를 참고하세요.
