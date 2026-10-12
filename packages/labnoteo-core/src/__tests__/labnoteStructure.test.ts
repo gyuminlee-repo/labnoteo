@@ -8,6 +8,8 @@ import {
   getExperimentDir,
   getExperimentLabsamplesFolder,
   generateReadmeContent,
+  createLabnoteStructure,
+  commandName,
 } from '../lib/labnoteStructure';
 import { parseFrontMatterYaml } from '../sections/frontMatter';
 import { isValidStatus } from '../lib/experimentStatus';
@@ -127,5 +129,38 @@ describe('generateReadmeContent', () => {
     const md = generateReadmeContent('Assay');
     expect(md).not.toMatch(/between the markers/i);
     expect(md).toContain('added to this section automatically');
+  });
+
+  // #38: a Korean UI shows `워크플로 생성`, so the hint must name it too.
+  it('cites only the English command name without a Korean locale', () => {
+    for (const md of [
+      generateReadmeContent('Assay'),
+      generateReadmeContent('Assay', '', { locale: 'en' }),
+      generateReadmeContent('Assay', '', { locale: 'kok' }),
+    ]) {
+      expect(md).toContain('run `Create workflow`;');
+      expect(md).not.toContain('워크플로 생성');
+    }
+  });
+
+  it('adds the Korean command name under a Korean locale', () => {
+    for (const locale of ['ko', 'ko-KR', 'KO']) {
+      const md = generateReadmeContent('Assay', '', { locale });
+      expect(md).toContain('run `Create workflow` (`워크플로 생성`);');
+    }
+  });
+
+  it('threads the locale through createLabnoteStructure', () => {
+    const s = createLabnoteStructure('.', 'Assay', [], undefined, { locale: 'ko' });
+    expect(s.readmeContent).toContain('(`워크플로 생성`)');
+  });
+});
+
+describe('commandName', () => {
+  it('formats the palette name for the locale', () => {
+    expect(commandName('Create workflow', '워크플로 생성')).toBe('`Create workflow`');
+    expect(commandName('Create workflow', '워크플로 생성', 'ko-KR')).toBe(
+      '`Create workflow` (`워크플로 생성`)'
+    );
   });
 });

@@ -13,6 +13,7 @@ import type LabnotePlugin from '../main';
 import { createLlmProvider, type ChatMessage } from './provider';
 import { runAgent } from './agent';
 import { writeNoteThroughVault } from '../commands';
+import { getObsidianLanguage } from '../i18n';
 
 /**
  * Tool context for AI-driven edits.
@@ -27,6 +28,7 @@ function toolContext(plugin: LabnotePlugin): ToolContext {
     workspaceRoot: '.',
     globalSampleFolder: plugin.settings.globalSampleFolder,
     customTypes: plugin.settings.customSampleTypes,
+    locale: getObsidianLanguage(),
     writeNote: (path, content) =>
       writeNoteThroughVault(plugin.app, plugin.host, path, content),
   };

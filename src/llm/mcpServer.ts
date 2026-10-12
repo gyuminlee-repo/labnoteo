@@ -32,6 +32,7 @@ import {
 } from '@labnoteo/core';
 import type LabnotePlugin from '../main';
 import { writeNoteThroughVault } from '../commands';
+import { getObsidianLanguage } from '../i18n';
 
 // Available in the CommonJS bundle at runtime (desktop/Electron).
 declare const require: (id: string) => unknown;
@@ -130,6 +131,7 @@ export class LabnoteMcpServer {
       workspaceRoot: '.',
       globalSampleFolder: this.plugin.settings.globalSampleFolder,
       customTypes: this.plugin.settings.customSampleTypes,
+      locale: getObsidianLanguage(),
       // `update_section` targets a note the user is plausibly looking at right
       // now. Going through the vault means the open editor picks the change up
       // instead of overwriting it on its next flush.

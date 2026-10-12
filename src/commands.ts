@@ -35,6 +35,7 @@ import {
 import { ISSUE_SYNC_WORKFLOW_PATH } from './scaffold/assets';
 import * as posix from '@labnoteo/core/posix';
 import { workflowAliasModal } from './modals';
+import { getObsidianLanguage } from './i18n';
 import { createLabnoteStructure, getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
 import {
   ensureWorkflowResources,
@@ -95,7 +96,9 @@ export async function createExperimentCommand(app: App, host: LabnoteHost): Prom
   if (!title) return;
 
   const existing = await host.fs.list('labnote');
-  const structure = createLabnoteStructure(VAULT_ROOT, title.trim(), existing);
+  const structure = createLabnoteStructure(VAULT_ROOT, title.trim(), existing, undefined, {
+    locale: getObsidianLanguage(),
+  });
 
   await host.fs.mkdir(structure.labnoteFolder);
   await host.fs.mkdir(structure.imagesFolder);
@@ -360,7 +363,9 @@ async function createWorkflowFile(
 
   await host.fs.write(
     workflowPath,
-    createWorkflowContent(info, experimenter, cleanAlias || undefined)
+    createWorkflowContent(info, experimenter, cleanAlias || undefined, {
+      locale: getObsidianLanguage(),
+    })
   );
 
   const displayTitle = cleanAlias

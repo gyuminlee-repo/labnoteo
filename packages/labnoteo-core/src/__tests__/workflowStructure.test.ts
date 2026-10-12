@@ -11,8 +11,32 @@ import {
   collapseWorkflowRenames,
   suggestWorkflowFileName,
   classifyWorkflowRename,
+  createWorkflowContent,
 } from '../lib/workflowStructure';
 import { sanitizeTitle } from '../lib/labnoteStructure';
+
+// #38: the unit-operation hint names the command as the palette shows it.
+describe('createWorkflowContent command hint', () => {
+  const wf = { id: 'WD010', name: 'Design', description: 'desc' };
+
+  it('cites only the English name without a Korean locale', () => {
+    for (const md of [
+      createWorkflowContent(wf, 'Dr. Kim'),
+      createWorkflowContent(wf, 'Dr. Kim', undefined, { locale: 'en' }),
+    ]) {
+      expect(md).toContain('run `Insert unit operation` to add one.');
+      expect(md).not.toContain('유닛 오퍼레이션 삽입');
+    }
+  });
+
+  it('adds the Korean name under a Korean locale', () => {
+    for (const locale of ['ko', 'ko-KR']) {
+      const md = createWorkflowContent(wf, 'Dr. Kim', 'Alias', { locale });
+      expect(md).toContain('run `Insert unit operation` (`유닛 오퍼레이션 삽입`) to add one.');
+      expect(md).toContain('## [WD010 Design] Alias');
+    }
+  });
+});
 
 /** Build a minimal README with a "Related Workflows" section from raw lines. */
 function readmeWith(lines: string[]): string {

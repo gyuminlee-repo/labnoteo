@@ -233,6 +233,22 @@ describe('create_workflow', () => {
 
     const readme = await fs.read(`${NOTE_DIR}/README.labnote.md`);
     expect(readme).toContain(wf.id);
+    expect(await fs.read(path)).not.toContain('유닛 오퍼레이션 삽입');
+  });
+
+  // #38: notes an agent scaffolds follow the host UI language like the commands.
+  it('names the Korean palette command when the host locale is Korean', async () => {
+    const { loadWorkflows, ensureWorkflowResources } = await import('../lib/workflowDataLoader');
+    await ensureWorkflowResources(fs, '.');
+    const wf = (await loadWorkflows(fs, '.')).workflows[0];
+
+    const res = await tool('create_workflow').handler(
+      { ...ctx, locale: 'ko' },
+      { documentPath: `${NOTE_DIR}/README.labnote.md`, workflowId: wf.id }
+    );
+    expect(res.ok).toBe(true);
+    const { path } = res.data as { path: string };
+    expect(await fs.read(path)).toContain('(`유닛 오퍼레이션 삽입`)');
   });
 
   it('fails for an unknown workflow id', async () => {

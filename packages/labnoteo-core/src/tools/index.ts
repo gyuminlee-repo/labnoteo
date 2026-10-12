@@ -48,6 +48,8 @@ export interface ToolContext {
   globalSampleFolder?: string;
   /** Extra sample types beyond the built-ins. */
   customTypes?: string[];
+  /** Host UI language, so scaffolded notes cite palette names the user sees. */
+  locale?: string;
   /**
    * Optional override for writing *markdown notes* (not data files).
    *
@@ -357,7 +359,11 @@ export function createLabnoteTools(): ToolDef[] {
         const workflowPath = posix.join(labnoteDir, fileName);
         // The new workflow file cannot be open yet, but the README very well
         // may be — both go through the hook so the host owns note writes.
-        await writeNote(ctx, workflowPath, createWorkflowContent(info, experimenter));
+        await writeNote(
+          ctx,
+          workflowPath,
+          createWorkflowContent(info, experimenter, undefined, { locale: ctx.locale })
+        );
 
         if (await ctx.fs.exists(readmePath)) {
           const readme = await ctx.fs.read(readmePath);

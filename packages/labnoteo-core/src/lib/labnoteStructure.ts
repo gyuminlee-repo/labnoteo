@@ -71,13 +71,42 @@ export function sanitizeTitle(title: string): string {
   return sanitizePathSegment(title);
 }
 
+/** Options for the note templates' command-palette hints. */
+export interface TemplateHintOptions {
+  /** UI language of the creating host (e.g. 'en', 'ko', 'ko-KR'). */
+  locale?: string;
+}
+
+/** Korean palette labels; must match the plugin's `l10n.ko.ts` entries. */
+export const KO_COMMAND_NAMES = {
+  createWorkflow: '워크플로 생성',
+  insertUnitOperation: '유닛 오퍼레이션 삽입',
+} as const;
+
+function isKoreanLocale(locale: string | undefined): boolean {
+  return !!locale && locale.toLowerCase().split('-')[0] === 'ko';
+}
+
+/**
+ * A command name as the palette shows it: the English name alone, or followed
+ * by the Korean one when the note is created under a Korean UI.
+ */
+export function commandName(en: string, ko: string, locale?: string): string {
+  return isKoreanLocale(locale) ? `\`${en}\` (\`${ko}\`)` : `\`${en}\``;
+}
+
 /**
  * Generate README.md content for a new labnote
  * Follows labnote-lite template format
  * @param title Experiment title
  * @param author Optional author name
+ * @param opts Hint options (UI locale for command names)
  */
-export function generateReadmeContent(title: string, author?: string): string {
+export function generateReadmeContent(
+  title: string,
+  author?: string,
+  opts: TemplateHintOptions = {}
+): string {
   const today = getSeoulDateString(new Date());
   
   const authorValue = author || '';
@@ -108,7 +137,7 @@ ${frontMatter}
 
 ## 🗂️ Related Workflows
 
-> Press \`Ctrl+P\` (\`Cmd+P\` on macOS) to open the command palette, then run \`Create workflow\`; a checklist entry for the new workflow is added to this section automatically.
+> Press \`Ctrl+P\` (\`Cmd+P\` on macOS) to open the command palette, then run ${commandName('Create workflow', KO_COMMAND_NAMES.createWorkflow, opts.locale)}; a checklist entry for the new workflow is added to this section automatically.
 > The name entered in the author: field of the YAML block above will be automatically entered as the experimenter's name when creating workflows and unit operations.
 
 
@@ -124,7 +153,8 @@ export function createLabnoteStructure(
   workspaceRoot: string,
   title: string,
   existingFolders: string[],
-  author?: string
+  author?: string,
+  opts: TemplateHintOptions = {}
 ): LabnoteStructure {
   const number = getNextLabnoteNumber(existingFolders);
   const sanitizedTitle = sanitizeTitle(title);
@@ -137,6 +167,6 @@ export function createLabnoteStructure(
     readmePath: path.join(labnoteFolder, 'README.labnote.md'),
     imagesFolder: path.join(labnoteFolder, 'images'),
     resourcesFolder: path.join(labnoteFolder, 'resources'),
-    readmeContent: generateReadmeContent(title, author),
+    readmeContent: generateReadmeContent(title, author, opts),
   };
 }

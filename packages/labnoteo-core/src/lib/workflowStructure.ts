@@ -6,7 +6,12 @@ import * as path from '../util/posixPath';
 import { getSeoulDateString } from './dateUtils';
 import { sanitizePathSegment } from './regexUtils';
 import { parseFrontMatterYaml, serializeFrontMatterEntry } from '../sections/frontMatter';
-import { getExperimentDir } from './labnoteStructure';
+import {
+  commandName,
+  getExperimentDir,
+  KO_COMMAND_NAMES,
+  type TemplateHintOptions,
+} from './labnoteStructure';
 
 /**
  * Workflow information for creating workflow files
@@ -147,11 +152,13 @@ export function sanitizeWorkflowName(name: string): string {
  * Create workflow file content with YAML front matter
  * @param workflow Workflow information
  * @param experimenter Experimenter name (from README author field)
+ * @param opts Hint options (UI locale for command names)
  */
 export function createWorkflowContent(
   workflow: WorkflowInfo,
   experimenter: string,
-  alias?: string
+  alias?: string,
+  opts: TemplateHintOptions = {}
 ): string {
   const today = getSeoulDateString(new Date());
   // An optional per-instance alias is appended *after* the bracketed catalog
@@ -181,7 +188,7 @@ ${frontMatter}
 ## Related Unit Operations
 
 > Unit operations are appended here automatically.
-> Press Ctrl+P (Cmd+P on macOS) and run "Insert unit operation" to add one.
+> Press Ctrl+P (Cmd+P on macOS) and run ${commandName('Insert unit operation', KO_COMMAND_NAMES.insertUnitOperation, opts.locale)} to add one.
 
 ## Conclusions and Discussion
 
