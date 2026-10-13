@@ -748,7 +748,23 @@ describe('shared path-segment sanitizer', () => {
     expect(sanitizeTitle('비율 1／2')).toBe('비율_1_2');
   });
 
-  it('still drops a slash or colon that is not between digits', () => {
+  // #59: the same rule for every other symbol between digits.
+  it('never fuses numbers around ×, commas, ± or other symbols', () => {
+    expect(sanitizeTitle('3×2 요인 설계')).toBe('3x2_요인_설계');
+    expect(sanitizeTitle('3 × 2')).toBe('3x2');
+    expect(sanitizeTitle('3×−2')).toBe('3x-2');
+    expect(sanitizeTitle('RNA-seq 전사체 분석 (3 조건 × 2 반복)')).toBe('RNA-seq_전사체_분석_3_조건_2_반복');
+    expect(sanitizeTitle('1,000배 희석과 5±1도')).toBe('1000배_희석과_5_1도');
+    expect(sanitizeTitle('배지 3×3 교차 2,500 rpm 37±2')).toBe('배지_3x3_교차_2500_rpm_37_2');
+    expect(sanitizeTitle('OD 0,4 유럽식 표기')).toBe('OD_0_4_유럽식_표기');
+    expect(sanitizeTitle('1,000,000')).toBe('1000000');
+    expect(sanitizeTitle('1,000.5')).toBe('1000.5');
+    expect(sanitizeTitle('5%/10%')).toBe('5_10');
+    expect(sanitizeTitle('96x8 플레이트 배치')).toBe('96x8_플레이트_배치');
+  });
+
+  it('still drops a slash, colon or × that is not between digits', () => {
+    expect(sanitizeTitle('조건 × 2')).toBe('조건_2');
     expect(sanitizeTitle('A/B 테스트')).toBe('AB_테스트');
     expect(sanitizeTitle('Note: 1')).toBe('Note_1');
   });

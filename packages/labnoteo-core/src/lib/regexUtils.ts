@@ -31,9 +31,16 @@ export function escapeRegExp(input: string): string {
  * `냉동고_-20C` and `−80°C 보관` becomes `-80C_보관` instead of reading as +80.
  *
  * A decimal point between digits is kept (`OD600 0.4~0.8` → `OD600_0.4-0.8`,
- * `37.5°C` → `37.5C`), and a slash or colon between digits becomes `_`
- * (`pH 7.0/8.0` → `pH_7.0_8.0`, `1:10` → `1_10`): dropping it would fuse two
- * numbers into a different-looking one (`7.08.0`). Elsewhere both are dropped.
+ * `37.5°C` → `37.5C`). Any other symbol run between digits must not simply
+ * vanish, or two numbers fuse into a different one (`3×2` → `32`):
+ * - a multiplication sign becomes `x`, like the ASCII form (`3×2` → `3x2`);
+ * - a thousands comma — followed by exactly three digits — is dropped, since
+ *   the value is unchanged (`2,500` → `2500`). A three-digit decimal comma
+ *   (`1,500` meaning 1.5) is read the same way; other lengths are not
+ *   (`0,4` → `0_4`);
+ * - everything else becomes `_` (`pH 7.0/8.0` → `pH_7.0_8.0`, `1:10` → `1_10`,
+ *   `37±2` → `37_2`, `5%/10%` → `5_10`).
+ * Not between digits, these symbols are dropped (`A/B` → `AB`).
  *
  * Uses the Unicode property escapes (`\p{L}\p{N}`) so non-ASCII names (Korean,
  * CJK, accented Latin, …) survive intact. This is the SINGLE rule shared by both
@@ -51,7 +58,9 @@ export function sanitizePathSegment(input: string): string {
     .replace(/[\uE000\uE001]/g, '')
     .replace(/(^|[^\p{L}\p{N}])[-\u2212\u2013\uFF0D](?=\d)/gu, `$1${SIGN}`)
     .replace(/(\d)\.(?=\d)/g, `$1${DOT}`)
-    .replace(/(\d)\s*[/:\uFF0F\uFF1A]\s*(?=[\d\uE000])/g, '$1_')
+    .replace(/(\d)\s*\u00D7\s*(?=[\d\uE000])/g, '$1x')
+    .replace(/(\d),(?=\d{3}(?!\d))/g, '$1')
+    .replace(/(\d)\s*[^\p{L}\p{N}\s_\uE000\uE001\p{Pd}\u2212~\uFF5E]+\s*(?=[\d\uE000])/gu, '$1_')
     .replace(/[\p{Pd}\u2212~\uFF5E]/gu, '-')
     .replace(/\s+/g, '_')
     .replace(/[^\p{L}\p{N}_\uE000\uE001-]/gu, '')
