@@ -279,12 +279,20 @@ export function sampleReferenceKey(type: string, id: string): string {
  * Ids in `opts.referenceOnly` (keys from {@link sampleReferenceKey}) came from
  * plain document references: when a record already exists (matched ignoring
  * case) only their sources are added, so the registry's alias/descriptions
- * stay authoritative. They still create records that do not exist yet.
+ * stay authoritative.
+ *
+ * A reference whose id does NOT exist yet creates a record ONLY when its key is
+ * in `opts.seedable` (e.g. a catalog pick, seeded from the product catalog).
+ * Plain `id;alias` prose references to an unknown id are left out of the
+ * registry (#54, #55): otherwise deleting a sample resurrects it on the next
+ * edit, and a mangled fragment like `Other-1791` registers itself as a sample.
+ * Definitions (`@type;...`) and other non-reference entries always create
+ * records as before.
  */
 export function mergeSampleDatabases(
   existing: SampleDatabase,
   newData: SampleDatabase,
-  opts: { referenceOnly?: ReadonlySet<string> } = {}
+  opts: { referenceOnly?: ReadonlySet<string>; seedable?: ReadonlySet<string> } = {}
 ): SampleDatabase {
   const merged: SampleDatabase = JSON.parse(JSON.stringify(existing));
 
@@ -327,8 +335,12 @@ export function mergeSampleDatabases(
           }
         }
       } else {
-        // Add new record
-        target[id] = { ...record };
+        // Add a new record only when this is not a bare document reference, or
+        // the reference is explicitly seedable (a catalog pick). Plain prose
+        // references to an unknown id never create registry entries.
+        if (!referenceOnly || (opts.seedable?.has(sampleReferenceKey(type, id)) ?? false)) {
+          target[id] = { ...record };
+        }
       }
     }
   }
@@ -610,6 +622,10 @@ export async function saveSamplesFromDocument(
   const newDb = buildSampleDatabase(samples, sourceFile);
   const references = samples.filter((s) => !s.definition);
   const referenceOnly = new Set(references.map((s) => sampleReferenceKey(s.type, s.id)));
+  // References whose id is found in a product catalog may seed a new local
+  // record (the sidebar/autocomplete catalog pick flow). Plain references to an
+  // unknown id do not — see mergeSampleDatabases' `seedable`.
+  const seedable = new Set<string>();
 
   const globalFolderResolved = globalLabsamplesFolder
     ? path.normalizeForCompare(globalLabsamplesFolder).toLowerCase()
@@ -653,6 +669,7 @@ export async function saveSamplesFromDocument(
         if (!entry) continue;
         newDb[type][ref.id].alias = entry.alias;
         newDb[type][ref.id].descriptions = [];
+        seedable.add(sampleReferenceKey(type, ref.id));
       }
     }
 
@@ -662,7 +679,7 @@ export async function saveSamplesFromDocument(
       const merged = mergeSampleDatabases(
         { [type]: existing },
         { [type]: newDb[type] },
-        { referenceOnly }
+        { referenceOnly, seedable }
       );
       if (globalIds) {
         for (const id of globalIds) {
@@ -677,36 +694,25 @@ export async function saveSamplesFromDocument(
 }
 
 /**
- * Identifies a record that was auto-removed from the sample tree by
- * `removeSourcesForDocument`. Returned to the caller so it can surface a
- * notification (e.g. "Removed from sample tree: DNA-001, RNA-002").
- */
-export interface RemovedSampleRef {
-  scope: 'local' | 'global';
-  type: string;
-  id: string;
-}
-
-/**
  * Reconcile a document's `@type;id;...` definitions against the on-disk
  * sample JSONs. For every record whose `sources` includes this document's
- * basename:
- *  - drop the basename if the document no longer defines (type, id),
- *  - if `sources` becomes empty as a result (and was non-empty before),
- *    delete the record entirely.
+ * basename, drop the basename when the document no longer defines (type, id).
+ *
+ * The record itself is NEVER deleted — a sample stays in the registry (with its
+ * alias, descriptions and location) even after the last note that referenced it
+ * is removed. Samples created the two different ways (an `@type;` definition in
+ * a note, or the sidebar/autocomplete menu) are therefore treated identically:
+ * deleting a note never erases sample data, only the usage record.
  *
  * Records that started with empty `sources` (e.g. user-created via the
  * tree's Add Sample command before they have been written into any
- * document) are NEVER touched here. That is what stops a freshly added
- * sample from disappearing as soon as the user saves an unrelated file.
+ * document) are left untouched as before.
  *
  * Both the document's local labsamples folder and the optional global
  * folder are processed; if both paths resolve to the same directory
  * (e.g. workspaceRoot is the experiment folder, mirroring
  * `saveSamplesFromDocument`'s `skipGlobalDedupe` guard) the global pass
- * is skipped so removed entries are not reported twice.
- *
- * Returns the records that were removed so the caller can surface a toast.
+ * is skipped so a source is not dropped twice.
  */
 export async function removeSourcesForDocument(
   fs: LabnoteFs,
@@ -714,7 +720,7 @@ export async function removeSourcesForDocument(
   documentText: string,
   globalLabsamplesFolder?: string,
   additionalTypes?: string[]
-): Promise<RemovedSampleRef[]> {
+): Promise<void> {
   const localFolder = getLabsamplesFolder(documentPath);
   const documentBasename = path.basename(documentPath);
 
@@ -746,9 +752,7 @@ export async function removeSourcesForDocument(
     scopes.push({ scope: 'global', folder: globalLabsamplesFolder });
   }
 
-  const removed: RemovedSampleRef[] = [];
-
-  for (const { scope, folder } of scopes) {
+  for (const { folder } of scopes) {
     if (!(await fs.exists(folder))) continue;
 
     for (const type of allTypes) {
@@ -774,13 +778,10 @@ export async function removeSourcesForDocument(
           if (!record.sources.includes(documentBasename)) continue;
           if (liveDefs.has(`${type}|${id}`)) continue;
 
+          // Drop only the usage record; keep the sample itself even when this
+          // was its last source, so sample data survives a note deletion.
           record.sources = record.sources.filter((s) => s !== documentBasename);
           mutated = true;
-
-          if (record.sources.length === 0) {
-            delete samples[id];
-            removed.push({ scope, type, id });
-          }
         }
 
         // Nothing changed → return the original bytes so we don't needlessly
@@ -789,8 +790,30 @@ export async function removeSourcesForDocument(
       });
     }
   }
+}
 
-  return removed;
+/**
+ * Return the paths of the documents that reference `(type, id)` — either an
+ * `@type;` definition or a plain `id;alias` reference, matched ignoring id case.
+ * Used by the sidebar delete action to refuse deleting a sample that the body
+ * still uses (otherwise the next edit resurrects a bare record, #54, and the
+ * registry would silently drift from the notes).
+ */
+export function findSampleUsages(
+  docs: ReadonlyArray<{ path: string; text: string }>,
+  type: string,
+  id: string,
+  additionalTypes?: string[]
+): string[] {
+  const idLower = id.toLowerCase();
+  const hits: string[] = [];
+  for (const doc of docs) {
+    const samples = extractSampleInfoFromText(doc.text, additionalTypes);
+    if (samples.some((s) => s.type === type && s.id.toLowerCase() === idLower)) {
+      hits.push(doc.path);
+    }
+  }
+  return hits;
 }
 
 /**

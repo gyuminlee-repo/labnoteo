@@ -49,6 +49,9 @@ Claude Code, Codex, Cursor 등)는 아래 규칙을 따라 작업합니다.
   제거하는 방식이므로, 해제된 노트에 `discuss: false`를 남기지 마세요.
 - `status` 허용값: `planned`, `in-progress`, `needs-review`, `completed`,
   `failed`, `discontinued`, `needs-repeat`.
+- 본문에 `ID;별칭` 참조만 적는다고 새 샘플이 등록되지는 않습니다. 새 샘플은
+  `@타입;ID;별칭;설명` 정의로 쓰거나 MCP `create_sample`로 만드세요. 없는 ID를
+  참조만 하면 대장에 생기지 않고, '정의로 이동'도 되지 않습니다.
 - 실험 폴더의 어느 `*.labnote.md`(README 또는 워크플로 노트) 본문 아무 줄에나 넣는
   `@issue;<ID>;<주제문장>` 마커는 "이 지점을 논의하자"는
   신호입니다. `@issue;`부터 줄 끝까지가 한 마커이고, 샘플 참조(`@dna;...`)와

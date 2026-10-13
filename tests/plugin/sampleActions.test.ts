@@ -7,8 +7,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { App } from 'obsidian';
 import { MemFileSystem } from '../../packages/labnoteo-core/src/fs/memFileSystem';
-import { createSampleInteractive } from '../../src/sampleActions';
+import { createSampleInteractive, insertSampleReference } from '../../src/sampleActions';
 import { promptModal } from '../../src/modals';
+import type { EditTarget } from '@labnoteo/core';
 import type LabnotePlugin from '../../src/main';
 
 vi.mock('../../src/modals', () => ({
@@ -75,5 +76,55 @@ describe('createSampleInteractive', () => {
       location: 'Freezer-2 / Box-3 / A1',
     });
     expect(plugin.refreshSampleViews).toHaveBeenCalledOnce();
+  });
+});
+
+describe('insertSampleReference', () => {
+  /** A minimal EditTarget backed by a mutable string + cursor. */
+  function makeTarget(text: string, cursor: number) {
+    const state = { text, revealed: -1 };
+    const target: EditTarget = {
+      path: 'labnote/001_Test/001_WD010_Design.labnote.md',
+      getText: async () => state.text,
+      getCursorOffset: async () => cursor,
+      insertAtCursor: async (t: string) => {
+        state.text = state.text.slice(0, cursor) + t + state.text.slice(cursor);
+      },
+      replaceRange: async (start: number, end: number, t: string) => {
+        state.text = state.text.slice(0, start) + t + state.text.slice(end);
+      },
+      revealOffset: async (offset: number) => {
+        state.revealed = offset;
+      },
+    };
+    return { target, state };
+  }
+
+  const refPlugin = () =>
+    ({
+      settings: { customSampleTypes: [] },
+      markUserEdit: vi.fn(),
+    }) as unknown as LabnotePlugin;
+
+  it('appends below the last section when the cursor sits in the front matter, and marks the edit', async () => {
+    const doc = '---\nstatus: planned\n---\n\n## Summary\n';
+    const { target, state } = makeTarget(doc, 10); // inside front matter
+    const plugin = refPlugin();
+
+    await insertSampleReference(plugin, target, 'RNA-1;siKIF');
+
+    expect(state.text).toBe(doc + 'RNA-1;siKIF\n');
+    expect(plugin.markUserEdit).toHaveBeenCalledWith(target.path);
+    expect(state.revealed).toBeGreaterThanOrEqual(0);
+  });
+
+  it('appends to the line end when the cursor is on an existing reference', async () => {
+    const doc = '## Samples\nused RNA-2;siX here\n';
+    const cursor = doc.indexOf('RNA-2') + 2;
+    const { target, state } = makeTarget(doc, cursor);
+
+    await insertSampleReference(refPlugin(), target, 'RNA-1;siKIF');
+
+    expect(state.text).toBe('## Samples\nused RNA-2;siX here RNA-1;siKIF\n');
   });
 });

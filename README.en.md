@@ -93,7 +93,7 @@ Obsidian reads the release's `versions.json` from the repository, so there is no
 | Open workflow view / Open sample view | Reveal the sidebar views |
 | Open user guide | Open the researcher quick start (`QUICKSTART.md`), creating it in the vault if missing (no Setup research automation needed). Also a button at the top of the settings tab |
 
-> Renaming a workflow file in the file explorer automatically reorders the README checklist to match the new number prefix; deleting one removes its checklist entry and prunes the samples it defined. If a rename breaks the `###_….labnote.md` format, you are warned and offered a fixed name; once the format is back (by accepting the offer or fixing it by hand), the checklist follows the file again.
+> Renaming a workflow file in the file explorer automatically reorders the README checklist to match the new number prefix; deleting one removes its checklist entry (samples are kept — only that note's usage record is dropped). If a rename breaks the `###_….labnote.md` format, you are warned and offered a fixed name; once the format is back (by accepting the offer or fixing it by hand), the checklist follows the file again.
 
 ## Research automation
 

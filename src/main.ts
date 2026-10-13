@@ -41,7 +41,7 @@ import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
 import { SampleEditorSuggest } from './sampleSuggest';
 import { openSampleDefinition } from './sampleDefinitionModal';
 import { pickModal } from './modals';
-import { createSampleInteractive, pickCatalogReference } from './sampleActions';
+import { createSampleInteractive, pickCatalogReference, insertSampleReference } from './sampleActions';
 import {
   createSampleHighlightPlugin,
   createSampleReadingHighlighter,
@@ -455,7 +455,7 @@ export default class LabnotePlugin extends Plugin {
       referenceText = created?.referenceText;
     }
     if (!referenceText) return;
-    await target.insertAtCursor(referenceText);
+    await insertSampleReference(this, target, referenceText);
   }
 
   /**
@@ -646,21 +646,46 @@ export default class LabnotePlugin extends Plugin {
         if (!this.settings.autoUpdateLastUpdated) return;
         const file = info.file;
         if (!(file instanceof TFile) || !isLabNotePath(file.path)) return;
-
-        const path = file.path;
-        const prev = this.lastUpdatedTimers.get(path);
-        if (prev !== undefined) window.clearTimeout(prev);
-        const handle = window.setTimeout(() => {
-          this.lastUpdatedTimers.delete(path);
-          if (!this.lastUpdatedTracker.consume(path)) return;
-          if (!this.settings.autoUpdateLastUpdated) return;
-          stampNoteAndReadme(this.app, this.host, path, this.stampLastUpdated).catch(err =>
-            console.warn('[labnoteo] last_updated_date update failed:', err)
-          );
-        }, 2000);
-        this.lastUpdatedTimers.set(path, handle);
+        this.scheduleLastUpdatedStamp(file.path);
       })
     );
+  }
+
+  /**
+   * Debounced stamp of a lab note's `last_updated_date` (and, for a workflow
+   * note, its experiment README) 2s after the last change. Shared by editor
+   * edits (via `editor-change`) and programmatic inserts (via {@link markUserEdit})
+   * so the stamp does not depend on whether Obsidian emits `editor-change` for a
+   * code-driven edit. `consume` only stamps after a recorded user edit.
+   */
+  private scheduleLastUpdatedStamp(path: string): void {
+    const prev = this.lastUpdatedTimers.get(path);
+    if (prev !== undefined) window.clearTimeout(prev);
+    const handle = window.setTimeout(() => {
+      this.lastUpdatedTimers.delete(path);
+      if (!this.lastUpdatedTracker.consume(path)) return;
+      if (!this.settings.autoUpdateLastUpdated) return;
+      stampNoteAndReadme(this.app, this.host, path, this.stampLastUpdated).catch(err =>
+        console.warn('[labnoteo] last_updated_date update failed:', err)
+      );
+    }, 2000);
+    this.lastUpdatedTimers.set(path, handle);
+  }
+
+  /**
+   * Record a code-driven, user-intent edit to a lab note (e.g. inserting a
+   * sample reference from the Samples sidebar) and schedule its
+   * `last_updated_date` stamp. The CodeMirror reorder filter does not tag such
+   * edits as user input, so we record the intent here explicitly.
+   */
+  markUserEdit(path: string): void {
+    if (!this.settings.autoUpdateLastUpdated || !isLabNotePath(path)) return;
+    this.lastUpdatedTracker.record(path, {
+      userEdit: true,
+      dateEdited: false,
+      fromHistory: false,
+    });
+    this.scheduleLastUpdatedStamp(path);
   }
 
   /**
@@ -832,19 +857,17 @@ export default class LabnotePlugin extends Plugin {
     }
     try {
       if (q.deletes.length > 0) {
-        const removed = await syncReadmeAndSamplesOnDelete(
+        await syncReadmeAndSamplesOnDelete(
           this.app,
           this.host,
           dir,
           q.deletes,
           this.sampleCleanupOpts()
         );
-        if (removed.length > 0) {
-          this.sampleSuggest?.clearCache();
-          this.refreshSampleViews();
-          const ids = removed.map(r => `${r.type} ${r.id}`).join(', ');
-          this.host.notify('info', this.t('Removed from sample tree: {0}', ids));
-        }
+        // Samples kept, but their `sources` may have changed — refresh so the
+        // sidebar/autocomplete reflect the updated usage.
+        this.sampleSuggest?.clearCache();
+        this.refreshSampleViews();
       }
       if (q.renames.length > 0) {
         await syncReadmeOrderOnRename(this.app, this.host, dir, q.renames);

@@ -121,6 +121,12 @@ export {
   type SampleReferenceAt,
 } from './sample/sampleSuggest';
 
+// === Sample reference insertion placement (Obsidian sidebar/right-click) ===
+export {
+  planReferenceInsert,
+  type ReferenceInsert,
+} from './sample/referenceInsert';
+
 // === Sample storage-location provider seam (local now; partbank-ready) ===
 export {
   LocalSampleLocationProvider,

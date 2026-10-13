@@ -22,6 +22,7 @@ import {
   editSampleInteractive,
   deleteSampleInteractive,
   moveSampleInteractive,
+  insertSampleReference,
   type SampleScope,
 } from '../sampleActions';
 
@@ -259,7 +260,9 @@ export class SampleTreeView extends ItemView {
             new Notice(this.plugin.t('Open a note to insert into.'));
             return;
           }
-          void target.insertAtCursor(
+          void insertSampleReference(
+            this.plugin,
+            target,
             buildSampleReferenceText(sample.id, sample.record.alias)
           );
         })

@@ -7,14 +7,15 @@
  * Pure formatting/ID logic lives in `@labnoteo/core`; this module only wires
  * the modals, persists JSON via the vault fs, and surfaces notices.
  */
-import { App, Notice } from 'obsidian';
-import type { PickItem } from '@labnoteo/core';
+import { App, MarkdownView, Notice } from 'obsidian';
+import { planReferenceInsert, type EditTarget, type PickItem } from '@labnoteo/core';
 import {
   generateSampleId,
   buildSampleIdPattern,
   buildSampleDefinitionText,
   buildSampleReferenceText,
   isCatalogSampleType,
+  getSampleDisplayMeta,
 } from '@labnoteo/core/lib/sampleUtils';
 import {
   loadSamplesByType,
@@ -24,9 +25,13 @@ import {
   putSampleRecord,
   getLabsamplesFolder,
   findSampleDefinitionMatch,
+  findSampleUsages,
   type SampleRecord,
 } from '@labnoteo/core/lib/sampleStorage';
-import { getExperimentLabsamplesFolder } from '@labnoteo/core/lib/labnoteStructure';
+import {
+  getExperimentDir,
+  getExperimentLabsamplesFolder,
+} from '@labnoteo/core/lib/labnoteStructure';
 import * as posix from '@labnoteo/core/posix';
 import type LabnotePlugin from './main';
 import { promptModal, confirmModal, pickModal } from './modals';
@@ -46,6 +51,34 @@ export function resolveScopeFolder(plugin: LabnotePlugin, scope: SampleScope): s
 /** Trim to a non-empty string or null. */
 function clean(value: string | undefined): string | null {
   return value && value.trim() ? value.trim() : null;
+}
+
+/**
+ * Insert a sample reference (`id;alias` / bare `id`) into `target` at the place
+ * {@link planReferenceInsert} chooses: appended below the last section when the
+ * cursor sits in the front matter or above the title, at the end of the line
+ * when the cursor is on an existing reference or heading, otherwise at the
+ * cursor (padded so it never fuses with a neighbour). Reveals the spot and marks
+ * the note edited so `last_updated_date` refreshes.
+ */
+export async function insertSampleReference(
+  plugin: LabnotePlugin,
+  target: EditTarget,
+  ref: string
+): Promise<void> {
+  // Hosts without cursor tracking (none today) fall back to a plain insert.
+  if (!target.getCursorOffset) {
+    await target.insertAtCursor(ref);
+    plugin.markUserEdit(target.path);
+    return;
+  }
+  const text = await target.getText();
+  const cursor = await target.getCursorOffset();
+  const types = getSampleDisplayMeta(plugin.settings.customSampleTypes).types;
+  const plan = planReferenceInsert(text, cursor, ref, types);
+  await target.replaceRange(plan.offset, plan.offset, plan.text);
+  await target.revealOffset?.(plan.offset + plan.text.length);
+  plugin.markUserEdit(target.path);
 }
 
 export interface CreatedSample {
@@ -269,13 +302,71 @@ export async function resolveSampleDefinition(
   return undefined;
 }
 
-/** Confirm + delete a sample from its `{Type}.json`. Returns false when cancelled. */
+/**
+ * Collect the notes that still reference `(type, id)`, scoped to the sample's
+ * experiment for a Local sample and to the whole vault for a Global one (its
+ * folder is outside any experiment). Prefers the live editor text of an open
+ * note so just-typed, unsaved references still count.
+ */
+async function notesReferencingSample(
+  app: App,
+  plugin: LabnotePlugin,
+  folder: string,
+  type: string,
+  id: string
+): Promise<string[]> {
+  const openText = new Map<string, string>();
+  for (const leaf of app.workspace.getLeavesOfType('markdown')) {
+    const view = leaf.view;
+    if (view instanceof MarkdownView && view.file) {
+      openText.set(view.file.path, view.editor.getValue());
+    }
+  }
+
+  const expDir = getExperimentDir(folder);
+  const scopePrefix = expDir ? `${expDir}/` : undefined;
+  const files = app.vault
+    .getMarkdownFiles()
+    .filter(f => !scopePrefix || f.path.startsWith(scopePrefix));
+
+  const docs: Array<{ path: string; text: string }> = [];
+  for (const f of files) {
+    const text = openText.get(f.path) ?? (await app.vault.cachedRead(f));
+    docs.push({ path: f.path, text });
+  }
+  return findSampleUsages(docs, type, id, plugin.settings.customSampleTypes);
+}
+
+/**
+ * Confirm + delete a sample from its `{Type}.json`. Refuses when the body still
+ * references the sample (the reference would resurrect a bare record on the next
+ * edit); the user must remove it from the note first. Returns false when
+ * cancelled or refused.
+ */
 export async function deleteSampleInteractive(
   app: App,
   plugin: LabnotePlugin,
   opts: { folder: string; type: string; id: string }
 ): Promise<boolean> {
   const { folder, type, id } = opts;
+
+  const usages = await notesReferencingSample(app, plugin, folder, type, id);
+  if (usages.length > 0) {
+    const names = usages.map(p => posix.basename(p));
+    const shown = names.slice(0, 3).join(', ');
+    const list =
+      names.length > 3 ? plugin.t('{0} (+{1} more)', shown, String(names.length - 3)) : shown;
+    new Notice(
+      plugin.t(
+        '{0} is still used in notes ({1}). Remove it from the note(s) first, then delete.',
+        id,
+        list
+      ),
+      8000
+    );
+    return false;
+  }
+
   const ok = await confirmModal(
     app,
     plugin.t('Are you sure you want to delete {0}?', id),

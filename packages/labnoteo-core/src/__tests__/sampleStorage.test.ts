@@ -17,6 +17,8 @@ import {
   upsertSampleRecord,
   deleteSampleRecord,
   putSampleRecord,
+  removeSourcesForDocument,
+  findSampleUsages,
   type SampleDatabase,
   type SampleRecord,
 } from '../lib/sampleStorage';
@@ -181,13 +183,38 @@ describe('document references never overwrite the registry (#37)', () => {
     expect(records['Plasmid-1'].alias).toBe('new');
   });
 
-  it('seeds a record that does not exist yet from the reference text', async () => {
+  it('does NOT seed a record from a bare reference to an unknown id (#54, #55)', async () => {
     const fs = new MemFileSystem();
     await saveSamplesFromDocument(fs, DOC, 'Plasmid-9;pUC19');
 
     const records = await loadSamplesByType(fs, FOLDER, 'Plasmid');
-    expect(records['Plasmid-9'].alias).toBe('pUC19');
-    expect(records['Plasmid-9'].sources).toEqual(['001_WF.labnote.md']);
+    expect(records['Plasmid-9']).toBeUndefined();
+  });
+
+  it('does not re-create a deleted sample while a reference remains (#54)', async () => {
+    const fs = new MemFileSystem();
+    await upsertSampleRecord(fs, FOLDER, 'Plasmid', 'Plasmid-1', {
+      alias: 'pBFC',
+      description: 'desc',
+      location: '냉장고-1',
+    });
+    // The note references it, then the user deletes it from the registry…
+    await saveSamplesFromDocument(fs, DOC, 'used Plasmid-1;pBFC here');
+    await deleteSampleRecord(fs, FOLDER, 'Plasmid', 'Plasmid-1');
+    // …and edits the note again (reference still present).
+    await saveSamplesFromDocument(fs, DOC, 'used Plasmid-1;pBFC here, edited');
+
+    const records = await loadSamplesByType(fs, FOLDER, 'Plasmid');
+    expect(records['Plasmid-1']).toBeUndefined();
+  });
+
+  it('does not register a mangled id fragment (#55)', async () => {
+    const fs = new MemFileSystem();
+    // A corrupted line with a split reference fragment.
+    await saveSamplesFromDocument(fs, DOC, 'Other-1791Other-1791838231413;INA-05838238153;INA-06');
+
+    const records = await loadSamplesByType(fs, FOLDER, 'Other');
+    expect(records['Other-1791']).toBeUndefined();
   });
 
   it('seeds a catalog-type record from the catalog, not the trailing prose', async () => {
@@ -447,5 +474,65 @@ describe('putSampleRecord (verbatim atomic write)', () => {
   it('rejects a traversal payload in the sample type', async () => {
     const fs = new MemFileSystem();
     await expect(putSampleRecord(fs, FOLDER, '../../evil', 'x', rec())).rejects.toThrow();
+  });
+});
+
+describe('removeSourcesForDocument keeps the sample', () => {
+  const DOC = 'labnote/001_Exp/001_WF.labnote.md';
+  const FOLDER = 'labnote/001_Exp/resources/labsamples';
+
+  it('drops the source but keeps a menu-created record (empty document text)', async () => {
+    const fs = new MemFileSystem();
+    await upsertSampleRecord(fs, FOLDER, 'DNA', 'DNA-1', {
+      alias: 'pUC19',
+      description: 'desc',
+      location: '냉장고-1',
+    });
+    // Record a usage from the note, then "delete" the note (empty text).
+    await saveSamplesFromDocument(fs, DOC, '@dna;DNA-1;pUC19;desc');
+    await removeSourcesForDocument(fs, DOC, '');
+
+    const records = await loadSamplesByType(fs, FOLDER, 'DNA');
+    expect(records['DNA-1']).toBeDefined();
+    expect(records['DNA-1'].sources).toEqual([]);
+    expect(records['DNA-1'].location).toBe('냉장고-1');
+  });
+
+  it('keeps a record that was only ever defined in the deleted note', async () => {
+    const fs = new MemFileSystem();
+    // No prior registry entry: the note's `@` definition seeds it…
+    await saveSamplesFromDocument(fs, DOC, '@rna;RNA-5;siKIF;knockdown');
+    expect((await loadSamplesByType(fs, FOLDER, 'RNA'))['RNA-5']).toBeDefined();
+
+    // …and deleting the note no longer erases the sample.
+    await removeSourcesForDocument(fs, DOC, '');
+    const records = await loadSamplesByType(fs, FOLDER, 'RNA');
+    expect(records['RNA-5']).toBeDefined();
+    expect(records['RNA-5'].sources).toEqual([]);
+  });
+});
+
+describe('findSampleUsages', () => {
+  const docs = [
+    { path: 'labnote/001_Exp/a.labnote.md', text: 'uses DNA-1;pUC19 here' },
+    { path: 'labnote/001_Exp/b.labnote.md', text: '@dna;dna-1;alias;def' },
+    { path: 'labnote/001_Exp/c.labnote.md', text: 'no samples here' },
+  ];
+
+  it('finds both plain references and definitions, ignoring id case', () => {
+    expect(findSampleUsages(docs, 'DNA', 'DNA-1').sort()).toEqual([
+      'labnote/001_Exp/a.labnote.md',
+      'labnote/001_Exp/b.labnote.md',
+    ]);
+  });
+
+  it('returns empty when no note references the sample', () => {
+    expect(findSampleUsages(docs, 'DNA', 'DNA-9')).toEqual([]);
+  });
+
+  it('matches a custom type passed via additionalTypes', () => {
+    const custom = [{ path: 'x.md', text: 'see Strain-3 in the freezer' }];
+    expect(findSampleUsages(custom, 'Strain', 'Strain-3', ['Strain'])).toEqual(['x.md']);
+    expect(findSampleUsages(custom, 'Strain', 'Strain-3')).toEqual([]);
   });
 });

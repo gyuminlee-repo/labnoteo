@@ -59,10 +59,7 @@ import { removeWorkflowFromReadme } from '@labnoteo/core/lib/workflowDelete';
 // Re-exported so command registration in main.ts imports every command from one
 // place; the implementation lives under src/scaffold with its asset registry.
 export { setupResearchAutomationCommand } from './scaffold/scaffold';
-import {
-  removeSourcesForDocument,
-  type RemovedSampleRef,
-} from '@labnoteo/core/lib/sampleStorage';
+import { removeSourcesForDocument } from '@labnoteo/core/lib/sampleStorage';
 
 // Vault root sentinel. Core loaders treat a falsy root as "no workspace" and
 // bail, so we use '.' — it is truthy yet normalises away, keeping every derived
@@ -736,9 +733,9 @@ export interface SampleCleanupOpts {
 
 /**
  * After workflow files were deleted in the file explorer, remove their README
- * checklist entries (surgically — preserving order + any manual links) and
- * prune the sample tree of sources only these documents defined. Returns every
- * auto-removed sample so the caller can surface a toast + refresh views.
+ * checklist entries (surgically — preserving order + any manual links) and drop
+ * the deleted notes from each sample's `sources`. The samples themselves are
+ * kept, so sample data survives a note deletion.
  */
 export async function syncReadmeAndSamplesOnDelete(
   app: App,
@@ -746,7 +743,7 @@ export async function syncReadmeAndSamplesOnDelete(
   labnoteDir: string,
   deletedPaths: string[],
   opts: SampleCleanupOpts = {}
-): Promise<RemovedSampleRef[]> {
+): Promise<void> {
   // 1) README: drop each deleted entry in one read-modify-write. The README may
   //    itself be gone (whole-folder delete); then there is nothing to prune.
   const readmePath = posix.join(labnoteDir, README);
@@ -761,22 +758,19 @@ export async function syncReadmeAndSamplesOnDelete(
   }
 
   // 2) Samples: a deleted document defines nothing, so pass empty text — every
-  //    record that listed this note as a source drops it (and is deleted if it
-  //    becomes orphaned). Failures are non-fatal: the file is already gone.
-  const removed: RemovedSampleRef[] = [];
+  //    record that listed this note as a source drops it from `sources`, but the
+  //    sample itself stays. Failures are non-fatal: the file is already gone.
   for (const p of deletedPaths) {
     try {
-      const r = await removeSourcesForDocument(
+      await removeSourcesForDocument(
         host.fs,
         p,
         '',
         opts.globalSampleFolder,
         opts.customTypes
       );
-      removed.push(...r);
     } catch (err) {
       console.warn('[labnoteo] sample cleanup during workflow delete failed:', err);
     }
   }
-  return removed;
 }

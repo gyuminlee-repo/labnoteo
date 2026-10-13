@@ -105,9 +105,6 @@ const obsidianKo: Record<string, string> = {
     'labnote 폴더 내의 워크플로 파일에서 실행해주세요.',
   'Missing unit operation info.': '유닛 오퍼레이션 정보가 없습니다.',
 
-  // Workflow README auto-sync (delete pruning)
-  'Removed from sample tree: {0}': '샘플 트리에서 제거됨: {0}',
-
   // Sample view context menu
   'Copy sample ID': '샘플 ID 복사',
   'Copied: {0}': '복사했습니다: {0}',
@@ -166,6 +163,9 @@ const obsidianKo: Record<string, string> = {
   'Sample added: {0}': '샘플이 추가되었습니다: {0}',
   'Sample updated: {0}': '샘플이 수정되었습니다: {0}',
   'Sample deleted: {0}': '샘플이 삭제되었습니다: {0}',
+  '{0} is still used in notes ({1}). Remove it from the note(s) first, then delete.':
+    '{0}은(는) 본문에서 사용 중이라 삭제할 수 없습니다 ({1}). 본문에서 먼저 지운 뒤 다시 삭제하세요.',
+  '{0} (+{1} more)': '{0} 외 {1}개',
   'Sample moved: {0}': '샘플을 이동했습니다: {0}',
   'Sample not found: {0}': '샘플을 찾을 수 없습니다: {0}',
   'Open an experiment note first to move samples.': '샘플을 이동하려면 먼저 실험 노트를 여세요.',
