@@ -102,6 +102,20 @@ export class LabnoteSettingTab extends PluginSettingTab {
         })
       );
 
+    new Setting(containerEl)
+      .setName(this.plugin.t('Auto-update last updated date'))
+      .setDesc(
+        this.plugin.t(
+          "Set a lab note's last_updated_date to today (once a day) when you edit it, change its status or discussion flag, or the AI edits it. Editing a workflow note also updates its experiment README. Changes pulled from git are ignored."
+        )
+      )
+      .addToggle(t =>
+        t.setValue(s.autoUpdateLastUpdated).onChange(v => {
+          s.autoUpdateLastUpdated = v;
+          save();
+        })
+      );
+
     new Setting(containerEl).setName(this.plugin.t('AI provider')).setHeading();
 
     new Setting(containerEl)

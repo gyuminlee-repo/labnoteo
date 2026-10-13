@@ -47,6 +47,12 @@ describe('migrateSettings', () => {
     expect(out.mcpEnabled).toBe(DEFAULT_SETTINGS.mcpEnabled);
   });
 
+  it('defaults autoUpdateLastUpdated to on and keeps a stored boolean', () => {
+    expect(migrateSettings({}).autoUpdateLastUpdated).toBe(true);
+    expect(migrateSettings({ autoUpdateLastUpdated: false }).autoUpdateLastUpdated).toBe(false);
+    expect(migrateSettings({ autoUpdateLastUpdated: 'no' }).autoUpdateLastUpdated).toBe(true);
+  });
+
   it('rejects an unknown provider rather than trusting the string', () => {
     expect(migrateSettings({ llmProvider: 'anthropic' }).llmProvider).toBe('none');
   });

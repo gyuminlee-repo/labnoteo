@@ -4,7 +4,9 @@ import {
   findDateFieldsInDocument,
   findMetaDateFieldInLine,
   fromDateTimeLocalValue,
+  readLastUpdatedDate,
   toDateTimeLocalValue,
+  touchLastUpdatedDate,
   updateAllDateFields,
 } from '../lib/dateUtils';
 
@@ -112,5 +114,76 @@ describe('datetime-local conversions', () => {
     expect(toDateTimeLocalValue('')).toBe('');
     expect(toDateTimeLocalValue('not a date')).toBe('');
     expect(fromDateTimeLocalValue('2026-09-06')).toBe('');
+  });
+});
+
+describe('touchLastUpdatedDate', () => {
+  const TODAY = '2026-10-13';
+
+  it('updates an unquoted value', () => {
+    const md = '---\ncreated_date: 2026-10-01\nlast_updated_date: 2026-10-01\n---\n# Body\n';
+    expect(touchLastUpdatedDate(md, TODAY)).toBe(
+      '---\ncreated_date: 2026-10-01\nlast_updated_date: 2026-10-13\n---\n# Body\n'
+    );
+  });
+
+  it('keeps single or double quotes', () => {
+    expect(touchLastUpdatedDate("---\nlast_updated_date: '2026-10-01'\n---\n", TODAY)).toBe(
+      "---\nlast_updated_date: '2026-10-13'\n---\n"
+    );
+    expect(touchLastUpdatedDate('---\nlast_updated_date: "2026-10-01"\n---\n', TODAY)).toBe(
+      '---\nlast_updated_date: "2026-10-13"\n---\n'
+    );
+  });
+
+  it('returns the input untouched when already today', () => {
+    const md = '---\nlast_updated_date: 2026-10-13\n---\n';
+    expect(touchLastUpdatedDate(md, TODAY)).toBe(md);
+  });
+
+  it('never adds the field or front matter', () => {
+    const noField = '---\ncreated_date: 2026-10-01\n---\n';
+    const noFm = '# Note\nlast_updated_date: 2026-10-01\n';
+    expect(touchLastUpdatedDate(noField, TODAY)).toBe(noField);
+    expect(touchLastUpdatedDate(noFm, TODAY)).toBe(noFm);
+  });
+
+  it('leaves the body and code blocks alone', () => {
+    const md =
+      '---\nlast_updated_date: 2026-10-01\n---\nlast_updated_date: 2026-01-01\n```yaml\nlast_updated_date: 2026-01-01\n```\n';
+    expect(touchLastUpdatedDate(md, TODAY)).toBe(
+      '---\nlast_updated_date: 2026-10-13\n---\nlast_updated_date: 2026-01-01\n```yaml\nlast_updated_date: 2026-01-01\n```\n'
+    );
+  });
+
+  it('ignores nested keys of the same name', () => {
+    const md = '---\nmeta:\n  last_updated_date: 2026-10-01\n---\n';
+    expect(touchLastUpdatedDate(md, TODAY)).toBe(md);
+  });
+
+  it('preserves CRLF line endings', () => {
+    const md = '---\r\nlast_updated_date: 2026-10-01\r\nstatus: active\r\n---\r\n';
+    expect(touchLastUpdatedDate(md, TODAY)).toBe(
+      '---\r\nlast_updated_date: 2026-10-13\r\nstatus: active\r\n---\r\n'
+    );
+  });
+
+  it('fills an empty value', () => {
+    expect(touchLastUpdatedDate('---\nlast_updated_date:\n---\n', TODAY)).toBe(
+      '---\nlast_updated_date: 2026-10-13\n---\n'
+    );
+  });
+});
+
+describe('readLastUpdatedDate', () => {
+  it('reads the value with or without quotes', () => {
+    expect(readLastUpdatedDate('---\nlast_updated_date: 2026-10-01\n---\n')).toBe('2026-10-01');
+    expect(readLastUpdatedDate("---\nlast_updated_date: '2026-10-01'\n---\n")).toBe('2026-10-01');
+    expect(readLastUpdatedDate('---\r\nlast_updated_date: "2026-10-01"\r\n---\r\n')).toBe('2026-10-01');
+  });
+
+  it('is undefined without the field', () => {
+    expect(readLastUpdatedDate('---\nstatus: active\n---\n')).toBeUndefined();
+    expect(readLastUpdatedDate('no front matter')).toBeUndefined();
   });
 });

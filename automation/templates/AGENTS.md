@@ -39,6 +39,10 @@ Claude Code, Codex, Cursor 등)는 아래 규칙을 따라 작업합니다.
   Issue/Wiki는 협업·지식 레이어일 뿐 노트의 사본이 아닙니다.
 - frontmatter의 `status` / `project` / `id`는 **확장만** 합니다(필드 추가는 가능,
   기존 값을 임의로 되쓰지 않음).
+- 노트(`*.labnote.md`)를 고치면 그 노트의 `last_updated_date`를 오늘(Asia/Seoul,
+  `YYYY-MM-DD`)로 바꾸고, 워크플로 노트라면 같은 실험의 README도 바꿉니다. 필드가
+  없으면 추가하지 않습니다. 파일을 직접 고치면 플러그인의 자동 갱신을 거치지 않기
+  때문입니다.
 - `discuss: true`는 "논의 신호" 필드입니다 — 에이전트가 설정할 수 있으며
   `status`와는 별개입니다 (아래 Playbook A). 사람은 플러그인의
   *Toggle discussion flag* 명령으로 같은 표시를 켜고 끕니다. 해제는 키를

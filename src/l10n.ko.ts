@@ -190,6 +190,9 @@ const obsidianKo: Record<string, string> = {
   'Auto-sync unit operation TOC': '유닛오퍼레이션 TOC 자동 정렬',
   "Reorder a workflow note's Related Unit Operations list to match heading order after edits, and tidy the --- separators immediately when a block is moved.":
     '편집 후 워크플로 노트의 Related Unit Operations 목록을 헤딩 순서에 맞게 정렬하고, 블록을 옮기면 `---` 구분선도 즉시 정리합니다.',
+  'Auto-update last updated date': '마지막 갱신일 자동 기록',
+  "Set a lab note's last_updated_date to today (once a day) when you edit it, change its status or discussion flag, or the AI edits it. Editing a workflow note also updates its experiment README. Changes pulled from git are ignored.":
+    '연구노트를 편집하거나 상태·논의 표시를 바꾸거나 AI가 고치면 last_updated_date를 오늘 날짜로 바꿉니다(하루 한 번). 워크플로 노트를 고치면 실험 README도 함께 바뀝니다. git으로 받아온 변경은 반영하지 않습니다.',
   'AI provider': 'AI 프로바이더',
   'Provider': '프로바이더',
   'Disabled': '비활성화됨',

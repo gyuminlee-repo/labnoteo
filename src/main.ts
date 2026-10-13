@@ -10,7 +10,11 @@
 import { Plugin, Notice, TFile, editorInfoField } from 'obsidian';
 import type { LabnoteHost, Translator } from '@labnoteo/core';
 import { findSampleReferenceAt, rebuildUnitOpToc, minimalReplacement } from '@labnoteo/core';
-import { getSeoulDateString, getSeoulDateTimeString } from '@labnoteo/core/lib/dateUtils';
+import {
+  getSeoulDateString,
+  getSeoulDateTimeString,
+  touchLastUpdatedDate,
+} from '@labnoteo/core/lib/dateUtils';
 import { getSampleDisplayMeta, isCatalogSampleType } from '@labnoteo/core/lib/sampleUtils';
 import { classifyWorkflowRename, isValidWorkflowPath } from '@labnoteo/core/lib/workflowStructure';
 import { saveSamplesFromDocument, getLabsamplesFolder } from '@labnoteo/core/lib/sampleStorage';
@@ -45,6 +49,8 @@ import {
 } from './sampleHighlight';
 import { createMetaDatePickerExtension } from './dateFieldPicker';
 import { createUnitOpReorderFilter } from './unitOpReorderFilter';
+import { LastUpdatedTracker } from './lastUpdatedTracker';
+import { isLabNotePath, stampNoteAndReadme, writeNoteStamped } from './lastUpdatedStamp';
 import { createOutlineDropTidy, type OutlineDropSnapshot } from './outlineDropTidy';
 import { WorkflowTreeView, WORKFLOW_VIEW_TYPE } from './views/workflowView';
 import { SampleTreeView, SAMPLE_VIEW_TYPE } from './views/sampleView';
@@ -97,6 +103,9 @@ export default class LabnotePlugin extends Plugin {
   // Whether each note's latest editor change was an undo/redo, so the TOC sync
   // does not record a fresh edit that would block undoing further back.
   private readonly lastChangeFromHistory = new Map<string, boolean>();
+  // Pending `last_updated_date` stamps after editor edits, per lab-note path.
+  private readonly lastUpdatedTimers = new Map<string, number>();
+  private readonly lastUpdatedTracker = new LastUpdatedTracker();
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -114,12 +123,16 @@ export default class LabnotePlugin extends Plugin {
     this.registerEditorMenu();
     this.registerWorkflowReadmeSync();
     this.registerUnitOpTocAutoSync();
+    this.registerLastUpdatedAutoSync();
     this.registerOutlineDropTidy();
     this.registerEditorExtension(
       createUnitOpReorderFilter({
         isEnabled: () => this.settings.autoSyncUnitOpToc,
         getFilePath: s => s.field(editorInfoField, false)?.file?.path ?? null,
-        onDocChange: (path, fromHistory) => this.lastChangeFromHistory.set(path, fromHistory),
+        onDocChange: (path, fromHistory, kind) => {
+          this.lastChangeFromHistory.set(path, fromHistory);
+          if (isLabNotePath(path)) this.lastUpdatedTracker.record(path, { ...kind, fromHistory });
+        },
       })
     );
     this.addSettingTab(new LabnoteSettingTab(this.app, this));
@@ -155,6 +168,11 @@ export default class LabnotePlugin extends Plugin {
       window.clearTimeout(handle);
     }
     this.unitOpTocTimers.clear();
+    for (const handle of this.lastUpdatedTimers.values()) {
+      window.clearTimeout(handle);
+    }
+    this.lastUpdatedTimers.clear();
+    this.lastUpdatedTracker.clear();
     // Views/events registered via this.register*() are auto-cleaned by Obsidian.
   }
 
@@ -197,7 +215,8 @@ export default class LabnotePlugin extends Plugin {
     this.addCommand({
       id: 'change-experiment-status',
       name: this.t('Change experiment status'),
-      callback: () => this.run(() => changeExperimentStatusCommand(this.app, this.host)),
+      callback: () =>
+        this.run(() => changeExperimentStatusCommand(this.app, this.host, this.stampLastUpdated)),
     });
 
     this.addCommand({
@@ -219,7 +238,8 @@ export default class LabnotePlugin extends Plugin {
     this.addCommand({
       id: 'toggle-discussion-flag',
       name: this.t('Toggle discussion flag'),
-      callback: () => this.run(() => toggleDiscussionFlagCommand(this.app, this.host)),
+      callback: () =>
+        this.run(() => toggleDiscussionFlagCommand(this.app, this.host, this.stampLastUpdated)),
     });
 
     this.addCommand({
@@ -598,6 +618,47 @@ export default class LabnotePlugin extends Plugin {
           );
         }, 1500);
         this.unitOpTocTimers.set(path, handle);
+      })
+    );
+  }
+
+  /** Set `last_updated_date` to today (#42); identity when the setting is off. */
+  readonly stampLastUpdated = (content: string): string =>
+    this.settings.autoUpdateLastUpdated
+      ? touchLastUpdatedDate(content, getSeoulDateString())
+      : content;
+
+  /** `writeNote` hook for AI tools: writes through the vault, stamping lab notes. */
+  writeNoteStamped(path: string, content: string): Promise<void> {
+    return writeNoteStamped(this.app, this.host, path, content, this.stampLastUpdated);
+  }
+
+  /**
+   * Stamp a lab note's `last_updated_date` (and, for a workflow note, its
+   * experiment README) once the user stops editing it. Only typed, pasted,
+   * dropped or deleted text counts — see `LastUpdatedTracker` — so notes
+   * reloaded by a git pull keep their date. The stamp is idempotent within a
+   * day, so our own edit settles on the next pass.
+   */
+  private registerLastUpdatedAutoSync(): void {
+    this.registerEvent(
+      this.app.workspace.on('editor-change', (_editor, info) => {
+        if (!this.settings.autoUpdateLastUpdated) return;
+        const file = info.file;
+        if (!(file instanceof TFile) || !isLabNotePath(file.path)) return;
+
+        const path = file.path;
+        const prev = this.lastUpdatedTimers.get(path);
+        if (prev !== undefined) window.clearTimeout(prev);
+        const handle = window.setTimeout(() => {
+          this.lastUpdatedTimers.delete(path);
+          if (!this.lastUpdatedTracker.consume(path)) return;
+          if (!this.settings.autoUpdateLastUpdated) return;
+          stampNoteAndReadme(this.app, this.host, path, this.stampLastUpdated).catch(err =>
+            console.warn('[labnoteo] last_updated_date update failed:', err)
+          );
+        }, 2000);
+        this.lastUpdatedTimers.set(path, handle);
       })
     );
   }

@@ -109,6 +109,17 @@ export function __setGetLanguage(fn: (() => string) | undefined): void {
 
 export class App {}
 
+/** Only what `instanceof` checks and the open-editor branches read. */
+export class MarkdownView {
+  file: TFile | null = null;
+  editor: unknown = null;
+  mode: 'source' | 'preview' = 'source';
+
+  getMode(): 'source' | 'preview' {
+    return this.mode;
+  }
+}
+
 export class Modal {
   contentEl = { empty(): void {}, createEl(): unknown { return {}; } };
 

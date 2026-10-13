@@ -284,3 +284,55 @@ export function updateAllDateFields(content: string, fieldName: string, newDate:
   }
   return lines.join('\n');
 }
+
+const LAST_UPDATED_LINE = /^(last_updated_date:[ \t]*)(.*?)([ \t]*\r?)$/;
+
+interface LastUpdatedLine {
+  lines: string[];
+  index: number;
+  prefix: string;
+  raw: string;
+  suffix: string;
+}
+
+/** The top-level `last_updated_date:` line of the leading front matter, if any. */
+function findLastUpdatedLine(content: string): LastUpdatedLine | undefined {
+  const lines = content.split('\n');
+  if (lines[0]?.trim() !== '---') return undefined;
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i].trim() === '---') return undefined;
+    const m = LAST_UPDATED_LINE.exec(lines[i]);
+    if (m) return { lines, index: i, prefix: m[1], raw: m[2], suffix: m[3] };
+  }
+  return undefined;
+}
+
+function splitQuote(raw: string): { quote: string; value: string } {
+  const q = raw[0];
+  if ((q === "'" || q === '"') && raw.length >= 2 && raw[raw.length - 1] === q) {
+    return { quote: q, value: raw.slice(1, -1) };
+  }
+  return { quote: '', value: raw };
+}
+
+/** Value of the front matter `last_updated_date`, without quotes; undefined when absent. */
+export function readLastUpdatedDate(content: string): string | undefined {
+  const found = findLastUpdatedLine(content);
+  return found ? splitQuote(found.raw).value : undefined;
+}
+
+/**
+ * Set the front matter `last_updated_date` to `today`, keeping its quoting and
+ * line ending. Returns `content` unchanged when the value already matches or
+ * when there is no such field (it is never added).
+ */
+export function touchLastUpdatedDate(content: string, today: string): string {
+  const found = findLastUpdatedLine(content);
+  if (!found) return content;
+  const { quote, value } = splitQuote(found.raw);
+  if (value === today) return content;
+  const prefix = /[ \t]$/.test(found.prefix) ? found.prefix : `${found.prefix} `;
+  const eol = found.suffix.endsWith('\r') ? '\r' : '';
+  found.lines[found.index] = `${prefix}${quote}${today}${quote}${eol}`;
+  return found.lines.join('\n');
+}

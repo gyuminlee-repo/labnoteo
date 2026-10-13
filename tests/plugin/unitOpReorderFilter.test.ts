@@ -148,4 +148,55 @@ describe('createUnitOpReorderFilter', () => {
       [WORKFLOW_PATH, true],
     ]);
   });
+
+  describe('change kind', () => {
+    const NOTE = "---\nstatus: active\nlast_updated_date: '2026-10-01'\n---\n# Body\n";
+
+    function kindOf(spec: TransactionSpec) {
+      let kind: unknown;
+      EditorState.create({
+        doc: NOTE,
+        extensions: [
+          createUnitOpReorderFilter({
+            isEnabled: () => true,
+            getFilePath: () => WORKFLOW_PATH,
+            onDocChange: (_p, _h, k) => (kind = k),
+          }),
+        ],
+      }).update(spec);
+      return kind;
+    }
+
+    const typeBody = { changes: { from: NOTE.length, insert: 'x' } };
+
+    it.each(['input.type', 'input.type.compose', 'input.paste', 'delete.backward', 'move.drop'])(
+      'treats %s as a user edit',
+      userEvent => {
+        expect(kindOf({ ...typeBody, userEvent })).toEqual({ userEdit: true, dateEdited: false });
+      }
+    );
+
+    it.each([['set'], ['undo'], ['redo'], [undefined]])('does not treat %s as a user edit', userEvent => {
+      expect(kindOf({ ...typeBody, userEvent })).toEqual({ userEdit: false, dateEdited: false });
+    });
+
+    it('flags typing that changes last_updated_date', () => {
+      const at = NOTE.indexOf('2026-10-01') + '2026-10-0'.length;
+      const spec = { changes: { from: at, to: at + 1, insert: '5' }, userEvent: 'input.type' };
+      expect(kindOf(spec)).toEqual({ userEdit: true, dateEdited: true });
+    });
+
+    it('does not flag a whole front matter rewrite that only changes status', () => {
+      const end = NOTE.indexOf('# Body');
+      const insert = NOTE.slice(0, end).replace('status: active', 'status: done');
+      const spec = { changes: { from: 0, to: end, insert }, userEvent: 'input.paste' };
+      expect(kindOf(spec)).toEqual({ userEdit: true, dateEdited: false });
+    });
+
+    it('does not flag a programmatic date change', () => {
+      const from = NOTE.indexOf('2026-10-01');
+      const spec = { changes: { from, to: from + 10, insert: '2026-10-13' } };
+      expect(kindOf(spec)).toEqual({ userEdit: false, dateEdited: false });
+    });
+  });
 });

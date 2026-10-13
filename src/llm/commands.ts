@@ -12,7 +12,6 @@ import { createLabnoteTools, runTool, type ToolContext } from '@labnoteo/core';
 import type LabnotePlugin from '../main';
 import { createLlmProvider, type ChatMessage } from './provider';
 import { runAgent } from './agent';
-import { writeNoteThroughVault } from '../commands';
 import { getObsidianLanguage } from '../i18n';
 
 /**
@@ -29,8 +28,7 @@ function toolContext(plugin: LabnotePlugin): ToolContext {
     globalSampleFolder: plugin.settings.globalSampleFolder,
     customTypes: plugin.settings.customSampleTypes,
     locale: getObsidianLanguage(),
-    writeNote: (path, content) =>
-      writeNoteThroughVault(plugin.app, plugin.host, path, content),
+    writeNote: (path, content) => plugin.writeNoteStamped(path, content),
   };
 }
 

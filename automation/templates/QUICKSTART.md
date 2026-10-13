@@ -233,7 +233,8 @@ README frontmatter:
 | `sample_tracking` | 샘플 추적 사용 여부 | `yes` |
 | `status` | 진행 상태 (`Change experiment status`로 변경) | `planned` |
 | `project` | 상위 과제명 | 빈 값 |
-| `created_date` / `last_updated_date` | 날짜 | 오늘 |
+| `created_date` | 만든 날 | 오늘 |
+| `last_updated_date` | 마지막 기록일. 노트를 고치면 하루 한 번 자동으로 오늘이 됩니다(워크플로 노트를 고치면 README도). 설정 → Labnote Assistant → 워크플로 → `마지막 갱신일 자동 기록`으로 끌 수 있습니다 | 오늘 |
 | `id` | `EXP-###` 식별자 (선택). 없으면 폴더명이 실험ID | 없음 |
 | `discuss` | 논의 표시 (`Toggle discussion flag`가 켜고 끕니다) | 없음 |
 

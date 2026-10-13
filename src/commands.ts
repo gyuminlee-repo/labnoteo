@@ -120,7 +120,11 @@ export async function createExperimentCommand(app: App, host: LabnoteHost): Prom
  * `status` key is inserted when a pre-existing note lacks it, and the original
  * body is preserved verbatim (only the front-matter block is rewritten).
  */
-export async function changeExperimentStatusCommand(app: App, host: LabnoteHost): Promise<void> {
+export async function changeExperimentStatusCommand(
+  app: App,
+  host: LabnoteHost,
+  stamp: (content: string) => string = c => c
+): Promise<void> {
   const labnoteDir = await resolveLabnoteDir(app, host);
   if (!labnoteDir) return;
 
@@ -149,7 +153,7 @@ export async function changeExperimentStatusCommand(app: App, host: LabnoteHost)
   // existing keys and appends `status` for notes that predate the field.
   const updated = renderNote({ ...frontMatter, status: chosen }, body);
 
-  await writeNoteThroughVault(app, host, readmePath, updated);
+  await writeNoteThroughVault(app, host, readmePath, stamp(updated));
   host.notify('info', host.t('Experiment status changed: {0}', chosen));
 }
 
@@ -263,7 +267,11 @@ function renderNote(frontMatter: Record<string, unknown>, body: string): string 
  * promotes to a GitHub Issue on the next push — writing "논의 필요" in the body
  * does nothing by itself.
  */
-export async function toggleDiscussionFlagCommand(app: App, host: LabnoteHost): Promise<void> {
+export async function toggleDiscussionFlagCommand(
+  app: App,
+  host: LabnoteHost,
+  stamp: (content: string) => string = c => c
+): Promise<void> {
   const labnoteDir = await resolveLabnoteDir(app, host);
   if (!labnoteDir) return;
 
@@ -282,7 +290,7 @@ export async function toggleDiscussionFlagCommand(app: App, host: LabnoteHost): 
     app,
     host,
     readmePath,
-    renderNote(setDiscussFlag(frontMatter, next), body)
+    stamp(renderNote(setDiscussFlag(frontMatter, next), body))
   );
 
   const automated = await isIssueAutomationInstalled(host);
