@@ -156,11 +156,44 @@ function parseSampleRecords(raw: string): Record<string, SampleRecord> {
  * loops, so each caller builds its own instance (never share `lastIndex`).
  */
 function buildSampleDefinitionPattern(type: string): RegExp {
+  return new RegExp(sampleDefinitionSource(type), 'gi');
+}
+
+function sampleDefinitionSource(type: string): string {
   const typeEsc = escapeRegExp(type);
-  return new RegExp(
-    `(?:@${typeEsc}[;:])?(${typeEsc}-\\d+(?:-\\d+)*)(?:[;|]([^;:\\n|]+)(?:[;:]([^\\n;|]+))?|:\\s*([^\\n;|]+))?`,
-    'gi'
+  return `(?:@${typeEsc}[;:])?(${typeEsc}-\\d+(?:-\\d+)*)(?:[;|]([^;:\\n|]+)(?:[;:]([^\\n;|]+))?|:\\s*([^\\n;|]+))?`;
+}
+
+/**
+ * Next match of a {@link buildSampleDefinitionPattern} pattern, with a plain
+ * reference cut short where another same-type id follows after whitespace:
+ * `Reagent-1;두번째시약 Reagent-2;세번째` reads as two references instead of
+ * Reagent-2 being swallowed into the first one's alias (#57). `lastIndex` is
+ * rewound so the next call matches that id.
+ *
+ * Only plain references are cut. A definition's description may legitimately
+ * mention another sample (`@Reagent;Reagent-3;희석액;원액 Reagent-1 희석`), and
+ * cutting it would also shrink the range {@link findSampleDefinitionMatch}
+ * replaces, leaving the tail behind on edit. Whitespace is required before the
+ * id because ids match without a leading boundary (`DNA-1;cDNA-2` stays whole).
+ */
+function nextSampleMatch(pattern: RegExp, text: string, type: string): RegExpExecArray | null {
+  const match = pattern.exec(text);
+  if (!match || match[0].startsWith('@')) return match;
+
+  const typeEsc = escapeRegExp(type);
+  const tail = match[0].slice(match[1].length);
+  const next = new RegExp(`\\s+((?:@${typeEsc}[;:])?${typeEsc}-\\d)`, 'i').exec(tail);
+  if (!next) return match;
+
+  const cut = match[1].length + next.index;
+  const trimmed = new RegExp(`^${sampleDefinitionSource(type)}`, 'i').exec(
+    text.slice(match.index, match.index + cut)
   );
+  if (!trimmed) return match;
+  trimmed.index = match.index;
+  pattern.lastIndex = match.index + cut + next[0].length - next[1].length;
+  return trimmed;
 }
 
 /**
@@ -192,7 +225,7 @@ export function extractSampleInfoFromText(text: string, additionalTypes?: string
     const pattern = buildSampleDefinitionPattern(type);
 
     let match;
-    while ((match = pattern.exec(text)) !== null) {
+    while ((match = nextSampleMatch(pattern, text, type)) !== null) {
       const id = match[1];
 
       let alias: string | null = null;
@@ -365,12 +398,12 @@ export function findSampleDefinitionMatch(
   // 1) Match by @type;ID or @type:ID (supports ; and legacy |/: delimiters).
   //    Shared with extraction via buildSampleDefinitionPattern.
   const idPattern = buildSampleDefinitionPattern(type);
-  let match = idPattern.exec(text);
+  let match = nextSampleMatch(idPattern, text, type);
   while (match) {
     if (match[1] === id && match[0].startsWith('@')) {
       return { start: match.index, length: match[0].length };
     }
-    match = idPattern.exec(text);
+    match = nextSampleMatch(idPattern, text, type);
   }
 
   // 2) Equip: match by @equip;|currentAlias when definition has no ID in text

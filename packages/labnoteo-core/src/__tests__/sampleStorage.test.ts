@@ -77,6 +77,54 @@ describe('extractSampleInfoFromText', () => {
   });
 });
 
+describe('extractSampleInfoFromText — same-type id after an alias (#57)', () => {
+  const pick = (text: string) =>
+    extractSampleInfoFromText(text).map(({ id, alias, description, definition }) => ({
+      id,
+      alias,
+      description,
+      definition,
+    }));
+
+  it('reads a later same-type reference on the line as its own reference', () => {
+    expect(pick('Reagent-1;두번째시약 Reagent-2;세번째')).toEqual([
+      { id: 'Reagent-1', alias: '두번째시약', description: null, definition: false },
+      { id: 'Reagent-2', alias: '세번째', description: null, definition: false },
+    ]);
+    expect(pick('Reagent-1 Reagent-2;세번째').map(s => s.id)).toEqual(['Reagent-1', 'Reagent-2']);
+    expect(pick('Reagent-1;두번째시약 DNA-2;x').map(s => s.id)).toEqual(['Reagent-1', 'DNA-2']);
+    expect(pick('Reagent-1;a Reagent-2;b Reagent-3;c').map(s => s.id)).toEqual([
+      'Reagent-1',
+      'Reagent-2',
+      'Reagent-3',
+    ]);
+  });
+
+  it('splits an empty alias, the legacy `: description` form and a following definition', () => {
+    expect(pick('Reagent-1; Reagent-2')).toEqual([
+      { id: 'Reagent-1', alias: null, description: null, definition: false },
+      { id: 'Reagent-2', alias: null, description: null, definition: false },
+    ]);
+    expect(pick('Reagent-1: 설명 Reagent-2')).toEqual([
+      { id: 'Reagent-1', alias: null, description: '설명', definition: false },
+      { id: 'Reagent-2', alias: null, description: null, definition: false },
+    ]);
+    expect(pick('Reagent-1;별칭 @Reagent;Reagent-2;x')).toEqual([
+      { id: 'Reagent-1', alias: '별칭', description: null, definition: false },
+      { id: 'Reagent-2', alias: 'x', description: null, definition: true },
+    ]);
+  });
+
+  it('keeps a definition description whole and needs whitespace before the id', () => {
+    expect(pick('@Reagent;Reagent-3;희석액;원액 Reagent-1을 10배 희석')).toEqual([
+      { id: 'Reagent-3', alias: '희석액', description: '원액 Reagent-1을 10배 희석', definition: true },
+    ]);
+    expect(pick('DNA-1;cDNA-2 클론')).toEqual([
+      { id: 'DNA-1', alias: 'cDNA-2 클론', description: null, definition: false },
+    ]);
+  });
+});
+
 describe('buildSampleDatabase', () => {
   it('groups extracted samples by type and records the source file', () => {
     const samples = extractSampleInfoFromText('@DNA;DNA-1;a;desc');
@@ -255,6 +303,16 @@ describe('findSampleDefinitionMatch (#37)', () => {
     const def = '@plasmid;Plasmid-1;pBFC-Lower;vector';
     const text = `Plasmid-1;pBFC-Lower 를 썼다\n${def}\n`;
     expect(findSampleDefinitionMatch(text, 'Plasmid', 'Plasmid-1')).toEqual({
+      start: text.indexOf(def),
+      length: def.length,
+    });
+  });
+
+  // #57: the reference used to swallow the definition into its alias.
+  it('finds a definition that follows a reference on the same line', () => {
+    const def = '@Reagent;Reagent-2;x';
+    const text = `Reagent-1;별칭 ${def}`;
+    expect(findSampleDefinitionMatch(text, 'Reagent', 'Reagent-2')).toEqual({
       start: text.indexOf(def),
       length: def.length,
     });
