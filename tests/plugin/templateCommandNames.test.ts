@@ -15,6 +15,7 @@ describe('template command names match the Korean palette labels', () => {
   it('uses the l10n.ko labels for the commands the templates cite', () => {
     expect(KO_COMMAND_NAMES.createWorkflow).toBe(obsidianKo['Create workflow']);
     expect(KO_COMMAND_NAMES.insertUnitOperation).toBe(obsidianKo['Insert unit operation']);
+    expect(KO_COMMAND_NAMES.syncWorkflowChecklist).toBe(obsidianKo['Sync workflow checklist with folder']);
   });
 
   it('puts those labels into notes created under a Korean UI', () => {

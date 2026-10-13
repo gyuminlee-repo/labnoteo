@@ -53,6 +53,8 @@ import {
   reconcileWorkflowChecklist,
   planWorkflowRenumber,
   planRenumberMoves,
+  planWorkflowChecklistSync,
+  removeWorkflowChecklistEntries,
   type WorkflowRename,
 } from '@labnoteo/core/lib/workflowStructure';
 import { removeWorkflowFromReadme } from '@labnoteo/core/lib/workflowDelete';
@@ -593,26 +595,37 @@ export async function renumberWorkflowsCommand(
 
   const existing = await host.fs.list(labnoteDir);
   const renames = planWorkflowRenumber(existing);
-  if (renames.length === 0) {
+  const readmePath = posix.join(labnoteDir, README);
+  // Files the checklist does not list are renumbered too, so register them in
+  // the same run; otherwise one takes 001 and the overview starts at 002 (#56).
+  const unlisted = (await host.fs.exists(readmePath))
+    ? planWorkflowChecklistSync(await host.fs.read(readmePath), existing).added.length
+    : 0;
+  if (renames.length === 0 && unlisted === 0) {
     host.notify('info', host.t('Workflow numbering is already sequential.'));
     return;
   }
 
-  const confirmed = await host.confirm(
-    host.t(
-      'Renumber {0} workflow file(s) in {1}?',
-      String(renames.length),
-      posix.basename(labnoteDir)
-    )
-  );
-  if (!confirmed) return;
+  const folder = posix.basename(labnoteDir);
+  const question =
+    unlisted === 0
+      ? host.t('Renumber {0} workflow file(s) in {1}?', String(renames.length), folder)
+      : renames.length === 0
+        ? host.t('Add {0} workflow file(s) missing from the README checklist of {1}?', String(unlisted), folder)
+        : host.t(
+            'Renumber {0} workflow file(s) in {1} and add {2} file(s) missing from the README checklist?',
+            String(renames.length),
+            folder,
+            String(unlisted)
+          );
+  if (!(await host.confirm(question))) return;
 
   await readmeSync.flushNow(labnoteDir);
   readmeSync.hold(labnoteDir);
-  const readmePath = posix.join(labnoteDir, README);
   const baseline = (await host.fs.exists(readmePath)) ? await host.fs.read(readmePath) : undefined;
 
   const moved: WorkflowRename[] = [];
+  let added = 0;
   try {
     for (const move of planRenumberMoves(renames, existing)) {
       const file = app.vault.getFileByPath(posix.join(labnoteDir, move.from));
@@ -623,20 +636,145 @@ export async function renumberWorkflowsCommand(
   } finally {
     try {
       await readmeSync.settle();
-      if (baseline !== undefined && moved.length > 0) {
-        await processNoteThroughVault(
-          app,
+      if (baseline !== undefined) {
+        const relink = (content: string): string =>
+          moved.length > 0 ? reconcileWorkflowChecklist(content, moved, { baseline }).content : content;
+        const { names, titles } = await readWorkflowFolder(
           host,
-          readmePath,
-          content => reconcileWorkflowChecklist(content, moved, { baseline }).content
+          labnoteDir,
+          relink(await host.fs.read(readmePath))
         );
+        await processNoteThroughVault(app, host, readmePath, content => {
+          const plan = planWorkflowChecklistSync(relink(content), names, titles);
+          added = plan.added.length;
+          return plan.content;
+        });
       }
     } finally {
       await readmeSync.release(labnoteDir, { dropRenames: true });
     }
   }
 
-  host.notify('info', host.t('Renumbered {0} workflow file(s).', String(renames.length)));
+  if (renames.length > 0) {
+    host.notify('info', host.t('Renumbered {0} workflow file(s).', String(renames.length)));
+  }
+  if (added > 0) {
+    host.notify('info', host.t('Added {0} workflow file(s) to the README checklist.', String(added)));
+  }
+}
+
+/** A note's front-matter `title`, or undefined when it has none or cannot be read. */
+async function readNoteTitle(host: LabnoteHost, notePath: string): Promise<string | undefined> {
+  try {
+    const { frontMatter } = parseFrontMatterYaml((await host.fs.read(notePath)).replace(/\r\n/g, '\n'));
+    const title = frontMatter.title;
+    return typeof title === 'string' && title.trim() ? title.trim() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The folder listing and, for each workflow file `readme` does not list yet,
+ * its front-matter title — the inputs of `planWorkflowChecklistSync`, read up
+ * front because `processNoteThroughVault` needs a synchronous transform.
+ */
+async function readWorkflowFolder(
+  host: LabnoteHost,
+  labnoteDir: string,
+  readme: string
+): Promise<{ names: string[]; titles: Map<string, string> }> {
+  const names = await host.fs.list(labnoteDir);
+  const titles = new Map<string, string>();
+  for (const item of planWorkflowChecklistSync(readme, names).added) {
+    const title = await readNoteTitle(host, posix.join(labnoteDir, item.fileName));
+    if (title) titles.set(item.fileName, title);
+  }
+  return { names, titles };
+}
+
+/**
+ * Add one workflow file of `labnoteDir` to its README checklist unless it is
+ * already listed. Returns whether the README changed.
+ */
+export async function addWorkflowFileToChecklist(
+  app: App,
+  host: LabnoteHost,
+  labnoteDir: string,
+  fileName: string
+): Promise<boolean> {
+  const readmePath = posix.join(labnoteDir, README);
+  if (!(await host.fs.exists(readmePath))) return false;
+  const title = await readNoteTitle(host, posix.join(labnoteDir, fileName));
+  const titles = new Map(title ? [[fileName, title]] : []);
+  return processNoteThroughVault(
+    app,
+    host,
+    readmePath,
+    content => planWorkflowChecklistSync(content, [fileName], titles).content
+  );
+}
+
+/**
+ * Make an experiment's README "Related Workflows" checklist match its folder:
+ * list workflow files that are missing from it (moved in, copied, renumbered)
+ * and, after asking, drop entries whose file is not in the folder. `dir`
+ * defaults to the active note's experiment.
+ */
+export async function syncWorkflowChecklistCommand(
+  app: App,
+  host: LabnoteHost,
+  readmeSync: ReadmeSyncControl,
+  dir?: string
+): Promise<void> {
+  const labnoteDir = dir ?? (await resolveLabnoteDir(app, host));
+  if (!labnoteDir) return;
+  const readmePath = posix.join(labnoteDir, README);
+  if (!(await host.fs.exists(readmePath))) {
+    host.notify('warn', host.t('This experiment has no README.labnote.md.'));
+    return;
+  }
+
+  await readmeSync.flushNow(labnoteDir);
+  const readme = await host.fs.read(readmePath);
+  const { names, titles } = await readWorkflowFolder(host, labnoteDir, readme);
+  const plan = planWorkflowChecklistSync(readme, names, titles);
+  if (!plan.hasSection) {
+    host.notify('warn', host.t('README.labnote.md has no "Related Workflows" section.'));
+    return;
+  }
+
+  let remove: string[] = [];
+  if (plan.stale.length > 0) {
+    const list = plan.stale
+      .map(s => `- ${s.link} (${host.t(s.reason === 'missing' ? 'file not found' : 'in another folder')})`)
+      .join('\n');
+    const ok = await host.confirm(
+      `${host.t('These checklist entries do not point to a workflow file in this folder. Remove them from the checklist?')}\n\n${list}`,
+      { confirmLabel: host.t('Remove from checklist') }
+    );
+    if (ok) remove = plan.stale.map(s => s.link);
+  }
+
+  if (plan.added.length === 0 && remove.length === 0) {
+    host.notify(
+      'info',
+      host.t(plan.stale.length > 0 ? 'No changes made.' : 'The workflow checklist already matches the folder.')
+    );
+    return;
+  }
+
+  await processNoteThroughVault(app, host, readmePath, content =>
+    removeWorkflowChecklistEntries(planWorkflowChecklistSync(content, names, titles).content, remove)
+  );
+  host.notify(
+    'info',
+    host.t(
+      'Workflow checklist updated: {0} added, {1} removed.',
+      String(plan.added.length),
+      String(remove.length)
+    )
+  );
 }
 
 // === README auto-sync on native rename / delete ==============================

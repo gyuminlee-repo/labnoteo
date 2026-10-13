@@ -214,7 +214,7 @@ class ConfirmModal extends Modal {
 
   onOpen(): void {
     const { contentEl } = this;
-    contentEl.createEl('p', { text: this.message });
+    contentEl.createEl('p', { text: this.message, cls: 'labnote-confirm-message' });
     new Setting(contentEl)
       .addButton(b =>
         b
@@ -241,12 +241,23 @@ class ConfirmModal extends Modal {
   }
 }
 
+/** Aborting `signal` closes the dialog, which then resolves false. */
 export function confirmModal(
   app: App,
   message: string,
-  confirmLabel = 'Yes'
+  confirmLabel = 'Yes',
+  signal?: AbortSignal
 ): Promise<boolean> {
-  return new Promise(resolve => new ConfirmModal(app, message, confirmLabel, resolve).open());
+  if (signal?.aborted) return Promise.resolve(false);
+  return new Promise(resolve => {
+    const modal = new ConfirmModal(app, message, confirmLabel, ok => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve(ok);
+    });
+    const onAbort = (): void => modal.close();
+    signal?.addEventListener('abort', onAbort);
+    modal.open();
+  });
 }
 
 /** Options for {@link workflowAliasModal}. */

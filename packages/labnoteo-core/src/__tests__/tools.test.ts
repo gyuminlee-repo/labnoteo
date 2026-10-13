@@ -214,6 +214,87 @@ describe('update_section', () => {
     });
     expect(res.ok).toBe(false);
   });
+
+  // #51: unit operations repeat the same sub-headings.
+  describe('with repeated unit operations', () => {
+    const doc = [
+      '## 🔬 Unit Operations',
+      '',
+      '### [USW230 Sequence Embedding]',
+      '',
+      '#### Method',
+      '',
+      'embed-1',
+      '',
+      '### [UHW100 PCR] 첫 증폭',
+      '',
+      '#### Method',
+      '',
+      'pcr',
+      '',
+      '### [USW230 Sequence Embedding] 재실행',
+      '',
+      '#### Method',
+      '',
+      'embed-2',
+      '',
+    ].join('\n');
+    const run = (extra: Record<string, unknown>) =>
+      tool('update_section').handler(ctx, { documentPath: NOTE_PATH, heading: 'Method', content: 'NEW', ...extra });
+
+    it('refuses to guess and lists the candidates', async () => {
+      await fs.write(NOTE_PATH, doc);
+      const res = await run({});
+      expect(res.ok).toBe(false);
+      expect(res.error).toContain('matches 3 sections');
+      expect(res.error).toContain('occurrence 2 under "[UHW100 PCR] 첫 증폭" (line 11)');
+      expect(await fs.read(NOTE_PATH)).toBe(doc);
+    });
+
+    it('targets the section under a unit operation given by id or full heading', async () => {
+      await fs.write(NOTE_PATH, doc);
+      const res = await run({ parentHeading: 'UHW100' });
+      expect(res).toEqual({
+        ok: true,
+        data: { documentPath: NOTE_PATH, heading: 'Method', parentHeading: '[UHW100 PCR] 첫 증폭', occurrence: 1, total: 1 },
+      });
+      const after = await fs.read(NOTE_PATH);
+      expect(after).toContain('embed-1');
+      expect(after).not.toContain('pcr\n');
+      expect(after).toContain('embed-2');
+
+      await fs.write(NOTE_PATH, doc);
+      expect((await run({ parentHeading: '[UHW100 PCR] 첫 증폭' })).ok).toBe(true);
+      await fs.write(NOTE_PATH, doc);
+      expect((await run({ parentHeading: 'UHW100 PCR' })).ok).toBe(true);
+    });
+
+    it('needs occurrence when the same unit operation appears twice', async () => {
+      await fs.write(NOTE_PATH, doc);
+      const ambiguous = await run({ parentHeading: 'USW230' });
+      expect(ambiguous.ok).toBe(false);
+      expect(ambiguous.error).toContain('Call again with occurrence');
+
+      const res = await run({ parentHeading: 'USW230', occurrence: 2 });
+      expect(res.ok).toBe(true);
+      expect(res.data).toMatchObject({ parentHeading: '[USW230 Sequence Embedding] 재실행', occurrence: 2, total: 2 });
+      const after = await fs.read(NOTE_PATH);
+      expect(after).toContain('embed-1');
+      expect(after).not.toContain('embed-2');
+    });
+
+    it('takes occurrence alone and rejects out-of-range or bad values', async () => {
+      await fs.write(NOTE_PATH, doc);
+      expect((await run({ occurrence: 3 })).ok).toBe(true);
+      expect(await fs.read(NOTE_PATH)).not.toContain('embed-2');
+
+      await fs.write(NOTE_PATH, doc);
+      expect((await run({ occurrence: 4 })).error).toContain('out of range');
+      expect((await run({ occurrence: 0 })).error).toContain('positive integer');
+      expect((await run({ parentHeading: 'UXX999' })).error).toContain('No "Method" section under "UXX999"');
+      expect(await fs.read(NOTE_PATH)).toBe(doc);
+    });
+  });
 });
 
 describe('create_workflow', () => {

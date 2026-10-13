@@ -575,9 +575,21 @@ export function reconcileWorkflowChecklist(
     return to ? { ...item, fileName: to } : item;
   });
 
-  // Stable sort: standard `NNN` items first (numeric), then unparseable ones in
-  // their original relative order.
-  const decorated = remapped.map((item, index) => {
+  const content = updateReadmeWorkflowSection(
+    readmeContent,
+    generateWorkflowChecklist(sortWorkflowChecklistItems(remapped))
+  );
+  return { changed: content !== readmeContent, content };
+}
+
+/**
+ * Checklist order: standard `NNN` items first (numeric, ties broken by name),
+ * then the ones `parseWorkflowFileName` cannot decode in their original
+ * relative order. Stable.
+ */
+function sortWorkflowChecklistItems(items: WorkflowChecklistItem[]): WorkflowChecklistItem[] {
+  const baseName = (fileName: string): string => fileName.split('/').pop() ?? fileName;
+  const decorated = items.map((item, index) => {
     const parsed = parseWorkflowFileName(baseName(item.fileName));
     return {
       item,
@@ -592,13 +604,148 @@ export function reconcileWorkflowChecklist(
     if (a.name !== b.name) return a.name < b.name ? -1 : 1;
     return a.index - b.index;
   });
+  return decorated.map(d => d.item);
+}
 
-  const reordered = decorated.map(d => d.item);
+/** A checklist entry {@link planWorkflowChecklistSync} proposes to remove. */
+export interface StaleWorkflowEntry {
+  /** The link exactly as written in the README (without a leading `./`). */
+  link: string;
+  title: string;
+  /** `missing`: points into this folder at a file that is not there. `elsewhere`: points into another folder. */
+  reason: 'missing' | 'elsewhere';
+}
+
+/** Result of {@link planWorkflowChecklistSync}. */
+export interface WorkflowChecklistSyncPlan {
+  /** Whether the README has a `## Related Workflows` section to write into. */
+  hasSection: boolean;
+  /** Workflow files in the folder that the checklist does not list yet. */
+  added: WorkflowChecklistItem[];
+  /** Entries whose target is not a file in this folder. Not removed by `content`. */
+  stale: StaleWorkflowEntry[];
+  /** README with `added` appended and the checklist re-sorted; unchanged when nothing is added. */
+  content: string;
+}
+
+/**
+ * Where a checklist link points, relative to the README's folder: the file
+ * name when it stays in the folder, or null when it leaves it. Obsidian
+ * rewrites a moved workflow's link to `../002_B/001_X.labnote.md`, which must
+ * not be taken for this folder's `001_X.labnote.md`.
+ */
+function linkTargetInFolder(link: string): string | null {
+  let decoded = link;
+  try {
+    decoded = decodeURI(link);
+  } catch {
+    // Keep the raw link; a malformed escape is compared as written.
+  }
+  const normalized = path.normalize(decoded);
+  return normalized.includes('/') ? null : normalized;
+}
+
+/** Checklist title for a workflow file the checklist does not list yet: `WT020 Protein Expression`. */
+export function defaultWorkflowTitle(fileName: string): string {
+  const parts = parseWorkflowFileName(fileName);
+  if (!parts) return fileName.replace(/\.labnote\.md$/i, '');
+  return `${parts.id} ${parts.safeName.replace(/_/g, ' ')}`;
+}
+
+/**
+ * Compare an experiment folder with its README "Related Workflows" checklist.
+ *
+ * `existingNames` is the folder listing (any file); only names that
+ * `parseWorkflowFileName` decodes are proposed for adding, under the title from
+ * `titles` (the note's front-matter title) or {@link defaultWorkflowTitle}.
+ * Stale entries are only reported: the caller asks before removing them with
+ * {@link removeWorkflowChecklistEntries}. Links are compared by where they
+ * point, not by base name.
+ */
+export function planWorkflowChecklistSync(
+  readmeContent: string,
+  existingNames: readonly string[],
+  titles: ReadonlyMap<string, string> = new Map()
+): WorkflowChecklistSyncPlan {
+  const hasSection = findWorkflowSection(readmeContent.split('\n')).header !== -1;
+  const items = parseWorkflowChecklistFromReadme(readmeContent);
+  const present = new Set(existingNames);
+
+  const listed = new Set<string>();
+  const stale: StaleWorkflowEntry[] = [];
+  for (const item of items) {
+    const target = linkTargetInFolder(item.fileName);
+    if (target === null) {
+      stale.push({ link: item.fileName, title: item.title, reason: 'elsewhere' });
+      continue;
+    }
+    listed.add(target);
+    if (!present.has(target)) {
+      stale.push({ link: item.fileName, title: item.title, reason: 'missing' });
+    }
+  }
+
+  const added: WorkflowChecklistItem[] = existingNames
+    .filter(name => parseWorkflowFileName(name) !== null && !listed.has(name))
+    .map(name => ({ done: false, title: titles.get(name) || defaultWorkflowTitle(name), fileName: name }));
+
+  if (!hasSection || added.length === 0) {
+    return { hasSection, added: hasSection ? added : [], stale, content: readmeContent };
+  }
   const content = updateReadmeWorkflowSection(
     readmeContent,
-    generateWorkflowChecklist(reordered)
+    generateWorkflowChecklist(sortWorkflowChecklistItems([...items, ...added]))
   );
-  return { changed: content !== readmeContent, content };
+  return { hasSection, added, stale, content };
+}
+
+/**
+ * Remove the "Related Workflows" checklist entries whose link is exactly one of
+ * `links` (as parsed, without a leading `./`). Unlike `removeWorkflowFromReadme`
+ * this does not compare base names, so removing `../002_B/001_X.labnote.md`
+ * leaves this folder's `001_X.labnote.md` entry alone.
+ */
+export function removeWorkflowChecklistEntries(
+  readmeContent: string,
+  links: readonly string[]
+): string {
+  if (links.length === 0) return readmeContent;
+  const wanted = new Set(links);
+  const lines = readmeContent.split('\n');
+  const { header, end } = findWorkflowSection(lines);
+  if (header === -1) return readmeContent;
+  const kept = lines.filter((line, i) => {
+    if (i <= header || i >= end) return true;
+    const match = line.trim().match(CHECKLIST_ENTRY_RE);
+    return !(match && wanted.has(match[3]));
+  });
+  return kept.join('\n');
+}
+
+/**
+ * Whether `baseName` looks like a copy of a workflow note: `###_` prefix and
+ * `.labnote` followed by more text before `.md` — Obsidian's "Make a copy"
+ * (`001_X.labnote 1.md`) or an OS file manager copy (`001_X.labnote - Copy.md`).
+ */
+export function isCopiedWorkflowFileName(baseName: string): boolean {
+  return /^\d{3}_.*\.labnote.+\.md$/i.test(baseName) && !/\.labnote\.md$/i.test(baseName);
+}
+
+/**
+ * The workflow name to give a copied note: the original name under the next
+ * free sequence number (`001_WT020_X.labnote 1.md` → `003_WT020_X.labnote.md`).
+ * `suggestWorkflowFileName` would keep the original number instead. Undefined
+ * when the part before `.labnote` is not a standard workflow name.
+ */
+export function suggestCopiedWorkflowFileName(
+  baseName: string,
+  existingNames: readonly string[]
+): string | undefined {
+  if (!isCopiedWorkflowFileName(baseName)) return undefined;
+  const stem = baseName.slice(0, baseName.search(/\.labnote/i));
+  const parts = parseWorkflowFileName(`${stem}.labnote.md`);
+  if (!parts) return undefined;
+  return `${getNextWorkflowNumber([...existingNames])}_${parts.id}_${parts.safeName}.labnote.md`;
 }
 
 /**

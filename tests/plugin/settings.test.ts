@@ -53,6 +53,16 @@ describe('migrateSettings', () => {
     expect(migrateSettings({ autoUpdateLastUpdated: 'no' }).autoUpdateLastUpdated).toBe(true);
   });
 
+  // #43: the MCP token survives restarts, but only in the shape we generate.
+  it('keeps a well-formed MCP token and drops anything else', () => {
+    const token = 'a1'.repeat(24);
+    expect(migrateSettings({ mcpToken: token }).mcpToken).toBe(token);
+    expect(migrateSettings({}).mcpToken).toBe('');
+    expect(migrateSettings({ mcpToken: 'short' }).mcpToken).toBe('');
+    expect(migrateSettings({ mcpToken: 'A1'.repeat(24) }).mcpToken).toBe('');
+    expect(migrateSettings({ mcpToken: 42 }).mcpToken).toBe('');
+  });
+
   it('rejects an unknown provider rather than trusting the string', () => {
     expect(migrateSettings({ llmProvider: 'anthropic' }).llmProvider).toBe('none');
   });

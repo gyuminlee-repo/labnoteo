@@ -196,7 +196,11 @@ export class LabnoteSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName(this.plugin.t('Enable MCP server'))
-      .setDesc(this.plugin.t('Desktop only. Exposes tools to external MCP clients.'))
+      .setDesc(
+        this.plugin.t(
+          'Desktop only. Exposes tools to external MCP clients. Tools that change the vault run only after you allow them in Obsidian.'
+        )
+      )
       .addToggle(t =>
         t.setValue(s.mcpEnabled).onChange(v => {
           // Drive the live server from the toggle so the setting and the running
@@ -211,17 +215,27 @@ export class LabnoteSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName(this.plugin.t('MCP token'))
       .setDesc(
-        this.plugin.t('Copy the bearer token for external MCP clients (server must be running).')
+        this.plugin.t(
+          'Bearer token for external MCP clients. It stays the same when Obsidian or the server restarts; regenerate it if it leaked, then paste the new one into every client.'
+        )
       )
       .addButton(b =>
         b.setButtonText(this.plugin.t('Copy token')).onClick(async () => {
-          const token = this.plugin.mcpServer.currentToken();
-          if (!token) {
-            new Notice(this.plugin.t('Start the MCP server first.'));
-            return;
-          }
-          await navigator.clipboard.writeText(token);
+          await navigator.clipboard.writeText(this.plugin.mcpServer.ensureToken());
           new Notice(this.plugin.t('MCP token copied to clipboard.'));
+        })
+      )
+      .addButton(b =>
+        b.setButtonText(this.plugin.t('Regenerate token')).onClick(async () => {
+          const ok = await this.plugin.host.confirm(
+            this.plugin.t(
+              'Regenerate the MCP token? Clients using the current token stop working until you paste the new one into their settings.'
+            ),
+            { confirmLabel: this.plugin.t('Regenerate token') }
+          );
+          if (!ok) return;
+          await navigator.clipboard.writeText(await this.plugin.mcpServer.regenerateToken());
+          new Notice(this.plugin.t('New MCP token copied to clipboard.'));
         })
       );
   }

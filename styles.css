@@ -151,6 +151,11 @@ body > input.labnote-datetime-picker {
   min-width: 0;
 }
 
+/* --- Confirm modal ------------------------------------------------------ */
+.labnote-confirm-message {
+  white-space: pre-wrap; /* 확인 대상 목록·경로를 줄마다 표시 */
+}
+
 /* --- Workflow alias modal ----------------------------------------------- */
 .labnote-alias-row {
   display: flex;

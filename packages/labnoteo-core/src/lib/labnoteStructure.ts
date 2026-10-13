@@ -81,6 +81,7 @@ export interface TemplateHintOptions {
 export const KO_COMMAND_NAMES = {
   createWorkflow: '워크플로 생성',
   insertUnitOperation: '유닛 오퍼레이션 삽입',
+  syncWorkflowChecklist: '폴더와 워크플로 체크리스트 맞추기',
 } as const;
 
 function isKoreanLocale(locale: string | undefined): boolean {
@@ -138,6 +139,7 @@ ${frontMatter}
 ## 🗂️ Related Workflows
 
 > Press \`Ctrl+P\` (\`Cmd+P\` on macOS) to open the command palette, then run ${commandName('Create workflow', KO_COMMAND_NAMES.createWorkflow, opts.locale)}; a checklist entry for the new workflow is added to this section automatically.
+> Workflow notes moved or copied into this folder are not listed automatically; run ${commandName('Sync workflow checklist with folder', KO_COMMAND_NAMES.syncWorkflowChecklist, opts.locale)} to add them.
 > The name entered in the author: field of the YAML block above will be automatically entered as the experimenter's name when creating workflows and unit operations.
 
 

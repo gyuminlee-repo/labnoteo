@@ -33,7 +33,13 @@ export {
 export { normalizeWorkflowUnitSectionHeading } from './sections/unitOpHeading';
 
 // Non-lossy single-section edit (LLM tools + edit-adjacent commands).
-export { replaceSectionBody, type SectionEditResult } from './sections/sectionEdit';
+export {
+  replaceSectionBody,
+  replaceSectionBodyAt,
+  findSectionMatches,
+  type SectionEditResult,
+  type SectionMatch,
+} from './sections/sectionEdit';
 
 // Front-matter primitives (YAML parse + per-entry serialize). Shared by plugin
 // commands that read/rewrite README frontmatter (e.g. the status command).

@@ -143,3 +143,42 @@ describe('renumberWorkflowsCommand (#41)', () => {
     expect(h.calls.slice(-3)).toEqual(['settle', 'write', `release ${DIR} drop=true`]);
   });
 });
+
+// #56: a workflow file the checklist does not list (moved in from another
+// experiment) is renumbered too, so it must be registered in the same run.
+describe('renumberWorkflowsCommand with unlisted files (#56)', () => {
+  const MOVED = '001_WT100_Moved.labnote.md';
+
+  for (const relink of [false, true]) {
+    it(`registers an unlisted file that takes 001 (${relink ? 'relinked' : 'not relinked'})`, async () => {
+      const h = harness({ relink });
+      await h.fs.write(`${DIR}/${MOVED}`, '---\ntitle: WT100 Moved\n---\n');
+
+      await renumberWorkflowsCommand(h.app, h.host, h.sync);
+
+      const after = await h.fs.list(DIR);
+      expect(after.sort()).toEqual(
+        ['001_WD070_A.labnote.md', '002_WT100_Moved.labnote.md', '003_WT020_C_형광_측정.labnote.md', 'README.labnote.md'].sort()
+      );
+      expect(links(await h.fs.read(README))).toEqual([
+        '001_WD070_A.labnote.md',
+        '002_WT100_Moved.labnote.md',
+        '003_WT020_C_형광_측정.labnote.md',
+      ]);
+      expect(h.calls.at(-1)).toBe('notify Added 1 workflow file(s) to the README checklist.');
+    });
+  }
+
+  it('registers unlisted files even when no file needs a new number', async () => {
+    const h = harness({ relink: false });
+    await h.fs.remove(`${DIR}/${C_OLD}`);
+    await h.fs.write(`${DIR}/002_WT100_Moved.labnote.md`, 'x');
+    await h.fs.write(README, README_BEFORE.replace(`- [ ] [WT020 C 형광 측정](./${C_OLD})\n`, ''));
+
+    await renumberWorkflowsCommand(h.app, h.host, h.sync);
+
+    expect(links(await h.fs.read(README))).toEqual([A, '002_WT100_Moved.labnote.md']);
+    expect(h.calls).not.toContain('notify Workflow numbering is already sequential.');
+    expect(h.calls.at(-1)).toBe('notify Added 1 workflow file(s) to the README checklist.');
+  });
+});

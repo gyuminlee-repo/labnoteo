@@ -1,5 +1,5 @@
 // Globals convention (no `import ... from 'vitest'`) — see sampleDefinition.test.ts.
-import { replaceSectionBody } from '../sections/sectionEdit';
+import { findSectionMatches, replaceSectionBody, replaceSectionBodyAt } from '../sections/sectionEdit';
 
 const doc = [
   '## [WD010 Design]',
@@ -193,5 +193,57 @@ describe('replaceSectionBody', () => {
       expect(out.md).toContain('## Results');
       expect(out.md).toContain('keep me');
     });
+  });
+});
+
+// #51: the same heading text under different unit operations.
+describe('findSectionMatches / replaceSectionBodyAt', () => {
+  const repeated = [
+    '## Unit Operations',
+    '',
+    '### [USW230 Embed]',
+    '',
+    '#### Method',
+    '',
+    'a',
+    '',
+    '```md',
+    '#### Method',
+    '```',
+    '',
+    '### [UHW100 PCR] alias',
+    '',
+    '#### Method',
+    '',
+    'b',
+    '',
+  ].join('\n');
+
+  it('lists every match outside code fences with its enclosing heading', () => {
+    expect(findSectionMatches(repeated, 'Method')).toEqual([
+      { line: 4, level: 4, parentHeading: '[USW230 Embed]', occurrence: 1 },
+      { line: 14, level: 4, parentHeading: '[UHW100 PCR] alias', occurrence: 2 },
+    ]);
+    expect(findSectionMatches(repeated, 'Unit Operations')).toEqual([
+      { line: 0, level: 2, parentHeading: '', occurrence: 1 },
+    ]);
+  });
+
+  it('replaces the section at a given heading line only', () => {
+    const out = replaceSectionBodyAt(repeated, 14, 'NEW');
+    expect(out.ok).toBe(true);
+    expect(out.md).toContain('a\n');
+    expect(out.md).not.toContain('\nb\n');
+    expect(out.md.endsWith('#### Method\n\nNEW\n')).toBe(true);
+  });
+
+  it('refuses a line that is not a heading', () => {
+    expect(replaceSectionBodyAt(repeated, 6, 'x')).toEqual({ ok: false, md: repeated });
+  });
+
+  it('keeps replaceSectionBody on the first match', () => {
+    const out = replaceSectionBody(repeated, 'Method', 'FIRST');
+    expect(out.md).toContain('FIRST');
+    expect(out.md).toContain('\nb\n');
   });
 });

@@ -82,6 +82,8 @@ Obsidian reads the release's `versions.json` from the repository, so there is no
 | Toggle discussion flag | Turn the active experiment's `discuss` flag on/off, so the next push opens a GitHub Issue (requires Setup research automation) |
 | Insert issue marker | Drop an `@issue;<ID>;<topic>` marker at the cursor (selection becomes the topic); each marker opens its own Issue (requires Setup research automation). If text follows the selection or the cursor is mid-line, the line is kept as is and the marker goes at its end; on a heading it goes on the line below, and inside a table it is not inserted |
 | Create workflow | Create a numbered workflow note |
+| Renumber workflows | Renumber an experiment folder's workflows from 001 without gaps, and list any workflow missing from the checklist |
+| Sync workflow checklist with folder | List moved-in or copied workflows in the README checklist and, after asking, remove entries whose file is gone. Also on the README and experiment-folder right-click menus |
 | Insert unit operation | Insert a unit operation from the catalog |
 | Export tables to CSV | Export note tables to CSV |
 | Setup research automation | Scaffold GitHub Actions + scripts into the current vault (see [Research automation](#research-automation)) |
@@ -93,7 +95,7 @@ Obsidian reads the release's `versions.json` from the repository, so there is no
 | Open workflow view / Open sample view | Reveal the sidebar views |
 | Open user guide | Open the researcher quick start (`QUICKSTART.md`), creating it in the vault if missing (no Setup research automation needed). Also a button at the top of the settings tab |
 
-> Renaming a workflow file in the file explorer automatically reorders the README checklist to match the new number prefix; deleting one removes its checklist entry (samples are kept — only that note's usage record is dropped). If a rename breaks the `###_….labnote.md` format, you are warned and offered a fixed name; once the format is back (by accepting the offer or fixing it by hand), the checklist follows the file again.
+> Renaming a workflow file in the file explorer automatically reorders the README checklist to match the new number prefix; deleting one removes its checklist entry (samples are kept — only that note's usage record is dropped). If a rename breaks the `###_….labnote.md` format, you are warned and offered a fixed name; once the format is back (by accepting the offer or fixing it by hand), the checklist follows the file again. A workflow moved into another experiment folder is not listed automatically — you get a notice; run `Sync workflow checklist with folder` there. A "Make a copy" duplicate (`….labnote 1.md`) prompts to take the next number and be listed. `Insert workflow` (README right-click) creates a new workflow from the catalog.
 
 ## Research automation
 

@@ -13,6 +13,11 @@ import {
   suggestWorkflowFileName,
   classifyWorkflowRename,
   createWorkflowContent,
+  planWorkflowChecklistSync,
+  removeWorkflowChecklistEntries,
+  defaultWorkflowTitle,
+  isCopiedWorkflowFileName,
+  suggestCopiedWorkflowFileName,
 } from '../lib/workflowStructure';
 import { sanitizeTitle } from '../lib/labnoteStructure';
 
@@ -479,6 +484,129 @@ describe('suggestWorkflowFileName', () => {
   it('does not guess without the ###_ prefix or for an already valid name', () => {
     expect(suggestWorkflowFileName('WB030_Gibson.labnote v3.md')).toBeUndefined();
     expect(suggestWorkflowFileName('001_WB030_Gibson.labnote.md')).toBeUndefined();
+  });
+});
+
+// #56/#52/#44: workflow files already in the folder must be registrable.
+describe('planWorkflowChecklistSync', () => {
+  const readme = (entries: string[]) =>
+    [
+      '---',
+      'title: X',
+      '---',
+      '',
+      '## 🗂️ Related Workflows',
+      '',
+      '> Run `Create workflow`.',
+      '',
+      ...entries,
+      '',
+      '## Notes',
+      '',
+      '- [ ] ask Dr. Kim',
+      '',
+    ].join('\n');
+
+  it('adds unlisted workflow files in NNN order and leaves other lines alone', () => {
+    const md = readme(['- [x] [WD030 Design](./002_WD030_Design.labnote.md)']);
+    const plan = planWorkflowChecklistSync(
+      md,
+      ['README.labnote.md', '001_WT100_Seq.labnote.md', '002_WD030_Design.labnote.md', 'images'],
+      new Map([['001_WT100_Seq.labnote.md', 'WT100 Seq moved']])
+    );
+    expect(plan.hasSection).toBe(true);
+    expect(plan.added.map(a => a.fileName)).toEqual(['001_WT100_Seq.labnote.md']);
+    expect(plan.stale).toEqual([]);
+    expect(parseWorkflowChecklistFromReadme(plan.content)).toEqual([
+      { done: false, title: 'WT100 Seq moved', fileName: '001_WT100_Seq.labnote.md' },
+      { done: true, title: 'WD030 Design', fileName: '002_WD030_Design.labnote.md' },
+    ]);
+    expect(plan.content).toContain('- [ ] ask Dr. Kim');
+    expect(plan.content).toContain('> Run `Create workflow`.');
+  });
+
+  it('falls back to a title built from the file name', () => {
+    expect(defaultWorkflowTitle('003_WT020_Protein_Expression.labnote.md')).toBe('WT020 Protein Expression');
+    const plan = planWorkflowChecklistSync(readme([]), ['003_WT020_Protein_Expression.labnote.md']);
+    expect(plan.added[0].title).toBe('WT020 Protein Expression');
+    expect(plan.content).toContain('- [ ] [WT020 Protein Expression](./003_WT020_Protein_Expression.labnote.md)');
+  });
+
+  it('reports missing and moved-away entries without removing them', () => {
+    const md = readme([
+      '- [ ] [A](./001_WD010_A.labnote.md)',
+      '- [ ] [Gone](./002_WD020_Gone.labnote.md)',
+      '- [ ] [Moved](../002_B/001_WT030_Moved.labnote.md)',
+    ]);
+    const plan = planWorkflowChecklistSync(md, ['001_WD010_A.labnote.md', '001_WT030_Moved.labnote.md']);
+    expect(plan.stale).toEqual([
+      { link: '002_WD020_Gone.labnote.md', title: 'Gone', reason: 'missing' },
+      { link: '../002_B/001_WT030_Moved.labnote.md', title: 'Moved', reason: 'elsewhere' },
+    ]);
+    // A same-named file in this folder is not taken as already listed by the `../` link.
+    expect(plan.added.map(a => a.fileName)).toEqual(['001_WT030_Moved.labnote.md']);
+  });
+
+  it('decodes escaped links before comparing', () => {
+    const md = readme(['- [ ] [A](./001_WD010_%EC%8B%A4%ED%97%98.labnote.md)']);
+    const plan = planWorkflowChecklistSync(md, ['001_WD010_실험.labnote.md']);
+    expect(plan.added).toEqual([]);
+    expect(plan.stale).toEqual([]);
+  });
+
+  it('changes nothing when nothing is added', () => {
+    const md = readme(['- [ ] [B](./002_WD020_B.labnote.md)', '- [ ] [A](./001_WD010_A.labnote.md)']);
+    const plan = planWorkflowChecklistSync(md, ['001_WD010_A.labnote.md', '002_WD020_B.labnote.md']);
+    expect(plan.content).toBe(md);
+  });
+
+  it('reports a missing section instead of adding', () => {
+    const plan = planWorkflowChecklistSync('# README\n', ['001_WD010_A.labnote.md']);
+    expect(plan.hasSection).toBe(false);
+    expect(plan.added).toEqual([]);
+    expect(plan.content).toBe('# README\n');
+  });
+});
+
+describe('removeWorkflowChecklistEntries', () => {
+  it('removes only entries whose link matches exactly', () => {
+    const md = [
+      '## Related Workflows',
+      '- [ ] [Here](./001_WT030_X.labnote.md)',
+      '- [ ] [There](../002_B/001_WT030_X.labnote.md)',
+      '',
+      '## Other',
+      '- [ ] [There](../002_B/001_WT030_X.labnote.md)',
+    ].join('\n');
+    const out = removeWorkflowChecklistEntries(md, ['../002_B/001_WT030_X.labnote.md']);
+    expect(out).toBe(
+      [
+        '## Related Workflows',
+        '- [ ] [Here](./001_WT030_X.labnote.md)',
+        '',
+        '## Other',
+        '- [ ] [There](../002_B/001_WT030_X.labnote.md)',
+      ].join('\n')
+    );
+  });
+});
+
+describe('copied workflow names', () => {
+  it('recognises Obsidian and file-manager copies only', () => {
+    expect(isCopiedWorkflowFileName('001_WT020_X.labnote 1.md')).toBe(true);
+    expect(isCopiedWorkflowFileName('001_WT020_X.labnote - 복사본.md')).toBe(true);
+    expect(isCopiedWorkflowFileName('001_WT020_X.labnote.md')).toBe(false);
+    expect(isCopiedWorkflowFileName('WT020_X.labnote 1.md')).toBe(false);
+    expect(isCopiedWorkflowFileName('001_WT020_X 1.md')).toBe(false);
+  });
+
+  it('suggests the next free number instead of a duplicate one', () => {
+    const existing = ['001_WT020_X.labnote.md', '002_WD010_Y.labnote.md', '001_WT020_X.labnote 1.md'];
+    expect(suggestCopiedWorkflowFileName('001_WT020_X.labnote 1.md', existing)).toBe('003_WT020_X.labnote.md');
+  });
+
+  it('does not guess for a non-standard stem', () => {
+    expect(suggestCopiedWorkflowFileName('001_notes.labnote 1.md', [])).toBeUndefined();
   });
 });
 

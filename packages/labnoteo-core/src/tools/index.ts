@@ -37,7 +37,11 @@ import {
   updateReadmeWorkflowSection,
   parseExperimenterFromReadme,
 } from '../lib/workflowStructure';
-import { replaceSectionBody } from '../sections/sectionEdit';
+import {
+  findSectionMatches,
+  replaceSectionBodyAt,
+  type SectionMatch,
+} from '../sections/sectionEdit';
 import * as posix from '../util/posixPath';
 
 export interface ToolContext {
@@ -130,6 +134,31 @@ function safePath(ctx: ToolContext, args: Record<string, unknown>, key: string):
   const normalized = posix.normalize(raw);
   const root = ctx.workspaceRoot && ctx.workspaceRoot !== '' ? ctx.workspaceRoot : '.';
   return posix.isInside(root, normalized) ? normalized : undefined;
+}
+
+/**
+ * Whether a section's enclosing heading is the one `wanted` names: its full
+ * text, or for a unit operation heading `[USW230 Sequence Embedding] alias`,
+ * the bracketed text or the id alone. Case-insensitive.
+ */
+function matchesParentHeading(parent: string, wanted: string): boolean {
+  const p = parent.trim().toLowerCase();
+  const w = wanted.trim().toLowerCase();
+  if (p === w) return true;
+  const unitOp = p.match(/^\[([^\]]+)\]/);
+  if (!unitOp) return false;
+  const inner = unitOp[1].trim();
+  return inner === w || inner.split(/\s+/)[0] === w;
+}
+
+/** Candidate list for an ambiguous `update_section`, readable by people and models. */
+function describeSections(matches: SectionMatch[]): string {
+  return matches
+    .map(
+      (m, i) =>
+        `occurrence ${i + 1} under ${m.parentHeading ? `"${m.parentHeading}"` : 'the top level'} (line ${m.line + 1})`
+    )
+    .join('; ');
 }
 
 const README_NAME = 'README.labnote.md';
@@ -289,13 +318,26 @@ export function createLabnoteTools(): ToolDef[] {
       name: 'update_section',
       mutates: true,
       description:
-        'Replace the body of a section (matched by heading text at any level) in a note, without re-serializing the rest of the document.',
+        'Replace the body of a section (matched by heading text at any level) in a note, without re-serializing the rest of the document. ' +
+        'Workflow notes repeat headings such as "Method" under every unit operation: when the heading occurs more than once, pass parentHeading and/or occurrence, ' +
+        'otherwise nothing is written and the error lists the candidates.',
       inputSchema: {
         type: 'object',
         properties: {
           documentPath: { type: 'string' },
           heading: { type: 'string', description: 'Heading text without the leading #s, e.g. "Method".' },
           content: { type: 'string', description: 'New Markdown body for the section.' },
+          parentHeading: {
+            type: 'string',
+            description:
+              'Enclosing heading of the target section: its full text, the unit operation without brackets ("USW230 Sequence Embedding"), or just the unit operation id ("USW230").',
+          },
+          occurrence: {
+            type: 'integer',
+            minimum: 1,
+            description:
+              '1-based position among the matching sections, counted after the parentHeading filter. Needed when the same unit operation appears twice.',
+          },
         },
         required: ['documentPath', 'heading', 'content'],
       },
@@ -306,14 +348,60 @@ export function createLabnoteTools(): ToolDef[] {
         if (!documentPath || !heading || content === undefined) {
           return { ok: false, error: 'documentPath, heading and content are required' };
         }
+        const parentHeading = str(args, 'parentHeading');
+        const occurrence = args.occurrence;
+        if (occurrence !== undefined && (!Number.isInteger(occurrence) || (occurrence as number) < 1)) {
+          return { ok: false, error: 'occurrence must be a positive integer (1-based)' };
+        }
         if (!(await ctx.fs.exists(documentPath))) {
           return { ok: false, error: `File not found: ${documentPath}` };
         }
         const md = await ctx.fs.read(documentPath);
-        const { ok, md: next } = replaceSectionBody(md, heading, content);
+        const all = findSectionMatches(md, heading);
+        if (all.length === 0) return { ok: false, error: `Section not found: ${heading}` };
+
+        const candidates = parentHeading
+          ? all.filter(m => matchesParentHeading(m.parentHeading, parentHeading))
+          : all;
+        if (candidates.length === 0) {
+          return {
+            ok: false,
+            error: `No "${heading}" section under "${parentHeading}". Candidates: ${describeSections(all)}.`,
+          };
+        }
+        let index = 0;
+        if (occurrence !== undefined) {
+          index = (occurrence as number) - 1;
+          if (index >= candidates.length) {
+            return {
+              ok: false,
+              error: `occurrence ${occurrence} is out of range: only ${candidates.length} "${heading}" section(s) match. Candidates: ${describeSections(candidates)}.`,
+            };
+          }
+        } else if (candidates.length > 1) {
+          return {
+            ok: false,
+            error:
+              `"${heading}" matches ${candidates.length} sections; nothing was written. ` +
+              `Call again with ${parentHeading ? 'occurrence' : 'parentHeading or occurrence'} to choose one. ` +
+              `Candidates: ${describeSections(candidates)}.`,
+          };
+        }
+
+        const target = candidates[index];
+        const { ok, md: next } = replaceSectionBodyAt(md, target.line, content);
         if (!ok) return { ok: false, error: `Section not found: ${heading}` };
         await writeNote(ctx, documentPath, next);
-        return { ok: true, data: { documentPath, heading } };
+        return {
+          ok: true,
+          data: {
+            documentPath,
+            heading,
+            parentHeading: target.parentHeading,
+            occurrence: index + 1,
+            total: candidates.length,
+          },
+        };
       },
     },
 

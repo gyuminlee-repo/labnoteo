@@ -13,9 +13,10 @@
  * Security posture:
  *
  * - **Loopback only** — binds `127.0.0.1`, never a routable interface.
- * - **Bearer token** — a random per-session token guards every request. This is
- *   not the spec's OAuth 2.1 flow, so a client must be able to set a custom
- *   `Authorization` header.
+ * - **Bearer token** — a random token guards every request. It is kept in the
+ *   plugin's `data.json` so client configs survive restarts, and changes only
+ *   when the user regenerates it. This is not the spec's OAuth 2.1 flow, so a
+ *   client must be able to set a custom `Authorization` header.
  * - **Origin check** — the spec requires it to defend against DNS rebinding.
  * - **Write confirmation** — mutating tools prompt the user before executing.
  *
@@ -47,6 +48,8 @@ interface NodeReq {
 interface NodeRes {
   writeHead(status: number, headers?: Record<string, string>): void;
   end(body?: string): void;
+  on(ev: 'close', cb: () => void): void;
+  readonly writableFinished: boolean;
 }
 interface NodeServer {
   listen(port: number, host: string, cb?: () => void): void;
@@ -66,10 +69,14 @@ const DEFAULT_PORT = 3987;
 const MAX_BODY_CHARS = 1_000_000;
 /** MCP revision this server speaks. */
 export const MCP_PROTOCOL_VERSION = '2025-06-18';
+/**
+ * How long a write waits for the user's answer. Kept under the 60s request
+ * timeout common MCP clients use, so the client hears why instead of timing out.
+ */
+export const APPROVAL_TIMEOUT_MS = 50_000;
 
 export class LabnoteMcpServer {
   private server: NodeServer | null = null;
-  private token = '';
   private readonly tools: ToolDef[] = createLabnoteTools();
 
   constructor(private readonly plugin: LabnotePlugin) {}
@@ -86,7 +93,7 @@ export class LabnoteMcpServer {
     }
 
     const http = require('http') as NodeHttp;
-    this.token = randomToken();
+    this.ensureToken();
 
     const server = http.createServer((req, res) => {
       void this.handle(req, res);
@@ -103,7 +110,6 @@ export class LabnoteMcpServer {
         new Notice(this.plugin.t('MCP server error: {0}', msg));
       }
       this.server = null;
-      this.token = '';
     });
     this.server = server;
     server.listen(port, '127.0.0.1', () => {
@@ -116,12 +122,22 @@ export class LabnoteMcpServer {
   stop(): void {
     this.server?.close();
     this.server = null;
-    this.token = '';
   }
 
-  /** The active bearer token, or null when the server is not running. */
-  currentToken(): string | null {
-    return this.server && this.token ? this.token : null;
+  /** The stored bearer token, created and saved on first use. Works while stopped. */
+  ensureToken(): string {
+    if (!this.plugin.settings.mcpToken) {
+      this.plugin.settings.mcpToken = randomToken();
+      void this.plugin.saveSettings();
+    }
+    return this.plugin.settings.mcpToken;
+  }
+
+  /** Replace the stored token; a running server accepts only the new one from now on. */
+  async regenerateToken(): Promise<string> {
+    this.plugin.settings.mcpToken = randomToken();
+    await this.plugin.saveSettings();
+    return this.plugin.settings.mcpToken;
   }
 
   private context(): ToolContext {
@@ -146,7 +162,8 @@ export class LabnoteMcpServer {
     // Compared in constant time so a network-local attacker can't recover the
     // token byte-by-byte via response-timing on early mismatch.
     const auth = headerValue(req.headers['authorization']);
-    if (!this.token || !timingSafeEqual(auth, `Bearer ${this.token}`)) {
+    const token = this.plugin.settings.mcpToken;
+    if (!token || !timingSafeEqual(auth, `Bearer ${token}`)) {
       return sendJson(res, 401, { error: 'unauthorized' });
     }
     if (req.method !== 'POST') {
@@ -222,11 +239,34 @@ export class LabnoteMcpServer {
         const message = target
           ? `${prompt}\n\n${this.plugin.t('Target: {0}', target)}`
           : prompt;
-        const allowed = await this.plugin.host.confirm(message, {
-          confirmLabel: this.plugin.t('Allow'),
+
+        // A client that gave up must not have its write applied by a late "Allow".
+        // `res` (not `req`) closes early only when the connection drops.
+        const disconnected = new AbortController();
+        res.on('close', () => {
+          if (!res.writableFinished) disconnected.abort();
         });
-        if (!allowed) {
-          return sendJson(res, 200, jsonRpcError(id, -32001, 'User denied write'));
+        notifyIfUnfocused(message);
+        const outcome = await awaitApproval(
+          signal =>
+            this.plugin.host.confirm(message, { confirmLabel: this.plugin.t('Allow'), signal }),
+          { timeoutMs: APPROVAL_TIMEOUT_MS, signal: disconnected.signal }
+        );
+        switch (outcome) {
+          case 'allowed':
+            break;
+          case 'denied':
+            return sendJson(res, 200, jsonRpcError(id, -32001, 'User denied write'));
+          case 'timeout':
+            new Notice(this.plugin.t('MCP tool "{0}" was not run: no answer in time.', name));
+            return sendJson(
+              res,
+              200,
+              jsonRpcError(id, -32001, 'Approval timed out: the user did not answer in Obsidian')
+            );
+          case 'disconnected':
+            new Notice(this.plugin.t('MCP tool "{0}" was not run: the client disconnected.', name));
+            return;
         }
       }
 
@@ -239,6 +279,51 @@ export class LabnoteMcpServer {
 }
 
 // --- helpers ---------------------------------------------------------------
+
+export type ApprovalOutcome = 'allowed' | 'denied' | 'timeout' | 'disconnected';
+
+/**
+ * Ask for a write approval that gives up after `timeoutMs` or when `signal`
+ * (the client disconnecting) aborts. Either way the question is withdrawn via
+ * the signal handed to `confirm`, and a late answer no longer counts.
+ */
+export async function awaitApproval(
+  confirm: (signal: AbortSignal) => Promise<boolean>,
+  opts: { timeoutMs: number; signal: AbortSignal }
+): Promise<ApprovalOutcome> {
+  if (opts.signal.aborted) return 'disconnected';
+  const withdraw = new AbortController();
+  let reason: 'timeout' | 'disconnected' | undefined;
+  const stop = (why: 'timeout' | 'disconnected'): void => {
+    if (reason) return;
+    reason = why;
+    withdraw.abort();
+  };
+  const timer = setTimeout(() => stop('timeout'), opts.timeoutMs);
+  const onDisconnect = (): void => stop('disconnected');
+  opts.signal.addEventListener('abort', onDisconnect);
+  try {
+    const allowed = await confirm(withdraw.signal);
+    if (reason) return reason;
+    return allowed ? 'allowed' : 'denied';
+  } finally {
+    clearTimeout(timer);
+    opts.signal.removeEventListener('abort', onDisconnect);
+  }
+}
+
+/**
+ * Notices and the approval dialog only show inside the Obsidian window, so when
+ * another window covers it raise an OS notification as well.
+ */
+function notifyIfUnfocused(message: string): void {
+  if (document.hasFocus() || typeof Notification === 'undefined') return;
+  try {
+    new Notification('Labnote Assistant', { body: message });
+  } catch {
+    // Notifications disabled or unsupported: the dialog is still waiting.
+  }
+}
 
 /**
  * The `CallToolResult` for a `tools/call` request. Warnings (e.g. ignored

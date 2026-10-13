@@ -47,31 +47,32 @@ function stepFence(line: string, open: OpenFence | null): OpenFence | null {
   return closes ? null : open;
 }
 
-/**
- * Replace the body of the Markdown section whose heading text is `heading`
- * (matched at any level `#`..`######`) with `newBody`.
- *
- * The section body runs from just after the heading line up to — but not
- * including — the next heading of the **same or higher** level (so nested
- * sub-headings are treated as part of the body). The heading line itself is
- * preserved; the new body is framed by exactly one blank line on each side.
- *
- * Returns `{ ok: false, md }` unchanged when the heading is not found. CRLF vs
- * LF endings are detected and preserved.
- */
-export function replaceSectionBody(
-  md: string,
-  heading: string,
-  newBody: string
-): SectionEditResult {
-  const newline = md.includes('\r\n') ? '\r\n' : '\n';
-  const lines = md.split(/\r?\n/);
+/** One heading that {@link findSectionMatches} found. */
+export interface SectionMatch {
+  /** 0-based line index of the heading line. */
+  line: number;
+  /** Number of `#`s. */
+  level: number;
+  /** Text of the nearest enclosing heading (fewer `#`s), or '' at top level. */
+  parentHeading: string;
+  /** 1-based position among the matches, in document order. */
+  occurrence: number;
+}
 
+const ANY_HEADING_RE = /^(#{1,6})\s+(.*?)\s*$/;
+
+/**
+ * Every heading whose text is `heading` (at any level), outside code fences,
+ * with its enclosing heading. A workflow note repeats `#### Method` under each
+ * `### [USW230 …]` unit operation, so one heading text can name many sections.
+ */
+export function findSectionMatches(md: string, heading: string): SectionMatch[] {
+  const lines = md.split(/\r?\n/);
+  const headingRe = new RegExp(`^(#{1,6})\\s+${escapeRegExp(heading)}\\s*$`);
+  const ancestors: { level: number; text: string }[] = [];
+  const matches: SectionMatch[] = [];
   // A fenced code block can contain lines that look like ATX headings; those
   // must NOT be treated as real headings.
-  const headingRe = new RegExp(`^(#{1,6})\\s+${escapeRegExp(heading)}\\s*$`);
-  let headingIdx = -1;
-  let level = 0;
   let fence: OpenFence | null = null;
   for (let i = 0; i < lines.length; i++) {
     const next = stepFence(lines[i], fence);
@@ -80,14 +81,58 @@ export function replaceSectionBody(
       continue;
     }
     if (fence) continue;
-    const m = lines[i].match(headingRe);
-    if (m) {
-      headingIdx = i;
-      level = m[1].length;
-      break;
+    const h = lines[i].match(ANY_HEADING_RE);
+    if (!h) continue;
+    const level = h[1].length;
+    while (ancestors.length > 0 && ancestors[ancestors.length - 1].level >= level) ancestors.pop();
+    if (headingRe.test(lines[i])) {
+      matches.push({
+        line: i,
+        level,
+        parentHeading: ancestors[ancestors.length - 1]?.text ?? '',
+        occurrence: matches.length + 1,
+      });
     }
+    ancestors.push({ level, text: h[2] });
   }
-  if (headingIdx === -1) return { ok: false, md };
+  return matches;
+}
+
+/**
+ * Replace the body of the Markdown section whose heading text is `heading`
+ * (matched at any level `#`..`######`) with `newBody`. When several headings
+ * match, the first one wins; use {@link findSectionMatches} and
+ * {@link replaceSectionBodyAt} to pick another.
+ *
+ * Returns `{ ok: false, md }` unchanged when the heading is not found.
+ */
+export function replaceSectionBody(
+  md: string,
+  heading: string,
+  newBody: string
+): SectionEditResult {
+  const [first] = findSectionMatches(md, heading);
+  return first ? replaceSectionBodyAt(md, first.line, newBody) : { ok: false, md };
+}
+
+/**
+ * Replace the body of the section whose heading is on 0-based line `line`.
+ *
+ * The section body runs from just after the heading line up to — but not
+ * including — the next heading of the **same or higher** level (so nested
+ * sub-headings are treated as part of the body). The heading line itself is
+ * preserved; the new body is framed by exactly one blank line on each side.
+ *
+ * Returns `{ ok: false, md }` unchanged when that line is not a heading. CRLF
+ * vs LF endings are detected and preserved.
+ */
+export function replaceSectionBodyAt(md: string, line: number, newBody: string): SectionEditResult {
+  const newline = md.includes('\r\n') ? '\r\n' : '\n';
+  const lines = md.split(/\r?\n/);
+  const headingIdx = line;
+  const m = lines[headingIdx]?.match(ANY_HEADING_RE);
+  if (!m) return { ok: false, md };
+  const level = m[1].length;
 
   // Body ends at the next heading of the same or higher level (#count <= level).
   // The heading was matched outside any fence, so restart fence tracking here;

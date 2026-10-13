@@ -95,8 +95,11 @@ export interface LabnoteHost {
   /** Single-line text input. Resolves undefined if dismissed. */
   prompt(opts: PromptOpts): Promise<string | undefined>;
 
-  /** Yes/No confirmation. Resolves false if dismissed. */
-  confirm(message: string, opts?: { confirmLabel?: string }): Promise<boolean>;
+  /**
+   * Yes/No confirmation. Resolves false if dismissed, or when `signal` aborts
+   * (the dialog closes so nobody answers a question that no longer applies).
+   */
+  confirm(message: string, opts?: { confirmLabel?: string; signal?: AbortSignal }): Promise<boolean>;
 
   /** Show a transient notification. */
   notify(kind: NotifyKind, message: string): void;

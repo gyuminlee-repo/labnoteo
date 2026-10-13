@@ -7,7 +7,7 @@
  * highlighting, sidebar views, the settings tab and the LLM/MCP layer are added
  * by subsequent modules that all consume the same `LabnoteHost` built here.
  */
-import { Plugin, Notice, TFile, editorInfoField } from 'obsidian';
+import { Plugin, Notice, TFile, TFolder, editorInfoField } from 'obsidian';
 import type { LabnoteHost, Translator } from '@labnoteo/core';
 import { findSampleReferenceAt, rebuildUnitOpToc, minimalReplacement } from '@labnoteo/core';
 import {
@@ -16,7 +16,13 @@ import {
   touchLastUpdatedDate,
 } from '@labnoteo/core/lib/dateUtils';
 import { getSampleDisplayMeta, isCatalogSampleType } from '@labnoteo/core/lib/sampleUtils';
-import { classifyWorkflowRename, isValidWorkflowPath } from '@labnoteo/core/lib/workflowStructure';
+import {
+  classifyWorkflowRename,
+  isCopiedWorkflowFileName,
+  isValidWorkflowPath,
+  planWorkflowChecklistSync,
+  suggestCopiedWorkflowFileName,
+} from '@labnoteo/core/lib/workflowStructure';
 import { saveSamplesFromDocument, getLabsamplesFolder } from '@labnoteo/core/lib/sampleStorage';
 import { VaultFileSystem } from './vaultFileSystem';
 import { createObsidianTranslator } from './i18n';
@@ -29,6 +35,8 @@ import {
   toggleDiscussionFlagCommand,
   createWorkflowCommand,
   renumberWorkflowsCommand,
+  syncWorkflowChecklistCommand,
+  addWorkflowFileToChecklist,
   insertUnitOperationCommand,
   insertWorkflowLinkCommand,
   syncReadmeOrderOnRename,
@@ -98,6 +106,11 @@ export default class LabnotePlugin extends Plugin {
   // original file name, so fixing the name later relinks the README entry.
   // Memory only — after a restart such a note is no longer followed.
   private readonly strayWorkflows = new Map<string, string>();
+  // Copies of workflow notes ("Make a copy", OS file manager) not yet given a
+  // workflow name, so naming one by hand still offers to list it (#44).
+  private readonly copiedWorkflows = new Set<string>();
+  // Pending "moved in but not listed" notices, coalesced per experiment folder.
+  private readonly movedInTimers = new Map<string, number>();
   // Pending unit-op TOC auto-sync flushes, coalesced per workflow-note path.
   private readonly unitOpTocTimers = new Map<string, number>();
   // Whether each note's latest editor change was an undo/redo, so the TOC sync
@@ -163,6 +176,11 @@ export default class LabnotePlugin extends Plugin {
     this.unloaded = true;
     // Also drops any name-fix prompt still waiting for a modal to close.
     this.strayWorkflows.clear();
+    this.copiedWorkflows.clear();
+    for (const handle of this.movedInTimers.values()) {
+      window.clearTimeout(handle);
+    }
+    this.movedInTimers.clear();
     // Same for pending unit-op TOC auto-sync flushes.
     for (const handle of this.unitOpTocTimers.values()) {
       window.clearTimeout(handle);
@@ -262,6 +280,12 @@ export default class LabnotePlugin extends Plugin {
     });
 
     this.addCommand({
+      id: 'sync-workflow-checklist',
+      name: this.t('Sync workflow checklist with folder'),
+      callback: () => this.run(() => this.syncWorkflowChecklist()),
+    });
+
+    this.addCommand({
       id: 'insert-unit-operation',
       name: this.t('Insert unit operation'),
       callback: () => this.run(() => insertUnitOperationCommand(this.app, this.host)),
@@ -338,6 +362,22 @@ export default class LabnotePlugin extends Plugin {
   private registerFileMenu(): void {
     this.registerEvent(
       this.app.workspace.on('file-menu', (menu, file) => {
+        const experimentDir =
+          file instanceof TFolder
+            ? getExperimentDir(file.path) === file.path
+              ? file.path
+              : undefined
+            : file.name.toLowerCase() === 'readme.labnote.md'
+              ? getExperimentDir(file.path)
+              : undefined;
+        if (experimentDir) {
+          menu.addItem(item =>
+            item
+              .setTitle(this.t('Sync workflow checklist with folder'))
+              .setIcon('list-checks')
+              .onClick(() => this.run(() => this.syncWorkflowChecklist(experimentDir)))
+          );
+        }
         if (!(file instanceof TFile) || file.extension !== 'md') return;
         menu.addItem(item =>
           item
@@ -347,6 +387,10 @@ export default class LabnotePlugin extends Plugin {
         );
       })
     );
+  }
+
+  private syncWorkflowChecklist(dir?: string): Promise<void> {
+    return syncWorkflowChecklistCommand(this.app, this.host, this.readmeSyncControl(), dir);
   }
 
   /** Right-click in a lab-note editor → create a workflow + insert a link at the cursor. */
@@ -407,6 +451,12 @@ export default class LabnotePlugin extends Plugin {
               .setTitle(this.t('Insert workflow'))
               .setIcon('git-branch-plus')
               .onClick(() => this.run(() => insertWorkflowLinkCommand(this.app, this.host, editor)))
+          );
+          menu.addItem(item =>
+            item
+              .setTitle(this.t('Sync workflow checklist with folder'))
+              .setIcon('list-checks')
+              .onClick(() => this.run(() => this.syncWorkflowChecklist(getExperimentDir(file.path))))
           );
         }
       })
@@ -475,14 +525,22 @@ export default class LabnotePlugin extends Plugin {
    * so writing first shifts those offsets and its edit eats the text after the
    * link (#41). Our writes go through `vault.process` (a 'modify', never
    * rename/delete), so they cannot re-enter these listeners. Cross-folder moves
-   * are intentionally not auto-listed in the destination README (documented
-   * limitation — use "Insert workflow").
+   * and copies are not listed automatically: a move only points the user at
+   * "Sync workflow checklist with folder", and a copy offers a workflow name
+   * and asks before listing it.
    */
   private registerWorkflowReadmeSync(): void {
     this.registerEvent(
       this.app.vault.on('rename', (file, oldPath) => {
         if (!(file instanceof TFile)) return;
         const newPath = file.path;
+        if (this.copiedWorkflows.delete(oldPath)) {
+          if (posix.dirname(newPath) !== posix.dirname(oldPath)) return;
+          if (isValidWorkflowPath(newPath)) this.run(() => this.offerListRenamedCopy(file));
+          else if (isCopiedWorkflowFileName(file.name)) this.copiedWorkflows.add(newPath);
+          return;
+        }
+        this.noticeWorkflowMovedIn(oldPath, newPath);
         const strayOrigin = this.strayWorkflows.get(oldPath);
         this.strayWorkflows.delete(oldPath);
         // Only same-folder workflow-file renames touch the README.
@@ -506,9 +564,22 @@ export default class LabnotePlugin extends Plugin {
       })
     );
 
+    // Obsidian reports every existing file as created while the vault loads.
+    this.app.workspace.onLayoutReady(() => {
+      this.registerEvent(
+        this.app.vault.on('create', file => {
+          if (!(file instanceof TFile) || !isCopiedWorkflowFileName(file.name)) return;
+          if (getExperimentDir(file.path) !== posix.dirname(file.path)) return;
+          this.copiedWorkflows.add(file.path);
+          this.run(() => this.offerCopiedWorkflowFix(file));
+        })
+      );
+    });
+
     this.registerEvent(
       this.app.vault.on('delete', file => {
         if (!(file instanceof TFile)) return;
+        this.copiedWorkflows.delete(file.path);
         // A stray note's README entry and sample sources still use its original name.
         const origin = this.strayWorkflows.get(file.path);
         this.strayWorkflows.delete(file.path);
@@ -564,6 +635,107 @@ export default class LabnotePlugin extends Plugin {
     );
     if (!ok || file.path !== brokenPath || this.app.vault.getAbstractFileByPath(target)) return;
     await this.app.fileManager.renameFile(file, target);
+  }
+
+  /**
+   * A workflow note was copied into its experiment folder under a name that is
+   * not a workflow name (`001_X.labnote 1.md`). Offer the next free workflow
+   * name and list the renamed note in the README checklist (#44). Waits for
+   * open modals like {@link offerWorkflowNameFix}.
+   */
+  private async offerCopiedWorkflowFix(file: TFile): Promise<void> {
+    const copyPath = file.path;
+    const dir = posix.dirname(copyPath);
+    const warn = (): void =>
+      this.host.notify(
+        'warn',
+        this.t(
+          '"{0}" is not a workflow note until its name starts with ###_ and ends in .labnote.md. Once it does, run "{1}" to add it to the README checklist.',
+          file.name,
+          this.t('Sync workflow checklist with folder')
+        )
+      );
+
+    const settled = await this.waitForNoModal();
+    if (this.unloaded || !this.copiedWorkflows.has(copyPath) || file.path !== copyPath) return;
+    const suggestion = suggestCopiedWorkflowFileName(file.name, await this.fs.list(dir));
+    const target = suggestion ? posix.join(dir, suggestion) : undefined;
+    if (!settled || !suggestion || !target || this.app.vault.getAbstractFileByPath(target)) {
+      warn();
+      return;
+    }
+
+    const ok = await this.host.confirm(
+      this.t(
+        '"{0}" looks like a copy of a workflow note, but its name does not end in .labnote.md, so it is not a workflow note yet. Rename it to "{1}" and add it to the README checklist?',
+        file.name,
+        suggestion
+      ),
+      { confirmLabel: this.t('Rename and add') }
+    );
+    if (!this.copiedWorkflows.has(copyPath) || file.path !== copyPath) return;
+    if (!ok || this.app.vault.getAbstractFileByPath(target)) {
+      warn();
+      return;
+    }
+    // Dropped first so the rename below is not taken for a rename by hand.
+    this.copiedWorkflows.delete(copyPath);
+    await this.app.fileManager.renameFile(file, target);
+    if (await addWorkflowFileToChecklist(this.app, this.host, dir, suggestion)) {
+      this.host.notify('info', this.t('Added "{0}" to the README checklist.', suggestion));
+    }
+  }
+
+  /** A copied workflow note was given a workflow name by hand: offer to list it. */
+  private async offerListRenamedCopy(file: TFile): Promise<void> {
+    const path = file.path;
+    // Obsidian may be asking whether to update links for this rename.
+    const settled = await this.waitForNoModal();
+    if (this.unloaded || !settled || file.path !== path) return;
+    const ok = await this.host.confirm(this.t('Add "{0}" to the README checklist?', file.name), {
+      confirmLabel: this.t('Add to checklist'),
+    });
+    if (!ok || file.path !== path) return;
+    if (await addWorkflowFileToChecklist(this.app, this.host, posix.dirname(path), file.name)) {
+      this.host.notify('info', this.t('Added "{0}" to the README checklist.', file.name));
+    }
+  }
+
+  /**
+   * A workflow note moved into an experiment folder from elsewhere is not
+   * listed in that folder's README. Point the user at the sync command, once
+   * per folder for a batch of moves, and only if something is unlisted.
+   */
+  private noticeWorkflowMovedIn(oldPath: string, newPath: string): void {
+    if (!isValidWorkflowPath(newPath)) return;
+    const dir = posix.dirname(newPath);
+    const oldDir = posix.dirname(oldPath);
+    // Renaming or moving a whole experiment folder renames every note in it;
+    // by then its old folder no longer exists.
+    if (dir === oldDir || !this.app.vault.getAbstractFileByPath(oldDir)) return;
+
+    const pending = this.movedInTimers.get(dir);
+    if (pending !== undefined) window.clearTimeout(pending);
+    this.movedInTimers.set(
+      dir,
+      window.setTimeout(() => {
+        this.movedInTimers.delete(dir);
+        this.run(async () => {
+          const readmePath = posix.join(dir, 'README.labnote.md');
+          if (this.unloaded || !(await this.fs.exists(readmePath))) return;
+          const plan = planWorkflowChecklistSync(await this.fs.read(readmePath), await this.fs.list(dir));
+          if (plan.added.length === 0) return;
+          this.host.notify(
+            'warn',
+            this.t(
+              'Workflow notes moved into {0} are not in its README checklist yet. Run "{1}" to add them.',
+              posix.basename(dir),
+              this.t('Sync workflow checklist with folder')
+            )
+          );
+        });
+      }, 1000)
+    );
   }
 
   /** Resolve true once no modal is open (checked every 250ms), false after 30s. */

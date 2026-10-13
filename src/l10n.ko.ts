@@ -14,6 +14,7 @@ const obsidianKo: Record<string, string> = {
   'Setup research automation': '연구노트 자동화 설정',
   'Create workflow': '워크플로 생성',
   'Renumber workflows': '워크플로 번호 다시 매기기',
+  'Sync workflow checklist with folder': '폴더와 워크플로 체크리스트 맞추기',
   'Insert workflow': '워크플로 삽입',
   'Insert unit operation': '유닛 오퍼레이션 삽입',
   'Insert date': '날짜 삽입',
@@ -65,11 +66,39 @@ const obsidianKo: Record<string, string> = {
   'Workflow numbering is already sequential.': '워크플로 번호가 이미 순서대로입니다.',
   'Renumber {0} workflow file(s) in {1}?': '{1}의 워크플로 파일 {0}개의 번호를 다시 매길까요?',
   'Renumbered {0} workflow file(s).': '워크플로 파일 {0}개의 번호를 다시 매겼습니다.',
+  'Renumber {0} workflow file(s) in {1} and add {2} file(s) missing from the README checklist?':
+    '{1}의 워크플로 파일 {0}개의 번호를 다시 매기고, README 체크리스트에 없는 {2}개를 등록할까요?',
+  'Add {0} workflow file(s) missing from the README checklist of {1}?':
+    '{1}의 README 체크리스트에 없는 워크플로 파일 {0}개를 등록할까요?',
+  'Added {0} workflow file(s) to the README checklist.':
+    'README 체크리스트에 워크플로 파일 {0}개를 등록했습니다.',
+  'This experiment has no README.labnote.md.': '이 실험에는 README.labnote.md가 없습니다.',
+  'README.labnote.md has no "Related Workflows" section.':
+    'README.labnote.md에 "Related Workflows" 절이 없습니다.',
+  'These checklist entries do not point to a workflow file in this folder. Remove them from the checklist?':
+    '아래 체크리스트 항목은 이 폴더의 워크플로 파일을 가리키지 않습니다. 체크리스트에서 지울까요?',
+  'Remove from checklist': '체크리스트에서 지우기',
+  'file not found': '파일 없음',
+  'in another folder': '다른 폴더',
+  'No changes made.': '바꾼 것이 없습니다.',
+  'The workflow checklist already matches the folder.': '워크플로 체크리스트가 이미 폴더와 일치합니다.',
+  'Workflow checklist updated: {0} added, {1} removed.':
+    '워크플로 체크리스트를 고쳤습니다: {0}개 추가, {1}개 제거.',
   '"{0}" is no longer a workflow note: its name must end in .labnote.md, so the README checklist stopped following it. Rename it to "{1}"?':
     '"{0}"은(는) 이름이 .labnote.md로 끝나지 않아 워크플로 노트에서 빠졌고, README 체크리스트도 더 이상 따라가지 않습니다. "{1}"(으)로 이름을 고칠까요?',
   '"{0}" is no longer a workflow note: its name must start with ###_ and end in .labnote.md, so the README checklist stopped following it.':
     '"{0}"은(는) 이름이 ###_로 시작하고 .labnote.md로 끝나야 워크플로 노트로 인식됩니다. README 체크리스트가 더 이상 따라가지 않습니다.',
   'Fix name': '이름 고치기',
+  '"{0}" looks like a copy of a workflow note, but its name does not end in .labnote.md, so it is not a workflow note yet. Rename it to "{1}" and add it to the README checklist?':
+    '"{0}"은(는) 워크플로 노트의 복사본으로 보이지만 이름이 .labnote.md로 끝나지 않아 아직 워크플로 노트가 아닙니다. "{1}"(으)로 이름을 바꾸고 README 체크리스트에 등록할까요?',
+  'Rename and add': '이름 바꾸고 등록',
+  '"{0}" is not a workflow note until its name starts with ###_ and ends in .labnote.md. Once it does, run "{1}" to add it to the README checklist.':
+    '"{0}"은(는) 이름이 ###_로 시작하고 .labnote.md로 끝나야 워크플로 노트가 됩니다. 이름을 고친 뒤 "{1}"을(를) 실행하면 README 체크리스트에 등록됩니다.',
+  'Add "{0}" to the README checklist?': '"{0}"을(를) README 체크리스트에 등록할까요?',
+  'Add to checklist': '체크리스트에 등록',
+  'Added "{0}" to the README checklist.': '"{0}"을(를) README 체크리스트에 등록했습니다.',
+  'Workflow notes moved into {0} are not in its README checklist yet. Run "{1}" to add them.':
+    '{0}(으)로 옮겨 온 워크플로 노트가 README 체크리스트에 없습니다. "{1}"을(를) 실행해 등록하세요.',
   'Experiment status changed: {0}': '실험 상태가 변경되었습니다: {0}',
   'Flagged for discussion. An issue opens on the next push.':
     '논의 표시를 설정했습니다. 다음 push 때 이슈가 생성됩니다.',
@@ -204,14 +233,17 @@ const obsidianKo: Record<string, string> = {
   'Only sent to OpenAI-compatible providers, never to Ollama.':
     'OpenAI 호환 프로바이더에만 전송되며, Ollama에는 전송되지 않습니다.',
   'Enable MCP server': 'MCP 서버 활성화',
-  'Desktop only. Exposes tools to external MCP clients.':
-    '데스크톱 전용. 외부 MCP 클라이언트에 도구를 노출합니다.',
+  'Desktop only. Exposes tools to external MCP clients. Tools that change the vault run only after you allow them in Obsidian.':
+    '데스크톱 전용. 외부 MCP 클라이언트에 도구를 노출합니다. 볼트를 바꾸는 도구는 Obsidian에서 허용해야 실행됩니다.',
   'MCP token': 'MCP 토큰',
-  'Copy the bearer token for external MCP clients (server must be running).':
-    '외부 MCP 클라이언트용 베어러 토큰을 복사합니다 (서버가 실행 중이어야 합니다).',
+  'Bearer token for external MCP clients. It stays the same when Obsidian or the server restarts; regenerate it if it leaked, then paste the new one into every client.':
+    '외부 MCP 클라이언트용 베어러 토큰입니다. Obsidian이나 서버를 다시 시작해도 유지됩니다. 유출됐다면 재발급하고, 새 토큰을 모든 클라이언트에 다시 붙여 넣으세요.',
   'Copy token': '토큰 복사',
-  'Start the MCP server first.': 'MCP 서버를 먼저 시작하세요.',
+  'Regenerate token': '토큰 재발급',
+  'Regenerate the MCP token? Clients using the current token stop working until you paste the new one into their settings.':
+    'MCP 토큰을 재발급할까요? 지금 토큰을 쓰는 클라이언트는 새 토큰을 설정에 붙여 넣기 전까지 연결되지 않습니다.',
   'MCP token copied to clipboard.': 'MCP 토큰을 클립보드에 복사했습니다.',
+  'New MCP token copied to clipboard.': '새 MCP 토큰을 클립보드에 복사했습니다.',
 
   // AI commands
   'Configure an AI provider in settings first.': '먼저 설정에서 AI 프로바이더를 구성하세요.',
@@ -230,6 +262,10 @@ const obsidianKo: Record<string, string> = {
   'MCP server error: {0}': 'MCP 서버 오류: {0}',
   'Allow MCP tool "{0}" to modify the vault?': 'MCP 도구 "{0}"가 볼트를 수정하도록 허용할까요?',
   'Target: {0}': '대상: {0}',
+  'MCP tool "{0}" was not run: no answer in time.':
+    'MCP 도구 "{0}"을(를) 실행하지 않았습니다: 시간 안에 응답이 없었습니다.',
+  'MCP tool "{0}" was not run: the client disconnected.':
+    'MCP 도구 "{0}"을(를) 실행하지 않았습니다: 클라이언트 연결이 끊겼습니다.',
   'Allow': '허용',
 };
 

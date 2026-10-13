@@ -44,7 +44,11 @@ export interface LabnoteSettings {
   llmApiKey: string;
   /** Expose the in-process MCP server for external MCP clients. */
   mcpEnabled: boolean;
+  /** MCP bearer token (48 hex chars), kept across restarts; '' until first needed. */
+  mcpToken: string;
 }
+
+const MCP_TOKEN_RE = /^[0-9a-f]{48}$/;
 
 export const DEFAULT_SETTINGS: LabnoteSettings = {
   schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -59,6 +63,7 @@ export const DEFAULT_SETTINGS: LabnoteSettings = {
   llmModel: 'llama3.1',
   llmApiKey: '',
   mcpEnabled: false,
+  mcpToken: '',
 };
 
 /**
@@ -91,6 +96,9 @@ export function migrateSettings(raw: unknown): LabnoteSettings {
   if (typeof data.llmModel === 'string') out.llmModel = data.llmModel;
   if (typeof data.llmApiKey === 'string') out.llmApiKey = data.llmApiKey;
   if (typeof data.mcpEnabled === 'boolean') out.mcpEnabled = data.mcpEnabled;
+  if (typeof data.mcpToken === 'string' && MCP_TOKEN_RE.test(data.mcpToken)) {
+    out.mcpToken = data.mcpToken;
+  }
 
   // Provider-specific endpoints (new shape) win when present…
   if (typeof data.llmEndpointOllama === 'string') out.llmEndpointOllama = data.llmEndpointOllama;

@@ -82,8 +82,8 @@ export function createObsidianHost(
       return promptModal(app, opts);
     },
 
-    confirm(message: string, opts?: { confirmLabel?: string }) {
-      return confirmModal(app, message, opts?.confirmLabel ?? t('Yes'));
+    confirm(message: string, opts?: { confirmLabel?: string; signal?: AbortSignal }) {
+      return confirmModal(app, message, opts?.confirmLabel ?? t('Yes'), opts?.signal);
     },
 
     notify(kind: NotifyKind, message: string) {

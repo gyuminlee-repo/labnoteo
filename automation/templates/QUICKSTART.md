@@ -144,6 +144,7 @@ push하고 잠시 뒤, GitHub 저장소의 **Issues 탭**을 열어 보세요.
 | 새 실험 시작 | 명령 팔레트 → `Create experiment` → **`author` 채우기** |
 | 실험 상태 변경 | 명령 팔레트 → `Change experiment status` |
 | 워크플로(실험 단계) 추가 | 명령 팔레트 → `Create workflow` (README 체크리스트에 자동 등록) |
+| 옮겨 오거나 복사한 워크플로를 체크리스트에 등록 | 명령 팔레트 → `Sync workflow checklist with folder` (README·실험 폴더 우클릭에도 있음) |
 | 워크플로에 작업 단위 추가 | 워크플로 파일에서 → `Insert unit operation` (README에서는 안 됨) |
 | 샘플 참조 넣기 | 본문에 `@dna` 입력 → 자동완성 |
 | 샘플 목록 보기 | 왼쪽 리본의 시험관 아이콘, 또는 `Open sample view` |
@@ -179,6 +180,8 @@ push하고 잠시 뒤, GitHub 저장소의 **Issues 탭**을 열어 보세요.
 | Insert issue marker | 논의 이슈 마커 삽입 |
 | Toggle discussion flag | 논의 표시 전환 |
 | Create workflow | 워크플로 생성 |
+| Renumber workflows | 워크플로 번호 다시 매기기 |
+| Sync workflow checklist with folder | 폴더와 워크플로 체크리스트 맞추기 |
 | Insert unit operation | 유닛 오퍼레이션 삽입 |
 | Insert date / Insert date and time | 날짜 삽입 / 날짜 및 시간 삽입 |
 | Export tables to CSV | 표를 CSV로 내보내기 |
@@ -196,7 +199,7 @@ push하고 잠시 뒤, GitHub 저장소의 **Issues 탭**을 열어 보세요.
 
 | 기능 | 어디서 | 하는 일 |
 | --- | --- | --- |
-| **Insert workflow** (워크플로 삽입) | `README.labnote.md` 편집 중 **우클릭** | 워크플로 파일을 만들고 이 README의 체크리스트에 등록. 다른 폴더에서 옮겨 온 워크플로를 등록하는 유일한 방법이기도 합니다. |
+| **Insert workflow** (워크플로 삽입) | `README.labnote.md` 편집 중 **우클릭** | 카탈로그에서 고른 워크플로 파일을 **새로** 만들고 이 README의 체크리스트에 등록. 이미 있는 파일(옮겨 오거나 복사한 것)을 등록하는 기능이 아닙니다 — 그때는 `Sync workflow checklist with folder`를 쓰세요. |
 | **Go to definition** (정의로 이동) | 샘플 ID 위에서 **우클릭** | 그 샘플의 타입·별칭·설명·저장 파일을 팝업으로. 설정에서 **샘플 추적이 꺼져 있으면 메뉴 자체가 뜨지 않습니다.** 일반 `.md` 노트에서도 됩니다. |
 | **날짜 선택기** | `#### Meta`의 `Start_date` / `End_date` **값을 클릭** | 달력·시계 피커. 값이 비어 있으면 줄 끝의 📅 아이콘을 누르세요. 읽기 모드에서는 동작하지 않습니다. |
 | **표 CSV 내보내기** | 파일 탐색기에서 노트 **우클릭** | 팔레트 명령과 동일. |
@@ -253,8 +256,16 @@ README frontmatter:
   받아들이거나 직접 형식에 맞게 고치면 체크리스트가 다시 그 파일을 따라갑니다
   (Obsidian을 다시 시작하기 전에 고쳐야 합니다).
 - **삭제하면** 체크리스트 항목이 사라집니다. 샘플은 그대로 남고, 그 노트의 사용 기록만 지워집니다.
-- **다른 실험 폴더로 옮기면 아무 README도 갱신되지 않습니다.** 옮긴 뒤 대상
-  README에서 우클릭 → `Insert workflow`로 등록하세요.
+- **다른 실험 폴더로 옮기면 README가 자동으로 갱신되지 않습니다.** 대신 "체크리스트에
+  없습니다" 알림이 뜹니다. 대상 실험에서 `Sync workflow checklist with folder`
+  (README나 실험 폴더 우클릭에도 있음)를 실행하면 옮겨 온 워크플로가 등록됩니다.
+  원래 실험에서도 실행하면, 옮겨 간 항목을 보여 주고 확인을 받은 뒤 지웁니다.
+  `Insert workflow`는 카탈로그에서 새 노트를 만드는 기능이라 옮긴 파일 등록에는 쓰지 마세요.
+- 탐색기의 **"복사본 생성"** 으로 복제하면 `….labnote 1.md`처럼 형식이 깨진 이름이
+  됩니다. 다음 번호의 워크플로 이름으로 바꾸고 체크리스트에 등록할지 물어봅니다.
+  직접 형식에 맞게 고쳐도 등록할지 묻습니다.
+- `Renumber workflows`는 폴더의 워크플로 번호를 001부터 빈틈없이 다시 매기고,
+  체크리스트에 없는 워크플로도 함께 등록해 폴더와 체크리스트를 맞춥니다.
 - 파일명에서 `###_` 접두사나 `.labnote.md`를 지우면 **위 자동 동기화가 전부 멈춥니다.**
 
 ### 유닛 오퍼레이션 (한 번의 작업)
@@ -399,8 +410,9 @@ API 키는 OpenAI 계열에만 전송되며 Ollama로는 절대 나가지 않습
 - 워크플로 파일인데도 거부된다면 파일명이 `###_`로 시작하는지, `.labnote.md`로 끝나는지 확인하세요.
 
 **워크플로를 다른 실험으로 옮겼는데 체크리스트에 안 보여요**
-- 폴더 간 이동은 자동 등록되지 않습니다. 대상 실험의 `README.labnote.md`를 열고 편집 영역에서 **우클릭 → `Insert workflow`** 로 등록하세요.
-- 원래 실험의 README에는 항목이 남아 있으니 직접 지우면 됩니다.
+- 폴더 간 이동은 자동 등록되지 않습니다. 대상 실험의 README나 실험 폴더를 **우클릭 → `Sync workflow checklist with folder`** 로 등록하세요(명령 팔레트에도 있음).
+- 원래 실험에서도 같은 명령을 실행하면 옮겨 간 항목을 확인 후 지웁니다.
+- `Insert workflow`를 쓰면 옮긴 파일이 등록되지 않고 카탈로그에서 고른 빈 워크플로 노트가 새로 생깁니다.
 
 **커밋이 거부돼요 (대용량 파일)**
 - 50MB 초과 파일은 커밋이 차단됩니다. 파일을 `raw-data/` 등 Git 밖 보관 위치로 옮기고, 노트에는 경로/ID만 남기세요.
