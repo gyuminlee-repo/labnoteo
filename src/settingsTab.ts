@@ -10,8 +10,27 @@ import { DEFAULT_SETTINGS, type LlmProviderKind } from './settings';
 import { openUserGuide } from './userGuide';
 
 export class LabnoteSettingTab extends PluginSettingTab {
+  /** Debounce handle for refreshing sample views after a Global folder edit. */
+  private globalFolderRefreshTimer?: number;
+
   constructor(app: App, private readonly plugin: LabnotePlugin) {
     super(app, plugin);
+  }
+
+  /**
+   * Re-read the Samples sidebar ~400ms after the Global folder changes so it
+   * tracks the new folder without an app reload (#46). Skipped while the field
+   * is empty (a transient mid-edit state that would read the vault root).
+   */
+  private scheduleGlobalFolderRefresh(): void {
+    if (this.globalFolderRefreshTimer !== undefined) {
+      window.clearTimeout(this.globalFolderRefreshTimer);
+    }
+    this.globalFolderRefreshTimer = window.setTimeout(() => {
+      this.globalFolderRefreshTimer = undefined;
+      if (!this.plugin.settings.globalSampleFolder) return;
+      this.plugin.refreshSampleViews();
+    }, 400);
   }
 
   display(): void {
@@ -74,6 +93,7 @@ export class LabnoteSettingTab extends PluginSettingTab {
         t.setValue(s.globalSampleFolder).onChange(v => {
           s.globalSampleFolder = v.trim();
           save();
+          this.scheduleGlobalFolderRefresh();
         });
         // An empty Global folder silently breaks Global-scope reads/writes; if
         // the user clears the field, restore the default when focus leaves.
@@ -82,6 +102,7 @@ export class LabnoteSettingTab extends PluginSettingTab {
             s.globalSampleFolder = DEFAULT_SETTINGS.globalSampleFolder;
             t.setValue(s.globalSampleFolder);
             save();
+            this.scheduleGlobalFolderRefresh();
           }
         });
       });
