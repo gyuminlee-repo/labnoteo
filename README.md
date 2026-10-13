@@ -65,8 +65,8 @@ Obsidian 설치와 git·GitHub 계정 준비부터 커뮤니티 플러그인·�
 | 유닛 오퍼레이션 삽입 (`Insert unit operation`)                    | 카탈로그에서 유닛 오퍼레이션 삽입                                                      |
 | 표 CSV 내보내기 (`Export tables to CSV`)                      | 노트의 표를 CSV로 내보내기                                                        |
 | 연구노트 자동화 설정 (`Setup research automation`)                | GitHub Actions·스크립트를 현재 보관함에 설치([연구노트 자동화](#연구노트-자동화) 참고)               |
-| AI: Method 섹션 초안 (`AI: Draft Method section`)            | 설정된 LLM으로 실험 방법 초안 작성                                                   |
-| AI: 결과 요약 (`AI: Summarize results`)                      | 설정된 LLM으로 결과 요약                                                         |
+| AI: Method 섹션 초안 (`AI: Draft Method section`)            | 설정된 LLM으로 실험 방법 초안 작성. 유닛 오퍼레이션 안에서 실행하면 그 `#### Method` 절을 채우고(이미 쓴 내용이 있으면 먼저 확인), 밖에서는 커서가 있는 줄 다음에 넣음 |
+| AI: 결과 요약 (`AI: Summarize results`)                      | 설정된 LLM으로 결과 요약을 커서가 있는 줄 다음에 넣음                                     |
 | AI: 샘플 정의 추출 (`AI: Extract sample definitions`)          | 설정된 LLM으로 노트에서 샘플 추출                                                    |
 | AI: 어시스턴트에게 요청 (`AI: Ask assistant (uses tools)`)        | 목표를 말하면 모델이 Labnote 툴로 수행                                               |
 | MCP 서버 토글 (`Toggle MCP server`)                          | 로컬 MCP 서버 시작/중지([Copilot 가이드](docs/COPILOT.md#선택-labnote-툴-연결--mcp) 참고) |
@@ -103,7 +103,7 @@ Obsidian 설치와 git·GitHub 계정 준비부터 커뮤니티 플러그인·�
 **워크플로**
 
 - **유닛오퍼레이션 TOC 자동 정렬** (`Auto-sync unit operation TOC`): 편집 후 워크플로 노트의 `Related Unit Operations` 목록을 헤딩 순서에 맞게 자동 정렬합니다 — 유닛 오퍼레이션 블록을 옮기면 문서 맨 위 목차도 따라 재정렬됩니다. Obsidian Outline 보기에서 드래그로 블록을 옮기면 목차와 `---` 구분선이 곧바로 정리되고, 다른 유닛 오퍼레이션 위에 놓아도 블록이 쪼개지지 않고 그 유닛 오퍼레이션 뒤로 들어갑니다. 정리는 이동과 별도로 저장되므로, 이동 전으로 되돌리려면 Ctrl+Z를 두 번 눌러야 할 수 있습니다. 목차 링크는 GitHub에서 노트를 볼 때 해당 블록으로 이동하도록 GitHub 앵커 규칙(한글 유지, 같은 유닛 오퍼레이션 반복 시 `-1`, `-2`)을 따릅니다. Obsidian 안에서는 목차 링크 대신 Outline(개요) 보기를 클릭해 이동하세요. 기본 켜짐.
-- **마지막 갱신일 자동 기록** (`Auto-update last updated date`): 연구노트(실험 폴더의 `*.labnote.md`)를 편집기에서 직접 고치거나, `Change experiment status`·`Toggle discussion flag`로 바꾸거나, AI가 고치면 frontmatter의 `last_updated_date`를 오늘 날짜(서울 기준)로 바꿉니다. 노트마다 하루에 한 번만 바뀌고, 워크플로 노트를 고치면 그 실험의 README 날짜도 함께 바뀝니다. git pull 등으로 받아온 변경과 되돌리기는 반영하지 않으며, 체크리스트 동기화·번호 다시 매기기 같은 자동 정리도 날짜를 바꾸지 않습니다. 날짜를 직접 고친 노트는 Obsidian을 다시 켤 때까지 그대로 둡니다. 날짜 갱신도 실행 취소 기록에 남으므로, 그날 첫 편집을 되돌리려면 Ctrl+Z를 한 번 더 눌러야 할 수 있습니다. 기본 켜짐.
+- **마지막 갱신일 자동 기록** (`Auto-update last updated date`): 연구노트(실험 폴더의 `*.labnote.md`)를 편집기에서 직접 고치거나, `Change experiment status`·`Toggle discussion flag`로 바꾸거나, AI가 고치면 frontmatter의 `last_updated_date`를 오늘 날짜(서울 기준)로 바꿉니다. 노트마다 하루에 한 번만 바뀌고, 워크플로 노트를 고치거나 새 워크플로를 만들면 그 실험의 README 날짜도 함께 바뀝니다. git pull 등으로 받아온 변경과 되돌리기는 반영하지 않으며, 체크리스트 동기화·번호 다시 매기기 같은 자동 정리도 날짜를 바꾸지 않습니다. 날짜를 직접 고친 노트는 Obsidian을 다시 켤 때까지 그대로 둡니다. 날짜 갱신도 실행 취소 기록에 남으므로, 그날 첫 편집을 되돌리려면 Ctrl+Z를 한 번 더 눌러야 할 수 있습니다. 기본 켜짐.
 
 **AI 제공자**
 

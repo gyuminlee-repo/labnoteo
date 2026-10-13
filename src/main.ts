@@ -31,7 +31,7 @@ import {
   createExperimentCommand,
   changeExperimentStatusCommand,
   insertIssueMarkerCommand,
-  isIssueAutomationInstalled,
+  issueAutomationState,
   toggleDiscussionFlagCommand,
   createWorkflowCommand,
   renumberWorkflowsCommand,
@@ -65,6 +65,7 @@ import { SampleTreeView, SAMPLE_VIEW_TYPE } from './views/sampleView';
 import { exportTablesToCsv, exportActiveNoteTablesToCsv } from './exportCsv';
 import { openUserGuide } from './userGuide';
 import { LabnoteSettingTab } from './settingsTab';
+import { SETUP_DOC_PATH } from './scaffold/assets';
 import {
   draftMethodCommand,
   summarizeResultsCommand,
@@ -243,11 +244,17 @@ export default class LabnotePlugin extends Plugin {
       editorCallback: editor => {
         if (!insertIssueMarkerCommand(editor, this.host) || this.issueAutomationHintShown) return;
         this.run(async () => {
-          if (await isIssueAutomationInstalled(this.host)) return;
+          const state = await issueAutomationState(this.host);
+          if (state === 'ready') return;
           this.issueAutomationHintShown = true;
           this.host.notify(
             'info',
-            this.t('Issue marker inserted. To open it as an issue, run "Setup research automation" first.')
+            state === 'no-git'
+              ? this.t(
+                  'Issue marker inserted. This vault is not a git repository yet, so no issue will open. Finish the repository setup in {0} first.',
+                  SETUP_DOC_PATH
+                )
+              : this.t('Issue marker inserted. To open it as an issue, run "Setup research automation" first.')
           );
         });
       },
@@ -269,7 +276,7 @@ export default class LabnotePlugin extends Plugin {
     this.addCommand({
       id: 'create-workflow',
       name: this.t('Create workflow'),
-      callback: () => this.run(() => createWorkflowCommand(this.app, this.host)),
+      callback: () => this.run(() => createWorkflowCommand(this.app, this.host, this.stampLastUpdated)),
     });
 
     this.addCommand({
@@ -450,7 +457,9 @@ export default class LabnotePlugin extends Plugin {
             item
               .setTitle(this.t('Insert workflow'))
               .setIcon('git-branch-plus')
-              .onClick(() => this.run(() => insertWorkflowLinkCommand(this.app, this.host, editor)))
+              .onClick(() =>
+                this.run(() => insertWorkflowLinkCommand(this.app, this.host, editor, this.stampLastUpdated))
+              )
           );
           menu.addItem(item =>
             item

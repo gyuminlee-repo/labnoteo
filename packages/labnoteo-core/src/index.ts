@@ -41,6 +41,17 @@ export {
   type SectionMatch,
 } from './sections/sectionEdit';
 
+// Where an AI-written block goes: a unit operation's Method body, or its own
+// block after the cursor's line (#48).
+export {
+  findUnitOpMethodAt,
+  findUnitOpMethodByIndex,
+  extractMethodBody,
+  planBlockInsert,
+  type UnitOpMethodLocation,
+  type BlockInsert,
+} from './sections/blockInsert';
+
 // Front-matter primitives (YAML parse + per-entry serialize). Shared by plugin
 // commands that read/rewrite README frontmatter (e.g. the status command).
 export { parseFrontMatterYaml, serializeFrontMatterEntry } from './sections/frontMatter';

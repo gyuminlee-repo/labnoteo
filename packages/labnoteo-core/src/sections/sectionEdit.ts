@@ -15,7 +15,7 @@ export interface SectionEditResult {
 }
 
 /** An open code fence: which character opened it, and how long the run was. */
-interface OpenFence {
+export interface OpenFence {
   char: string;
   length: number;
 }
@@ -35,7 +35,7 @@ const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
  * Showing fenced Markdown inside a fenced example is a normal thing to write in
  * a protocol note.
  */
-function stepFence(line: string, open: OpenFence | null): OpenFence | null {
+export function stepFence(line: string, open: OpenFence | null): OpenFence | null {
   const match = line.match(FENCE_RE);
   if (!match) return open;
 
@@ -132,26 +132,7 @@ export function replaceSectionBodyAt(md: string, line: number, newBody: string):
   const headingIdx = line;
   const m = lines[headingIdx]?.match(ANY_HEADING_RE);
   if (!m) return { ok: false, md };
-  const level = m[1].length;
-
-  // Body ends at the next heading of the same or higher level (#count <= level).
-  // The heading was matched outside any fence, so restart fence tracking here;
-  // a `#` line inside a code block after the heading is not a real boundary.
-  let bodyEnd = lines.length;
-  const boundaryRe = new RegExp(`^#{1,${level}}\\s`);
-  let bodyFence: OpenFence | null = null;
-  for (let i = headingIdx + 1; i < lines.length; i++) {
-    const next = stepFence(lines[i], bodyFence);
-    if (next !== bodyFence) {
-      bodyFence = next;
-      continue;
-    }
-    if (bodyFence) continue;
-    if (boundaryRe.test(lines[i])) {
-      bodyEnd = i;
-      break;
-    }
-  }
+  const bodyEnd = sectionBodyEnd(lines, headingIdx, m[1].length);
 
   const bodyLines = newBody === '' ? [''] : ['', ...newBody.split('\n'), ''];
   const next: string[] = [
@@ -161,4 +142,26 @@ export function replaceSectionBodyAt(md: string, line: number, newBody: string):
   ];
 
   return { ok: true, md: next.join(newline) };
+}
+
+/**
+ * Index of the line that ends the body of the level-`level` section whose
+ * heading is on `headingIdx`: the next heading of the same or higher level
+ * (#count <= level), or `lines.length`.
+ */
+export function sectionBodyEnd(lines: readonly string[], headingIdx: number, level: number): number {
+  // The heading was matched outside any fence, so restart fence tracking here;
+  // a `#` line inside a code block after the heading is not a real boundary.
+  const boundaryRe = new RegExp(`^#{1,${level}}\\s`);
+  let bodyFence: OpenFence | null = null;
+  for (let i = headingIdx + 1; i < lines.length; i++) {
+    const next = stepFence(lines[i], bodyFence);
+    if (next !== bodyFence) {
+      bodyFence = next;
+      continue;
+    }
+    if (bodyFence) continue;
+    if (boundaryRe.test(lines[i])) return i;
+  }
+  return lines.length;
 }

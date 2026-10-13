@@ -52,6 +52,8 @@ const obsidianKo: Record<string, string> = {
   'New experiment': '새 실험',
   'Experiment title': '실험 제목',
   'Title is required.': '제목을 입력해야 합니다.',
+  'The title has no characters usable in a folder name. Add letters or numbers.':
+    '제목에 폴더 이름으로 쓸 수 있는 글자가 없습니다. 글자나 숫자를 넣어 주세요.',
   'Select workflow': '워크플로 선택',
   'Search workflows': '워크플로 검색',
   'Search unit operations': '유닛 오퍼레이션 검색',
@@ -109,6 +111,12 @@ const obsidianKo: Record<string, string> = {
   'Discussion flag cleared.': '논의 표시를 해제했습니다.',
   'Issue marker inserted. To open it as an issue, run "Setup research automation" first.':
     "이슈 마커를 넣었습니다. 이슈로 올리려면 먼저 '연구노트 자동화 설정'을 실행하세요.",
+  'Flagged for discussion. This vault is not a git repository yet, so no issue will open. Finish the repository setup in {0} first.':
+    '논의 표시를 설정했습니다. 이 보관함은 아직 git 저장소가 아니라 이슈가 생성되지 않습니다. 먼저 {0}의 저장소 연결을 마치세요.',
+  'Issue marker inserted. This vault is not a git repository yet, so no issue will open. Finish the repository setup in {0} first.':
+    '이슈 마커를 넣었습니다. 이 보관함은 아직 git 저장소가 아니라 이슈가 생성되지 않습니다. 먼저 {0}의 저장소 연결을 마치세요.',
+  'This vault is not a git repository yet, so issues and checks will not run. Finish the repository setup in {0}.':
+    '이 보관함은 아직 git 저장소가 아니라 이슈 생성·검사가 동작하지 않습니다. {0}의 저장소 연결을 마치세요.',
   'Issue markers cannot go inside a table. Run this on a line below the table.':
     '표 안에서는 이슈 마커를 넣을 수 없습니다. 표 아래 줄에서 실행하세요.',
   'This line already has an issue marker. A line can hold only one.':
@@ -249,6 +257,11 @@ const obsidianKo: Record<string, string> = {
   'Configure an AI provider in settings first.': '먼저 설정에서 AI 프로바이더를 구성하세요.',
   'Contacting {0}…': '{0}에 연결 중…',
   'AI request failed: {0}': 'AI 요청 실패: {0}',
+  'This Method section already has content. Replace it with the AI draft?':
+    '이 Method 절에는 이미 내용이 있습니다. AI 초안으로 바꿀까요?',
+  'Replace': '바꾸기',
+  'The unit operation changed while the AI was writing, so the draft was inserted after the cursor line instead.':
+    'AI가 쓰는 동안 유닛 오퍼레이션이 바뀌어, 초안을 커서가 있는 줄 다음에 넣었습니다.',
   'Open a note first.': '먼저 노트를 여세요.',
   'Open a markdown note first.': '먼저 마크다운 노트를 여세요.',
   'Nothing to summarize.': '요약할 내용이 없습니다.',

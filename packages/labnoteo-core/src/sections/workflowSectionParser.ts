@@ -9,7 +9,7 @@
  * helpers.
  */
 
-const UNIT_OP_HEADING_PATTERN = /^###\s+\[([A-Z]+\d+)\s+(.+?)\]\s*(.*)/;
+export const UNIT_OP_HEADING_PATTERN = /^###\s+\[([A-Z]+\d+)\s+(.+?)\]\s*(.*)/;
 
 /**
  * The anchor GitHub gives a heading with this text, before de-duplication:

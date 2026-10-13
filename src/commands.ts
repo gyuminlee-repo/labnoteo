@@ -32,11 +32,15 @@ import {
   serializeFrontMatterEntry,
   setDiscussFlag,
 } from '@labnoteo/core';
-import { ISSUE_SYNC_WORKFLOW_PATH } from './scaffold/assets';
+import { ISSUE_SYNC_WORKFLOW_PATH, SETUP_DOC_PATH } from './scaffold/assets';
 import * as posix from '@labnoteo/core/posix';
 import { workflowAliasModal } from './modals';
 import { getObsidianLanguage } from './i18n';
-import { createLabnoteStructure, getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
+import {
+  createLabnoteStructure,
+  getExperimentDir,
+  sanitizeTitle,
+} from '@labnoteo/core/lib/labnoteStructure';
 import {
   ensureWorkflowResources,
   loadWorkflows,
@@ -61,6 +65,7 @@ import { removeWorkflowFromReadme } from '@labnoteo/core/lib/workflowDelete';
 // Re-exported so command registration in main.ts imports every command from one
 // place; the implementation lives under src/scaffold with its asset registry.
 export { setupResearchAutomationCommand } from './scaffold/scaffold';
+import { isVaultGitRepository } from './scaffold/scaffold';
 import { removeSourcesForDocument } from '@labnoteo/core/lib/sampleStorage';
 
 // Vault root sentinel. Core loaders treat a falsy root as "no workspace" and
@@ -90,7 +95,13 @@ export async function createExperimentCommand(app: App, host: LabnoteHost): Prom
   const title = await host.prompt({
     title: host.t('New experiment'),
     prompt: host.t('Experiment title'),
-    validate: v => (v.trim() ? null : host.t('Title is required.')),
+    validate: v => {
+      if (!v.trim()) return host.t('Title is required.');
+      if (!sanitizeTitle(v.trim())) {
+        return host.t('The title has no characters usable in a folder name. Add letters or numbers.');
+      }
+      return null;
+    },
   });
   if (!title) return;
 
@@ -216,6 +227,16 @@ export async function isIssueAutomationInstalled(host: LabnoteHost): Promise<boo
 }
 
 /**
+ * Whether an `@issue` marker or the `discuss` flag can become an issue:
+ * `'none'` without the automation, `'no-git'` when it is installed but the
+ * vault is not a git repository yet (nothing can be pushed), `'ready'` otherwise.
+ */
+export async function issueAutomationState(host: LabnoteHost): Promise<'none' | 'no-git' | 'ready'> {
+  if (!(await isIssueAutomationInstalled(host))) return 'none';
+  return (await isVaultGitRepository(host)) ? 'ready' : 'no-git';
+}
+
+/**
  * Read an experiment README for a front-matter edit, refusing to continue when
  * the YAML cannot be parsed.
  *
@@ -292,16 +313,23 @@ export async function toggleDiscussionFlagCommand(
     stamp(renderNote(setDiscussFlag(frontMatter, next), body))
   );
 
-  const automated = await isIssueAutomationInstalled(host);
+  const state = await issueAutomationState(host);
   let message: string;
   if (next) {
-    message = automated
-      ? host.t('Flagged for discussion. An issue opens on the next push.')
-      : host.t('Flagged for discussion. To open it as an issue, run "Setup research automation" first.');
+    message =
+      state === 'ready'
+        ? host.t('Flagged for discussion. An issue opens on the next push.')
+        : state === 'no-git'
+          ? host.t(
+              'Flagged for discussion. This vault is not a git repository yet, so no issue will open. Finish the repository setup in {0} first.',
+              SETUP_DOC_PATH
+            )
+          : host.t('Flagged for discussion. To open it as an issue, run "Setup research automation" first.');
   } else {
-    message = automated
-      ? host.t('Discussion flag cleared. Any issue already opened stays open.')
-      : host.t('Discussion flag cleared.');
+    message =
+      state === 'ready'
+        ? host.t('Discussion flag cleared. Any issue already opened stays open.')
+        : host.t('Discussion flag cleared.');
   }
   host.notify('info', message);
 }
@@ -315,9 +343,10 @@ async function createWorkflowFromChoice(
   app: App,
   host: LabnoteHost,
   labnoteDir: string,
-  chosen: WorkflowItem
+  chosen: WorkflowItem,
+  stamp: (content: string) => string
 ): Promise<void> {
-  const created = await createWorkflowFile(app, host, labnoteDir, chosen);
+  const created = await createWorkflowFile(app, host, labnoteDir, chosen, stamp);
   if (!created) return;
   await host.openFile(created.path);
   host.notify('info', host.t('Workflow created: {0}', created.fileName));
@@ -343,7 +372,8 @@ async function createWorkflowFile(
   app: App,
   host: LabnoteHost,
   labnoteDir: string,
-  chosen: WorkflowItem
+  chosen: WorkflowItem,
+  stamp: (content: string) => string
 ): Promise<CreatedWorkflow | undefined> {
   // Ask for an optional per-instance alias. The catalog name stays inside the
   // `[id name]` prefix; the alias (if any) is appended after it.
@@ -379,16 +409,31 @@ async function createWorkflowFile(
     ? `${chosen.id} ${chosen.name} ${cleanAlias}`
     : `${chosen.id} ${chosen.name}`;
 
-  // Register in the README "Related Workflows" checklist (non-destructive).
-  if (await host.fs.exists(readmePath)) {
-    const readme = await host.fs.read(readmePath);
-    const items = parseWorkflowChecklistFromReadme(readme);
-    items.push({ done: false, title: displayTitle, fileName });
-    const updated = updateReadmeWorkflowSection(readme, generateWorkflowChecklist(items));
-    await host.fs.write(readmePath, updated);
-  }
+  await registerWorkflowInReadme(app, host, readmePath, { title: displayTitle, fileName }, stamp);
 
   return { path: workflowPath, fileName, displayTitle };
+}
+
+/**
+ * Append a new workflow to the README "Related Workflows" checklist
+ * (non-destructive) and stamp the README's `last_updated_date`: creating a
+ * workflow is a change to the experiment. Applied through the vault to the
+ * README as it is at write time, so an open README editor neither overwrites it
+ * nor loses its own unsaved text. No-op without a README.
+ */
+export async function registerWorkflowInReadme(
+  app: App,
+  host: LabnoteHost,
+  readmePath: string,
+  entry: { title: string; fileName: string },
+  stamp: (content: string) => string = c => c
+): Promise<void> {
+  if (!(await host.fs.exists(readmePath))) return;
+  await processNoteThroughVault(app, host, readmePath, readme => {
+    const items = parseWorkflowChecklistFromReadme(readme);
+    items.push({ done: false, title: entry.title, fileName: entry.fileName });
+    return stamp(updateReadmeWorkflowSection(readme, generateWorkflowChecklist(items)));
+  });
 }
 
 /** Present the workflow catalog picker (seeding catalog resources first). */
@@ -414,22 +459,27 @@ async function pickWorkflow(host: LabnoteHost): Promise<WorkflowItem | undefined
 export async function createWorkflowForItem(
   app: App,
   host: LabnoteHost,
-  chosen: WorkflowItem
+  chosen: WorkflowItem,
+  stamp: (content: string) => string = c => c
 ): Promise<void> {
   const labnoteDir = await resolveLabnoteDir(app, host);
   if (!labnoteDir) return;
-  await createWorkflowFromChoice(app, host, labnoteDir, chosen);
+  await createWorkflowFromChoice(app, host, labnoteDir, chosen, stamp);
 }
 
 /** Create a new workflow file inside an experiment + register it in the README. */
-export async function createWorkflowCommand(app: App, host: LabnoteHost): Promise<void> {
+export async function createWorkflowCommand(
+  app: App,
+  host: LabnoteHost,
+  stamp: (content: string) => string = c => c
+): Promise<void> {
   const labnoteDir = await resolveLabnoteDir(app, host);
   if (!labnoteDir) return;
 
   const chosen = await pickWorkflow(host);
   if (!chosen) return;
 
-  await createWorkflowFromChoice(app, host, labnoteDir, chosen);
+  await createWorkflowFromChoice(app, host, labnoteDir, chosen, stamp);
 }
 
 /**
@@ -440,7 +490,8 @@ export async function createWorkflowCommand(app: App, host: LabnoteHost): Promis
 export async function insertWorkflowLinkCommand(
   app: App,
   host: LabnoteHost,
-  editor: Editor
+  editor: Editor,
+  stamp: (content: string) => string = c => c
 ): Promise<void> {
   const labnoteDir = await resolveLabnoteDir(app, host);
   if (!labnoteDir) return;
@@ -448,7 +499,7 @@ export async function insertWorkflowLinkCommand(
   const chosen = await pickWorkflow(host);
   if (!chosen) return;
 
-  const created = await createWorkflowFile(app, host, labnoteDir, chosen);
+  const created = await createWorkflowFile(app, host, labnoteDir, chosen, stamp);
   if (!created) return;
 
   // `createWorkflowFile` already registered the workflow in the experiment

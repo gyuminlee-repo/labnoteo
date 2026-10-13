@@ -54,11 +54,47 @@ describe('planReferenceInsert', () => {
       const text = 'Other-7;x ';
       expect(apply(text, 3)).toBe('Other-7;x DNA-1;pUC19');
     });
+
+    // #55 retest: the cursor inside the alias split it (`두번|째시약`).
+    it('treats the `;alias` tail as part of the reference', () => {
+      const text = '## Method\n사용 Other-1;두번째시약 끝\nmore';
+      const at = text.indexOf('째시약');
+      expect(apply(text, at)).toBe('## Method\n사용 Other-1;두번째시약 끝 DNA-1;pUC19\nmore');
+    });
+
+    it('stops the alias tail at whitespace', () => {
+      const text = '## M\nOther-1;두번째 시약 here';
+      const at = text.indexOf('시약');
+      expect(apply(text, at)).toBe('## M\nOther-1;두번째 DNA-1;pUC19 시약 here');
+    });
+  });
+
+  describe('rule 3: cursor on a sample definition line -> the next line', () => {
+    it('inserts below the definition wherever the cursor is on it', () => {
+      const text = '## M\n@other;Other-1;두번째시약;설명 문장\nmore';
+      for (const word of ['Other-1', '두번째', '설명', '문장']) {
+        expect(apply(text, text.indexOf(word) + 1)).toBe(
+          '## M\n@other;Other-1;두번째시약;설명 문장\nDNA-1;pUC19\nmore'
+        );
+      }
+    });
+
+    it('adds a line break when the definition is the last line', () => {
+      const text = '## M\n@Other;Other-1;x';
+      expect(apply(text, text.length)).toBe('## M\n@Other;Other-1;x\nDNA-1;pUC19');
+    });
   });
 
   describe('rule 4: at the cursor with neighbour-aware padding', () => {
     it('pads both sides between word characters', () => {
       expect(apply('abc', 2)).toBe('ab DNA-1;pUC19 c');
+    });
+
+    // #50 retest: Hangul neighbours fused with the id (`시약은DNA-1;pUC19여기`).
+    it('pads both sides between Hangul characters', () => {
+      const text = '## M\n사용한시약은여기에';
+      const at = text.indexOf('여기');
+      expect(apply(text, at)).toBe('## M\n사용한시약은 DNA-1;pUC19 여기에');
     });
 
     it('does not pad on an empty line', () => {

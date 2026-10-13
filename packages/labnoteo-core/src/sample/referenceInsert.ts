@@ -11,12 +11,18 @@
  *     only inside the front matter.
  *  2. Cursor on a heading line -> the line AFTER the heading (inserting at the
  *     line start would push the `##` and break the heading).
- *  3. Cursor on an existing sample reference -> the end of that line (splitting a
+ *  3. Cursor on a sample definition line (`@type;ID;alias;desc`) -> the line
+ *     AFTER it. The definition's alias/description run to the next `;:|` or the
+ *     line end, so anything appended to that line is read back into them and
+ *     overwrites the registered sample.
+ *     Cursor on an existing sample reference — its id or the `;alias;desc`
+ *     after it, up to whitespace — -> the end of that line (splitting a
  *     reference corrupts it and can register a mangled fragment as a sample).
  *  4. Otherwise -> at the cursor, padding with a space only when the adjacent
- *     character would fuse with the id (`[\w;-]`).
+ *     character would fuse with the id (letters/digits in any script, `_;-`).
  */
-import { findSampleReferenceAt } from './sampleSuggest';
+import { findSampleIdRanges } from './sampleSuggest';
+import { escapeRegExp } from '../lib/regexUtils';
 
 export interface ReferenceInsert {
   /** Absolute offset in the text where `text` is inserted. */
@@ -26,7 +32,26 @@ export interface ReferenceInsert {
 }
 
 /** A character that would fuse with a sample id if placed right against it. */
-const ADJACENT = /[\w;-]/;
+const ADJACENT = /[\p{L}\p{N}_;-]/u;
+
+/** The `;alias;desc` tail a reference may carry, stopping at whitespace. */
+const REFERENCE_TAIL = /^(?:[;|][^\s;:|]*){0,2}/;
+
+/** True when `line` is a `@type;ID…` sample definition of one of `types`. */
+function isDefinitionLine(line: string, types: readonly string[]): boolean {
+  return types.some(type => {
+    const t = escapeRegExp(type);
+    return new RegExp(`^\\s*@${t}[;:]${t}-\\d+(?:-\\d+)*\\b`, 'i').test(line);
+  });
+}
+
+/** True when column `ch` sits on a reference's id or its `;alias;desc` tail. */
+function isOnReference(line: string, ch: number, types: readonly string[]): boolean {
+  return findSampleIdRanges(line, types).some(range => {
+    const tail = REFERENCE_TAIL.exec(line.slice(range.end))?.[0] ?? '';
+    return ch >= range.start && ch <= range.end + tail.length;
+  });
+}
 
 export function planReferenceInsert(
   text: string,
@@ -115,11 +140,16 @@ export function planReferenceInsert(
     return { offset: headEnd, text: `\n${ref}\n` };
   }
 
-  // Rule 3: cursor on an existing reference -> end of that line.
-  const onReference = findSampleReferenceAt(lines[cursorLine], cursorCol, types);
-  if (onReference) {
-    const line = lines[cursorLine];
-    const lineEnd = lineStart[cursorLine] + line.length;
+  // Rule 3: on a definition line -> the next line; on a reference -> line end.
+  const line = lines[cursorLine];
+  const lineEnd = lineStart[cursorLine] + line.length;
+  if (isDefinitionLine(line, types)) {
+    if (lineEnd < text.length && text[lineEnd] === '\n') {
+      return { offset: lineEnd + 1, text: `${ref}\n` };
+    }
+    return { offset: lineEnd, text: `\n${ref}` };
+  }
+  if (isOnReference(line, cursorCol, types)) {
     const prefix = /\s$/.test(line) ? '' : ' ';
     return { offset: lineEnd, text: `${prefix}${ref}` };
   }

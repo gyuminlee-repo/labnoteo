@@ -31,7 +31,7 @@ export interface UnitOpMeta {
   equipment?: string;
 }
 
-const SW_PLACEHOLDERS = {
+export const SW_PLACEHOLDERS = {
   Input: '- (artifacts/data/models from the previous step)',
   Output: '- (artifacts to pass to the next step: files, datasets, models)',
   Parameters: '- (options, hyperparameters, seed)',
@@ -41,7 +41,7 @@ const SW_PLACEHOLDERS = {
   Discussion: '- (comments for the next step)',
 } as const;
 
-const HW_PLACEHOLDERS = {
+export const HW_PLACEHOLDERS = {
   Input: '- (samples from the previous step)',
   Reagent: '- (e.g. enzyme, buffer, etc.)',
   'Labware and Consumables': '- (e.g. plate, filter, tip, tube, etc.)',

@@ -18,6 +18,7 @@ import {
   defaultWorkflowTitle,
   isCopiedWorkflowFileName,
   suggestCopiedWorkflowFileName,
+  createWorkflowFileName,
 } from '../lib/workflowStructure';
 import { sanitizeTitle } from '../lib/labnoteStructure';
 
@@ -725,5 +726,51 @@ describe('shared path-segment sanitizer', () => {
     expect(sanitizeTitle('M1 – M8')).toBe('M1-M8');
     expect(sanitizeTitle('a -- b')).toBe('a-b');
     expect(sanitizeTitle('- 제목 -')).toBe('제목');
+  });
+
+  // #49: a decimal point between digits keeps its meaning.
+  it('keeps a decimal point between digits', () => {
+    expect(sanitizeTitle('OD600 0.4~0.8 구간 수확')).toBe('OD600_0.4-0.8_구간_수확');
+    expect(sanitizeTitle('37.5°C 배양')).toBe('37.5C_배양');
+    expect(sanitizeTitle('-0.5 mM')).toBe('-0.5_mM');
+    expect(sanitizeWorkflowName('Pipeline v1.2.3')).toBe('Pipeline_v1.2.3');
+    expect(sanitizeTitle('0.5. 다음')).toBe('0.5_다음');
+    expect(sanitizeTitle('.5 단계.')).toBe('5_단계');
+  });
+
+  it('turns a slash or colon between digits into `_` so numbers never fuse', () => {
+    expect(sanitizeTitle('pH 7.0/8.0 비교')).toBe('pH_7.0_8.0_비교');
+    expect(sanitizeTitle('희석 1.5:2.5')).toBe('희석_1.5_2.5');
+    expect(sanitizeTitle('1:10 희석')).toBe('1_10_희석');
+    expect(sanitizeTitle('pH 7/8')).toBe('pH_7_8');
+    expect(sanitizeTitle('2026/10/13 실험')).toBe('2026_10_13_실험');
+    expect(sanitizeTitle('1 / 2')).toBe('1_2');
+    expect(sanitizeTitle('비율 1／2')).toBe('비율_1_2');
+  });
+
+  it('still drops a slash or colon that is not between digits', () => {
+    expect(sanitizeTitle('A/B 테스트')).toBe('AB_테스트');
+    expect(sanitizeTitle('Note: 1')).toBe('Note_1');
+  });
+
+  // #53: the experiment command rejects these titles instead of making `003_`.
+  it('sanitizes a symbols- or emoji-only title to an empty string', () => {
+    expect(sanitizeTitle('***')).toBe('');
+    expect(sanitizeTitle('🧫🧪')).toBe('');
+    expect(sanitizeTitle('(!) ~ ?')).toBe('');
+  });
+});
+
+describe('createWorkflowFileName', () => {
+  const wf = { id: 'WD010', name: 'Design', description: '' };
+
+  it('appends a sanitized alias', () => {
+    expect(createWorkflowFileName('002', wf, '1차 설계')).toBe('002_WD010_Design_1차_설계.labnote.md');
+  });
+
+  // #53: an emoji-only alias used to leave `002_WD010_Design_.labnote.md`.
+  it('drops an alias that sanitizes to nothing', () => {
+    expect(createWorkflowFileName('002', wf, '🧫')).toBe('002_WD010_Design.labnote.md');
+    expect(createWorkflowFileName('002', wf, '  ')).toBe('002_WD010_Design.labnote.md');
   });
 });

@@ -95,7 +95,10 @@ export class WorkflowTreeView extends ItemView {
         item
           .setTitle(this.plugin.t('Create workflow'))
           .setIcon('plus')
-          .onClick(() => void createWorkflowForItem(this.plugin.app, this.plugin.host, wf))
+          .onClick(() => {
+            const { app, host, stampLastUpdated } = this.plugin;
+            void createWorkflowForItem(app, host, wf, stampLastUpdated);
+          })
       );
       menu.showAtMouseEvent(evt);
       return;

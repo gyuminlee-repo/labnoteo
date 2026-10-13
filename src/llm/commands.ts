@@ -8,7 +8,19 @@
  * edits).
  */
 import { Notice } from 'obsidian';
-import { createLabnoteTools, runTool, type ToolContext } from '@labnoteo/core';
+import {
+  createLabnoteTools,
+  runTool,
+  findUnitOpMethodAt,
+  findUnitOpMethodByIndex,
+  extractMethodBody,
+  planBlockInsert,
+  replaceSectionBodyAt,
+  minimalReplacement,
+  type ToolContext,
+  type EditTarget,
+  type UnitOpMethodLocation,
+} from '@labnoteo/core';
 import type LabnotePlugin from '../main';
 import { createLlmProvider, type ChatMessage } from './provider';
 import { runAgent } from './agent';
@@ -54,27 +66,102 @@ async function complete(
   }
 }
 
-/** Draft a Method section from surrounding context and insert it at the cursor. */
+/**
+ * Insert a model reply as its own block after the cursor's line, never
+ * splitting the line (#48), then reveal it and mark the note edited so
+ * `last_updated_date` refreshes. Reads text and cursor now, after the reply
+ * arrived, since the user may have kept typing meanwhile.
+ */
+async function insertBlock(plugin: LabnotePlugin, target: EditTarget, block: string): Promise<void> {
+  if (!target.getCursorOffset) {
+    await target.insertAtCursor(`\n${block}\n`);
+  } else {
+    const plan = planBlockInsert(await target.getText(), await target.getCursorOffset(), block);
+    await target.replaceRange(plan.offset, plan.offset, plan.text);
+    await target.revealOffset?.(plan.offset + plan.text.length);
+  }
+  plugin.markUserEdit(target.path);
+}
+
+/** The model context for one unit operation: the note's head plus that block. */
+function unitOpContext(text: string, loc: UnitOpMethodLocation): string {
+  const lines = text.split('\n');
+  const firstUnitOp = lines.findIndex(l => /^###\s+\[/.test(l));
+  const head = lines.slice(0, firstUnitOp === -1 ? 40 : Math.min(firstUnitOp, 40)).join('\n');
+  const block = lines.slice(loc.unitOpStartLine, loc.unitOpEndLine).join('\n');
+  return `Note front matter and workflow description:\n${head.slice(0, 2000)}\n\nUnit operation:\n${block.slice(0, 4000)}`;
+}
+
+/**
+ * Draft a Method section. Inside a unit operation the draft replaces that unit
+ * operation's `#### Method` body (asking first when the researcher already
+ * wrote one); anywhere else it goes in as a block after the cursor's line.
+ */
 export async function draftMethodCommand(plugin: LabnotePlugin): Promise<void> {
   const target = plugin.host.editTarget();
   if (!target) {
     new Notice(plugin.t('Open a note to insert into.'));
     return;
   }
-  const context = (await target.getText()).slice(0, 6000);
+  const text = await target.getText();
+  const loc = target.getCursorOffset ? findUnitOpMethodAt(text, await target.getCursorOffset()) : null;
+
+  if (loc && !loc.isPlaceholder) {
+    // Ask before the request, not after: the reply can take minutes.
+    if (!createLlmProvider(plugin.settings)) {
+      new Notice(plugin.t('Configure an AI provider in settings first.'));
+      return;
+    }
+    const ok = await plugin.host.confirm(
+      plugin.t('This Method section already has content. Replace it with the AI draft?'),
+      { confirmLabel: plugin.t('Replace') }
+    );
+    if (!ok) return;
+  }
+
+  if (!loc) {
+    const out = await complete(plugin, [
+      {
+        role: 'system',
+        content:
+          'You write concise, reproducible **Method** subsections for a scientific lab notebook. Output GitHub-flavored Markdown only, no preamble or code fences.',
+      },
+      { role: 'user', content: `Draft a Method subsection for this note.\n\nContext:\n${text.slice(0, 6000)}` },
+    ]);
+    if (out) await insertBlock(plugin, target, out);
+    return;
+  }
+
   const out = await complete(plugin, [
     {
       role: 'system',
       content:
-        'You write concise, reproducible **Method** subsections for a scientific lab notebook. Output GitHub-flavored Markdown only, no preamble or code fences.',
+        'You write the body of the **Method** subsection of one unit operation in a scientific lab notebook: concise, reproducible steps. Output only that body as GitHub-flavored Markdown (for example a numbered list) — no headings, no other subsections, no preamble or code fences.',
     },
-    { role: 'user', content: `Draft a Method subsection for this note.\n\nContext:\n${context}` },
+    {
+      role: 'user',
+      content: `Draft the Method body for the unit operation "${loc.unitOpHeading.replace(/^###\s+/, '')}".\n\n${unitOpContext(text, loc)}`,
+    },
   ]);
   if (!out) return;
-  await target.insertAtCursor(out.endsWith('\n') ? out : out + '\n');
+  const body = extractMethodBody(out) || out.trim();
+
+  const latest = await target.getText();
+  const again = findUnitOpMethodByIndex(latest, loc.unitOpIndex, loc.unitOpHeading);
+  if (!again) {
+    new Notice(plugin.t('The unit operation changed while the AI was writing, so the draft was inserted after the cursor line instead.'));
+    await insertBlock(plugin, target, body);
+    return;
+  }
+  const edit = minimalReplacement(latest, replaceSectionBodyAt(latest, again.methodLine, body).md);
+  if (edit) {
+    await target.replaceRange(edit.start, edit.end, edit.text);
+    await target.revealOffset?.(edit.start);
+  }
+  plugin.markUserEdit(target.path);
 }
 
-/** Summarize the current results (selection or whole note) at the cursor. */
+/** Summarize the whole note as a block after the cursor's line. */
 export async function summarizeResultsCommand(plugin: LabnotePlugin): Promise<void> {
   const target = plugin.host.editTarget();
   if (!target) {
@@ -98,7 +185,7 @@ export async function summarizeResultsCommand(plugin: LabnotePlugin): Promise<vo
     { role: 'user', content: `Summarize these results:\n\n${text.slice(0, 6000)}` },
   ]);
   if (!out) return;
-  await target.insertAtCursor(`\n${out}\n`);
+  await insertBlock(plugin, target, out);
 }
 
 interface ExtractedSample {
@@ -236,7 +323,7 @@ export async function askAgentCommand(plugin: LabnotePlugin): Promise<void> {
       new Notice(plugin.t('AI stopped after too many steps.'));
       return;
     }
-    if (run.content) await target.insertAtCursor(`\n${run.content}\n`);
+    if (run.content) await insertBlock(plugin, target, run.content);
     new Notice(plugin.t('AI ran {0} tool call(s).', String(run.executed.length)));
   } catch (err) {
     new Notice(plugin.t('AI request failed: {0}', err instanceof Error ? err.message : String(err)));

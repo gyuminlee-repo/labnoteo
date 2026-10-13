@@ -170,6 +170,15 @@ async function removeLegacyAssets(host: LabnoteHost): Promise<number> {
 }
 
 /**
+ * Whether the vault root is a git repository. The automation lives at the vault
+ * root (`.github/`, `.labnoteo/`), so only a repository rooted there runs it.
+ * `.git` may be a file (worktree) as well as a folder.
+ */
+export async function isVaultGitRepository(host: LabnoteHost): Promise<boolean> {
+  return host.fs.exists('.git');
+}
+
+/**
  * Iterate the scaffold registry and provision each asset into the vault.
  */
 export async function setupResearchAutomationCommand(host: LabnoteHost): Promise<void> {
@@ -195,6 +204,18 @@ export async function setupResearchAutomationCommand(host: LabnoteHost): Promise
       HOOKS_DIR_PATH
     )
   );
+
+  // Without a repository neither the hooks setting nor any push can happen, so
+  // issues and checks stay off until the admin setup links one.
+  if (!(await isVaultGitRepository(host))) {
+    host.notify(
+      'warn',
+      host.t(
+        'This vault is not a git repository yet, so issues and checks will not run. Finish the repository setup in {0}.',
+        SETUP_DOC_PATH
+      )
+    );
+  }
 
   // `.gitignore` merges by appending, so a vault upgraded from an older version
   // keeps the blanket `.claude/` / `.agents/` lines that stop agent skills from

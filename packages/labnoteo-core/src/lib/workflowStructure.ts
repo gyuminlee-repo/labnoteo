@@ -208,7 +208,10 @@ export function createWorkflowFileName(
   alias?: string
 ): string {
   const safeName = sanitizeWorkflowName(workflow.name);
-  const safeAlias = alias && alias.trim() ? `_${sanitizeWorkflowName(alias)}` : '';
+  // An alias made only of symbols/emoji sanitizes to '' — drop it rather than
+  // leave a dangling `_` before the extension.
+  const aliasSegment = alias && alias.trim() ? sanitizeWorkflowName(alias) : '';
+  const safeAlias = aliasSegment ? `_${aliasSegment}` : '';
 
   return `${sequence}_${workflow.id}_${safeName}${safeAlias}.labnote.md`;
 }
