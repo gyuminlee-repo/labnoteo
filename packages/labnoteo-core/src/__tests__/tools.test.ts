@@ -24,6 +24,7 @@ let ctx: ToolContext;
 beforeEach(async () => {
   fs = new MemFileSystem();
   await fs.write(`${NOTE_DIR}/README.labnote.md`, README);
+  await fs.write(NOTE_PATH, '## [WD010 Design]\n');
   ctx = { fs, workspaceRoot: '.', globalSampleFolder: 'resources/labsamples' };
 });
 
@@ -124,6 +125,40 @@ describe('create_sample / get_sample / list_samples', () => {
     const got = await tool('get_sample').handler(ctx, { type: 'RNA', id: 'RNA-1', documentPath: NOTE_PATH });
     expect(got.data).toMatchObject({ location });
   });
+
+  // #58: a mistyped experiment path used to create a stray folder.
+  it('refuses a note that does not exist and writes nothing', async () => {
+    const before = fs.snapshot();
+    const res = await tool('create_sample').handler(ctx, {
+      type: 'Primer',
+      alias: 'typo',
+      documentPath: 'labnote/031_GFP_발현_비교/README.labnote.md',
+    });
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain('Note not found: labnote/031_GFP_발현_비교/README.labnote.md');
+    expect(fs.snapshot()).toEqual(before);
+    expect(await fs.exists('labnote/031_GFP_발현_비교')).toBe(false);
+  });
+
+  it('refuses a folder path, which would store samples in its parent', async () => {
+    const before = fs.snapshot();
+    const res = await tool('create_sample').handler(ctx, { type: 'DNA', documentPath: NOTE_DIR });
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain('Note not found');
+    expect(fs.snapshot()).toEqual(before);
+  });
+
+  it('says a path outside the vault is outside, not missing', async () => {
+    const res = await tool('create_sample').handler(ctx, {
+      type: 'DNA',
+      documentPath: '../../../ESCAPED/README.labnote.md',
+    });
+    expect(res.ok).toBe(false);
+    expect(res.error).toBe('documentPath is outside the vault: ../../../ESCAPED/README.labnote.md');
+
+    const missing = await tool('create_sample').handler(ctx, { type: 'DNA' });
+    expect(missing.error).toBe('type and documentPath are required');
+  });
 });
 
 describe('runTool — unsupported arguments', () => {
@@ -203,6 +238,15 @@ describe('update_section', () => {
     expect(after).toContain('NEW method');
     expect(after).not.toContain('old');
     expect(after).toContain('#### Results');
+  });
+
+  it('says a path outside the vault is outside', async () => {
+    const res = await tool('update_section').handler(ctx, {
+      documentPath: '../x.md',
+      heading: 'Method',
+      content: 'x',
+    });
+    expect(res.error).toBe('documentPath is outside the vault: ../x.md');
   });
 
   it('fails when the section is absent', async () => {
@@ -338,6 +382,30 @@ describe('create_workflow', () => {
       workflowId: 'NOPE999',
     });
     expect(res.ok).toBe(false);
+  });
+
+  // #58: same stray-folder problem as create_sample.
+  it('refuses an experiment folder without a README and writes nothing', async () => {
+    const { loadWorkflows, ensureWorkflowResources } = await import('../lib/workflowDataLoader');
+    await ensureWorkflowResources(fs, '.');
+    const wf = (await loadWorkflows(fs, '.')).workflows[0];
+    const before = fs.snapshot();
+
+    const res = await tool('create_workflow').handler(ctx, {
+      documentPath: 'labnote/031_없는실험/README.labnote.md',
+      workflowId: wf.id,
+    });
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain('Experiment not found: labnote/031_없는실험');
+    expect(fs.snapshot()).toEqual(before);
+  });
+
+  it('says a path outside the vault is outside', async () => {
+    const res = await tool('create_workflow').handler(ctx, {
+      documentPath: '../outside/labnote/001_X/README.labnote.md',
+      workflowId: 'WD010',
+    });
+    expect(res.error).toContain('documentPath is outside the vault');
   });
 });
 

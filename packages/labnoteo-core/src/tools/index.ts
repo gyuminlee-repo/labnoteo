@@ -137,6 +137,15 @@ function safePath(ctx: ToolContext, args: Record<string, unknown>, key: string):
 }
 
 /**
+ * Error for a `documentPath` that {@link safePath} rejected although one was
+ * given, so a client is not told a path it sent is "required".
+ */
+function outsideVaultError(args: Record<string, unknown>, key: string): ToolResult | undefined {
+  const raw = str(args, key);
+  return raw === undefined ? undefined : { ok: false, error: `${key} is outside the vault: ${raw}` };
+}
+
+/**
  * Whether a section's enclosing heading is the one `wanted` names: its full
  * text, or for a unit operation heading `[USW230 Sequence Embedding] alias`,
  * the bracketed text or the id alone. Case-insensitive.
@@ -264,14 +273,32 @@ export function createLabnoteTools(): ToolDef[] {
             description:
               'Storage location, e.g. "Freezer-2 / Box-3 / A1". Omit (or leave empty) to keep the existing one.',
           },
-          documentPath: { type: 'string', description: 'Note the sample belongs to (defines the folder + source).' },
+          documentPath: {
+            type: 'string',
+            description:
+              'Existing note the sample belongs to (defines the folder + source). Nothing is written for a missing note.',
+          },
         },
         required: ['type', 'documentPath'],
       },
       async handler(ctx, args) {
         const type = str(args, 'type');
         const documentPath = safePath(ctx, args, 'documentPath');
+        if (!documentPath) {
+          const outside = outsideVaultError(args, 'documentPath');
+          if (outside) return outside;
+        }
         if (!type || !documentPath) return { ok: false, error: 'type and documentPath are required' };
+        // The samples folder is derived from the note's directory and created on
+        // write, so a mistyped path would leave a stray folder no experiment
+        // owns. A folder path passes `exists` (it is true for folders too) but
+        // would put the samples in its parent, hence the `.md` check.
+        if (!/\.md$/i.test(documentPath) || !(await ctx.fs.exists(documentPath))) {
+          return {
+            ok: false,
+            error: `Note not found: ${documentPath} (documentPath must be an existing note; the sample is stored next to it)`,
+          };
+        }
 
         const folder = getLabsamplesFolder(documentPath);
         const id = str(args, 'id') ?? generateSampleId(type);
@@ -345,6 +372,10 @@ export function createLabnoteTools(): ToolDef[] {
         const documentPath = safePath(ctx, args, 'documentPath');
         const heading = str(args, 'heading');
         const content = typeof args.content === 'string' ? args.content : undefined;
+        if (!documentPath) {
+          const outside = outsideVaultError(args, 'documentPath');
+          if (outside) return outside;
+        }
         if (!documentPath || !heading || content === undefined) {
           return { ok: false, error: 'documentPath, heading and content are required' };
         }
@@ -421,6 +452,10 @@ export function createLabnoteTools(): ToolDef[] {
       async handler(ctx, args) {
         const documentPath = safePath(ctx, args, 'documentPath');
         const workflowId = str(args, 'workflowId');
+        if (!documentPath) {
+          const outside = outsideVaultError(args, 'documentPath');
+          if (outside) return outside;
+        }
         if (!documentPath || !workflowId) {
           return { ok: false, error: 'documentPath and workflowId are required' };
         }
@@ -428,17 +463,19 @@ export function createLabnoteTools(): ToolDef[] {
         if (!labnoteDir) {
           return { ok: false, error: 'documentPath is not inside a labnote/### experiment folder' };
         }
+        // An experiment is its README; without one the write below would
+        // create a stray folder that no experiment view or automation sees.
+        const readmePath = posix.join(labnoteDir, README_NAME);
+        if (!(await ctx.fs.exists(readmePath))) {
+          return { ok: false, error: `Experiment not found: ${labnoteDir} (no ${README_NAME})` };
+        }
 
         await ensureWorkflowResources(ctx.fs, ctx.workspaceRoot);
         const catalog = await loadWorkflows(ctx.fs, ctx.workspaceRoot);
         const wf = catalog.workflows.find(w => w.id === workflowId);
         if (!wf) return { ok: false, error: `Workflow not found: ${workflowId}` };
 
-        const readmePath = posix.join(labnoteDir, README_NAME);
-        let experimenter = '';
-        if (await ctx.fs.exists(readmePath)) {
-          experimenter = parseExperimenterFromReadme(await ctx.fs.read(readmePath));
-        }
+        const experimenter = parseExperimenterFromReadme(await ctx.fs.read(readmePath));
 
         const existingFiles = await ctx.fs.list(labnoteDir);
         const sequence = getNextWorkflowNumber(existingFiles);
@@ -453,16 +490,14 @@ export function createLabnoteTools(): ToolDef[] {
           createWorkflowContent(info, experimenter, undefined, { locale: ctx.locale })
         );
 
-        if (await ctx.fs.exists(readmePath)) {
-          const readme = await ctx.fs.read(readmePath);
-          const items = parseWorkflowChecklistFromReadme(readme);
-          items.push({ done: false, title: `${wf.id} ${wf.name}`, fileName });
-          await writeNote(
-            ctx,
-            readmePath,
-            updateReadmeWorkflowSection(readme, generateWorkflowChecklist(items))
-          );
-        }
+        const readme = await ctx.fs.read(readmePath);
+        const items = parseWorkflowChecklistFromReadme(readme);
+        items.push({ done: false, title: `${wf.id} ${wf.name}`, fileName });
+        await writeNote(
+          ctx,
+          readmePath,
+          updateReadmeWorkflowSection(readme, generateWorkflowChecklist(items))
+        );
 
         return { ok: true, data: { path: workflowPath, fileName } };
       },

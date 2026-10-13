@@ -106,7 +106,8 @@ Codex 백엔드는 Codex CLI와 네이티브 `codex-acp` 어댑터가 모두 필
 2. **Auto-detect**로 잡거나, 안 되면 **`codex-acp.exe`**의 절대 경로를 입력합니다
    (`codex.exe`나 `.cmd` 런처가 아니라 `codex-acp.exe`여야 합니다).
 
-> 수동 설치 시 `@agentclientprotocol/codex-acp` **0.0.45 이상**이 필요합니다. 구
+> 수동 설치 시 `@agentclientprotocol/codex-acp` **2.0.0 이상**이 필요합니다(Copilot 4.0.13부터.
+> Copilot이 관리하는 설치는 자동으로 맞는 버전을 받습니다). 구
 > `@zed-industries/codex-acp` 패키지는 지원되지 않습니다. Codex는 CLI 로그인을 쓰므로
 > Copilot에 키를 넣지 않습니다.
 
@@ -202,6 +203,11 @@ MCP 클라이언트나 로컬 `claude` CLI에 노출합니다. **데스크톱 �
   위치(`parentHeading`, `occurrence`, `total`)를 돌려줍니다.
 - **샘플 보관 위치**: `create_sample`은 보관 위치(`location`)도 받습니다. 생략하거나 비워
   두면 기존 위치를 유지합니다. `list_samples`는 각 샘플의 위치를 함께 돌려줍니다.
+- **없는 경로는 거부**: `create_sample`의 `documentPath`는 이미 있는 노트(`.md`)여야 하고,
+  `create_workflow`의 `documentPath`는 `README.labnote.md`가 있는 실험 폴더 안이어야 합니다.
+  아니면 아무것도 쓰지 않고 `Note not found`/`Experiment not found` 오류를 돌려줍니다.
+  경로를 잘못 적어 실험이 아닌 폴더가 생기는 일을 막기 위해서입니다. 보관함 밖 경로는
+  `documentPath is outside the vault` 오류로 거부합니다.
 - **지원하지 않는 입력**: 툴이 모르는 입력 항목은 무시하되, 결과에 `Warning:`으로 시작하는
   항목을 덧붙여 무엇을 무시했는지와 지원 항목을 알려 줍니다(호출 자체는 실패하지 않음).
 
