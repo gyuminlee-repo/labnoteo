@@ -53,6 +53,7 @@ import {
   insertWorkflowLinkCommand,
   syncReadmeOrderOnRename,
   syncReadmeAndSamplesOnDelete,
+  offerTableCsvCleanupOnDelete,
   setupResearchAutomationCommand,
   type ReadmeSyncControl,
 } from './commands';
@@ -1224,6 +1225,7 @@ export default class LabnotePlugin extends Plugin {
         // sidebar/autocomplete reflect the updated usage.
         this.sampleSuggest?.clearCache();
         this.refreshSampleViews();
+        await offerTableCsvCleanupOnDelete(this.app, this.host, q.deletes);
       }
       if (q.renames.length > 0) {
         await syncReadmeOrderOnRename(this.app, this.host, dir, q.renames);

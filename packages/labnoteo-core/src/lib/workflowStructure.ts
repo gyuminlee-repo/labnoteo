@@ -535,6 +535,18 @@ export function siblingTableCsvs(noteName: string, files: readonly string[]): st
 }
 
 /**
+ * The table CSVs of `noteName` numbered above `tableCount` (#74): left over
+ * from tables the note no longer has. Sorted by table number.
+ */
+export function staleTableCsvs(noteName: string, files: readonly string[], tableCount: number): string[] {
+  const offset = `${tableCsvStem(noteName)}_table`.length;
+  const number = (f: string) => Number(f.slice(offset, -'.csv'.length));
+  return siblingTableCsvs(noteName, files)
+    .filter(f => number(f) > tableCount)
+    .sort((a, b) => number(a) - number(b));
+}
+
+/**
  * The renames that keep a note's table CSVs named after it when the note goes
  * from `fromNote` to `toNote` (#60). Collisions are left to the caller.
  */

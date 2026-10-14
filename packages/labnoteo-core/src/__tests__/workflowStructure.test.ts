@@ -20,6 +20,7 @@ import {
   suggestCopiedWorkflowFileName,
   createWorkflowFileName,
   siblingTableCsvs,
+  staleTableCsvs,
   planTableCsvMoves,
   labelMatchesFileName,
   workflowLabelFor,
@@ -402,6 +403,18 @@ describe('table CSVs of a workflow note', () => {
       '002_WT020_C.labnote_table12.csv',
     ]);
     expect(siblingTableCsvs('002_WT020_(C).labnote.md', ['002_WT020_(C).labnote_table1.csv'])).toHaveLength(1);
+  });
+
+  // #74: a re-export leaves the CSVs of removed tables behind.
+  it('lists the CSVs numbered above the current table count', () => {
+    const more = [...files, '002_WT020_C.labnote_table3.csv', '002_WT020_C.labnote_table2.csv'];
+    expect(staleTableCsvs('002_WT020_C.labnote.md', more, 1)).toEqual([
+      '002_WT020_C.labnote_table2.csv',
+      '002_WT020_C.labnote_table3.csv',
+      '002_WT020_C.labnote_table12.csv',
+    ]);
+    expect(staleTableCsvs('002_WT020_C.labnote.md', more, 12)).toEqual([]);
+    expect(staleTableCsvs('002_WT020_C.labnote.md', more, 0)).toHaveLength(4);
   });
 
   it('plans renames that keep the table number', () => {

@@ -39,12 +39,19 @@ function splitTableRow(line: string): string[] {
     current += ch;
   }
   cells.push(current.trim());
-  return cells;
+  return cells.map(cell => cell.replace(/<br\s*\/?>/gi, '\n'));
+}
+
+/** Fits a data row to the header width the way GFM renders it: extra cells are dropped, missing ones are empty. */
+function fitRow(cells: string[], width: number): string[] {
+  if (cells.length >= width) return cells.slice(0, width);
+  return [...cells, ...Array<string>(width - cells.length).fill('')];
 }
 
 /**
  * Finds every GFM pipe table in `markdown` (header row + `---` separator +
- * zero or more data rows). Tables are matched in document order.
+ * zero or more data rows). Tables are matched in document order. Data rows
+ * are fitted to the header width and `<br>` becomes a newline inside a cell.
  */
 export function extractMarkdownTables(markdown: string): CsvTable[] {
   const lines = markdown.replace(/\r\n/g, '\n').split('\n');
@@ -55,10 +62,11 @@ export function extractMarkdownTables(markdown: string): CsvTable[] {
     const isHeaderLine = lines[i].trim().startsWith('|');
     const nextIsSeparator = i + 1 < lines.length && SEPARATOR_ROW_RE.test(lines[i + 1]);
     if (isHeaderLine && nextIsSeparator) {
-      const rows: string[][] = [splitTableRow(lines[i])];
+      const header = splitTableRow(lines[i]);
+      const rows: string[][] = [header];
       i += 2;
       while (i < lines.length && lines[i].trim().startsWith('|')) {
-        rows.push(splitTableRow(lines[i]));
+        rows.push(fitRow(splitTableRow(lines[i]), header.length));
         i++;
       }
       tables.push({ index: tables.length, rows });

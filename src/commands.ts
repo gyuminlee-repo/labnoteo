@@ -58,6 +58,7 @@ import {
   planWorkflowRenumber,
   planRenumberMoves,
   planTableCsvMoves,
+  siblingTableCsvs,
   planWorkflowChecklistSync,
   removeWorkflowChecklistEntries,
   relabelWorkflowChecklistEntries,
@@ -767,6 +768,77 @@ export async function moveTableCsvs(
     }
   }
   return skipped;
+}
+
+/**
+ * Move the table CSVs `names` (base names in `dir`) to the trash (#74, #75).
+ * Returns how many stayed because the move failed.
+ */
+export async function trashTableCsvs(app: App, dir: string, names: readonly string[]): Promise<number> {
+  let kept = 0;
+  for (const name of names) {
+    const path = posix.join(dir, name);
+    try {
+      const file = app.vault.getFileByPath(path);
+      if (file instanceof TFile) {
+        // `trashFile` (1.6.6+) follows the user's "Deleted files" setting.
+        if (typeof app.fileManager.trashFile === 'function') await app.fileManager.trashFile(file);
+        else await app.vault.trash(file, true);
+      } else if (!(await app.vault.adapter.trashSystem(path))) {
+        // Written through the adapter, a fresh CSV may not be indexed as a TFile yet.
+        await app.vault.adapter.trashLocal(path);
+      }
+    } catch (err) {
+      console.warn('[labnoteo] could not trash table CSV:', err);
+      kept++;
+    }
+  }
+  return kept;
+}
+
+/** One file name per line, the first `max` of them and a count of the rest. */
+export function listFileNames(host: Pick<LabnoteHost, 't'>, names: readonly string[], max = 10): string {
+  const shown = names.slice(0, max).join('\n');
+  return names.length > max ? host.t('{0} (+{1} more)', shown, String(names.length - max)) : shown;
+}
+
+/**
+ * After workflow notes were deleted, offer to trash the table CSVs still named
+ * after them (#75). A note that is back (e.g. restored by git) keeps its CSVs.
+ */
+export async function offerTableCsvCleanupOnDelete(
+  app: App,
+  host: LabnoteHost,
+  deletedPaths: readonly string[]
+): Promise<void> {
+  const byDir = new Map<string, string[]>();
+  const listings = new Map<string, string[]>();
+  for (const p of deletedPaths) {
+    const dir = posix.dirname(p);
+    const files = listings.get(dir) ?? (await host.fs.list(dir));
+    listings.set(dir, files);
+    const note = posix.basename(p);
+    if (files.includes(note)) continue;
+    const found = byDir.get(dir) ?? [];
+    for (const csv of siblingTableCsvs(note, files)) if (!found.includes(csv)) found.push(csv);
+    byDir.set(dir, found);
+  }
+  const all = [...byDir.values()].flat();
+  if (all.length === 0) return;
+
+  const ok = await host.confirm(
+    host.t(
+      'The table CSV files of the deleted note(s) are still in the folder. Move them to the trash?\n\n{0}',
+      listFileNames(host, all)
+    ),
+    { confirmLabel: host.t('Move to trash') }
+  );
+  if (!ok) return;
+
+  let kept = 0;
+  for (const [dir, names] of byDir) kept += await trashTableCsvs(app, dir, names);
+  host.notify('info', host.t('{0} CSV file(s) moved to the trash.', String(all.length - kept)));
+  if (kept > 0) host.notify('warn', host.t('{0} CSV file(s) could not be moved to the trash.', String(kept)));
 }
 
 /**

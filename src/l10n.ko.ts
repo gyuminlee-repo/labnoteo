@@ -133,6 +133,14 @@ const obsidianKo: Record<string, string> = {
     '에이전트 스킬이 커밋되도록 .gitignore에서 다음 줄을 직접 지우세요: {0}',
   'Exported {0} CSV file(s).': 'CSV 파일 {0}개를 내보냈습니다.',
   'No tables found in this note.': '이 노트에서 표를 찾을 수 없습니다.',
+  'These table CSV files no longer match a table in the note. Move them to the trash?\n\n{0}':
+    '다음 표 CSV 파일은 이 노트에 더 이상 해당하는 표가 없습니다. 휴지통으로 옮길까요?\n\n{0}',
+  'The table CSV files of the deleted note(s) are still in the folder. Move them to the trash?\n\n{0}':
+    '삭제한 노트의 표 CSV 파일이 폴더에 남아 있습니다. 휴지통으로 옮길까요?\n\n{0}',
+  'Move to trash': '휴지통으로 옮기기',
+  '{0} CSV file(s) moved to the trash.': 'CSV 파일 {0}개를 휴지통으로 옮겼습니다.',
+  '{0} old CSV file(s) kept.': '이전 CSV 파일 {0}개는 남겨 두었습니다.',
+  '{0} CSV file(s) could not be moved to the trash.': 'CSV 파일 {0}개를 휴지통으로 옮기지 못했습니다.',
   'Command failed: {0}': '명령 실행 실패: {0}',
   'Yes': '예',
   'Workflow created: {0}': '워크플로가 생성되었습니다: {0}',

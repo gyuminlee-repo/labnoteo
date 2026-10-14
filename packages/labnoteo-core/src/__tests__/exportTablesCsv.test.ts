@@ -29,4 +29,27 @@ describe('extractMarkdownTables', () => {
     const md = '| 조성 | 비고 |\n|---|---|\n| M1 | ok |\n';
     expect(extractMarkdownTables(md)).toEqual([{ index: 0, rows: [['조성', '비고'], ['M1', 'ok']] }]);
   });
+
+  // #76: the CSV must match the rendered table.
+  it('drops cells beyond the header width and pads short rows', () => {
+    const md = '| a | b |\n|---|---|\n| 1 | 2 | extra |\n| 3 |\n';
+    expect(extractMarkdownTables(md)[0].rows).toEqual([
+      ['a', 'b'],
+      ['1', '2'],
+      ['3', ''],
+    ]);
+  });
+
+  it('turns <br> variants into a newline inside the cell', () => {
+    const md = '| a |\n|---|\n| x<br>y<br/>z<BR />w |\n';
+    const rows = extractMarkdownTables(md)[0].rows;
+    expect(rows[1]).toEqual(['x\ny\nz\nw']);
+    expect(tableToCsv(rows)).toBe('a\n"x\ny\nz\nw"\n');
+  });
+
+  // #72: an escaped pipe in a sample alias stays inside one cell.
+  it('keeps an escaped pipe as one cell', () => {
+    const md = '| 시료 | 비고 |\n|---|---|\n| Equip-1;DNase \\| 등급 | ok |\n';
+    expect(extractMarkdownTables(md)[0].rows[1]).toEqual(['Equip-1;DNase | 등급', 'ok']);
+  });
 });
