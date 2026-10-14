@@ -6,6 +6,8 @@
  * that the Obsidian build introduces (VS Code delegates LLM to Copilot Chat,
  * Obsidian talks to Ollama/OpenAI directly).
  */
+import { isValidSampleTypeName, suggestSampleTypeName } from '@labnoteo/core/lib/sampleUtils';
+
 export type LlmProviderKind = 'none' | 'ollama' | 'openai';
 
 /**
@@ -65,6 +67,44 @@ export const DEFAULT_SETTINGS: LabnoteSettings = {
   mcpEnabled: false,
   mcpToken: '',
 };
+
+/** {@link partitionCustomSampleTypes} result. */
+export interface CustomSampleTypesInput {
+  /** What to store: valid names, plus invalid ones that were already stored. */
+  save: string[];
+  /** Newly typed names autocompletion cannot read, with a name that works. */
+  rejected: { name: string; suggestion: string }[];
+  /** Invalid names kept from before, so their `{Type}.json` and ids stay linked. */
+  legacyInvalid: string[];
+}
+
+/**
+ * Split the comma-separated "Custom sample types" field (#81). A name that
+ * autocompletion cannot read is not stored when newly typed; one stored by an
+ * older release is kept, because renaming it would orphan its `{Type}.json`
+ * and every id written with it.
+ */
+export function partitionCustomSampleTypes(
+  input: string,
+  previouslySaved: readonly string[]
+): CustomSampleTypesInput {
+  const out: CustomSampleTypesInput = { save: [], rejected: [], legacyInvalid: [] };
+  const names = input
+    .split(',')
+    .map(x => x.trim())
+    .filter(Boolean);
+  for (const name of names) {
+    if (isValidSampleTypeName(name)) {
+      out.save.push(name);
+    } else if (previouslySaved.includes(name)) {
+      out.save.push(name);
+      out.legacyInvalid.push(name);
+    } else {
+      out.rejected.push({ name, suggestion: suggestSampleTypeName(name) });
+    }
+  }
+  return out;
+}
 
 /**
  * Validate + upgrade a raw persisted blob into a well-typed {@link LabnoteSettings}.

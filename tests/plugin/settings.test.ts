@@ -5,7 +5,37 @@
  * and the pre-schema `llmEndpoint` split lands on the right provider field.
  */
 import { describe, it, expect } from 'vitest';
-import { migrateSettings, DEFAULT_SETTINGS, CURRENT_SCHEMA_VERSION } from '../../src/settings';
+import {
+  migrateSettings,
+  partitionCustomSampleTypes,
+  DEFAULT_SETTINGS,
+  CURRENT_SCHEMA_VERSION,
+} from '../../src/settings';
+
+// #81: the field must not accept a type that `@` autocompletion cannot read.
+describe('partitionCustomSampleTypes', () => {
+  it('saves letters, digits and _ (Korean included) and rejects spaces and -', () => {
+    expect(partitionCustomSampleTypes('Cell Line, Strain-A, 배지, Cell_2', [])).toEqual({
+      save: ['배지', 'Cell_2'],
+      rejected: [
+        { name: 'Cell Line', suggestion: 'Cell_Line' },
+        { name: 'Strain-A', suggestion: 'Strain_A' },
+      ],
+      legacyInvalid: [],
+    });
+  });
+
+  it('rejects the autocomplete keywords sample and item', () => {
+    expect(partitionCustomSampleTypes('Sample, item', []).save).toEqual([]);
+  });
+
+  it('keeps an invalid name stored by an older release, so its samples stay linked', () => {
+    const out = partitionCustomSampleTypes('Cell Line, Strain-A', ['Cell Line']);
+    expect(out.save).toEqual(['Cell Line']);
+    expect(out.legacyInvalid).toEqual(['Cell Line']);
+    expect(out.rejected.map(r => r.name)).toEqual(['Strain-A']);
+  });
+});
 
 describe('migrateSettings', () => {
   it('returns the defaults for a missing or non-object blob', () => {

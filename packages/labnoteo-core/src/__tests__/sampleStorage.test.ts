@@ -21,6 +21,8 @@ import {
   removeSourcesForDocument,
   findSampleUsages,
   resolveLocalSampleFolder,
+  planAliasRewrite,
+  applyAliasRewrite,
   type SampleDatabase,
   type SampleRecord,
 } from '../lib/sampleStorage';
@@ -398,6 +400,62 @@ describe('findSampleDefinitionMatch (#37)', () => {
   });
 });
 
+// #86: renaming an alias also fixes the notes that still show the old one.
+describe('planAliasRewrite', () => {
+  const rewrite = (text: string, id: string, from: string, to: string, type = 'DNA') =>
+    applyAliasRewrite(text, planAliasRewrite(text, type, id, from, to));
+
+  it('rewrites a definition and keeps its description', () => {
+    const text = '@dna;DNA-1;old name;원본 플라스미드\n';
+    expect(planAliasRewrite(text, 'DNA', 'DNA-1', 'old name', 'new')[0].kind).toBe('definition');
+    expect(rewrite(text, 'DNA-1', 'old name', 'new')).toBe('@dna;DNA-1;new;원본 플라스미드\n');
+  });
+
+  it('rewrites every definition of the id in the note', () => {
+    expect(rewrite('@dna;DNA-1;old\n본문\n@DNA;DNA-1;old\n', 'DNA-1', 'old', 'new')).toBe(
+      '@dna;DNA-1;new\n본문\n@dna;DNA-1;new\n'
+    );
+  });
+
+  it('replaces only the leading alias of a reference followed by prose', () => {
+    expect(rewrite('DNA-1;pUC 19 를 형질전환했다\n', 'DNA-1', 'pUC 19', 'pUC19-v2')).toBe(
+      'DNA-1;pUC19-v2 를 형질전환했다\n'
+    );
+  });
+
+  it('extends a prefix alias but leaves a reference that only shares the prefix', () => {
+    expect(rewrite('DNA-1;ANC 사용\n', 'DNA-1', 'ANC', 'ANC 튜브')).toBe('DNA-1;ANC 튜브 사용\n');
+    expect(rewrite('DNA-1;ANC 사용\n', 'DNA-1', 'ANC 튜브', 'ANC')).toBe('DNA-1;ANC 사용\n');
+    expect(rewrite('DNA-1;ANCX 사용\n', 'DNA-1', 'ANC', 'B')).toBe('DNA-1;ANCX 사용\n');
+  });
+
+  it('does not double a reference already written with the new alias', () => {
+    expect(rewrite('DNA-1;ANC 튜브 사용\n', 'DNA-1', 'ANC', 'ANC 튜브')).toBe('DNA-1;ANC 튜브 사용\n');
+  });
+
+  it('keeps table cells intact with escaped pipes', () => {
+    const text = '| Equip-1;DNase \\| 등급 | ok |\n| @equip;Equip-1;DNase \\| 등급 | x |\n';
+    expect(rewrite(text, 'Equip-1', 'DNase | 등급', 'DNase | A', 'Equip')).toBe(
+      '| Equip-1;DNase \\| A | ok |\n| @equip;Equip-1;DNase \\| A | x |\n'
+    );
+  });
+
+  it('tells DNA-12 from DNA-12-3 and leaves other aliases alone', () => {
+    const text = 'DNA-12-3;old, DNA-12;old 와 DNA-12;other\n';
+    expect(rewrite(text, 'DNA-12', 'old', 'new')).toBe('DNA-12-3;old, DNA-12;new 와 DNA-12;other\n');
+  });
+
+  it('drops the alias and its ; when the new alias is empty', () => {
+    expect(rewrite('DNA-1;old 를 썼다\n@dna;DNA-1;old;설명\n', 'DNA-1', 'old', '')).toBe(
+      'DNA-1 를 썼다\n@dna;DNA-1;;설명\n'
+    );
+  });
+
+  it('plans nothing when the alias did not change', () => {
+    expect(planAliasRewrite('DNA-1;same\n', 'DNA', 'DNA-1', 'same', 'same')).toEqual([]);
+  });
+});
+
 describe('saveSamplesFromDocument + loadSamplesByType (MemFileSystem round-trip)', () => {
   const DOC = 'labnote/001_Exp/note.labnote.md';
   const FOLDER = 'labnote/001_Exp/resources/labsamples';
@@ -428,6 +486,27 @@ describe('saveSamplesFromDocument + loadSamplesByType (MemFileSystem round-trip)
   it('returns an empty object when the type file does not exist', async () => {
     const fs = new MemFileSystem();
     expect(await loadSamplesByType(fs, FOLDER, 'DNA')).toEqual({});
+  });
+
+  // #82: an experiment that only references Global samples has no local registry.
+  it('creates no local {Type}.json for a reference to a Global sample', async () => {
+    const GLOBAL = 'resources/labsamples';
+    const fs = new MemFileSystem();
+    await upsertSampleRecord(fs, GLOBAL, 'Reagent', 'Reagent-1', { alias: 'PBS', description: null });
+
+    await saveSamplesFromDocument(fs, DOC, 'Reagent-1;PBS 로 세척', GLOBAL);
+    await saveSamplesFromDocument(fs, DOC, '@reagent;Reagent-1;PBS', GLOBAL);
+    await saveSamplesFromDocument(fs, DOC, 'Reagent-404;모르는 시약', GLOBAL);
+
+    expect(await fs.exists(`${FOLDER}/Reagent.json`)).toBe(false);
+  });
+
+  it('still updates an existing local {Type}.json that ends up empty', async () => {
+    const fs = new MemFileSystem();
+    await fs.write(`${FOLDER}/DNA.json`, '{"DNA-1":{"type":"DNA","alias":"a","descriptions":[],"sources":[]}}');
+    await saveSamplesFromDocument(fs, DOC, 'DNA-1;a');
+
+    expect(Object.keys(await loadSamplesByType(fs, FOLDER, 'DNA'))).toEqual(['DNA-1']);
   });
 
   it('normalizes legacy records missing sources/descriptions without throwing', async () => {

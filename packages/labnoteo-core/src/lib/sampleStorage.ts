@@ -6,7 +6,13 @@
 
 import * as path from '../util/posixPath';
 import type { LabnoteFs } from '../fs/labnoteFs';
-import { SAMPLE_TYPES, SampleType, escapeSamplePipes, isCatalogSampleType } from './sampleUtils';
+import {
+  SAMPLE_TYPES,
+  SampleType,
+  buildSampleDefinitionText,
+  escapeSamplePipes,
+  isCatalogSampleType,
+} from './sampleUtils';
 import { escapeRegExp } from './regexUtils';
 import { getExperimentDir, getExperimentLabsamplesFolder } from './labnoteStructure';
 
@@ -427,6 +433,89 @@ export function findSampleDefinitionMatch(
   return null;
 }
 
+/** One replacement planned by {@link planAliasRewrite}, in original-text offsets. */
+export interface AliasRewriteEdit {
+  start: number;
+  end: number;
+  text: string;
+  kind: 'definition' | 'reference';
+}
+
+/**
+ * Plan replacing `oldAlias` with `newAlias` for sample `id` throughout `text`
+ * (#86), scanning with the same matcher as the registry sync so the alias read
+ * there is the alias changed here. Ids must match exactly (`DNA-12` never
+ * touches `DNA-12-3`).
+ *
+ * - An `@type;` definition whose alias is exactly `oldAlias` is rewritten,
+ *   keeping its description. A stale definition would otherwise put the old
+ *   alias back in the registry the next time its note is saved.
+ * - A plain reference's alias runs to the next `;`, `:`, `|` or line end, so it
+ *   may carry the rest of the sentence. Only a leading `oldAlias` followed by
+ *   whitespace or that end is replaced; an empty `newAlias` drops the `;` too,
+ *   leaving the bare id. Anything else is left as written.
+ *
+ * Edits are in document order and do not overlap.
+ */
+export function planAliasRewrite(
+  text: string,
+  type: string,
+  id: string,
+  oldAlias: string,
+  newAlias: string
+): AliasRewriteEdit[] {
+  const edits: AliasRewriteEdit[] = [];
+  const oldEsc = escapeSamplePipes(oldAlias);
+  const newEsc = escapeSamplePipes(newAlias);
+  if (!oldAlias || oldAlias === newAlias) return edits;
+
+  const startsWithAlias = (s: string, alias: string): boolean =>
+    s.startsWith(alias) && (s.length === alias.length || /\s/.test(s[alias.length]));
+
+  const pattern = buildSampleDefinitionPattern(type);
+  let match: RegExpExecArray | null;
+  while ((match = nextSampleMatch(pattern, text, type)) !== null) {
+    if (match[1] !== id || match[2] === undefined) continue;
+    // The alias group starts right after the id and its `;`/`|` delimiter.
+    const delimiter = match.index + match[0].indexOf(match[1]) + match[1].length;
+    const raw = match[2];
+
+    if (match[0].startsWith('@')) {
+      if (unescapeSamplePipes(raw.trim()) !== oldAlias) continue;
+      const body = match[0].trimEnd();
+      const description = match[3] ? unescapeSamplePipes(match[3].trim()) : null;
+      edits.push({
+        start: match.index,
+        end: match.index + body.length,
+        text: buildSampleDefinitionText(type, id, newAlias || null, description),
+        kind: 'definition',
+      });
+      continue;
+    }
+
+    const lead = raw.length - raw.trimStart().length;
+    const rest = raw.slice(lead);
+    if (!startsWithAlias(rest, oldEsc)) continue;
+    if (newAlias && startsWithAlias(rest, newEsc)) continue;
+    const aliasStart = delimiter + 1 + lead;
+    edits.push(
+      newAlias
+        ? { start: aliasStart, end: aliasStart + oldEsc.length, text: newEsc, kind: 'reference' }
+        : { start: delimiter, end: aliasStart + oldEsc.length, text: '', kind: 'reference' }
+    );
+  }
+  return edits;
+}
+
+/** `text` with non-overlapping {@link AliasRewriteEdit}s applied. */
+export function applyAliasRewrite(text: string, edits: readonly AliasRewriteEdit[]): string {
+  let out = text;
+  for (const e of [...edits].sort((a, b) => b.start - a.start)) {
+    out = out.slice(0, e.start) + e.text + out.slice(e.end);
+  }
+  return out;
+}
+
 /**
  * Get the resources/labsamples folder path for a document.
  *
@@ -783,9 +872,7 @@ export async function saveSamplesFromDocument(
       }
     }
 
-    const filePath = path.join(labsamplesFolder, `${type}.json`);
-    await fs.modify(filePath, (raw) => {
-      const existing = parseSampleRecords(raw);
+    const merge = (existing: Record<string, SampleRecord>): Record<string, SampleRecord> => {
       const merged = mergeSampleDatabases(
         { [type]: existing },
         { [type]: newDb[type] },
@@ -798,8 +885,14 @@ export async function saveSamplesFromDocument(
           }
         }
       }
-      return JSON.stringify(merged[type], null, 2);
-    });
+      return merged[type];
+    };
+
+    const filePath = path.join(labsamplesFolder, `${type}.json`);
+    // Referencing only Global or unknown samples adds nothing here; creating
+    // the file anyway left an empty `{}` registry in the experiment (#82).
+    if (!(await fs.exists(filePath)) && Object.keys(merge({})).length === 0) continue;
+    await fs.modify(filePath, (raw) => JSON.stringify(merge(parseSampleRecords(raw)), null, 2));
   }
 }
 

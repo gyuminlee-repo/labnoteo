@@ -7,7 +7,7 @@
  * Pure formatting/ID logic lives in `@labnoteo/core`; this module only wires
  * the modals, persists JSON via the vault fs, and surfaces notices.
  */
-import { App, MarkdownView, Notice } from 'obsidian';
+import { App, MarkdownView, Notice, type Editor } from 'obsidian';
 import { planReferenceInsert, type EditTarget, type PickItem } from '@labnoteo/core';
 import {
   generateSampleId,
@@ -21,12 +21,16 @@ import {
   loadSamplesByType,
   loadReferenceSamplesByType,
   upsertSampleRecord,
+  mergeSampleRecord,
   deleteSampleRecord,
   putSampleRecord,
   getLabsamplesFolder,
   findSampleDefinitionMatch,
   findSampleUsages,
   isSameSampleFolder,
+  planAliasRewrite,
+  applyAliasRewrite,
+  type AliasRewriteEdit,
   type SampleRecord,
 } from '@labnoteo/core/lib/sampleStorage';
 import {
@@ -34,6 +38,7 @@ import {
   getExperimentLabsamplesFolder,
 } from '@labnoteo/core/lib/labnoteStructure';
 import type LabnotePlugin from './main';
+import { processNoteThroughVault } from './commands';
 import { promptModal, confirmModal, pickModal } from './modals';
 
 export type SampleScope = 'local' | 'global';
@@ -106,6 +111,7 @@ export async function createSampleInteractive(
   const { type, folder, mode } = opts;
 
   let id: string;
+  let existing: { folder: string; record: SampleRecord } | undefined;
   if (mode === 'generate') {
     id = generateSampleId(type);
   } else {
@@ -118,26 +124,64 @@ export async function createSampleInteractive(
     });
     if (entered === undefined) return undefined;
     id = normalizeSampleId(type, entered) ?? entered.trim();
+    // Re-entering a known id adds to its record instead of replacing it (#84).
+    existing = await findRegisteredSample(plugin, type, id, folder);
+    if (existing) {
+      new Notice(
+        plugin.t(
+          '{0} already exists. Its current values are filled in, and a new description is added before the earlier ones.',
+          id
+        ),
+        8000
+      );
+    }
   }
 
   const aliasRaw = await promptModal(app, {
-    title: plugin.t('Enter an alias for the new {0} sample (optional)', type),
+    title: existing
+      ? plugin.t('Enter a new alias')
+      : plugin.t('Enter an alias for the new {0} sample (optional)', type),
+    value: existing?.record.alias ?? '',
     placeholder: plugin.t('e.g. Sample-A'),
   });
   if (aliasRaw === undefined) return undefined;
   const descRaw = await promptModal(app, {
     title: plugin.t('Enter a description (optional)'),
+    value: existing?.record.descriptions?.[0] ?? '',
     placeholder: plugin.t('e.g. Sample used in experiment 1'),
   });
   if (descRaw === undefined) return undefined;
   const locationRaw = await promptModal(app, {
     title: plugin.t('Enter a storage location (optional)'),
+    value: existing?.record.location ?? '',
     placeholder: plugin.t('e.g. Freezer-2 / Box-3 / A1'),
   });
   if (locationRaw === undefined) return undefined;
   const alias = clean(aliasRaw);
   const description = clean(descRaw);
   const location = clean(locationRaw);
+
+  if (existing) {
+    // A blank field keeps the stored value, as in the note sync (#73); clearing
+    // or rewriting one is what "Edit sample" is for.
+    await mergeSampleRecord(plugin.fs, existing.folder, type, id, {
+      alias: alias ?? undefined,
+      description: description ?? undefined,
+      location: location ?? undefined,
+    });
+    plugin.refreshSampleViews();
+    new Notice(plugin.t('Sample updated: {0}', id));
+    const merged = (await loadSamplesByType(plugin.fs, existing.folder, type))[id];
+    const mergedAlias = merged?.alias ?? null;
+    const mergedDesc = merged?.descriptions?.[0] ?? null;
+    return {
+      id,
+      alias: mergedAlias,
+      description: mergedDesc,
+      definitionText: buildSampleDefinitionText(type, id, mergedAlias, mergedDesc),
+      referenceText: buildSampleReferenceText(id, mergedAlias),
+    };
+  }
 
   // `sources` is omitted so the record keeps whatever documents already
   // reference it; a tree-created sample legitimately starts with none.
@@ -159,6 +203,27 @@ export async function createSampleInteractive(
     definitionText: buildSampleDefinitionText(type, id, alias, description),
     referenceText: buildSampleReferenceText(id, alias),
   };
+}
+
+/**
+ * The registry record for `id` in `folder`, else in the Global folder, with the
+ * folder it was found in so an update lands there (no Local shadow of a Global
+ * sample).
+ */
+async function findRegisteredSample(
+  plugin: LabnotePlugin,
+  type: string,
+  id: string,
+  folder: string
+): Promise<{ folder: string; record: SampleRecord } | undefined> {
+  const globalFolder = plugin.settings.globalSampleFolder;
+  const folders = [folder];
+  if (globalFolder && !isSameSampleFolder(folder, globalFolder)) folders.push(globalFolder);
+  for (const f of folders) {
+    const record = (await loadSamplesByType(plugin.fs, f, type))[id];
+    if (record) return { folder: f, record };
+  }
+  return undefined;
 }
 
 /**
@@ -264,7 +329,12 @@ export async function editSampleInteractive(
     }
   }
 
-  new Notice(plugin.t('Sample updated: {0}', id));
+  const oldAlias = record.alias?.trim();
+  const rewritten =
+    oldAlias && oldAlias !== (alias ?? '')
+      ? await rewriteStaleAliases(app, plugin, { folder, type, id, oldAlias, newAlias: alias ?? '' })
+      : undefined;
+  new Notice([plugin.t('Sample updated: {0}', id), rewritten].filter(Boolean).join(' '), rewritten ? 8000 : undefined);
   return true;
 }
 
@@ -321,11 +391,28 @@ async function notesReferencingSample(
   type: string,
   id: string
 ): Promise<string[]> {
-  const openText = new Map<string, string>();
+  const docs = await notesInSampleScope(app, folder);
+  return findSampleUsages(docs, type, id, plugin.settings.customSampleTypes);
+}
+
+/** A note's text, from its open editor when it has one. */
+interface ScopedNote {
+  path: string;
+  text: string;
+  editor?: Editor;
+}
+
+/**
+ * The notes a sample in `folder` can be used from: its experiment for a Local
+ * folder, the whole vault for the Global one. An open note is read from its
+ * editor so just-typed, unsaved text counts.
+ */
+async function notesInSampleScope(app: App, folder: string): Promise<ScopedNote[]> {
+  const editors = new Map<string, Editor>();
   for (const leaf of app.workspace.getLeavesOfType('markdown')) {
     const view = leaf.view;
     if (view instanceof MarkdownView && view.file) {
-      openText.set(view.file.path, view.editor.getValue());
+      editors.set(view.file.path, view.editor);
     }
   }
 
@@ -335,12 +422,92 @@ async function notesReferencingSample(
     .getMarkdownFiles()
     .filter(f => !scopePrefix || f.path.startsWith(scopePrefix));
 
-  const docs: Array<{ path: string; text: string }> = [];
+  const docs: ScopedNote[] = [];
   for (const f of files) {
-    const text = openText.get(f.path) ?? (await app.vault.cachedRead(f));
-    docs.push({ path: f.path, text });
+    const editor = editors.get(f.path);
+    const text = editor ? editor.getValue() : await app.vault.cachedRead(f);
+    docs.push({ path: f.path, text, editor });
   }
-  return findSampleUsages(docs, type, id, plugin.settings.customSampleTypes);
+  return docs;
+}
+
+/**
+ * After an alias edit, offer to replace `oldAlias` in the notes that still
+ * show it (#86). A Global sample is skipped in experiments that have a Local
+ * record with the same id, since their notes resolve to that one. Returns the
+ * sentence to add to the "Sample updated" notice, if any.
+ */
+async function rewriteStaleAliases(
+  app: App,
+  plugin: LabnotePlugin,
+  opts: { folder: string; type: string; id: string; oldAlias: string; newAlias: string }
+): Promise<string | undefined> {
+  const { folder, type, id, oldAlias, newAlias } = opts;
+  const isGlobal = !getExperimentDir(folder);
+  const shadowed = new Map<string, boolean>();
+  const planned: Array<ScopedNote & { edits: AliasRewriteEdit[] }> = [];
+  for (const note of await notesInSampleScope(app, folder)) {
+    const edits = planAliasRewrite(note.text, type, id, oldAlias, newAlias);
+    if (edits.length === 0) continue;
+    if (isGlobal) {
+      const local = getExperimentLabsamplesFolder(note.path) ?? getLabsamplesFolder(note.path);
+      if (!isSameSampleFolder(local, folder)) {
+        if (!shadowed.has(local)) {
+          shadowed.set(local, Boolean((await loadSamplesByType(plugin.fs, local, type))[id]));
+        }
+        if (shadowed.get(local)) continue;
+      }
+    }
+    planned.push({ ...note, edits });
+  }
+  if (planned.length === 0) return undefined;
+
+  const shownMax = 8;
+  const lines = planned.slice(0, shownMax).map(n => {
+    const defs = n.edits.filter(e => e.kind === 'definition').length;
+    return `- ${n.path} (${plugin.t('{0} definition(s), {1} reference(s)', String(defs), String(n.edits.length - defs))})`;
+  });
+  if (planned.length > shownMax) lines.push(`(+${planned.length - shownMax})`);
+  const count = String(planned.length);
+  const ok = await confirmModal(
+    app,
+    newAlias
+      ? plugin.t("Replace the old alias '{1}' with '{2}' in {0} note(s)?\n\n{3}", count, oldAlias, newAlias, lines.join('\n'))
+      : plugin.t("Remove the old alias '{1}' from {0} note(s)?\n\n{2}", count, oldAlias, lines.join('\n')),
+    plugin.t('Replace')
+  );
+  if (!ok) {
+    const stale = plugin.t('{0} note(s) still show the old alias.', count);
+    return planned.some(n => n.edits.some(e => e.kind === 'definition'))
+      ? `${stale} ${plugin.t('Saving a note that defines it may bring the old alias back.')}`
+      : stale;
+  }
+
+  let updated = 0;
+  for (const note of planned) {
+    if (note.editor) {
+      // Re-planned on the live text (the user may have typed meanwhile), as
+      // one transaction so a single undo reverts the note.
+      const editor = note.editor;
+      const edits = planAliasRewrite(editor.getValue(), type, id, oldAlias, newAlias);
+      if (edits.length === 0) continue;
+      editor.transaction({
+        changes: edits.map(e => ({
+          from: editor.offsetToPos(e.start),
+          to: editor.offsetToPos(e.end),
+          text: e.text,
+        })),
+      });
+      updated++;
+    } else if (
+      await processNoteThroughVault(app, plugin.host, note.path, content =>
+        applyAliasRewrite(content, planAliasRewrite(content, type, id, oldAlias, newAlias))
+      )
+    ) {
+      updated++;
+    }
+  }
+  return plugin.t('{0} note(s) updated.', String(updated));
 }
 
 /**

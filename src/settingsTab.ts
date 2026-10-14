@@ -6,7 +6,8 @@
  */
 import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
 import type LabnotePlugin from './main';
-import { DEFAULT_SETTINGS, type LlmProviderKind } from './settings';
+import { suggestSampleTypeName } from '@labnoteo/core/lib/sampleUtils';
+import { DEFAULT_SETTINGS, partitionCustomSampleTypes, type LlmProviderKind } from './settings';
 import { openUserGuide } from './userGuide';
 
 export class LabnoteSettingTab extends PluginSettingTab {
@@ -70,25 +71,47 @@ export class LabnoteSettingTab extends PluginSettingTab {
         })
       );
 
-    new Setting(containerEl)
+    // Names stored before validation existed stay usable (#81).
+    const storedTypes = [...s.customSampleTypes];
+    const typesSetting = new Setting(containerEl)
       .setName(this.plugin.t('Custom sample types'))
       .setDesc(
         this.plugin.t(
           'Comma-separated types in addition to the built-ins. Use letters, digits and _ only (no spaces or -), e.g. CellLine, 배지.'
         )
       )
-      .addText(t =>
-        t
-          .setPlaceholder('CellLine, Strain')
+      .addText(t => {
+        t.setPlaceholder('CellLine, Strain')
           .setValue(s.customSampleTypes.join(', '))
           .onChange(v => {
-            s.customSampleTypes = v
-              .split(',')
-              .map(x => x.trim())
-              .filter(Boolean);
+            s.customSampleTypes = partitionCustomSampleTypes(v, storedTypes).save;
             save();
-          })
-      );
+          });
+        t.inputEl.addEventListener('blur', () => {
+          const { rejected } = partitionCustomSampleTypes(t.getValue(), storedTypes);
+          if (rejected.length === 0) return;
+          new Notice(
+            this.plugin.t(
+              '{0}: a space or - keeps a type from autocompleting, so it was not saved. Use {1} instead.',
+              rejected.map(r => r.name).join(', '),
+              rejected.map(r => r.suggestion).join(', ')
+            ),
+            8000
+          );
+          t.setValue(s.customSampleTypes.join(', '));
+        });
+      });
+    const { legacyInvalid } = partitionCustomSampleTypes(s.customSampleTypes.join(','), storedTypes);
+    if (legacyInvalid.length > 0) {
+      typesSetting.descEl.createDiv({
+        cls: 'mod-warning',
+        text: this.plugin.t(
+          '{0} cannot be autocompleted in notes (a space or -). Rename it, e.g. {1}, if you have no samples of it yet.',
+          legacyInvalid.join(', '),
+          legacyInvalid.map(suggestSampleTypeName).join(', ')
+        ),
+      });
+    }
 
     new Setting(containerEl)
       .setName(this.plugin.t('Global sample folder'))

@@ -202,6 +202,8 @@ const obsidianKo: Record<string, string> = {
   'Enter the {0} sample ID': '{0} 샘플 ID를 입력하세요',
   'e.g. {0}-12345': '예: {0}-12345',
   'Invalid ID. Expected {0}-<number>.': '잘못된 ID입니다. {0}-<숫자> 형식이어야 합니다.',
+  '{0} already exists. Its current values are filled in, and a new description is added before the earlier ones.':
+    '{0}은(는) 이미 있습니다. 지금 값이 채워져 있고, 새 설명은 기존 설명 앞에 더해집니다.',
   'Enter an alias for the new {0} sample (optional)': '새 {0} 샘플의 별칭을 입력하세요 (선택)',
   'e.g. Sample-A': '예: Sample-A',
   'Enter a description (optional)': '설명을 입력하세요 (선택)',
@@ -219,6 +221,14 @@ const obsidianKo: Record<string, string> = {
     '이 노트는 실험 폴더 밖에 있어 {0}을(를) 전역 샘플에 추가했습니다.',
   'Sample updated: {0}': '샘플이 수정되었습니다: {0}',
   'Sample deleted: {0}': '샘플이 삭제되었습니다: {0}',
+  "Replace the old alias '{1}' with '{2}' in {0} note(s)?\n\n{3}":
+    "노트 {0}개에 남은 옛 별칭 '{1}'을(를) '{2}'(으)로 바꿀까요?\n\n{3}",
+  "Remove the old alias '{1}' from {0} note(s)?\n\n{2}":
+    "노트 {0}개에 남은 옛 별칭 '{1}'을(를) 지울까요?\n\n{2}",
+  '{0} definition(s), {1} reference(s)': '정의 {0}개, 참조 {1}개',
+  '{0} note(s) still show the old alias.': '노트 {0}개에 옛 별칭이 남아 있습니다.',
+  'Saving a note that defines it may bring the old alias back.':
+    '옛 별칭으로 정의한 노트를 저장하면 별칭이 되돌아갈 수 있습니다.',
   '{0} is still used in notes ({1}). Remove it from the note(s) first, then delete.':
     '{0}은(는) 본문에서 사용 중이라 삭제할 수 없습니다 ({1}). 본문에서 먼저 지운 뒤 다시 삭제하세요.',
   '{0} (+{1} more)': '{0} 외 {1}개',
@@ -243,6 +253,10 @@ const obsidianKo: Record<string, string> = {
   'Custom sample types': '사용자 정의 샘플 타입',
   'Comma-separated types in addition to the built-ins. Use letters, digits and _ only (no spaces or -), e.g. CellLine, 배지.':
     '기본 제공 타입 외에 추가할 타입을 쉼표로 구분해 입력합니다. 글자·숫자·_만 쓰세요(공백·- 불가). 예: CellLine, 배지',
+  '{0}: a space or - keeps a type from autocompleting, so it was not saved. Use {1} instead.':
+    '{0}: 공백이나 -가 들어간 타입은 자동완성되지 않아 저장하지 않았습니다. 대신 {1}처럼 쓰세요.',
+  '{0} cannot be autocompleted in notes (a space or -). Rename it, e.g. {1}, if you have no samples of it yet.':
+    '{0}은(는) 공백이나 -가 있어 노트에서 자동완성되지 않습니다. 아직 그 타입의 샘플이 없다면 {1}처럼 이름을 바꾸세요.',
   'Global sample folder': '전역 샘플 폴더',
   'Vault-relative folder for vault-global samples.':
     '볼트 전역 샘플을 저장할 볼트 기준 상대 폴더입니다.',

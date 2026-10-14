@@ -46,6 +46,23 @@ export function canonicalSampleType(type: string, types: readonly string[]): str
   return types.find(t => t.toLowerCase() === lower);
 }
 
+/** `@sample` and `@item` are autocomplete keywords, never a type of their own. */
+const RESERVED_SAMPLE_TYPE_NAMES = ['sample', 'item'];
+
+/**
+ * Whether `name` works as a custom sample type. `@type;` autocompletion reads
+ * only letters, digits and `_` (see `parseSampleTrigger`), so a type with a
+ * space or `-` is listed everywhere but never completes in a note (#81).
+ */
+export function isValidSampleTypeName(name: string): boolean {
+  return /^[\p{L}\p{N}_]+$/u.test(name) && !RESERVED_SAMPLE_TYPE_NAMES.includes(name.toLowerCase());
+}
+
+/** `name` with each run of other characters turned into `_` (`Cell Line` → `Cell_Line`). */
+export function suggestSampleTypeName(name: string): string {
+  return name.replace(/[^\p{L}\p{N}_]+/gu, '_').replace(/^_+|_+$/g, '');
+}
+
 /**
  * Escape every `|` not already written as `\|`. A bare pipe splits a Markdown
  * table cell and ends a sample field, while `\|` renders as `|` and is read
