@@ -182,3 +182,68 @@ describe('renumberWorkflowsCommand with unlisted files (#56)', () => {
     expect(h.calls.at(-1)).toBe('notify Added 1 workflow file(s) to the README checklist.');
   });
 });
+
+// #60: "Export tables to CSV" names files after the note, so they must follow it.
+describe('renumberWorkflowsCommand with table CSVs (#60)', () => {
+  const csv = (note: string, n: number) => note.replace(/\.md$/, `_table${n}.csv`);
+
+  it('moves each note\'s CSVs with it', async () => {
+    const h = harness({ relink: false });
+    await h.fs.write(`${DIR}/${csv(C_OLD, 1)}`, 'x');
+    await h.fs.write(`${DIR}/${csv(C_OLD, 2)}`, 'y');
+    await h.fs.write(`${DIR}/${csv(A, 1)}`, 'a');
+
+    await renumberWorkflowsCommand(h.app, h.host, h.sync);
+
+    expect((await h.fs.list(DIR)).sort()).toEqual(
+      [A, csv(A, 1), C_NEW, csv(C_NEW, 1), csv(C_NEW, 2), 'README.labnote.md'].sort()
+    );
+    expect(await h.fs.read(`${DIR}/${csv(C_NEW, 2)}`)).toBe('y');
+  });
+
+  it('follows a note through its staging name when two notes trade places', async () => {
+    const h = harness({ relink: false });
+    const B1 = '001_WB030_B.labnote.md';
+    const D1 = '001_WD070_A.labnote.md';
+    const D2 = '002_WD070_A.labnote.md';
+    await h.fs.remove(`${DIR}/${C_OLD}`);
+    await h.fs.write(`${DIR}/${B1}`, 'b');
+    await h.fs.write(`${DIR}/${D2}`, 'second');
+    await h.fs.write(`${DIR}/${csv(D1, 1)}`, 'first-csv');
+    await h.fs.write(`${DIR}/${csv(D2, 1)}`, 'second-csv');
+
+    await renumberWorkflowsCommand(h.app, h.host, h.sync);
+
+    expect(await h.fs.read(`${DIR}/${D2}`)).toBe('a');
+    expect(await h.fs.read(`${DIR}/${csv(D2, 1)}`)).toBe('first-csv');
+    expect(await h.fs.read(`${DIR}/003_WD070_A.labnote.md`)).toBe('second');
+    expect(await h.fs.read(`${DIR}/${csv('003_WD070_A.labnote.md', 1)}`)).toBe('second-csv');
+    expect((await h.fs.list(DIR)).some(n => n.includes('staging'))).toBe(false);
+  });
+
+  it('leaves a CSV whose new name is taken and says so', async () => {
+    const h = harness({ relink: false });
+    await h.fs.write(`${DIR}/${csv(C_OLD, 1)}`, 'mine');
+    await h.fs.write(`${DIR}/${csv(C_NEW, 1)}`, 'stale');
+
+    await renumberWorkflowsCommand(h.app, h.host, h.sync);
+
+    expect(await h.fs.read(`${DIR}/${csv(C_OLD, 1)}`)).toBe('mine');
+    expect(await h.fs.read(`${DIR}/${csv(C_NEW, 1)}`)).toBe('stale');
+    expect(await h.fs.exists(`${DIR}/${C_NEW}`)).toBe(true);
+    expect(h.calls.at(-1)).toBe(
+      'notify 1 table CSV file(s) kept their old name: the new name was taken or the rename failed.'
+    );
+  });
+
+  it('keeps renumbering when a CSV rename fails', async () => {
+    const h = harness({ relink: false, failOn: csv(C_NEW, 1) });
+    await h.fs.write(`${DIR}/${csv(C_OLD, 1)}`, 'x');
+
+    await renumberWorkflowsCommand(h.app, h.host, h.sync);
+
+    expect(await h.fs.exists(`${DIR}/${C_NEW}`)).toBe(true);
+    expect(await h.fs.exists(`${DIR}/${csv(C_OLD, 1)}`)).toBe(true);
+    expect(links(await h.fs.read(README))).toEqual([A, C_NEW]);
+  });
+});

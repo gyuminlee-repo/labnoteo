@@ -36,6 +36,46 @@ export function getExperimentDir(p: string): string | undefined {
   return parts.slice(0, idx + 2).join('/');
 }
 
+/** {@link diagnoseExperimentPath} result. */
+export type ExperimentPathDiagnosis =
+  /** Inside an experiment; `folder` is its `labnote/###_Name` folder. */
+  | { kind: 'ok'; folder: string }
+  /** Not under a `labnote/` folder at all, or a file directly in `labnote/`. */
+  | { kind: 'outside' }
+  /** In (or is) a folder directly under `labnote/` whose name lacks the `###_` prefix (#67). */
+  | { kind: 'noPrefix'; folder: string };
+
+/**
+ * Why `p` is or is not inside an experiment, using the same path rules as
+ * {@link getExperimentDir}. Tells "no experiment here" apart from "an
+ * experiment folder that lost its number", which commands report differently.
+ * With `isFolder`, `p` itself may be the folder under `labnote/`; otherwise
+ * `p` is a file and needs a folder between it and `labnote/`, so
+ * `labnote/README.md` stays `outside`.
+ */
+export function diagnoseExperimentPath(p: string, opts: { isFolder?: boolean } = {}): ExperimentPathDiagnosis {
+  const folder = getExperimentDir(p);
+  if (folder) return { kind: 'ok', folder };
+  const parts = path.normalize(p).split('/');
+  const idx = parts.lastIndexOf('labnote');
+  if (idx === -1) return { kind: 'outside' };
+  const minLength = opts.isFolder ? idx + 2 : idx + 3;
+  if (parts.length < minLength || parts[idx + 1] === '') return { kind: 'outside' };
+  return { kind: 'noPrefix', folder: parts.slice(0, idx + 2).join('/') };
+}
+
+/**
+ * The name to give an experiment folder that lost its `###_` prefix: the old
+ * folder's number in front of the new name, without any leading digits or `_`
+ * left in it (`020_GFP` renamed to `GFP_v2` → `020_GFP_v2`). Undefined when
+ * the old name had no number or nothing is left of the new one.
+ */
+export function suggestExperimentFolderName(oldName: string, newName: string): string | undefined {
+  const num = /^(\d{3})_/.exec(oldName)?.[1];
+  const rest = newName.replace(/^[\d_\s]+/, '');
+  return num && rest ? `${num}_${rest}` : undefined;
+}
+
 /**
  * The `resources/labsamples` folder for the experiment that `p` belongs to, or
  * undefined when `p` is not inside a `labnote/###_*` experiment.

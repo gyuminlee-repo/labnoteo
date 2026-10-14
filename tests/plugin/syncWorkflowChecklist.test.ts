@@ -12,6 +12,7 @@ import { parseWorkflowChecklistFromReadme } from '../../packages/labnoteo-core/s
 import {
   addWorkflowFileToChecklist,
   syncWorkflowChecklistCommand,
+  syncReadmeOrderOnRename,
   type ReadmeSyncControl,
 } from '../../src/commands';
 
@@ -126,6 +127,50 @@ describe('syncWorkflowChecklistCommand', () => {
       `WD030 Design -> ${COPY}`,
     ]);
     expect(await addWorkflowFileToChecklist(h.app, h.host, DIR, COPY)).toBe(false);
+  });
+
+  // #68: a label left behind by a rename is fixed only after asking.
+  describe('labels that no longer match their file', () => {
+    const RENAMED = '002_WD030_Design_2차.labnote.md';
+    const files = {
+      [README]: readme([`- [ ] [WD030 Design](./${RENAMED})`]),
+      [`${DIR}/${RENAMED}`]: '---\ntitle: WD030 Design\n---\n\n## [WD030 Design]\n',
+    };
+
+    it('asks, showing old and new label, and applies on yes', async () => {
+      const h = harness(files, true);
+      await syncWorkflowChecklistCommand(h.app, h.host, h.sync, DIR);
+      expect(h.prompts[0]).toContain('- WD030 Design → WD030 Design 2차');
+      expect(links(await h.fs.read(README))).toEqual([`WD030 Design 2차 -> ${RENAMED}`]);
+      expect(h.calls.at(-1)).toBe('notify Workflow checklist updated: 0 added, 0 removed. 1 label(s) updated.');
+    });
+
+    it('changes nothing on no', async () => {
+      const h = harness(files, false);
+      await syncWorkflowChecklistCommand(h.app, h.host, h.sync, DIR);
+      expect(await h.fs.read(README)).toBe(files[README]);
+      expect(h.calls.at(-1)).toBe('notify No changes made.');
+    });
+  });
+
+  it('relabels on rename only the labels that matched the old name (#68)', async () => {
+    const OLD = '002_WD030_Design.labnote.md';
+    const NEW = '002_WD030_Design_2차.labnote.md';
+    const OTHER_OLD = '003_WT020_X.labnote.md';
+    const OTHER_NEW = '003_WT020_X_v2.labnote.md';
+    const h = harness(
+      {
+        [README]: readme([`- [ ] [WD030 Design](./${OLD})`, `- [ ] [내 라벨](./${OTHER_OLD})`]),
+        [`${DIR}/${NEW}`]: '---\ntitle: WD030 Design\n---\n\n## [WD030 Design]\n',
+        [`${DIR}/${OTHER_NEW}`]: 'x',
+      },
+      true
+    );
+    await syncReadmeOrderOnRename(h.app, h.host, DIR, [
+      { from: OLD, to: NEW },
+      { from: OTHER_OLD, to: OTHER_NEW },
+    ]);
+    expect(links(await h.fs.read(README))).toEqual([`WD030 Design 2차 -> ${NEW}`, `내 라벨 -> ${OTHER_NEW}`]);
   });
 
   it('warns when the README has no Related Workflows section', async () => {

@@ -19,6 +19,13 @@ import {
   isCopiedWorkflowFileName,
   suggestCopiedWorkflowFileName,
   createWorkflowFileName,
+  siblingTableCsvs,
+  planTableCsvMoves,
+  labelMatchesFileName,
+  workflowLabelFor,
+  rewriteWorkflowTitle,
+  parseWorkflowHeading,
+  relabelWorkflowChecklistEntries,
 } from '../lib/workflowStructure';
 import { sanitizeTitle } from '../lib/labnoteStructure';
 
@@ -373,6 +380,154 @@ describe('planRenumberMoves', () => {
   it('plans nothing for an already sequential folder', () => {
     const names = ['001_WD010_A.labnote.md', '002_WD010_B.labnote.md'];
     expect(planRenumberMoves(planWorkflowRenumber(names), names)).toEqual([]);
+  });
+});
+
+// #60: exported tables are named after their note.
+describe('table CSVs of a workflow note', () => {
+  const files = [
+    '002_WT020_C.labnote.md',
+    '002_WT020_C.labnote_table1.csv',
+    '002_WT020_C.labnote_table12.csv',
+    '002_WT020_C_2.labnote_table1.csv',
+    '002_WT020_C.labnote_table.csv',
+    '002_WT020_C.labnote_table1.csv.bak',
+  ];
+
+  it('finds only that note\'s _tableN.csv files', () => {
+    expect(siblingTableCsvs('002_WT020_C.labnote.md', files)).toEqual([
+      '002_WT020_C.labnote_table1.csv',
+      '002_WT020_C.labnote_table12.csv',
+    ]);
+    expect(siblingTableCsvs('002_WT020_(C).labnote.md', ['002_WT020_(C).labnote_table1.csv'])).toHaveLength(1);
+  });
+
+  it('plans renames that keep the table number', () => {
+    expect(planTableCsvMoves('002_WT020_C.labnote.md', '001_WT020_C.labnote.md', files)).toEqual([
+      { from: '002_WT020_C.labnote_table1.csv', to: '001_WT020_C.labnote_table1.csv' },
+      { from: '002_WT020_C.labnote_table12.csv', to: '001_WT020_C.labnote_table12.csv' },
+    ]);
+  });
+});
+
+describe('labelMatchesFileName', () => {
+  it('compares label and file name through the path sanitizer', () => {
+    expect(labelMatchesFileName('WD030 Design', '003_WD030_Design.labnote.md')).toBe(true);
+    expect(labelMatchesFileName('WT020 Protein/Enzyme Expression', '002_WT020_ProteinEnzyme_Expression.labnote.md')).toBe(true);
+    expect(labelMatchesFileName('WT020 M1 – M8', '002_WT020_M1-M8.labnote.md')).toBe(true);
+    expect(labelMatchesFileName('WT020 M1 M8', '002_WT020_M1-M8.labnote.md')).toBe(false);
+    expect(labelMatchesFileName('WD030 Design 2차', '003_WD030_Design.labnote.md')).toBe(false);
+    expect(labelMatchesFileName('My own label', '003_WD030_Design.labnote.md')).toBe(false);
+    expect(labelMatchesFileName('WD030 Design', 'notes.md')).toBe(false);
+  });
+});
+
+describe('workflowLabelFor', () => {
+  const FILE = '002_WT020_ProteinEnzyme_Expression_2차_발현.labnote.md';
+  const h2 = '## [WT020 Protein/Enzyme Expression] 2차 발현\n';
+
+  it('takes the front-matter title when it matches the file name', () => {
+    const note = `---\ntitle: 'WT020 Protein/Enzyme Expression 2차: 발현'\n---\n\n${h2}`;
+    expect(workflowLabelFor(FILE, note)).toBe('WT020 Protein/Enzyme Expression 2차: 발현');
+  });
+
+  it('builds catalog name + alias from the heading when the title is stale', () => {
+    const note = `---\ntitle: WT020 Protein/Enzyme Expression 1차\n---\n\n${h2}`;
+    expect(workflowLabelFor(FILE, note)).toBe('WT020 Protein/Enzyme Expression 2차 발현');
+    expect(workflowLabelFor('002_WT020_ProteinEnzyme_Expression.labnote.md', note)).toBe(
+      'WT020 Protein/Enzyme Expression'
+    );
+  });
+
+  it('falls back to the file name without a usable heading', () => {
+    expect(workflowLabelFor(FILE, 'no front matter')).toBe('WT020 ProteinEnzyme Expression 2차 발현');
+    expect(workflowLabelFor(FILE, '## [WD010 Design]\n')).toBe('WT020 ProteinEnzyme Expression 2차 발현');
+    expect(workflowLabelFor(FILE)).toBe('WT020 ProteinEnzyme Expression 2차 발현');
+  });
+});
+
+describe('rewriteWorkflowTitle', () => {
+  const note = [
+    '---',
+    'title: WT020 Protein/Enzyme Expression 1차',
+    'experimenter: Kim',
+    '---',
+    '',
+    '## [WT020 Protein/Enzyme Expression] 1차',
+    '',
+    '> desc',
+    '',
+    '### [UHW100 PCR] 1차',
+  ].join('\n');
+
+  it('changes only the title line and the workflow heading', () => {
+    expect(rewriteWorkflowTitle(note, 'WT020', 'Protein/Enzyme Expression', '2차: 재시도')).toBe(
+      note
+        .replace('title: WT020 Protein/Enzyme Expression 1차', "title: 'WT020 Protein/Enzyme Expression 2차: 재시도'")
+        .replace('## [WT020 Protein/Enzyme Expression] 1차', '## [WT020 Protein/Enzyme Expression] 2차: 재시도')
+    );
+  });
+
+  it('drops the alias when it is empty', () => {
+    const out = rewriteWorkflowTitle(note, 'WT020', 'Protein/Enzyme Expression', ' ');
+    expect(out).toContain('\ntitle: WT020 Protein/Enzyme Expression\n');
+    expect(out).toContain('\n## [WT020 Protein/Enzyme Expression]\n');
+    expect(out).toContain('### [UHW100 PCR] 1차');
+    expect(parseWorkflowHeading(out)).toEqual({ id: 'WT020', name: 'Protein/Enzyme Expression', alias: '' });
+  });
+});
+
+// #68: labels followed only the first registration.
+describe('reconcileWorkflowChecklist with labelFor', () => {
+  const OLD = '002_WD030_Design.labnote.md';
+  const NEW = '002_WD030_Design_2차.labnote.md';
+  const labelFor = (name: string) => (name === NEW ? 'WD030 Design 2차' : defaultWorkflowTitle(name));
+  const labels = (md: string) => parseWorkflowChecklistFromReadme(md).map(i => `${i.title}:${i.fileName}`);
+
+  it('relabels an entry whose label matched the old name, whether or not the link was updated', () => {
+    for (const link of [`./${OLD}`, NEW]) {
+      const res = reconcileWorkflowChecklist(readmeWith([`- [ ] [WD030 Design](${link})`]), [{ from: OLD, to: NEW }], {
+        labelFor,
+      });
+      expect(labels(res.content)).toEqual([`WD030 Design 2차:${NEW}`]);
+    }
+  });
+
+  it('keeps a label written by hand', () => {
+    const res = reconcileWorkflowChecklist(readmeWith([`- [ ] [디자인 첫 실험](./${OLD})`]), [{ from: OLD, to: NEW }], {
+      labelFor,
+    });
+    expect(labels(res.content)).toEqual([`디자인 첫 실험:${NEW}`]);
+  });
+
+  it('leaves labels alone without labelFor', () => {
+    const res = reconcileWorkflowChecklist(readmeWith([`- [ ] [WD030 Design](./${OLD})`]), [{ from: OLD, to: NEW }]);
+    expect(labels(res.content)).toEqual([`WD030 Design:${NEW}`]);
+  });
+});
+
+describe('planWorkflowChecklistSync relabel', () => {
+  const md = readmeWith([
+    '- [ ] [WD030 Design](./002_WD030_Design_2차.labnote.md)',
+    '- [ ] [WT020 ProteinEnzyme Expression](./003_WT020_ProteinEnzyme_Expression.labnote.md)',
+  ]);
+  const names = ['002_WD030_Design_2차.labnote.md', '003_WT020_ProteinEnzyme_Expression.labnote.md'];
+  const titles = new Map([
+    ['002_WD030_Design_2차.labnote.md', 'WD030 Design 2차'],
+    ['003_WT020_ProteinEnzyme_Expression.labnote.md', 'WT020 Protein/Enzyme Expression'],
+  ]);
+
+  it('reports labels that do not match their file, without changing content', () => {
+    const plan = planWorkflowChecklistSync(md, names, titles);
+    expect(plan.relabel).toEqual([
+      { fileName: '002_WD030_Design_2차.labnote.md', from: 'WD030 Design', to: 'WD030 Design 2차' },
+    ]);
+    expect(plan.content).toBe(md);
+  });
+
+  it('applies the relabels to matching entries only', () => {
+    const out = relabelWorkflowChecklistEntries(md, planWorkflowChecklistSync(md, names, titles).relabel);
+    expect(out).toBe(md.replace('[WD030 Design](', '[WD030 Design 2차]('));
   });
 });
 

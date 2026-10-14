@@ -13,6 +13,48 @@ import {
 } from '../lib/labnoteStructure';
 import { parseFrontMatterYaml } from '../sections/frontMatter';
 import { isValidStatus } from '../lib/experimentStatus';
+import { diagnoseExperimentPath, suggestExperimentFolderName } from '../lib/labnoteStructure';
+
+// #67: an experiment folder renamed without its number left every command
+// saying only "Open a lab note first."
+describe('diagnoseExperimentPath', () => {
+  it('reports the experiment folder of a path inside one', () => {
+    expect(diagnoseExperimentPath('labnote/020_GFP/README.labnote.md')).toEqual({
+      kind: 'ok',
+      folder: 'labnote/020_GFP',
+    });
+    expect(diagnoseExperimentPath('labnote/020_GFP', { isFolder: true })).toEqual({
+      kind: 'ok',
+      folder: 'labnote/020_GFP',
+    });
+  });
+
+  it('spots a folder under labnote/ without the ###_ prefix', () => {
+    expect(diagnoseExperimentPath('labnote/GFP/README.labnote.md')).toEqual({ kind: 'noPrefix', folder: 'labnote/GFP' });
+    expect(diagnoseExperimentPath('labnote/GFP/sub/x.md')).toEqual({ kind: 'noPrefix', folder: 'labnote/GFP' });
+    expect(diagnoseExperimentPath('labnote/GFP', { isFolder: true })).toEqual({ kind: 'noPrefix', folder: 'labnote/GFP' });
+  });
+
+  it('keeps files directly in labnote/ and paths outside it as outside', () => {
+    expect(diagnoseExperimentPath('labnote/README.md')).toEqual({ kind: 'outside' });
+    expect(diagnoseExperimentPath('Welcome.md')).toEqual({ kind: 'outside' });
+    expect(diagnoseExperimentPath('notes/GFP/x.md')).toEqual({ kind: 'outside' });
+    expect(diagnoseExperimentPath('labnote', { isFolder: true })).toEqual({ kind: 'outside' });
+  });
+});
+
+describe('suggestExperimentFolderName', () => {
+  it('puts the old number back in front of the new name', () => {
+    expect(suggestExperimentFolderName('020_GFP', 'GFP_v2')).toBe('020_GFP_v2');
+    expect(suggestExperimentFolderName('020_GFP', '20GFP')).toBe('020_GFP');
+    expect(suggestExperimentFolderName('020_GFP', '_GFP 발현')).toBe('020_GFP 발현');
+  });
+
+  it('gives up without an old number or a name left', () => {
+    expect(suggestExperimentFolderName('GFP', 'GFP2')).toBeUndefined();
+    expect(suggestExperimentFolderName('020_GFP', '020')).toBeUndefined();
+  });
+});
 
 describe('getExperimentDir', () => {
   it('extracts the experiment folder from a note inside it', () => {

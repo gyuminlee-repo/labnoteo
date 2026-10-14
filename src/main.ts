@@ -9,7 +9,12 @@
  */
 import { Plugin, Notice, TFile, TFolder, editorInfoField } from 'obsidian';
 import type { LabnoteHost, Translator } from '@labnoteo/core';
-import { findSampleReferenceAt, rebuildUnitOpToc, minimalReplacement } from '@labnoteo/core';
+import {
+  findSampleReferenceAt,
+  rebuildUnitOpToc,
+  minimalReplacement,
+  parseFrontMatterYaml,
+} from '@labnoteo/core';
 import {
   getSeoulDateString,
   getSeoulDateTimeString,
@@ -18,10 +23,15 @@ import {
 import { getSampleDisplayMeta, isCatalogSampleType } from '@labnoteo/core/lib/sampleUtils';
 import {
   classifyWorkflowRename,
+  createWorkflowFileName,
   isCopiedWorkflowFileName,
   isValidWorkflowPath,
+  parseWorkflowFileName,
+  parseWorkflowHeading,
   planWorkflowChecklistSync,
+  rewriteWorkflowTitle,
   suggestCopiedWorkflowFileName,
+  type WorkflowHeading,
 } from '@labnoteo/core/lib/workflowStructure';
 import { saveSamplesFromDocument, getLabsamplesFolder } from '@labnoteo/core/lib/sampleStorage';
 import { VaultFileSystem } from './vaultFileSystem';
@@ -37,6 +47,7 @@ import {
   renumberWorkflowsCommand,
   syncWorkflowChecklistCommand,
   addWorkflowFileToChecklist,
+  moveTableCsvs,
   insertUnitOperationCommand,
   insertWorkflowLinkCommand,
   syncReadmeOrderOnRename,
@@ -45,10 +56,14 @@ import {
   type ReadmeSyncControl,
 } from './commands';
 import * as posix from '@labnoteo/core/posix';
-import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
+import {
+  diagnoseExperimentPath,
+  getExperimentDir,
+  suggestExperimentFolderName,
+} from '@labnoteo/core/lib/labnoteStructure';
 import { SampleEditorSuggest } from './sampleSuggest';
 import { openSampleDefinition } from './sampleDefinitionModal';
-import { pickModal } from './modals';
+import { pickModal, workflowAliasModal } from './modals';
 import { createSampleInteractive, pickCatalogReference, insertSampleReference } from './sampleActions';
 import {
   createSampleHighlightPlugin,
@@ -510,6 +525,7 @@ export default class LabnotePlugin extends Plugin {
         type,
         folder: this.localSampleFolder(),
         mode: 'generate',
+        scope: 'local',
       });
       referenceText = created?.referenceText;
     }
@@ -541,6 +557,10 @@ export default class LabnotePlugin extends Plugin {
   private registerWorkflowReadmeSync(): void {
     this.registerEvent(
       this.app.vault.on('rename', (file, oldPath) => {
+        if (file instanceof TFolder) {
+          this.onFolderRenamed(file, oldPath);
+          return;
+        }
         if (!(file instanceof TFile)) return;
         const newPath = file.path;
         if (this.copiedWorkflows.delete(oldPath)) {
@@ -560,6 +580,11 @@ export default class LabnotePlugin extends Plugin {
           case 'restored':
             this.queueReadmeSync(effect.dir).renames.push({ from: effect.from, to: effect.to });
             this.scheduleReadmeSync(effect.dir);
+            // Renumbering holds the folder and moves the CSVs itself (#60).
+            if (!this.readmeSyncHolds.has(effect.dir)) {
+              const { dir, from, to } = effect;
+              this.run(() => this.moveTableCsvsAfterRename(dir, from, to));
+            }
             return;
           case 'strayMoved':
             this.strayWorkflows.set(newPath, effect.origin);
@@ -600,6 +625,74 @@ export default class LabnotePlugin extends Plugin {
         this.scheduleReadmeSync(dir);
       })
     );
+  }
+
+  /**
+   * A folder was renamed. Keep the remembered experiment (Local samples) on
+   * the new path, or forget it when the new path is no experiment; and when
+   * an experiment folder lost its `###_` number, say what that breaks and
+   * offer the numbered name back (#67).
+   */
+  private onFolderRenamed(folder: TFolder, oldPath: string): void {
+    const newPath = folder.path;
+    const under = (p: string): boolean => p === oldPath || p.startsWith(`${oldPath}/`);
+    if (this.lastExperimentDir && under(this.lastExperimentDir)) {
+      this.lastExperimentDir = getExperimentDir(newPath + this.lastExperimentDir.slice(oldPath.length));
+    }
+    for (const p of [...this.strayWorkflows.keys()]) if (under(p)) this.strayWorkflows.delete(p);
+    for (const p of [...this.copiedWorkflows]) if (under(p)) this.copiedWorkflows.delete(p);
+
+    const before = diagnoseExperimentPath(oldPath, { isFolder: true });
+    const after = diagnoseExperimentPath(newPath, { isFolder: true });
+    if (before.kind !== 'ok' || before.folder !== oldPath) return;
+    if (after.kind !== 'noPrefix' || after.folder !== newPath) return;
+    this.run(() => this.offerExperimentFolderNameFix(folder, posix.basename(oldPath)));
+  }
+
+  private async offerExperimentFolderNameFix(folder: TFolder, oldName: string): Promise<void> {
+    const renamedPath = folder.path;
+    const suggestion = suggestExperimentFolderName(oldName, folder.name);
+    const target = suggestion ? posix.join(posix.dirname(renamedPath), suggestion) : undefined;
+    const warn = (): void =>
+      this.host.notify(
+        'warn',
+        this.t(
+          '"{0}" is no longer an experiment folder: its name must start with ###_ (e.g. 001_Name). Workflow commands and Local samples will not find it.',
+          folder.name
+        )
+      );
+    if (!suggestion || !target || this.app.vault.getAbstractFileByPath(target)) {
+      warn();
+      return;
+    }
+    // Obsidian may be asking whether to update links for this rename.
+    const settled = await this.waitForNoModal();
+    if (this.unloaded || folder.path !== renamedPath) return;
+    if (!settled || this.app.vault.getAbstractFileByPath(target)) {
+      warn();
+      return;
+    }
+    const ok = await this.host.confirm(
+      this.t(
+        '"{0}" is no longer an experiment folder: its name must start with ###_ (e.g. 001_Name). Workflow commands and Local samples will not find it. Rename it to "{1}"?',
+        folder.name,
+        suggestion
+      ),
+      { confirmLabel: this.t('Fix name') }
+    );
+    if (!ok || folder.path !== renamedPath || this.app.vault.getAbstractFileByPath(target)) return;
+    await this.app.fileManager.renameFile(folder, target);
+  }
+
+  /** A workflow note was renamed by hand: its table CSVs follow it (#60). */
+  private async moveTableCsvsAfterRename(dir: string, from: string, to: string): Promise<void> {
+    const skipped = await moveTableCsvs(this.app, dir, { from, to }, new Set(await this.fs.list(dir)));
+    if (skipped > 0) {
+      this.host.notify(
+        'warn',
+        this.t('{0} table CSV file(s) kept their old name: the new name was taken or the rename failed.', String(skipped))
+      );
+    }
   }
 
   /**
@@ -674,6 +767,17 @@ export default class LabnotePlugin extends Plugin {
       return;
     }
 
+    // A copy under the original's name and label is indistinguishable from it
+    // in the checklist (#65): ask for the copy's own alias when the note has
+    // its `## [ID name]` heading to rebuild the name from.
+    const content = await this.app.vault.read(file);
+    const heading = parseWorkflowHeading(content);
+    const parts = parseWorkflowFileName(suggestion);
+    if (heading && parts && heading.id === parts.id) {
+      await this.renameCopiedWorkflow(file, copyPath, heading, parts.sequence, content, warn);
+      return;
+    }
+
     const ok = await this.host.confirm(
       this.t(
         '"{0}" looks like a copy of a workflow note, but its name does not end in .labnote.md, so it is not a workflow note yet. Rename it to "{1}" and add it to the README checklist?',
@@ -692,6 +796,59 @@ export default class LabnotePlugin extends Plugin {
     await this.app.fileManager.renameFile(file, target);
     if (await addWorkflowFileToChecklist(this.app, this.host, dir, suggestion)) {
       this.host.notify('info', this.t('Added "{0}" to the README checklist.', suggestion));
+    }
+  }
+
+  /**
+   * Ask for the copied note's alias (prefilled with the original's, selected),
+   * then give the note that alias in its title and `## [ID name]` heading,
+   * rename it `NNN_ID_name_alias.labnote.md`, and list it — in that order, so
+   * the checklist label comes from the new title. Cancelling changes nothing;
+   * the copy stays tracked so naming it by hand later still offers to list it.
+   */
+  private async renameCopiedWorkflow(
+    file: TFile,
+    copyPath: string,
+    heading: WorkflowHeading,
+    sequence: string,
+    content: string,
+    warn: () => void
+  ): Promise<void> {
+    const prefix = `${heading.id} ${heading.name}`;
+    let title: unknown;
+    try {
+      title = parseFrontMatterYaml(content.replace(/\r\n/g, '\n')).frontMatter.title;
+    } catch {
+      title = undefined;
+    }
+    const originalAlias =
+      typeof title === 'string' && title.trim().startsWith(prefix)
+        ? title.trim().slice(prefix.length).trim()
+        : heading.alias;
+
+    const alias = await workflowAliasModal(this.app, {
+      id: heading.id,
+      catalogName: heading.name,
+      title: this.t('Name this copy of the workflow'),
+      placeholder: this.t('Enter a name for this workflow'),
+      value: originalAlias,
+    });
+    if (alias === undefined || this.unloaded) return;
+    if (!this.copiedWorkflows.has(copyPath) || file.path !== copyPath) return;
+
+    const dir = posix.dirname(copyPath);
+    const fileName = createWorkflowFileName(sequence, { id: heading.id, name: heading.name, description: '' }, alias);
+    const target = posix.join(dir, fileName);
+    if (this.app.vault.getAbstractFileByPath(target)) {
+      warn();
+      return;
+    }
+    // Dropped first so the rename below is not taken for a rename by hand.
+    this.copiedWorkflows.delete(copyPath);
+    await this.app.vault.process(file, data => rewriteWorkflowTitle(data, heading.id, heading.name, alias));
+    await this.app.fileManager.renameFile(file, target);
+    if (await addWorkflowFileToChecklist(this.app, this.host, dir, fileName)) {
+      this.host.notify('info', this.t('Added "{0}" to the README checklist.', fileName));
     }
   }
 

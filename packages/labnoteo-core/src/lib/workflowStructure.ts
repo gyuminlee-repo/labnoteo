@@ -4,7 +4,7 @@
 
 import * as path from '../util/posixPath';
 import { getSeoulDateString } from './dateUtils';
-import { sanitizePathSegment } from './regexUtils';
+import { sanitizePathSegment, escapeRegExp } from './regexUtils';
 import { parseFrontMatterYaml, serializeFrontMatterEntry } from '../sections/frontMatter';
 import {
   commandName,
@@ -523,6 +523,31 @@ export function planRenumberMoves(
   return [...moves, ...parked];
 }
 
+/** `001_X.labnote.md` → `001_X.labnote`: the prefix "Export tables to CSV" names its files with. */
+function tableCsvStem(noteName: string): string {
+  return noteName.replace(/\.md$/i, '');
+}
+
+/** The `<note>_tableN.csv` exports of `noteName` among `files` (base names). */
+export function siblingTableCsvs(noteName: string, files: readonly string[]): string[] {
+  const re = new RegExp(`^${escapeRegExp(tableCsvStem(noteName))}_table\\d+\\.csv$`);
+  return files.filter(f => re.test(f));
+}
+
+/**
+ * The renames that keep a note's table CSVs named after it when the note goes
+ * from `fromNote` to `toNote` (#60). Collisions are left to the caller.
+ */
+export function planTableCsvMoves(
+  fromNote: string,
+  toNote: string,
+  files: readonly string[]
+): WorkflowRename[] {
+  const from = tableCsvStem(fromNote);
+  const to = tableCsvStem(toNote);
+  return siblingTableCsvs(fromNote, files).map(f => ({ from: f, to: `${to}${f.slice(from.length)}` }));
+}
+
 /** Options for {@link reconcileWorkflowChecklist}. */
 export interface ReconcileChecklistOptions {
   /**
@@ -531,6 +556,13 @@ export interface ReconcileChecklistOptions {
    * rebuilt entries still replace the entries in `readmeContent`.
    */
   baseline?: string;
+  /**
+   * The label for a renamed file's new name. When given, an entry whose label
+   * matched its old file name (see {@link labelMatchesFileName}) takes this
+   * label; a label the user wrote by hand is kept (#68). Without it labels
+   * never change.
+   */
+  labelFor?: (fileName: string) => string;
 }
 
 /**
@@ -569,13 +601,23 @@ export function reconcileWorkflowChecklist(
   // Chained hops are collapsed first so a file that moved twice before this
   // flush (`a->b->c`) relinks to `c`, not to the intermediate `b`.
   const remap = new Map<string, string>();
+  // new -> old: with "Automatically update internal links" on, Obsidian has
+  // already relinked the entry, and the old name is needed to compare labels.
+  const origin = new Map<string, string>();
   for (const r of collapseWorkflowRenames(renames)) {
     remap.set(r.from, r.to);
+    origin.set(r.to, r.from);
   }
   const baseName = (fileName: string): string => fileName.split('/').pop() ?? fileName;
   const remapped = items.map(item => {
-    const to = remap.get(baseName(item.fileName));
-    return to ? { ...item, fileName: to } : item;
+    const base = baseName(item.fileName);
+    const to = remap.get(base);
+    const moved = to ? { ...item, fileName: to } : item;
+    if (!opts.labelFor) return moved;
+    const oldName = to ? base : origin.get(base);
+    const newName = to ?? base;
+    if (oldName === undefined || !labelMatchesFileName(item.title, oldName)) return moved;
+    return { ...moved, title: opts.labelFor(newName) };
   });
 
   const content = updateReadmeWorkflowSection(
@@ -619,6 +661,13 @@ export interface StaleWorkflowEntry {
   reason: 'missing' | 'elsewhere';
 }
 
+/** A checklist label to replace: entry for `fileName`, label `from` → `to`. */
+export interface WorkflowRelabel {
+  fileName: string;
+  from: string;
+  to: string;
+}
+
 /** Result of {@link planWorkflowChecklistSync}. */
 export interface WorkflowChecklistSyncPlan {
   /** Whether the README has a `## Related Workflows` section to write into. */
@@ -627,6 +676,12 @@ export interface WorkflowChecklistSyncPlan {
   added: WorkflowChecklistItem[];
   /** Entries whose target is not a file in this folder. Not removed by `content`. */
   stale: StaleWorkflowEntry[];
+  /**
+   * Listed files whose label no longer matches their name, with the label
+   * `titles` gives them. Not applied by `content`; see
+   * {@link relabelWorkflowChecklistEntries}.
+   */
+  relabel: WorkflowRelabel[];
   /** README with `added` appended and the checklist re-sorted; unchanged when nothing is added. */
   content: string;
 }
@@ -656,6 +711,95 @@ export function defaultWorkflowTitle(fileName: string): string {
 }
 
 /**
+ * Whether a checklist label names the same workflow as `fileName`: the label
+ * and the file's `{ID}_{name}` part are equal once both go through the path
+ * sanitizer, so `WT020 Protein/Enzyme Expression` matches
+ * `002_WT020_ProteinEnzyme_Expression.labnote.md`.
+ */
+export function labelMatchesFileName(label: string, fileName: string): boolean {
+  const parts = parseWorkflowFileName(fileName);
+  if (!parts) return false;
+  return sanitizePathSegment(label) === sanitizePathSegment(`${parts.id}_${parts.safeName}`);
+}
+
+/** The `## [ID name] alias` heading a workflow note starts with. */
+export interface WorkflowHeading {
+  id: string;
+  /** Catalog name, punctuation intact (`Protein/Enzyme Expression`). */
+  name: string;
+  /** Text after the bracket, trimmed; `''` when there is none. */
+  alias: string;
+}
+
+const WORKFLOW_HEADING_RE = /^##\s+\[([A-Z]{2}\d{3})\s+([^\]]+)\](.*)$/;
+
+/** The note's `## [ID name] alias` heading, or undefined when it has none. */
+export function parseWorkflowHeading(content: string): WorkflowHeading | undefined {
+  for (const line of content.split(/\r?\n/)) {
+    const m = WORKFLOW_HEADING_RE.exec(line);
+    if (m) return { id: m[1], name: m[2].trim(), alias: m[3].trim() };
+  }
+  return undefined;
+}
+
+/**
+ * The checklist label for workflow file `fileName` whose note text is
+ * `content` (#65, #68). In order: the front-matter `title` when it matches the
+ * file name; else the catalog name from the `## [ID name]` heading plus the
+ * file name's alias part, so catalog punctuation (`Protein/Enzyme`) survives;
+ * else {@link defaultWorkflowTitle}.
+ */
+export function workflowLabelFor(fileName: string, content?: string): string {
+  const parts = parseWorkflowFileName(fileName);
+  if (!parts || content === undefined) return defaultWorkflowTitle(fileName);
+  const text = content.replace(/\r\n/g, '\n');
+  let title: unknown;
+  try {
+    title = parseFrontMatterYaml(text).frontMatter.title;
+  } catch {
+    title = undefined;
+  }
+  if (typeof title === 'string' && title.trim() && labelMatchesFileName(title.trim(), fileName)) {
+    return title.trim();
+  }
+  const heading = parseWorkflowHeading(text);
+  if (heading && heading.id === parts.id) {
+    const safe = sanitizePathSegment(heading.name);
+    if (parts.safeName === safe) return `${parts.id} ${heading.name}`;
+    if (safe && parts.safeName.startsWith(`${safe}_`)) {
+      const alias = parts.safeName.slice(safe.length + 1).replace(/_/g, ' ');
+      return `${parts.id} ${heading.name} ${alias}`;
+    }
+  }
+  return defaultWorkflowTitle(fileName);
+}
+
+/**
+ * Give a workflow note a new alias: its front-matter `title` becomes
+ * `ID name alias` (the {@link createWorkflowContent} form) and its
+ * `## [ID name]` heading line carries the alias. Nothing else changes; the
+ * front matter is edited line by line, not re-serialized.
+ */
+export function rewriteWorkflowTitle(content: string, id: string, name: string, alias: string): string {
+  const newline = content.includes('\r\n') ? '\r\n' : '\n';
+  const lines = content.split(/\r?\n/);
+  const suffix = alias.trim() ? ` ${alias.trim()}` : '';
+
+  if (lines[0]?.trim() === '---') {
+    for (let i = 1; i < lines.length && lines[i].trim() !== '---'; i++) {
+      if (/^title\s*:/.test(lines[i])) {
+        lines[i] = serializeFrontMatterEntry('title', `${id} ${name}${suffix}`);
+        break;
+      }
+    }
+  }
+  const h2 = new RegExp(`^##\\s+\\[${escapeRegExp(id)}\\s+[^\\]]+\\]`);
+  const at = lines.findIndex(l => h2.test(l));
+  if (at !== -1) lines[at] = `## [${id} ${name}]${suffix}`;
+  return lines.join(newline);
+}
+
+/**
  * Compare an experiment folder with its README "Related Workflows" checklist.
  *
  * `existingNames` is the folder listing (any file); only names that
@@ -676,6 +820,7 @@ export function planWorkflowChecklistSync(
 
   const listed = new Set<string>();
   const stale: StaleWorkflowEntry[] = [];
+  const relabel: WorkflowRelabel[] = [];
   for (const item of items) {
     const target = linkTargetInFolder(item.fileName);
     if (target === null) {
@@ -685,6 +830,11 @@ export function planWorkflowChecklistSync(
     listed.add(target);
     if (!present.has(target)) {
       stale.push({ link: item.fileName, title: item.title, reason: 'missing' });
+      continue;
+    }
+    const label = titles.get(target);
+    if (label && label !== item.title && !labelMatchesFileName(item.title, target)) {
+      relabel.push({ fileName: target, from: item.title, to: label });
     }
   }
 
@@ -693,13 +843,42 @@ export function planWorkflowChecklistSync(
     .map(name => ({ done: false, title: titles.get(name) || defaultWorkflowTitle(name), fileName: name }));
 
   if (!hasSection || added.length === 0) {
-    return { hasSection, added: hasSection ? added : [], stale, content: readmeContent };
+    return {
+      hasSection,
+      added: hasSection ? added : [],
+      stale,
+      relabel: hasSection ? relabel : [],
+      content: readmeContent,
+    };
   }
   const content = updateReadmeWorkflowSection(
     readmeContent,
     generateWorkflowChecklist(sortWorkflowChecklistItems([...items, ...added]))
   );
-  return { hasSection, added, stale, content };
+  return { hasSection, added, stale, relabel, content };
+}
+
+/**
+ * Apply {@link WorkflowChecklistSyncPlan.relabel}: replace the label of each
+ * entry that links to `fileName` in this folder and still reads `from`. Only
+ * the label text changes; order, checkboxes and other lines stay as they are.
+ */
+export function relabelWorkflowChecklistEntries(
+  readmeContent: string,
+  relabel: readonly WorkflowRelabel[]
+): string {
+  if (relabel.length === 0) return readmeContent;
+  const lines = readmeContent.split('\n');
+  const { header, end } = findWorkflowSection(lines);
+  if (header === -1) return readmeContent;
+  for (let i = header + 1; i < end; i++) {
+    const m = lines[i].trim().match(CHECKLIST_ENTRY_RE);
+    if (!m) continue;
+    const target = linkTargetInFolder(m[3]);
+    const r = relabel.find(x => x.fileName === target && x.from === m[2]);
+    if (r) lines[i] = lines[i].replace(`[${m[2]}](`, () => `[${r.to}](`);
+  }
+  return lines.join('\n');
 }
 
 /**

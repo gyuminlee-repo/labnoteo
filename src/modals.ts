@@ -270,6 +270,8 @@ export interface WorkflowAliasOpts {
   title: string;
   /** Placeholder shown in the empty alias input. */
   placeholder?: string;
+  /** Initial alias, selected so typing replaces it. */
+  value?: string;
 }
 
 /**
@@ -312,6 +314,10 @@ class WorkflowAliasModal extends Modal {
 
     const input = row.createEl('input', { type: 'text', cls: 'labnote-alias-input' });
     if (this.opts.placeholder) input.placeholder = this.opts.placeholder;
+    if (this.opts.value) {
+      input.value = this.opts.value;
+      this.value = this.opts.value;
+    }
     input.addEventListener('input', () => {
       this.value = input.value;
     });
@@ -321,7 +327,10 @@ class WorkflowAliasModal extends Modal {
         submit();
       }
     });
-    window.setTimeout(() => input.focus(), 0);
+    window.setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 0);
 
     new Setting(contentEl).addButton(b => b.setButtonText(t('OK')).setCta().onClick(() => submit()));
   }
