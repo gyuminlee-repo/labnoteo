@@ -4,9 +4,9 @@
  * Consumes the core {@link buildSampleTree} model. The Local scope is resolved
  * from the active note's experiment root (`labnote/###_*`) via
  * {@link LabnotePlugin.localSampleFolder}, so switching notes within the same
- * experiment keeps the tree stable (re-rendered on `active-leaf-change`); the
- * last experiment is remembered so files outside any experiment don't collapse
- * Local to Global.
+ * experiment keeps the tree stable (re-rendered on `active-leaf-change`). A note
+ * outside any experiment shows its own folder (a vault-root note's is Global);
+ * only non-note files (images, PDFs) keep the last experiment.
  */
 import { ItemView, Menu, Notice, WorkspaceLeaf } from 'obsidian';
 import { buildSampleTree, filterSampleTree, type TreeNode } from '@labnoteo/core';

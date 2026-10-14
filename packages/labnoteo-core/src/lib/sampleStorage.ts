@@ -8,7 +8,7 @@ import * as path from '../util/posixPath';
 import type { LabnoteFs } from '../fs/labnoteFs';
 import { SAMPLE_TYPES, SampleType, isCatalogSampleType } from './sampleUtils';
 import { escapeRegExp } from './regexUtils';
-import { getExperimentLabsamplesFolder } from './labnoteStructure';
+import { getExperimentDir, getExperimentLabsamplesFolder } from './labnoteStructure';
 
 /**
  * Extracted sample information from document text
@@ -433,6 +433,33 @@ export function findSampleDefinitionMatch(
 export function getLabsamplesFolder(documentPath: string): string {
   const documentDir = path.dirname(documentPath);
   return path.join(documentDir, 'resources', 'labsamples');
+}
+
+/**
+ * The Local-scope labsamples folder for the sample tree, autocomplete and
+ * sample creation, given the active file and the last experiment seen (#4, #70).
+ *
+ * A file inside an experiment (`labnote/###_*`) maps to that experiment's
+ * folder, which becomes the remembered one. A markdown note outside any
+ * experiment uses its own folder, the one its references resolve against and
+ * its definitions sync to — a vault-root note's is the default global folder.
+ * Only a non-note file (image, PDF, canvas) keeps the remembered experiment, so
+ * opening an attachment does not collapse the tree.
+ */
+export function resolveLocalSampleFolder(
+  activePath: string | undefined,
+  lastExperimentDir: string | undefined,
+  globalFolder: string
+): { folder: string; lastExperimentDir?: string } {
+  const dir = activePath ? getExperimentDir(activePath) : undefined;
+  if (dir) return { folder: path.join(dir, 'resources', 'labsamples'), lastExperimentDir: dir };
+  if (activePath && /\.md$/i.test(activePath)) {
+    return { folder: getLabsamplesFolder(activePath), lastExperimentDir };
+  }
+  if (lastExperimentDir) {
+    return { folder: path.join(lastExperimentDir, 'resources', 'labsamples'), lastExperimentDir };
+  }
+  return { folder: activePath ? getLabsamplesFolder(activePath) : globalFolder };
 }
 
 /**

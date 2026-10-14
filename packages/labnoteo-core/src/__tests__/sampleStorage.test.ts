@@ -19,10 +19,57 @@ import {
   putSampleRecord,
   removeSourcesForDocument,
   findSampleUsages,
+  resolveLocalSampleFolder,
   type SampleDatabase,
   type SampleRecord,
 } from '../lib/sampleStorage';
 import { MemFileSystem } from '../fs/memFileSystem';
+
+describe('resolveLocalSampleFolder (#70)', () => {
+  const GLOBAL = 'resources/labsamples';
+  const EXP = 'labnote/001_GFP';
+  const EXP_FOLDER = `${EXP}/resources/labsamples`;
+
+  it('uses and remembers the experiment of a file inside one', () => {
+    expect(resolveLocalSampleFolder(`${EXP}/001_WB030_X.labnote.md`, undefined, GLOBAL)).toEqual({
+      folder: EXP_FOLDER,
+      lastExperimentDir: EXP,
+    });
+    expect(resolveLocalSampleFolder(`${EXP}/images/gel.png`, 'labnote/002_Other', GLOBAL)).toEqual({
+      folder: EXP_FOLDER,
+      lastExperimentDir: EXP,
+    });
+  });
+
+  it('gives a vault-root note the global folder even after an experiment was opened', () => {
+    expect(resolveLocalSampleFolder('Welcome.md', EXP, GLOBAL)).toEqual({
+      folder: GLOBAL,
+      lastExperimentDir: EXP,
+    });
+  });
+
+  it('gives any other note outside an experiment its own folder', () => {
+    expect(resolveLocalSampleFolder('notes/memo.md', EXP, GLOBAL).folder).toBe('notes/resources/labsamples');
+    expect(resolveLocalSampleFolder('labnote/GFP/001_WB030_X.labnote.md', EXP, GLOBAL).folder).toBe(
+      'labnote/GFP/resources/labsamples'
+    );
+  });
+
+  it('keeps the remembered experiment for a non-note file outside any experiment', () => {
+    expect(resolveLocalSampleFolder('attachments/scan.pdf', EXP, GLOBAL)).toEqual({
+      folder: EXP_FOLDER,
+      lastExperimentDir: EXP,
+    });
+  });
+
+  it('falls back to the file folder, then the global folder, with nothing remembered', () => {
+    expect(resolveLocalSampleFolder('attachments/scan.pdf', undefined, GLOBAL).folder).toBe(
+      'attachments/resources/labsamples'
+    );
+    expect(resolveLocalSampleFolder(undefined, undefined, GLOBAL).folder).toBe(GLOBAL);
+    expect(resolveLocalSampleFolder(undefined, EXP, GLOBAL).folder).toBe(EXP_FOLDER);
+  });
+});
 
 describe('extractSampleInfoFromText', () => {
   it('extracts a full @type;id;alias;description definition', () => {

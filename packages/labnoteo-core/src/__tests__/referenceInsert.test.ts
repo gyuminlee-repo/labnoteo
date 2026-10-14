@@ -83,6 +83,30 @@ describe('planReferenceInsert', () => {
       const text = '## M\n@Other;Other-1;x';
       expect(apply(text, text.length)).toBe('## M\n@Other;Other-1;x\nDNA-1;pUC19');
     });
+
+    // #55 retest: a definition after other text was appended to, and the new
+    // reference was read back into its description.
+    it('also protects a definition that follows other text on the line', () => {
+      const line = '오늘 쓴 것: @other;Other-12;넷째정의;넷째 설명';
+      const text = `## M\n${line}\nmore`;
+      for (const word of ['오늘', 'Other-12', '넷째정의', '설명']) {
+        expect(apply(text, text.indexOf(word) + 1)).toBe(`## M\n${line}\nDNA-1;pUC19\nmore`);
+      }
+      expect(apply(text, text.indexOf('\nmore'))).toBe(`## M\n${line}\nDNA-1;pUC19\nmore`);
+    });
+
+    it('adds a line break when that definition is on the last line', () => {
+      const text = '## M\n정의줄: @Other;Other-1;정의시약;정의 설명';
+      expect(apply(text, text.length)).toBe(`${text}\nDNA-1;pUC19`);
+    });
+
+    it('recognises a custom Hangul type definition mid-line', () => {
+      const text = '## M\n배지는 @배지;배지-3;LB;기본 배지\nmore';
+      const plan = planReferenceInsert(text, text.indexOf('LB'), REF, [...TYPES, '배지']);
+      expect(text.slice(0, plan.offset) + plan.text + text.slice(plan.offset)).toBe(
+        '## M\n배지는 @배지;배지-3;LB;기본 배지\nDNA-1;pUC19\nmore'
+      );
+    });
   });
 
   describe('rule 4: at the cursor with neighbour-aware padding', () => {

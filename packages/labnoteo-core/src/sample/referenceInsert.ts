@@ -38,11 +38,15 @@ const ADJACENT = /[\p{L}\p{N}_;-]/u;
 /** The `;alias;desc` tail a reference may carry, stopping at whitespace. */
 const REFERENCE_TAIL = /^(?:[;|][^\s;:|]*){0,2}/;
 
-/** True when `line` is a `@type;ID…` sample definition of one of `types`. */
+/**
+ * True when `line` holds a `@type;ID…` sample definition of one of `types`,
+ * anywhere on it: sync registers a definition after other text too
+ * (`오늘 쓴 것: @reagent;…`), so it needs the same protection (#55).
+ */
 function isDefinitionLine(line: string, types: readonly string[]): boolean {
   return types.some(type => {
     const t = escapeRegExp(type);
-    return new RegExp(`^\\s*@${t}[;:]${t}-\\d+(?:-\\d+)*\\b`, 'i').test(line);
+    return new RegExp(`@${t}[;:]${t}-\\d+(?:-\\d+)*\\b`, 'i').test(line);
   });
 }
 

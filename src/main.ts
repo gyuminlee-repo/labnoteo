@@ -33,7 +33,7 @@ import {
   suggestCopiedWorkflowFileName,
   type WorkflowHeading,
 } from '@labnoteo/core/lib/workflowStructure';
-import { saveSamplesFromDocument, getLabsamplesFolder } from '@labnoteo/core/lib/sampleStorage';
+import { saveSamplesFromDocument, resolveLocalSampleFolder } from '@labnoteo/core/lib/sampleStorage';
 import { VaultFileSystem } from './vaultFileSystem';
 import { createObsidianTranslator } from './i18n';
 import { createObsidianHost } from './obsidianHost';
@@ -1353,20 +1353,20 @@ export default class LabnotePlugin extends Plugin {
    *
    * Resolved from the active note's experiment root (`labnote/###_*`), NOT its
    * immediate folder, so any file inside an experiment (a subfolder image, a
-   * workflow note, …) maps to the same experiment samples. The last resolved
-   * experiment is remembered so opening a file OUTSIDE any experiment keeps the
-   * tree pinned to that experiment instead of collapsing to Global. Falls back
-   * to the active file's own folder (legacy behaviour), then Global, only when
-   * no experiment has ever been opened this session.
+   * workflow note, …) maps to the same experiment samples. A note outside any
+   * experiment uses its own folder (a vault-root note's is the global one, #70),
+   * so samples created there land where its references resolve. The last
+   * resolved experiment is remembered only for non-note files (an image, a PDF),
+   * which keep the tree on that experiment instead of collapsing to Global.
    */
   localSampleFolder(): string {
-    const active = this.activeNotePath();
-    const dir = active ? getExperimentDir(active) : undefined;
-    if (dir) this.lastExperimentDir = dir;
-    if (this.lastExperimentDir) {
-      return posix.join(this.lastExperimentDir, 'resources', 'labsamples');
-    }
-    return active ? getLabsamplesFolder(active) : this.settings.globalSampleFolder;
+    const { folder, lastExperimentDir } = resolveLocalSampleFolder(
+      this.activeNotePath(),
+      this.lastExperimentDir,
+      this.settings.globalSampleFolder
+    );
+    this.lastExperimentDir = lastExperimentDir;
+    return folder;
   }
 
   /** Whether a Local sample scope can be resolved (an experiment is known). */
