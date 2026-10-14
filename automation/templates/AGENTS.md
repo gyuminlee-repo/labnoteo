@@ -54,6 +54,13 @@ Claude Code, Codex, Cursor 등)는 아래 규칙을 따라 작업합니다.
   참조만 하면 대장에 생기지 않고, '정의로 이동'도 되지 않습니다.
   `create_sample`의 `documentPath`는 **이미 있는 노트**(예: 실험의
   `README.labnote.md`) 경로여야 합니다. 없는 경로면 아무것도 쓰지 않고 오류를 돌려줍니다.
+  `id`는 `<타입>-<숫자>`(예: `Equip-3`)만 받습니다. 모델명·카탈로그 번호 같은 값은
+  `id`가 아니라 `alias`에 넣고, 정할 ID가 없으면 `id`를 생략해 자동 생성하세요.
+  실험 폴더 밖 노트로 만들면 결과의 `scope`가 `global`이 되고 전역 샘플 폴더에 저장됩니다.
+- MCP `update_section`은 절 본문 **전체를 바꿉니다**(하위 제목 포함). 바꾸지 않을 절은
+  호출하지 마세요. 빈 `content`는 거부되며, 절을 일부러 비울 때만 `content: ""`와
+  `clear: true`를 함께 보냅니다. 결과의 `removedLines`·`removedSubheadings`·`previousBody`로
+  무엇이 지워졌는지 확인하세요.
 - 실험 폴더의 어느 `*.labnote.md`(README 또는 워크플로 노트) 본문 아무 줄에나 넣는
   `@issue;<ID>;<주제문장>` 마커는 "이 지점을 논의하자"는
   신호입니다. `@issue;`부터 줄 끝까지가 한 마커이고, 샘플 참조(`@dna;...`)와

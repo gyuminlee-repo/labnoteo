@@ -188,7 +188,9 @@ MCP 클라이언트나 로컬 `claude` CLI에 노출합니다. **데스크톱 �
   등록하세요. `data.json`은 연구노트 자동화 설정이 넣는 `.gitignore`로 커밋에서 빠집니다.
 - **쓰기는 확인을 거칩니다**: 보관함을 수정하는 툴은 실행 전에 대상 경로와 함께 확인을
   요청합니다. 경로를 고르는 것은 모델이기 때문입니다. Obsidian 창이 다른 창에 가려져
-  있으면 OS 알림도 함께 뜹니다.
+  있으면 OS 알림도 함께 뜹니다. `update_section`은 확인 창에 바꿀(또는 비울) 절과 그 절에
+  지금 있는 줄 수·하위 제목 수도 보여 줍니다. 대상 절이 없거나 여러 개라 어차피 실패할
+  호출은 확인 창 없이 바로 오류로 돌려줍니다.
 - **승인 시간 제한**: 확인 창에 **50초** 안에 답하지 않으면 창이 닫히고, 클라이언트는
   `Approval timed out` 오류(JSON-RPC `-32001`)를 받습니다. 클라이언트가 먼저 연결을
   끊었을 때도 창이 닫힙니다. 어느 경우든 그 요청은 **나중에 적용되지 않습니다.**
@@ -200,9 +202,18 @@ MCP 클라이언트나 로컬 `claude` CLI에 노출합니다. **데스크톱 �
   (상위 헤딩 전체, 대괄호를 뺀 `USW230 Sequence Embedding`, 또는 id `USW230`)이나
   `occurrence`(1부터, `parentHeading`으로 거른 뒤의 순번)를 넣어 다시 호출하면 됩니다.
   같은 유닛 오퍼레이션을 두 번 넣은 노트는 둘을 함께 지정합니다. 성공하면 바꾼
-  위치(`parentHeading`, `occurrence`, `total`)를 돌려줍니다.
+  위치(`parentHeading`, `occurrence`, `total`)와 지운 내용(`removedLines` 비어 있지 않은 줄 수,
+  `removedSubheadings` 하위 제목 수, `previousBody` 옛 본문 앞 500자)을 돌려줍니다.
+- **`update_section`으로 절 비우기**: `content`가 비어 있거나 공백뿐이면 **아무것도 쓰지 않고**
+  오류를 돌려줍니다. 절을 일부러 비울 때만 `content: ""`와 `clear: true`를 함께 보내세요.
+  `clear: true`인데 `content`가 비어 있지 않아도 오류입니다.
 - **샘플 보관 위치**: `create_sample`은 보관 위치(`location`)도 받습니다. 생략하거나 비워
   두면 기존 위치를 유지합니다. `list_samples`는 각 샘플의 위치를 함께 돌려줍니다.
+- **샘플 ID 형식**: `create_sample`의 `id`는 `<타입>-<숫자>`(예: `Equip-3`)만 받습니다.
+  다른 형식이면 아무것도 쓰지 않고 `Invalid id` 오류를 돌려주니, 정할 ID가 없으면 `id`를
+  생략해 자동 생성하세요. 알려진 타입은 대소문자를 맞춰 저장합니다(`equip-3` → `Equip-3`).
+  결과에는 저장한 폴더(`folder`)와 범위(`scope`: `local`/`global`)가 들어 있고, 실험 폴더
+  밖 노트로 만들어 전역 샘플 폴더에 저장했다면 `Warning:`으로 알려 줍니다.
 - **없는 경로는 거부**: `create_sample`의 `documentPath`는 이미 있는 노트(`.md`)여야 하고,
   `create_workflow`의 `documentPath`는 `README.labnote.md`가 있는 실험 폴더 안이어야 합니다.
   아니면 아무것도 쓰지 않고 `Note not found`/`Experiment not found` 오류를 돌려줍니다.
