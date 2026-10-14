@@ -22,7 +22,7 @@ import {
   type DecorationSet,
   type ViewUpdate,
 } from '@codemirror/view';
-import { RangeSetBuilder } from '@codemirror/state';
+import { Prec, RangeSetBuilder } from '@codemirror/state';
 import {
   findMetaDateFieldInLine,
   fromDateTimeLocalValue,
@@ -33,6 +33,9 @@ import {
 const VALUE_CLASS = 'labnote-date-value';
 const ICON_CLASS = 'labnote-date-pick';
 const PICKER_CLASS = 'labnote-datetime-picker';
+
+/** The field that is open, if any; at most one exists at a time. */
+let openPicker: { commit: () => void; close: () => void } | null = null;
 
 /** Calendar affordance rendered when a date field has no value yet. */
 class DatePickIconWidget extends WidgetType {
@@ -121,6 +124,20 @@ export function createMetaDatePickerExtension(label: string) {
 
   return [
     plugin,
+    // The editor can win focus back after the field opens (#85). Enter and
+    // Escape then reach the editor, so while a field is open they act on the
+    // field instead of splitting the line under it.
+    Prec.highest(
+      EditorView.domEventHandlers({
+        keydown: event => {
+          if (!openPicker || (event.key !== 'Enter' && event.key !== 'Escape')) return false;
+          event.preventDefault();
+          if (event.key === 'Enter') openPicker.commit();
+          else openPicker.close();
+          return true;
+        },
+      })
+    ),
     EditorView.domEventHandlers({
       // `click`, so the editor has finished placing the caret and taking focus
       // before the field opens and focuses itself. Not consumed: the caret
@@ -196,6 +213,7 @@ interface DateTimePickerOptions {
  */
 function openDateTimePicker(opts: DateTimePickerOptions): void {
   // Never leave a second field behind if one is somehow still open.
+  openPicker?.close();
   document.querySelectorAll(`.${PICKER_CLASS}`).forEach(el => el.remove());
 
   const input = document.createElement('input');
@@ -210,6 +228,7 @@ function openDateTimePicker(opts: DateTimePickerOptions): void {
   const close = (): void => {
     if (closed) return;
     closed = true;
+    if (openPicker === handle) openPicker = null;
     document.removeEventListener('pointerdown', onOutsidePointerDown, true);
     input.remove();
   };
@@ -218,6 +237,8 @@ function openDateTimePicker(opts: DateTimePickerOptions): void {
     close();
     if (value) opts.onPick(value);
   };
+  const handle = { commit, close };
+  openPicker = handle;
   function onOutsidePointerDown(event: PointerEvent): void {
     if (event.target !== input) close();
   }
@@ -232,7 +253,11 @@ function openDateTimePicker(opts: DateTimePickerOptions): void {
     if (!closed) document.addEventListener('pointerdown', onOutsidePointerDown, true);
   }, 0);
 
-  input.focus();
+  // Also a tick later: focusing now loses to the editor, which takes focus
+  // back once the click that opened the field has been handled (#85).
+  window.setTimeout(() => {
+    if (!closed) input.focus();
+  }, 0);
   const withPicker = input as HTMLInputElement & { showPicker?: () => void };
   try {
     withPicker.showPicker?.();
