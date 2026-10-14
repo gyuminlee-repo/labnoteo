@@ -83,6 +83,7 @@ export {
   resetIssueMarkerIdCounter,
   renderIssueMarker,
   planIssueMarkerInsertion,
+  reassignIssueMarkerIds,
   findEnclosingHeading,
   type IssueMarkerInsertion,
   type IssueMarker,

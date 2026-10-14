@@ -52,7 +52,7 @@ describe('registerWorkflowInReadme', () => {
     const fs = new MemFileSystem({ [README]: README_TEXT });
     const { app, processed } = makeApp(true);
 
-    await registerWorkflowInReadme(app, hostFor(fs), README, ENTRY, stampToday);
+    expect(await registerWorkflowInReadme(app, hostFor(fs), README, ENTRY, stampToday)).toBe(true);
 
     expect(processed).toHaveLength(1);
     expect(processed[0]).toContain('[WT010 Seq](./001_WT010_Seq.labnote.md)');
@@ -85,11 +85,12 @@ describe('registerWorkflowInReadme', () => {
     expect(written).toContain("last_updated_date: '2026-10-13'");
   });
 
-  it('does nothing when the experiment has no README', async () => {
+  // #88: the caller warns that the workflow is in no checklist.
+  it('does nothing and says so when the experiment has no README', async () => {
     const fs = new MemFileSystem();
     const { app, processed } = makeApp(true);
 
-    await registerWorkflowInReadme(app, hostFor(fs), README, ENTRY, stampToday);
+    expect(await registerWorkflowInReadme(app, hostFor(fs), README, ENTRY, stampToday)).toBe(false);
 
     expect(processed).toEqual([]);
     expect(fs.snapshot()).toEqual({});

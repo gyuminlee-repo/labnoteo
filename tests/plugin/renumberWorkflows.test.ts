@@ -126,6 +126,18 @@ describe('renumberWorkflowsCommand (#41)', () => {
     ]);
   });
 
+  // #88: no README means no checklist follows the new numbers.
+  it('renames and says the experiment has no README', async () => {
+    const h = harness({ relink: false });
+    await h.fs.remove(README);
+
+    await renumberWorkflowsCommand(h.app, h.host, h.sync);
+
+    expect(await h.fs.exists(`${DIR}/${C_NEW}`)).toBe(true);
+    expect(await h.fs.exists(README)).toBe(false);
+    expect(h.calls.at(-1)).toBe('notify Renumbered 1 workflow file(s). This experiment has no README.labnote.md.');
+  });
+
   it('still records finished moves and releases the sync when a rename fails', async () => {
     const B_OLD = '004_WB030_B.labnote.md';
     const h = harness({ relink: false, failOn: '003_WB030_B.labnote.md' });

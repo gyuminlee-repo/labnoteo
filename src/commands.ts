@@ -66,6 +66,7 @@ import {
   defaultWorkflowTitle,
   parseWorkflowFileName,
   planWorkflowRetitle,
+  planWorkflowExperimenterSync,
   workflowLabelFor,
   type WorkflowRename,
   type WorkflowRelabel,
@@ -179,7 +180,20 @@ export async function changeExperimentStatusCommand(
   const updated = renderNote({ ...frontMatter, status: chosen }, body);
 
   await writeNoteThroughVault(app, host, readmePath, stamp(updated));
-  host.notify('info', host.t('Experiment status changed: {0}', chosen));
+  let message = host.t('Experiment status changed: {0}', chosen);
+  // `needs-review` only opens a review issue through the automation (#79).
+  if (chosen === 'needs-review') {
+    const state = await issueAutomationState(host);
+    if (state === 'no-git') {
+      message += ` ${host.t(
+        'This vault is not a git repository yet, so no review issue will open. Finish the repository setup in {0} first.',
+        SETUP_DOC_PATH
+      )}`;
+    } else if (state === 'none') {
+      message += ` ${host.t('To open a review issue, run "Setup research automation" first.')}`;
+    }
+  }
+  host.notify('info', message);
 }
 
 /**
@@ -220,7 +234,9 @@ export function insertIssueMarkerCommand(editor: Editor, host: LabnoteHost): boo
       'warn',
       plan.reason === 'table'
         ? host.t('Issue markers cannot go inside a table. Run this on a line below the table.')
-        : host.t('This line already has an issue marker. A line can hold only one.')
+        : plan.reason === 'frontMatter'
+          ? host.t('Issue markers cannot go in the front matter. Run this in the note body.')
+          : host.t('This line already has an issue marker. A line can hold only one.')
     );
     return false;
   }
@@ -364,7 +380,7 @@ async function createWorkflowFromChoice(
   const created = await createWorkflowFile(app, host, labnoteDir, chosen, stamp);
   if (!created) return;
   await host.openFile(created.path);
-  host.notify('info', host.t('Workflow created: {0}', created.fileName));
+  notifyWorkflowCreated(host, created);
 }
 
 /** Details of a freshly created workflow file. */
@@ -375,6 +391,19 @@ interface CreatedWorkflow {
   fileName: string;
   /** Human-readable `id name [alias]` used for checklist/link display. */
   displayTitle: string;
+  /** Whether it was added to the README checklist (false without a README). */
+  registered: boolean;
+}
+
+/** The "created" notice, plus a warning when no README checklist lists it (#88). */
+function notifyWorkflowCreated(host: LabnoteHost, created: CreatedWorkflow): void {
+  host.notify('info', host.t('Workflow created: {0}', created.fileName));
+  if (!created.registered) {
+    host.notify(
+      'warn',
+      host.t('This experiment has no README.labnote.md, so the workflow was not added to a checklist.')
+    );
+  }
 }
 
 /**
@@ -424,9 +453,15 @@ async function createWorkflowFile(
     ? `${chosen.id} ${chosen.name} ${cleanAlias}`
     : `${chosen.id} ${chosen.name}`;
 
-  await registerWorkflowInReadme(app, host, readmePath, { title: displayTitle, fileName }, stamp);
+  const registered = await registerWorkflowInReadme(
+    app,
+    host,
+    readmePath,
+    { title: displayTitle, fileName },
+    stamp
+  );
 
-  return { path: workflowPath, fileName, displayTitle };
+  return { path: workflowPath, fileName, displayTitle, registered };
 }
 
 /**
@@ -434,7 +469,8 @@ async function createWorkflowFile(
  * (non-destructive) and stamp the README's `last_updated_date`: creating a
  * workflow is a change to the experiment. Applied through the vault to the
  * README as it is at write time, so an open README editor neither overwrites it
- * nor loses its own unsaved text. No-op without a README.
+ * nor loses its own unsaved text. Returns false, writing nothing, without a
+ * README.
  */
 export async function registerWorkflowInReadme(
   app: App,
@@ -442,13 +478,14 @@ export async function registerWorkflowInReadme(
   readmePath: string,
   entry: { title: string; fileName: string },
   stamp: (content: string) => string = c => c
-): Promise<void> {
-  if (!(await host.fs.exists(readmePath))) return;
+): Promise<boolean> {
+  if (!(await host.fs.exists(readmePath))) return false;
   await processNoteThroughVault(app, host, readmePath, readme => {
     const items = parseWorkflowChecklistFromReadme(readme);
     items.push({ done: false, title: entry.title, fileName: entry.fileName });
     return stamp(updateReadmeWorkflowSection(readme, generateWorkflowChecklist(items)));
   });
+  return true;
 }
 
 /** Present the workflow catalog picker (seeding catalog resources first). */
@@ -524,7 +561,7 @@ export async function insertWorkflowLinkCommand(
   // when editing some other note.
   const readmePath = posix.join(labnoteDir, README);
   if (app.workspace.getActiveFile()?.path === readmePath) {
-    host.notify('info', host.t('Workflow created: {0}', created.fileName));
+    notifyWorkflowCreated(host, created);
     return;
   }
 
@@ -543,7 +580,7 @@ export async function insertWorkflowLinkCommand(
       : `[[${created.fileName.replace(/\.md$/, '')}|${created.displayTitle}]]`;
 
   editor.replaceSelection(link);
-  host.notify('info', host.t('Workflow created: {0}', created.fileName));
+  notifyWorkflowCreated(host, created);
 }
 
 /**
@@ -725,7 +762,13 @@ export async function renumberWorkflowsCommand(
   }
 
   if (renames.length > 0) {
-    host.notify('info', host.t('Renumbered {0} workflow file(s).', String(renames.length)));
+    const done = host.t('Renumbered {0} workflow file(s).', String(renames.length));
+    // Without a README there is no checklist to follow the new numbers (#88).
+    if (baseline === undefined) {
+      host.notify('warn', `${done} ${host.t('This experiment has no README.labnote.md.')}`);
+    } else {
+      host.notify('info', done);
+    }
   }
   if (added > 0) {
     host.notify('info', host.t('Added {0} workflow file(s) to the README checklist.', String(added)));
@@ -969,7 +1012,7 @@ export async function syncWorkflowChecklistCommand(
     const retitle = content === undefined ? undefined : planWorkflowRetitle(content, name);
     return retitle ? [{ name, ...retitle }] : [];
   });
-  let retitled = 0;
+  const updatedNotes = new Set<string>();
   if (retitles.length > 0) {
     const list = retitles.map(r => `- ${r.from} → ${r.to}`).join('\n');
     const ok = await host.confirm(
@@ -986,7 +1029,7 @@ export async function syncWorkflowChecklistCommand(
           content => planWorkflowRetitle(content, name)?.content ?? content
         );
         if (changed) {
-          retitled++;
+          updatedNotes.add(name);
           notes.set(name, await readWorkflowNote(host, labnoteDir, name));
         }
       }
@@ -994,6 +1037,34 @@ export async function syncWorkflowChecklistCommand(
       plan = planWorkflowChecklistSync(readme, names, titles);
     }
   }
+
+  // The README author changed after the notes took it as their experimenter (#83).
+  const author = parseExperimenterFromReadme(readme);
+  const experimenters = [...notes].flatMap(([name, content]) => {
+    const sync = content === undefined ? undefined : planWorkflowExperimenterSync(content, author);
+    return sync ? [{ name, ...sync }] : [];
+  });
+  if (experimenters.length > 0) {
+    const list = experimenters
+      .map(e => `- ${e.name}: ${e.from || host.t('(empty)')} → ${e.to}`)
+      .join('\n');
+    const ok = await host.confirm(
+      `${host.t("These notes' experimenter differs from the README author. Update them?")}\n\n${list}`,
+      { confirmLabel: host.t('Update notes') }
+    );
+    if (ok) {
+      for (const { name } of experimenters) {
+        const changed = await processNoteThroughVault(
+          app,
+          host,
+          posix.join(labnoteDir, name),
+          content => planWorkflowExperimenterSync(content, author)?.content ?? content
+        );
+        if (changed) updatedNotes.add(name);
+      }
+    }
+  }
+  const notesUpdated = updatedNotes.size;
 
   // A label may have been written by hand, so labels change only when asked (#68).
   let relabel: WorkflowRelabel[] = [];
@@ -1006,11 +1077,11 @@ export async function syncWorkflowChecklistCommand(
     if (ok) relabel = plan.relabel;
   }
 
-  if (plan.added.length === 0 && remove.length === 0 && relabel.length === 0 && retitled === 0) {
+  if (plan.added.length === 0 && remove.length === 0 && relabel.length === 0 && notesUpdated === 0) {
     host.notify(
       'info',
       host.t(
-        plan.stale.length > 0 || plan.relabel.length > 0 || retitles.length > 0
+        plan.stale.length > 0 || plan.relabel.length > 0 || retitles.length > 0 || experimenters.length > 0
           ? 'No changes made.'
           : 'The workflow checklist already matches the folder.'
       )
@@ -1027,7 +1098,7 @@ export async function syncWorkflowChecklistCommand(
   const parts = [
     host.t('Workflow checklist updated: {0} added, {1} removed.', String(plan.added.length), String(remove.length)),
   ];
-  if (retitled > 0) parts.push(host.t('{0} note(s) updated.', String(retitled)));
+  if (notesUpdated > 0) parts.push(host.t('{0} note(s) updated.', String(notesUpdated)));
   if (relabel.length > 0) parts.push(host.t('{0} label(s) updated.', String(relabel.length)));
   host.notify('info', parts.join(' '));
 }

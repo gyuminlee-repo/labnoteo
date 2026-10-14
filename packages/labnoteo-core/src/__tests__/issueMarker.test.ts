@@ -13,9 +13,48 @@ import {
   generateIssueMarkerId,
   parseIssueMarkers,
   planIssueMarkerInsertion,
+  reassignIssueMarkerIds,
   renderIssueMarker,
   resetIssueMarkerIdCounter,
 } from '../lib/issueMarker';
+
+// #89: a copied note must not share issue IDs with the original.
+describe('reassignIssueMarkerIds', () => {
+  const ids = () => {
+    let n = 0;
+    return () => `ISS-new${++n}`;
+  };
+
+  it('replaces each marker ID and keeps delimiter, topic and the text around it', () => {
+    const md = '결과 @issue;ISS-a;수율 차이\n@issue:ISS-b:시드 배양\n@issue;ISS-c;\n본문';
+    expect(reassignIssueMarkerIds(md, ids())).toEqual({
+      content: '결과 @issue;ISS-new1;수율 차이\n@issue:ISS-new2:시드 배양\n@issue;ISS-new3;\n본문',
+      count: 3,
+    });
+  });
+
+  it('skips fenced examples, as issue-sync does', () => {
+    const md = '```\n@issue;ISS-a;예시\n```\n@issue;ISS-b;진짜';
+    const out = reassignIssueMarkerIds(md, ids());
+    expect(out.content).toBe('```\n@issue;ISS-a;예시\n```\n@issue;ISS-new1;진짜');
+    expect(parseIssueMarkers(out.content).markers.map(m => m.id)).toEqual(['ISS-new1']);
+  });
+
+  it('keeps CRLF line endings', () => {
+    expect(reassignIssueMarkerIds('a @issue;ISS-a;x\r\nb\r\n', ids()).content).toBe('a @issue;ISS-new1;x\r\nb\r\n');
+  });
+
+  it('reports zero for a note without markers', () => {
+    expect(reassignIssueMarkerIds('@issue 문법 설명', ids())).toEqual({ content: '@issue 문법 설명', count: 0 });
+  });
+
+  it('generates distinct IDs by default', () => {
+    const { content } = reassignIssueMarkerIds('@issue;ISS-a;x\n@issue;ISS-a;y');
+    const [first, second] = parseIssueMarkers(content).markers.map(m => m.id);
+    expect(first).not.toBe('ISS-a');
+    expect(first).not.toBe(second);
+  });
+});
 
 describe('parseIssueMarkers', () => {
   it('reads a marker that follows prose on the same line', () => {
@@ -250,6 +289,28 @@ describe('planIssueMarkerInsertion', () => {
     expect(planIssueMarkerInsertion(doc, doc.length, doc.length, ID)).toEqual({ reason: 'conflict' });
     // A selection that contains a marker would put it into the new topic.
     expect(planIssueMarkerInsertion(doc, 0, doc.length, ID)).toEqual({ reason: 'conflict' });
+  });
+
+  // #87: a marker in the front matter breaks the YAML and never opens an issue.
+  it('refuses in the front matter, its --- lines included', () => {
+    const doc = '---\ntitle: 시험\nstatus: planned\n---\n\n본문 문장\n# 제목\n';
+    for (const text of ['---', 'title: 시험', 'status: planned\n---']) {
+      expect(planIssueMarkerInsertion(doc, ...select(doc, text), ID)).toEqual({ reason: 'frontMatter' });
+    }
+    expect(planIssueMarkerInsertion(doc, doc.indexOf('\n---') + 1, doc.indexOf('\n---') + 1, ID)).toEqual({
+      reason: 'frontMatter',
+    });
+    // A selection running from the front matter into the body is refused too.
+    expect(planIssueMarkerInsertion(doc, doc.indexOf('status'), doc.indexOf(' 문장'), ID)).toEqual({
+      reason: 'frontMatter',
+    });
+  });
+
+  it('still inserts in the body above the title', () => {
+    const doc = '---\ntitle: 시험\n---\n본문 문장\n# 제목\n';
+    expect(insert(doc, ...select(doc, '본문 문장')).out).toBe(
+      '---\ntitle: 시험\n---\n@issue;ISS-t;본문 문장\n# 제목\n'
+    );
   });
 });
 

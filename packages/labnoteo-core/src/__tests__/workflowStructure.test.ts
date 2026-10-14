@@ -29,6 +29,7 @@ import {
   relabelWorkflowChecklistEntries,
   workflowAliasFromFileName,
   planWorkflowRetitle,
+  planWorkflowExperimenterSync,
 } from '../lib/workflowStructure';
 import { sanitizeTitle } from '../lib/labnoteStructure';
 
@@ -77,6 +78,43 @@ describe('parseExperimenterFromReadme', () => {
 
   it('returns empty string when there is no front matter', () => {
     expect(parseExperimenterFromReadme('# Just a note')).toBe('');
+  });
+});
+
+// #83: the README author changed after the workflow notes were created.
+describe('planWorkflowExperimenterSync', () => {
+  const note = (fm: string, body = '') => `---\ntitle: WD030 Design\n${fm}\n---\n\n## [WD030 Design]\n${body}`;
+
+  it('rewrites the front matter and unit-op lines with the old value or none', () => {
+    const body = '\n- Experimenter: 홍길동\n- Experimenter:\n- Experimenter: 김철수\n- Experimenter: 이영희\n';
+    expect(planWorkflowExperimenterSync(note('experimenter: 홍길동', body), '이영희')).toEqual({
+      from: '홍길동',
+      to: '이영희',
+      content: note(
+        'experimenter: 이영희',
+        '\n- Experimenter: 이영희\n- Experimenter: 이영희\n- Experimenter: 김철수\n- Experimenter: 이영희\n'
+      ),
+    });
+  });
+
+  it('fills an empty experimenter and keeps CRLF', () => {
+    const crlf = note("experimenter: ''", '\n- Experimenter: \n').replace(/\n/g, '\r\n');
+    const out = planWorkflowExperimenterSync(crlf, '이영희');
+    expect(out?.from).toBe('');
+    expect(out?.content).toBe(note('experimenter: 이영희', '\n- Experimenter: 이영희\n').replace(/\n/g, '\r\n'));
+  });
+
+  it('leaves Experimenter lines in code blocks alone', () => {
+    const body = '\n```\n- Experimenter: 홍길동\n```\n';
+    expect(planWorkflowExperimenterSync(note('experimenter: 홍길동', body), '이영희')?.content).toBe(
+      note('experimenter: 이영희', body)
+    );
+  });
+
+  it('does nothing without an author, an experimenter key, or a difference', () => {
+    expect(planWorkflowExperimenterSync(note('experimenter: 홍길동'), '  ')).toBeUndefined();
+    expect(planWorkflowExperimenterSync(note('status: planned'), '이영희')).toBeUndefined();
+    expect(planWorkflowExperimenterSync(note("experimenter: '이영희'"), '이영희')).toBeUndefined();
   });
 });
 

@@ -6,6 +6,7 @@ import * as path from '../util/posixPath';
 import { getSeoulDateString } from './dateUtils';
 import { sanitizePathSegment, escapeRegExp } from './regexUtils';
 import { parseFrontMatterYaml, serializeFrontMatterEntry } from '../sections/frontMatter';
+import { stepFence, type OpenFence } from '../sections/sectionEdit';
 import {
   commandName,
   getExperimentDir,
@@ -1019,6 +1020,58 @@ export function suggestCopiedWorkflowFileName(
   const parts = parseWorkflowFileName(`${stem}.labnote.md`);
   if (!parts) return undefined;
   return `${getNextWorkflowNumber([...existingNames])}_${parts.id}_${parts.safeName}.labnote.md`;
+}
+
+/** {@link planWorkflowExperimenterSync} result. */
+export interface WorkflowExperimenterSync {
+  /** The note's `experimenter` before ('' when empty). */
+  from: string;
+  /** The README author it gets. */
+  to: string;
+  /** The note with the experimenter lines rewritten. */
+  content: string;
+}
+
+/**
+ * Make a workflow note's experimenter the README `author` again after the
+ * author was changed (#83). The front-matter `experimenter` line is rewritten,
+ * and so is each `- Experimenter:` line of a unit operation outside code
+ * blocks that still reads the old value or nothing: a unit op inserted after
+ * the change already has the new name, and another person's name was written
+ * on purpose. The label is the same in every locale. Undefined when `author`
+ * is empty, the note has no `experimenter` key, or it already matches.
+ */
+export function planWorkflowExperimenterSync(
+  content: string,
+  author: string
+): WorkflowExperimenterSync | undefined {
+  const to = author.trim();
+  if (!to) return undefined;
+  const { frontMatter, parseError } = parseFrontMatterYaml(content.replace(/\r\n/g, '\n'));
+  if (parseError || !('experimenter' in frontMatter)) return undefined;
+  const value = frontMatter.experimenter;
+  const from = value === null || value === undefined ? '' : String(value).trim();
+  if (from === to) return undefined;
+
+  const newline = content.includes('\r\n') ? '\r\n' : '\n';
+  const lines = content.split(/\r?\n/);
+  const fmEnd = lines.findIndex((l, i) => i > 0 && l.trim() === '---');
+  if (lines[0]?.trim() !== '---' || fmEnd === -1) return undefined;
+  for (let i = 1; i < fmEnd; i++) {
+    if (/^experimenter\s*:/.test(lines[i])) lines[i] = serializeFrontMatterEntry('experimenter', to);
+  }
+  let fence: OpenFence | null = null;
+  for (let i = fmEnd + 1; i < lines.length; i++) {
+    const next = stepFence(lines[i], fence);
+    if (next !== fence || fence) {
+      fence = next;
+      continue;
+    }
+    const m = /^(\s*-\s*Experimenter:)(.*)$/.exec(lines[i]);
+    if (m && (m[2].trim() === from || m[2].trim() === '')) lines[i] = `${m[1]} ${to}`;
+  }
+  const next = lines.join(newline);
+  return next === content ? undefined : { from, to, content: next };
 }
 
 /**

@@ -20,6 +20,7 @@
  * grammar — the plugin command that writes markers, `issue-sync` that promotes
  * them, and `validate` that reports broken ones.
  */
+import { scanDocumentHead } from '../sections/documentHead';
 
 /** Marker keyword, without the delimiter. */
 export const ISSUE_MARKER_KEYWORD = '@issue';
@@ -183,6 +184,39 @@ export function generateIssueMarkerId(): string {
   return `${ISSUE_MARKER_ID_PREFIX}-${timestamp.toString(36)}${suffix}`;
 }
 
+/**
+ * Give every marker in `md` a new ID from `newId`, keeping its delimiters,
+ * topic and line endings; returns the text and how many IDs changed. For a
+ * copied note (#89): its markers would otherwise share their IDs with the
+ * original's, merging both discussions into one issue. Markers are found as
+ * {@link parseIssueMarkers} finds them (fenced code skipped), so what
+ * `issue-sync` and `validate` read is what gets a new ID.
+ */
+export function reassignIssueMarkerIds(
+  md: string,
+  newId: () => string = generateIssueMarkerId
+): { content: string; count: number } {
+  let count = 0;
+  let inFence = false;
+  const lines = md.split('\n').map(raw => {
+    const cr = raw.endsWith('\r') ? '\r' : '';
+    const line = cr ? raw.slice(0, -1) : raw;
+    if (FENCE_RE.test(line)) {
+      inFence = !inFence;
+      return raw;
+    }
+    if (inFence) return raw;
+    const at = line.search(MARKER_START_RE);
+    if (at === -1) return raw;
+    const m = line.slice(at).match(MARKER_RE);
+    if (!m) return raw;
+    const idStart = at + ISSUE_MARKER_KEYWORD.length + 1;
+    count++;
+    return line.slice(0, idStart) + newId() + line.slice(idStart + m[1].length) + cr;
+  });
+  return { content: lines.join('\n'), count };
+}
+
 /** Reset the ID counter (tests only). */
 export function resetIssueMarkerIdCounter(): void {
   idCounter = 0;
@@ -200,7 +234,7 @@ export function renderIssueMarker(marker: { id: string; title: string }): string
  */
 export type IssueMarkerInsertion =
   | { edit: { from: number; to: number; insert: string }; cursor: number }
-  | { reason: 'conflict' | 'table' };
+  | { reason: 'conflict' | 'table' | 'frontMatter' };
 
 const isHeadingLine = (line: string): boolean => /^ {0,3}#{1,6}(?:\s|$)/.test(line);
 const isTableRow = (line: string): boolean => /^\s*\|/.test(line);
@@ -222,6 +256,8 @@ const isTableRow = (line: string): boolean => /^\s*\|/.test(line);
  *   and a line below would cut the table in two.
  * - A line that would end up with two markers is refused (`conflict`): only
  *   the first is read, so the second would merge into its title.
+ * - A selection starting in the front matter, its `---` lines included, is
+ *   refused (`frontMatter`): a marker there is broken YAML, not an issue (#87).
  */
 export function planIssueMarkerInsertion(
   doc: string,
@@ -230,6 +266,10 @@ export function planIssueMarkerInsertion(
   id: string
 ): IssueMarkerInsertion {
   if (from > to) [from, to] = [to, from];
+  const { fmEndLine } = scanDocumentHead(doc.split('\n'));
+  if (fmEndLine !== -1 && doc.slice(0, from).split('\n').length - 1 <= fmEndLine) {
+    return { reason: 'frontMatter' };
+  }
   // A selection that swallowed its line break (triple-click) ends on that line.
   while (to > from && doc[to - 1] === '\n') to--;
 

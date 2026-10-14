@@ -109,6 +109,10 @@ const obsidianKo: Record<string, string> = {
   'Workflow notes moved into {0} are not in its README checklist yet. Run "{1}" to add them.':
     '{0}(으)로 옮겨 온 워크플로 노트가 README 체크리스트에 없습니다. "{1}"을(를) 실행해 등록하세요.',
   'Experiment status changed: {0}': '실험 상태가 변경되었습니다: {0}',
+  'This vault is not a git repository yet, so no review issue will open. Finish the repository setup in {0} first.':
+    '이 보관함은 아직 git 저장소가 아니라 검토 이슈가 생성되지 않습니다. 먼저 {0}의 저장소 연결을 마치세요.',
+  'To open a review issue, run "Setup research automation" first.':
+    "검토 이슈를 열려면 먼저 '연구노트 자동화 설정'을 실행하세요.",
   'Flagged for discussion. An issue opens on the next push.':
     '논의 표시를 설정했습니다. 다음 push 때 이슈가 생성됩니다.',
   'Discussion flag cleared. Any issue already opened stays open.':
@@ -126,6 +130,8 @@ const obsidianKo: Record<string, string> = {
     '이 보관함은 아직 git 저장소가 아니라 이슈 생성·검사가 동작하지 않습니다. {0}의 저장소 연결을 마치세요.',
   'Issue markers cannot go inside a table. Run this on a line below the table.':
     '표 안에서는 이슈 마커를 넣을 수 없습니다. 표 아래 줄에서 실행하세요.',
+  'Issue markers cannot go in the front matter. Run this in the note body.':
+    '머리말(front matter)에는 이슈 마커를 넣을 수 없습니다. 본문에서 실행하세요.',
   'This line already has an issue marker. A line can hold only one.':
     '이 줄에는 이미 이슈 마커가 있습니다. 한 줄에 하나만 둘 수 있습니다.',
   'Front matter of this note could not be read, so it was left unchanged. Fix the YAML and try again: {0}':
@@ -153,6 +159,8 @@ const obsidianKo: Record<string, string> = {
   'Command failed: {0}': '명령 실행 실패: {0}',
   'Yes': '예',
   'Workflow created: {0}': '워크플로가 생성되었습니다: {0}',
+  'This experiment has no README.labnote.md, so the workflow was not added to a checklist.':
+    '이 실험에는 README.labnote.md가 없어 워크플로를 체크리스트에 등록하지 못했습니다.',
   'Unit operation inserted: {0} {1}': '유닛 오퍼레이션이 삽입되었습니다: {0} {1}',
   'Please open a workflow file.': '워크플로 파일을 열어주세요.',
   'Please run this command on a workflow file inside the labnote folder.':
@@ -316,8 +324,13 @@ const obsidianKo: Record<string, string> = {
   "These notes' title and heading do not match their file names. Update them?":
     '아래 노트의 title과 제목이 파일 이름과 맞지 않습니다. 노트를 고칠까요?',
   'Update notes': '노트 고치기',
+  "These notes' experimenter differs from the README author. Update them?":
+    '아래 노트의 실험자(experimenter)가 README의 author와 다릅니다. 노트를 고칠까요?',
+  '(empty)': '(비어 있음)',
   '{0} note(s) updated.': '노트 {0}개를 고쳤습니다.',
   'Name this copy of the workflow': '복제한 워크플로의 이름',
+  "Gave the {0} issue marker(s) of the copy new IDs, so they do not merge with the original's issues.":
+    '복제본의 이슈 마커 {0}개에 새 ID를 붙였습니다(원본의 이슈와 섞이지 않게).',
   '{0} table CSV file(s) kept their old name: the new name was taken or the rename failed.':
     '표 CSV 파일 {0}개는 옛 이름 그대로 두었습니다. 새 이름의 파일이 이미 있거나 이름 변경에 실패했습니다.',
   '{0} got a new ID because theirs did not match <Type>-<number>.':

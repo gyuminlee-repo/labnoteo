@@ -66,6 +66,36 @@ describe('plugin operations stamp last_updated_date', () => {
   });
 });
 
+// #79: needs-review opens a review issue only through the automation.
+describe('changing the status to needs-review', () => {
+  async function notified(files: Record<string, string>, picked: string): Promise<string[]> {
+    const fs = new MemFileSystem({ [README]: note(), ...files });
+    const shown: string[] = [];
+    const host = { ...makeHost(fs, picked), notify: (_: string, m: string) => shown.push(m) };
+    await changeExperimentStatusCommand(makeApp(), host as unknown as LabnoteHost);
+    return shown;
+  }
+  const WORKFLOW_YML = '.github/workflows/experiment-issues.yml';
+
+  it('says to run the setup when the automation is not installed', async () => {
+    expect(await notified({}, 'needs-review')).toEqual([
+      'Experiment status changed: {0} To open a review issue, run "Setup research automation" first.',
+    ]);
+  });
+
+  it('says the vault is not a git repository yet', async () => {
+    const [message] = await notified({ [WORKFLOW_YML]: '' }, 'needs-review');
+    expect(message).toContain('so no review issue will open');
+  });
+
+  it('adds nothing when the automation is ready, or for another status', async () => {
+    expect(await notified({ [WORKFLOW_YML]: '', '.git': '' }, 'needs-review')).toEqual([
+      'Experiment status changed: {0}',
+    ]);
+    expect(await notified({}, 'in-progress')).toEqual(['Experiment status changed: {0}']);
+  });
+});
+
 describe('writeNoteStamped (AI writes)', () => {
   it('stamps a workflow note and its experiment README', async () => {
     const fs = new MemFileSystem();

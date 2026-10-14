@@ -14,6 +14,7 @@ import {
   rebuildUnitOpToc,
   minimalReplacement,
   parseFrontMatterYaml,
+  reassignIssueMarkerIds,
 } from '@labnoteo/core';
 import {
   getSeoulDateString,
@@ -779,6 +780,18 @@ export default class LabnotePlugin extends Plugin {
 
     const settled = await this.waitForNoModal();
     if (this.unloaded || !this.copiedWorkflows.has(copyPath) || file.path !== copyPath) return;
+    // Before any prompt, so cancelling one still leaves no shared issue ID (#89).
+    const markers = reassignIssueMarkerIds(await this.app.vault.read(file)).count;
+    if (markers > 0) {
+      await this.app.vault.process(file, data => reassignIssueMarkerIds(data).content);
+      this.host.notify(
+        'info',
+        this.t(
+          'Gave the {0} issue marker(s) of the copy new IDs, so they do not merge with the original\'s issues.',
+          String(markers)
+        )
+      );
+    }
     const suggestion = suggestCopiedWorkflowFileName(file.name, await this.fs.list(dir));
     const target = suggestion ? posix.join(dir, suggestion) : undefined;
     if (!settled || !suggestion || !target || this.app.vault.getAbstractFileByPath(target)) {
@@ -822,8 +835,10 @@ export default class LabnotePlugin extends Plugin {
    * Ask for the copied note's alias (prefilled with the original's, selected),
    * then give the note that alias in its title and `## [ID name]` heading,
    * rename it `NNN_ID_name_alias.labnote.md`, and list it — in that order, so
-   * the checklist label comes from the new title. Cancelling changes nothing;
-   * the copy stays tracked so naming it by hand later still offers to list it.
+   * the checklist label comes from the new title. Cancelling leaves the name,
+   * title and checklist as they are (only the issue marker IDs were already
+   * renewed); the copy stays tracked so naming it by hand later still offers
+   * to list it.
    */
   private async renameCopiedWorkflow(
     file: TFile,
