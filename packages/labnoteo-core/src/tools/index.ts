@@ -16,7 +16,7 @@
 import type { LabnoteFs } from '../fs/labnoteFs';
 import {
   loadSamplesByType,
-  upsertSampleRecord,
+  mergeSampleRecord,
   getLabsamplesFolder,
   isSameSampleFolder,
   type SampleRecord,
@@ -376,7 +376,7 @@ export function createLabnoteTools(): ToolDef[] {
       name: 'create_sample',
       mutates: true,
       description:
-        'Create (or overwrite) a sample definition in the document-local labsamples folder, optionally with its storage location. Generates an id when none is given.',
+        'Create a sample definition in the document-local labsamples folder, or add to an existing one, optionally with its storage location. Generates an id when none is given. For an existing id the description is added in front of the earlier ones and the note is added to its sources; alias and location change only when given.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -433,21 +433,15 @@ export function createLabnoteTools(): ToolDef[] {
 
         const folder = getLabsamplesFolder(documentPath);
         const id = normalizedId ?? generateSampleId(type);
-        const alias = str(args, 'alias') ?? null;
-        const description = str(args, 'description') ?? null;
-        // Unlike alias/description, an absent location is kept rather than
-        // overwritten, so a client that predates the field cannot wipe a
-        // location entered in Obsidian by re-creating the sample.
-        const location = str(args, 'location');
 
-        // Atomic upsert (binds this note as the sample's source), replacing the
-        // previous load → mutate → saveSamplesByType round-trip that raced the
-        // debounced sample-sync.
-        await upsertSampleRecord(ctx.fs, folder, type, id, {
-          alias,
-          description,
+        // Atomic merge into an existing record (#73): calling again for a known
+        // id adds this note as a source and the description in front, and an
+        // omitted alias or location keeps what was recorded in Obsidian.
+        await mergeSampleRecord(ctx.fs, folder, type, id, {
+          alias: str(args, 'alias'),
+          description: str(args, 'description'),
           sources: [posix.basename(documentPath)],
-          location,
+          location: str(args, 'location'),
         });
         // A note outside any experiment (e.g. a vault-root note) resolves to the
         // same folder as the global samples; say so instead of calling it local.

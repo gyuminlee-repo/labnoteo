@@ -131,6 +131,45 @@ describe('planReferenceInsert', () => {
     });
   });
 
+  // #72: a table row must keep its cells.
+  describe('table rows -> inside the cells', () => {
+    const head = '## 결과\n| 시료 | 비고 |\n|---|---|\n';
+
+    it('inserts at the cursor inside a cell', () => {
+      const text = `${head}| 첫 | ok |`;
+      const at = text.indexOf('첫') + 1;
+      expect(apply(text, at)).toBe(`${head}| 첫 DNA-1;pUC19 | ok |`);
+    });
+
+    it('inserts right before a reference under the cursor', () => {
+      const text = `${head}| RNA-2;mix | ok |`;
+      const at = text.indexOf('mix') + 1;
+      expect(apply(text, at)).toBe(`${head}| DNA-1;pUC19 RNA-2;mix | ok |`);
+    });
+
+    it('inserts right before a definition, even past a space in its alias', () => {
+      const text = `${head}| @rna;RNA-2;my mix | ok |`;
+      const at = text.indexOf('mix |') + 1;
+      expect(apply(text, at)).toBe(`${head}| DNA-1;pUC19 @rna;RNA-2;my mix | ok |`);
+    });
+
+    it('moves a cursor past the last pipe back inside the row', () => {
+      const text = `${head}| a | ok |`;
+      expect(apply(text, text.length)).toBe(`${head}| a | ok DNA-1;pUC19 |`);
+    });
+
+    it('moves a cursor before the first pipe inside the row', () => {
+      const text = `${head}| a | ok |`;
+      expect(apply(text, head.length)).toBe(`${head}| DNA-1;pUC19 a | ok |`);
+    });
+
+    it('treats an escaped pipe as part of the reference', () => {
+      const text = `${head}| RNA-2;a\\|b | ok |`;
+      const at = text.indexOf('b |');
+      expect(apply(text, at, 'DNA-1;x\\|y')).toBe(`${head}| DNA-1;x\\|y RNA-2;a\\|b | ok |`);
+    });
+  });
+
   describe('edge cases', () => {
     it('ignores a `#` line inside a fenced code block (not a heading)', () => {
       const text = '## Real\ntext\n```bash\n# comment\n```\nmore';

@@ -213,6 +213,9 @@ const obsidianKo: Record<string, string> = {
   '{0} is still used in notes ({1}). Remove it from the note(s) first, then delete.':
     '{0}은(는) 본문에서 사용 중이라 삭제할 수 없습니다 ({1}). 본문에서 먼저 지운 뒤 다시 삭제하세요.',
   '{0} (+{1} more)': '{0} 외 {1}개',
+  '{0} is used in notes outside this experiment ({1}). Those notes will no longer find it after the move. Move anyway?':
+    '{0}은(는) 이 실험 밖의 노트에서 쓰이고 있습니다({1}). 옮기면 그 노트에서는 이 시료를 찾지 못합니다. 그래도 옮길까요?',
+  'Move anyway': '그래도 옮기기',
   'Sample moved: {0}': '샘플을 이동했습니다: {0}',
   'Sample not found: {0}': '샘플을 찾을 수 없습니다: {0}',
   'Open an experiment note first to move samples.': '샘플을 이동하려면 먼저 실험 노트를 여세요.',

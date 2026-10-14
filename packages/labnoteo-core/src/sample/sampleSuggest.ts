@@ -6,7 +6,7 @@
  * pure pieces live here (fully unit-tested) so each platform only writes the
  * thin UI adapter around them.
  */
-import { buildSampleIdPattern } from '../lib/sampleUtils';
+import { buildSampleIdPattern, escapeSamplePipes } from '../lib/sampleUtils';
 
 /** A resolved autocomplete trigger parsed from the text before the cursor. */
 export interface SampleTrigger {
@@ -86,7 +86,7 @@ export function buildSampleCompletionLabel(candidate: SampleCandidate): string {
 
 /** Text inserted on accept: `ID` or `ID;alias`. */
 export function buildSampleInsertText(candidate: SampleCandidate): string {
-  return candidate.alias ? `${candidate.id};${candidate.alias}` : candidate.id;
+  return candidate.alias ? `${candidate.id};${escapeSamplePipes(candidate.alias)}` : candidate.id;
 }
 
 /**

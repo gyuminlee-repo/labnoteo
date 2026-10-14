@@ -15,6 +15,7 @@ import {
   loadSamplesByType,
   saveSamplesByType,
   upsertSampleRecord,
+  mergeSampleRecord,
   deleteSampleRecord,
   putSampleRecord,
   removeSourcesForDocument,
@@ -121,6 +122,19 @@ describe('extractSampleInfoFromText', () => {
   it('treats ids that differ only in case as one sample', () => {
     const out = extractSampleInfoFromText('@DNA;DNA-55;a\n@DNA;dna-55;b');
     expect(out).toHaveLength(1);
+  });
+
+  // #72: `\|` is a literal pipe inside the alias/description.
+  it('reads an escaped pipe in the alias and description and unescapes it', () => {
+    const out = extractSampleInfoFromText('| @equip;Equip-1;DNase I \\| 등급;a\\|b | ok |');
+    expect(out).toEqual([
+      { id: 'Equip-1', type: 'Equip', alias: 'DNase I | 등급', description: 'a|b', definition: true },
+    ]);
+  });
+
+  it('still reads the legacy `ID|alias` form', () => {
+    const out = extractSampleInfoFromText('DNA-1|pUC19');
+    expect(out[0]).toMatchObject({ id: 'DNA-1', alias: 'pUC19' });
   });
 });
 
@@ -364,6 +378,24 @@ describe('findSampleDefinitionMatch (#37)', () => {
       length: def.length,
     });
   });
+
+  // #72: the replaced range covers the whole escaped alias.
+  it('covers an alias with an escaped pipe', () => {
+    const def = '@equip;Equip-1;DNase \\| 등급;설명';
+    const text = `| ${def} | ok |`;
+    const match = findSampleDefinitionMatch(text, 'Equip', 'Equip-1');
+    expect(match?.start).toBe(text.indexOf(def));
+    expect(text.slice(match!.start, match!.start + match!.length).trimEnd()).toBe(def);
+  });
+
+  it('finds a legacy id-less Equip definition by its escaped alias', () => {
+    const def = '@equip;;DNase | 등급'.replace('|', '\\|');
+    const text = `기기 ${def}\n`;
+    expect(findSampleDefinitionMatch(text, 'Equip', 'Equip-9', 'DNase | 등급')).toEqual({
+      start: text.indexOf(def),
+      length: def.length,
+    });
+  });
 });
 
 describe('saveSamplesFromDocument + loadSamplesByType (MemFileSystem round-trip)', () => {
@@ -472,6 +504,50 @@ describe('upsertSampleRecord (Phase 3 atomic merge)', () => {
     ]);
     const records = await loadSamplesByType(fs, FOLDER, 'DNA');
     expect(Object.keys(records).sort()).toEqual(['DNA-1', 'DNA-2', 'DNA-3']);
+  });
+});
+
+describe('mergeSampleRecord (#73)', () => {
+  const FOLDER = 'labnote/001_Exp/resources/labsamples';
+
+  it('creates a record when the file is absent', async () => {
+    const fs = new MemFileSystem();
+    await mergeSampleRecord(fs, FOLDER, 'DNA', 'DNA-1', { description: 'd', sources: ['a.md'] });
+    expect((await loadSamplesByType(fs, FOLDER, 'DNA'))['DNA-1']).toEqual({
+      type: 'DNA',
+      alias: null,
+      descriptions: ['d'],
+      sources: ['a.md'],
+      location: null,
+    });
+  });
+
+  it('keeps omitted fields, puts the new description first, and unions sources', async () => {
+    const fs = new MemFileSystem();
+    await putSampleRecord(fs, FOLDER, 'DNA', 'DNA-1', {
+      type: 'DNA',
+      alias: 'pUC19',
+      descriptions: ['old', 'older'],
+      sources: ['a.md'],
+      location: 'Box-1',
+    });
+
+    await mergeSampleRecord(fs, FOLDER, 'DNA', 'DNA-1', { description: 'older', sources: ['b.md', 'a.md'] });
+
+    expect((await loadSamplesByType(fs, FOLDER, 'DNA'))['DNA-1']).toEqual({
+      type: 'DNA',
+      alias: 'pUC19',
+      descriptions: ['older', 'old'],
+      sources: ['a.md', 'b.md'],
+      location: 'Box-1',
+    });
+  });
+
+  it('replaces alias and location when given', async () => {
+    const fs = new MemFileSystem();
+    await mergeSampleRecord(fs, FOLDER, 'DNA', 'DNA-1', { alias: 'a', location: 'L1' });
+    await mergeSampleRecord(fs, FOLDER, 'DNA', 'DNA-1', { alias: 'b', location: 'L2' });
+    expect((await loadSamplesByType(fs, FOLDER, 'DNA'))['DNA-1']).toMatchObject({ alias: 'b', location: 'L2' });
   });
 });
 

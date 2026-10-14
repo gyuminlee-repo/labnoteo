@@ -11,6 +11,10 @@
  *     only inside the front matter.
  *  2. Cursor on a heading line -> the line AFTER the heading (inserting at the
  *     line start would push the `##` and break the heading).
+ *  T. Cursor on a table row (#72) -> stay inside the cells: right BEFORE the
+ *     reference or definition under the cursor, else at the cursor (moved
+ *     inside the outer pipes). The next line would split the table, and the
+ *     line end would add a cell the header does not render.
  *  3. Cursor on a sample definition line (`@type;ID;alias;desc`) -> the line
  *     AFTER it. The definition's alias/description run to the next `;:|` or the
  *     line end, so anything appended to that line is read back into them and
@@ -35,8 +39,59 @@ export interface ReferenceInsert {
 /** A character that would fuse with a sample id if placed right against it. */
 const ADJACENT = /[\p{L}\p{N}_;-]/u;
 
-/** The `;alias;desc` tail a reference may carry, stopping at whitespace. */
-const REFERENCE_TAIL = /^(?:[;|][^\s;:|]*){0,2}/;
+/** The `;alias;desc` tail a reference may carry, stopping at whitespace; `\|` belongs to it. */
+const REFERENCE_TAIL = /^(?:[;|](?:\\\||[^\s;:|])*){0,2}/;
+
+const TABLE_ROW = /^\s*\|/;
+
+/** Index of the first unescaped `|` at or after `from`, or -1. */
+function nextCellPipe(line: string, from: number): number {
+  for (let i = from; i < line.length; i++) {
+    if (line[i] === '\\') {
+      i++;
+      continue;
+    }
+    if (line[i] === '|') return i;
+  }
+  return -1;
+}
+
+/** Index of the last unescaped `|` on `line`, or -1. */
+function lastCellPipe(line: string): number {
+  let last = -1;
+  for (let i = nextCellPipe(line, 0); i !== -1; i = nextCellPipe(line, i + 1)) last = i;
+  return last;
+}
+
+/**
+ * Start of the sample token under column `ch` in a table row, or -1. A
+ * definition starts at its `@type;` and its alias/description run to the end
+ * of the cell; a reference ends at whitespace like {@link isOnReference}.
+ */
+function tokenStartInCell(line: string, ch: number, types: readonly string[]): number {
+  for (const range of findSampleIdRanges(line, types)) {
+    const def = new RegExp(`@${escapeRegExp(range.type)}[;:]$`, 'i').exec(line.slice(0, range.start));
+    if (def) {
+      const cellEnd = nextCellPipe(line, range.end);
+      if (ch >= def.index && ch <= (cellEnd === -1 ? line.length : cellEnd)) return def.index;
+      continue;
+    }
+    const tail = REFERENCE_TAIL.exec(line.slice(range.end))?.[0] ?? '';
+    if (ch >= range.start && ch <= range.end + tail.length) return range.start;
+  }
+  return -1;
+}
+
+/** Where a reference goes on a table row, as a column of `line`. */
+function tableInsertColumn(line: string, ch: number, types: readonly string[]): number {
+  const token = tokenStartInCell(line, ch, types);
+  if (token !== -1) return token;
+  const first = nextCellPipe(line, 0);
+  if (ch <= first) return first + 1;
+  const last = lastCellPipe(line);
+  if (last > first && ch > last && !line.slice(last + 1).trim()) return last;
+  return ch;
+}
 
 /**
  * True when `line` holds a `@type;ID…` sample definition of one of `types`,
@@ -103,9 +158,18 @@ export function planReferenceInsert(
     return { offset: headEnd, text: `\n${ref}\n` };
   }
 
-  // Rule 3: on a definition line -> the next line; on a reference -> line end.
   const line = lines[cursorLine];
   const lineEnd = lineStart[cursorLine] + line.length;
+
+  // Table row: inside the cells, padded with a space against any neighbour.
+  if (TABLE_ROW.test(line)) {
+    const col = tableInsertColumn(line, cursorCol, types);
+    const lead = col > 0 && !/\s/.test(line[col - 1]) ? ' ' : '';
+    const trail = col < line.length && !/\s/.test(line[col]) ? ' ' : '';
+    return { offset: lineStart[cursorLine] + col, text: `${lead}${ref}${trail}` };
+  }
+
+  // Rule 3: on a definition line -> the next line; on a reference -> line end.
   if (isDefinitionLine(line, types)) {
     if (lineEnd < text.length && text[lineEnd] === '\n') {
       return { offset: lineEnd + 1, text: `${ref}\n` };

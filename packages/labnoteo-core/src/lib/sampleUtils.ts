@@ -47,6 +47,15 @@ export function canonicalSampleType(type: string, types: readonly string[]): str
 }
 
 /**
+ * Escape every `|` not already written as `\|`. A bare pipe splits a Markdown
+ * table cell and ends a sample field, while `\|` renders as `|` and is read
+ * back as part of the alias or description (#72).
+ */
+export function escapeSamplePipes(text: string): string {
+  return text.replace(/(?<!\\)\|/g, '\\|');
+}
+
+/**
  * Build the `;alias;description` suffix of a sample definition string while
  * keeping field positions stable.
  *
@@ -60,8 +69,8 @@ export function buildSampleDefSuffix(
   alias?: string | null,
   description?: string | null
 ): string {
-  const a = alias && alias.trim() ? alias : '';
-  const d = description && description.trim() ? description : '';
+  const a = alias && alias.trim() ? escapeSamplePipes(alias) : '';
+  const d = description && description.trim() ? escapeSamplePipes(description) : '';
   if (!a && !d) return '';
   if (!d) return `;${a}`;
   return `;${a};${d}`;
@@ -93,7 +102,7 @@ export function buildSampleDefinitionText(
  * document only references them).
  */
 export function buildSampleReferenceText(id: string, alias?: string | null): string {
-  return alias && alias.trim() ? `${id};${alias.trim()}` : id;
+  return alias && alias.trim() ? `${id};${escapeSamplePipes(alias.trim())}` : id;
 }
 
 /**

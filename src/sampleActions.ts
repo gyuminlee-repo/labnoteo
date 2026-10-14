@@ -404,7 +404,7 @@ export async function moveSampleInteractive(
   plugin: LabnotePlugin,
   opts: { fromScope: SampleScope; fromFolder: string; toFolder: string; type: string; id: string }
 ): Promise<boolean> {
-  const { fromFolder: src, toFolder: tgt, type, id } = opts;
+  const { fromScope, fromFolder: src, toFolder: tgt, type, id } = opts;
 
   // Empty-folder guard: an unresolved scope (no experiment rendered yet) yields
   // '' which would normalize to the vault root. Refuse rather than read/write
@@ -426,6 +426,29 @@ export async function moveSampleInteractive(
   if (!record) {
     new Notice(plugin.t('Sample not found: {0}', id));
     return false;
+  }
+
+  // A Global sample may be used anywhere; notes that resolve their samples
+  // from another folder lose it once it is Local to one experiment (#78).
+  if (fromScope === 'global') {
+    const outside = (await notesReferencingSample(app, plugin, src, type, id)).filter(
+      p => !isSameSampleFolder(getExperimentLabsamplesFolder(p) ?? getLabsamplesFolder(p), tgt)
+    );
+    if (outside.length > 0) {
+      const shown = outside.slice(0, 3).join(', ');
+      const list =
+        outside.length > 3 ? plugin.t('{0} (+{1} more)', shown, String(outside.length - 3)) : shown;
+      const ok = await confirmModal(
+        app,
+        plugin.t(
+          '{0} is used in notes outside this experiment ({1}). Those notes will no longer find it after the move. Move anyway?',
+          id,
+          list
+        ),
+        plugin.t('Move anyway')
+      );
+      if (!ok) return false;
+    }
   }
 
   // Confirm before clobbering a record that already exists in the destination.

@@ -126,6 +126,40 @@ describe('create_sample / get_sample / list_samples', () => {
     expect(got.data).toMatchObject({ location });
   });
 
+  // #73: a second call used to replace the descriptions and sources and drop the alias.
+  it('adds to an existing sample instead of replacing it', async () => {
+    const other = `${NOTE_DIR}/002_WB030_Other.labnote.md`;
+    await fs.write(other, '## [WB030 Other]\n');
+    await tool('create_sample').handler(ctx, {
+      type: 'Equip',
+      id: 'Equip-1',
+      alias: 'NanoDrop',
+      description: 'first',
+      documentPath: NOTE_PATH,
+    });
+    await tool('create_sample').handler(ctx, {
+      type: 'Equip',
+      id: 'Equip-1',
+      description: 'second',
+      documentPath: other,
+    });
+    await tool('create_sample').handler(ctx, {
+      type: 'Equip',
+      id: 'Equip-1',
+      description: 'first',
+      documentPath: other,
+    });
+
+    const records = JSON.parse(await fs.read(`${NOTE_DIR}/resources/labsamples/Equip.json`));
+    expect(records['Equip-1']).toEqual({
+      type: 'Equip',
+      alias: 'NanoDrop',
+      descriptions: ['first', 'second'],
+      sources: ['001_WD010_Design.labnote.md', '002_WB030_Other.labnote.md'],
+      location: null,
+    });
+  });
+
   // #58: a mistyped experiment path used to create a stray folder.
   it('refuses a note that does not exist and writes nothing', async () => {
     const before = fs.snapshot();

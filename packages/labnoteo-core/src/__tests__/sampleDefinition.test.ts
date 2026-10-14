@@ -10,8 +10,9 @@ import {
   SAMPLE_TYPES,
   normalizeSampleId,
   canonicalSampleType,
+  escapeSamplePipes,
 } from '../lib/sampleUtils';
-import { parseSampleTrigger } from '../sample/sampleSuggest';
+import { buildSampleInsertText, parseSampleTrigger } from '../sample/sampleSuggest';
 
 const TYPES = ['DNA', 'RNA', 'Plasmid', 'Reagent', 'Primer', 'Protein', 'Equip', 'Labware'];
 
@@ -69,6 +70,26 @@ describe('buildSampleReferenceText', () => {
 
   it('emits id;alias when an alias is present', () => {
     expect(buildSampleReferenceText('DNA-123', '별칭')).toBe('DNA-123;별칭');
+  });
+});
+
+// #72: a bare `|` splits a table cell and ends a sample field.
+describe('escaping `|` in sample text', () => {
+  it('escapes every bare pipe and leaves escaped ones alone', () => {
+    expect(escapeSamplePipes('a|b||c\\|d')).toBe('a\\|b\\|\\|c\\|d');
+  });
+
+  it('escapes the alias of a reference', () => {
+    expect(buildSampleReferenceText('Equip-1', 'DNase I | 등급')).toBe('Equip-1;DNase I \\| 등급');
+  });
+
+  it('escapes the alias and description of a definition', () => {
+    expect(buildSampleDefinitionText('Equip', 'Equip-1', 'a|b', 'c|d')).toBe('@equip;Equip-1;a\\|b;c\\|d');
+  });
+
+  it('escapes the autocomplete insert text', () => {
+    expect(buildSampleInsertText({ id: 'Equip-1', alias: 'a|b' })).toBe('Equip-1;a\\|b');
+    expect(buildSampleInsertText({ id: 'Equip-1', alias: 'a\\|b' })).toBe('Equip-1;a\\|b');
   });
 });
 

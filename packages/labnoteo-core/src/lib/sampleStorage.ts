@@ -6,7 +6,7 @@
 
 import * as path from '../util/posixPath';
 import type { LabnoteFs } from '../fs/labnoteFs';
-import { SAMPLE_TYPES, SampleType, isCatalogSampleType } from './sampleUtils';
+import { SAMPLE_TYPES, SampleType, escapeSamplePipes, isCatalogSampleType } from './sampleUtils';
 import { escapeRegExp } from './regexUtils';
 import { getExperimentDir, getExperimentLabsamplesFolder } from './labnoteStructure';
 
@@ -161,7 +161,12 @@ function buildSampleDefinitionPattern(type: string): RegExp {
 
 function sampleDefinitionSource(type: string): string {
   const typeEsc = escapeRegExp(type);
-  return `(?:@${typeEsc}[;:])?(${typeEsc}-\\d+(?:-\\d+)*)(?:[;|]([^;:\\n|]+)(?:[;:]([^\\n;|]+))?|:\\s*([^\\n;|]+))?`;
+  // Alias and description read `\|` as a literal pipe (#72).
+  return `(?:@${typeEsc}[;:])?(${typeEsc}-\\d+(?:-\\d+)*)(?:[;|]((?:\\\\\\||[^;:\\n|])+)(?:[;:]((?:\\\\\\||[^\\n;|])+))?|:\\s*([^\\n;|]+))?`;
+}
+
+function unescapeSamplePipes(text: string): string {
+  return text.replace(/\\\|/g, '|');
 }
 
 /**
@@ -233,9 +238,9 @@ export function extractSampleInfoFromText(text: string, additionalTypes?: string
 
       if (match[2]) {
         // Format: ID|alias or ID|alias:description
-        alias = match[2].trim();
+        alias = unescapeSamplePipes(match[2].trim());
         if (match[3]) {
-          description = match[3].trim();
+          description = unescapeSamplePipes(match[3].trim());
         }
       } else if (match[4]) {
         // Legacy format: ID: description
@@ -408,9 +413,9 @@ export function findSampleDefinitionMatch(
 
   // 2) Equip: match by @equip;|currentAlias when definition has no ID in text
   if ((type.toLowerCase() === 'equip') && currentAlias && currentAlias.trim()) {
-    const aliasEsc = escapeRegExp(currentAlias);
+    const aliasEsc = escapeRegExp(escapeSamplePipes(currentAlias));
     const equipAliasPattern = new RegExp(
-      `@equip[;:][;|]${aliasEsc}(?:[;:]([^\\n;|]*))?`,
+      `@equip[;:][;|]${aliasEsc}(?:[;:]((?:\\\\\\||[^\\n;|])*))?`,
       'gi'
     );
     const equipMatch = equipAliasPattern.exec(text);
@@ -601,6 +606,47 @@ export async function upsertSampleRecord(
       descriptions: fields.description ? [fields.description] : [],
       sources: fields.sources ?? records[id]?.sources ?? [],
       location: fields.location !== undefined ? fields.location : (records[id]?.location ?? null),
+    };
+    return JSON.stringify(records, null, 2);
+  });
+}
+
+/**
+ * Atomically add to a sample record in `{Type}.json`, creating it if absent,
+ * with the document-sync rules of {@link mergeSampleDatabases} (#73):
+ *  - `alias` and `location` replace the stored value only when given,
+ *  - `description` goes first and the earlier ones stay (no duplicates),
+ *  - `sources` are added to the stored ones.
+ * Used by the MCP `create_sample` tool, which an agent may call again for an
+ * existing id without knowing what is already recorded.
+ */
+export async function mergeSampleRecord(
+  fs: LabnoteFs,
+  labsamplesFolder: string,
+  type: string,
+  id: string,
+  fields: {
+    alias?: string;
+    description?: string;
+    sources?: string[];
+    location?: string;
+  }
+): Promise<void> {
+  assertSafeSampleType(type);
+  const filePath = path.join(labsamplesFolder, `${type}.json`);
+  await fs.modify(filePath, (raw) => {
+    const records = parseSampleRecords(raw);
+    const existing = records[id];
+    const descriptions = existing?.descriptions ?? [];
+    const sources = existing?.sources ?? [];
+    records[id] = {
+      type,
+      alias: fields.alias !== undefined ? fields.alias : (existing?.alias ?? null),
+      descriptions: fields.description
+        ? [fields.description, ...descriptions.filter(d => d !== fields.description)]
+        : descriptions,
+      sources: [...sources, ...(fields.sources ?? []).filter(s => !sources.includes(s))],
+      location: fields.location !== undefined ? fields.location : (existing?.location ?? null),
     };
     return JSON.stringify(records, null, 2);
   });

@@ -10,10 +10,12 @@
  * tests deliberately point `plugin.localSampleFolder()` at a WRONG experiment
  * and assert the move ignores it.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { App } from 'obsidian';
+import { TFile } from '../stubs/obsidian';
 import type LabnotePlugin from '../../src/main';
 import { moveSampleInteractive } from '../../src/sampleActions';
+import { confirmModal } from '../../src/modals';
 import { MemFileSystem } from '../../packages/labnoteo-core/src/fs/memFileSystem';
 import {
   putSampleRecord,
@@ -40,6 +42,7 @@ function makePlugin(fs: MemFileSystem) {
     fs,
     t: (key: string, ...args: string[]) =>
       args.reduce<string>((s, a, i) => s.replace(`{${i}}`, a), key),
+    settings: { customSampleTypes: [] },
     localSampleFolder: () => WRONG_LOCAL,
     refreshSampleViews: () => {
       refreshed += 1;
@@ -48,9 +51,28 @@ function makePlugin(fs: MemFileSystem) {
   return { plugin: plugin as unknown as LabnotePlugin, getRefreshed: () => refreshed };
 }
 
-// confirmModal is only reached on a destination-id conflict, which these tests
-// avoid; a bare object is enough to satisfy the type.
-const APP = {} as unknown as App;
+vi.mock('../../src/modals', () => ({
+  promptModal: vi.fn(),
+  confirmModal: vi.fn(),
+  pickModal: vi.fn(),
+}));
+
+beforeEach(() => {
+  vi.mocked(confirmModal).mockReset();
+});
+
+/** A vault whose markdown notes are `notes` (path -> text), none of them open. */
+function makeApp(notes: Record<string, string> = {}): App {
+  return {
+    workspace: { getLeavesOfType: () => [] },
+    vault: {
+      getMarkdownFiles: () => Object.keys(notes).map(p => new TFile(p)),
+      cachedRead: async (file: TFile) => notes[file.path],
+    },
+  } as unknown as App;
+}
+
+const APP = makeApp();
 
 describe('moveSampleInteractive — targets the rendered folder', () => {
   it('moves Global -> Local into the shown experiment, not the active-file one', async () => {
@@ -113,5 +135,74 @@ describe('moveSampleInteractive — targets the rendered folder', () => {
     // Nothing written, nothing deleted — the sample stays put in Global.
     expect(fs.snapshot()).toEqual(before);
     expect(getRefreshed()).toBe(0);
+  });
+});
+
+// #78: other experiments resolve a Global sample until it becomes Local to one.
+describe('moveSampleInteractive — Global -> Local warns about other experiments', () => {
+  const move = (app: App, plugin: LabnotePlugin, id: string) =>
+    moveSampleInteractive(app, plugin, {
+      fromScope: 'global',
+      fromFolder: GLOBAL,
+      toFolder: RENDERED_LOCAL,
+      type: TYPE,
+      id,
+    });
+
+  it('asks first and keeps the sample Global when the user declines', async () => {
+    const fs = new MemFileSystem();
+    await putSampleRecord(fs, GLOBAL, TYPE, 'Reagent-4', record('salt'));
+    const { plugin } = makePlugin(fs);
+    const app = makeApp({
+      'labnote/111_Shown/001_WD010_A.labnote.md': 'Reagent-4;salt',
+      'labnote/222_Other/001_WD010_B.labnote.md': 'Reagent-4;salt',
+    });
+    vi.mocked(confirmModal).mockResolvedValue(false);
+
+    expect(await move(app, plugin, 'Reagent-4')).toBe(false);
+
+    expect(vi.mocked(confirmModal).mock.calls[0][1]).toContain('labnote/222_Other/001_WD010_B.labnote.md');
+    expect(vi.mocked(confirmModal).mock.calls[0][1]).not.toContain('111_Shown');
+    expect((await loadSamplesByType(fs, GLOBAL, TYPE))['Reagent-4']).toEqual(record('salt'));
+    expect(await loadSamplesByType(fs, RENDERED_LOCAL, TYPE)).toEqual({});
+  });
+
+  it('moves after the user agrees', async () => {
+    const fs = new MemFileSystem();
+    await putSampleRecord(fs, GLOBAL, TYPE, 'Reagent-4', record('salt'));
+    const { plugin } = makePlugin(fs);
+    const app = makeApp({ 'Welcome.md': 'Reagent-4' });
+    vi.mocked(confirmModal).mockResolvedValue(true);
+
+    expect(await move(app, plugin, 'Reagent-4')).toBe(true);
+    expect((await loadSamplesByType(fs, RENDERED_LOCAL, TYPE))['Reagent-4']).toEqual(record('salt'));
+  });
+
+  it('does not ask when only the target experiment uses it', async () => {
+    const fs = new MemFileSystem();
+    await putSampleRecord(fs, GLOBAL, TYPE, 'Reagent-4', record('salt'));
+    const { plugin } = makePlugin(fs);
+    const app = makeApp({ 'labnote/111_Shown/001_WD010_A.labnote.md': 'Reagent-4;salt' });
+
+    expect(await move(app, plugin, 'Reagent-4')).toBe(true);
+    expect(confirmModal).not.toHaveBeenCalled();
+  });
+
+  it('does not check references for a Local -> Global move', async () => {
+    const fs = new MemFileSystem();
+    await putSampleRecord(fs, RENDERED_LOCAL, TYPE, 'Reagent-5', record('x'));
+    const { plugin } = makePlugin(fs);
+    const app = makeApp({ 'labnote/222_Other/001_WD010_B.labnote.md': 'Reagent-5' });
+
+    const moved = await moveSampleInteractive(app, plugin, {
+      fromScope: 'local',
+      fromFolder: RENDERED_LOCAL,
+      toFolder: GLOBAL,
+      type: TYPE,
+      id: 'Reagent-5',
+    });
+
+    expect(moved).toBe(true);
+    expect(confirmModal).not.toHaveBeenCalled();
   });
 });
