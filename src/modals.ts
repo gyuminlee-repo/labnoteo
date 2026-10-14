@@ -5,7 +5,7 @@
  * Each wrapper resolves a Promise so command logic in `@labnoteo/core` can use
  * ordinary `await` control flow, exactly as it does with the VS Code host.
  */
-import { App, Modal, SuggestModal, Setting } from 'obsidian';
+import { App, Component, MarkdownRenderer, Modal, Notice, SuggestModal, Setting } from 'obsidian';
 import type { PickItem, PromptOpts } from '@labnoteo/core';
 import { createObsidianTranslator } from './i18n';
 
@@ -258,6 +258,69 @@ export function confirmModal(
     signal?.addEventListener('abort', onAbort);
     modal.open();
   });
+}
+
+/** Options for {@link aiAnswerModal}. */
+export interface AiAnswerOpts {
+  /** The model's Markdown answer. */
+  content: string;
+  /** The note the answer is about; links in the answer resolve from it. */
+  sourcePath: string;
+  /** Put the answer into the note. Resolves false when it was not inserted. */
+  onInsert: () => Promise<boolean>;
+}
+
+/**
+ * Shows an AI answer rendered as Markdown (#77). The note only changes when
+ * the user presses "Insert into note".
+ */
+class AiAnswerModal extends Modal {
+  private readonly component = new Component();
+
+  constructor(
+    app: App,
+    private readonly opts: AiAnswerOpts
+  ) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    this.setTitle(t('AI answer'));
+    this.component.load();
+    const body = contentEl.createDiv({ cls: 'labnote-ai-answer markdown-rendered' });
+    void MarkdownRenderer.render(this.app, this.opts.content, body, this.opts.sourcePath, this.component);
+
+    new Setting(contentEl)
+      .addButton(b =>
+        b
+          .setButtonText(t('Insert into note'))
+          .setCta()
+          .onClick(async () => {
+            if (await this.opts.onInsert()) this.close();
+          })
+      )
+      .addButton(b =>
+        b.setButtonText(t('Copy')).onClick(async () => {
+          try {
+            await navigator.clipboard.writeText(this.opts.content);
+            new Notice(t('Copied to clipboard.'));
+          } catch (err) {
+            new Notice(t('Could not copy: {0}', err instanceof Error ? err.message : String(err)));
+          }
+        })
+      )
+      .addButton(b => b.setButtonText(t('Close')).onClick(() => this.close()));
+  }
+
+  onClose(): void {
+    this.component.unload();
+    this.contentEl.empty();
+  }
+}
+
+export function aiAnswerModal(app: App, opts: AiAnswerOpts): void {
+  new AiAnswerModal(app, opts).open();
 }
 
 /** Options for {@link workflowAliasModal}. */

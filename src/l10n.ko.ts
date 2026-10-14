@@ -36,6 +36,13 @@ const obsidianKo: Record<string, string> = {
   'Allow AI tool "{0}" to modify the vault?': 'AI 툴 "{0}"이(가) 보관함을 수정하도록 허용할까요?',
   'AI stopped after too many steps.': 'AI가 너무 많은 단계를 거쳐 중단되었습니다.',
   'AI ran {0} tool call(s).': 'AI가 툴을 {0}회 호출했습니다.',
+  'AI answer': 'AI 답변',
+  'Insert into note': '노트에 넣기',
+  'Copy': '복사',
+  'Copied to clipboard.': '클립보드에 복사했습니다.',
+  'Could not copy: {0}': '복사하지 못했습니다: {0}',
+  'That note is no longer open. Copy the answer instead.':
+    '그 노트가 더 이상 열려 있지 않습니다. 답변을 복사해서 쓰세요.',
 
   // View titles / ribbon
   'Workflows': '워크플로',

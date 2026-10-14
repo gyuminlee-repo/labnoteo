@@ -156,6 +156,13 @@ body > input.labnote-datetime-picker {
   white-space: pre-wrap; /* 확인 대상 목록·경로를 줄마다 표시 */
 }
 
+/* AI 답변 창: 긴 답변은 버튼이 가려지지 않게 본문만 스크롤하고, 일부만 골라 복사할 수 있게 함 */
+.labnote-ai-answer {
+  max-height: 60vh;
+  overflow-y: auto;
+  user-select: text;
+}
+
 /* --- Workflow alias modal ----------------------------------------------- */
 .labnote-alias-row {
   display: flex;

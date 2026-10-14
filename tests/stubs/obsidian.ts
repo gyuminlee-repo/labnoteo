@@ -120,6 +120,17 @@ export class MarkdownView {
   }
 }
 
+export class Component {
+  load(): void {}
+  unload(): void {}
+}
+
+export const MarkdownRenderer = {
+  render(): Promise<void> {
+    return Promise.resolve();
+  },
+};
+
 export class Modal {
   contentEl = { empty(): void {}, createEl(): unknown { return {}; } };
 

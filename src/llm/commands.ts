@@ -31,6 +31,7 @@ import { createLlmProvider, type ChatMessage } from './provider';
 import { runAgent } from './agent';
 import { buildApprovalMessage } from './approvalMessage';
 import { getObsidianLanguage } from '../i18n';
+import { aiAnswerModal } from '../modals';
 
 /**
  * Tool context for AI-driven edits.
@@ -348,6 +349,7 @@ export async function askAgentCommand(plugin: LabnotePlugin): Promise<void> {
   });
   if (!goal?.trim()) return;
 
+  const noteText = (await target.getText()).slice(0, 6000);
   const notice = new Notice(plugin.t('Contacting {0}…', provider.name), 0);
   try {
     const run = await runAgent(
@@ -357,9 +359,11 @@ export async function askAgentCommand(plugin: LabnotePlugin): Promise<void> {
           content:
             'You are a lab notebook assistant. Use the provided tools to inspect and edit the notebook. ' +
             `The active note is "${target.path}"; pass it as documentPath. ` +
-            'Prefer reading before writing, and answer briefly in Markdown when done.',
+            'Prefer reading before writing, and answer briefly in Markdown when done. ' +
+            'Your final answer is shown to the user in a dialog and is not written to the note; ' +
+            'to change the note, use the tools.',
         },
-        { role: 'user', content: goal },
+        { role: 'user', content: `${goal}\n\nActive note:\n${noteText}` },
       ],
       {
         provider,
@@ -381,7 +385,24 @@ export async function askAgentCommand(plugin: LabnotePlugin): Promise<void> {
       new Notice(plugin.t('AI stopped after too many steps.'));
       return;
     }
-    if (run.content) await insertBlock(plugin, target, run.content);
+    const answer = run.content;
+    if (answer) {
+      // The answer only goes in on request (#77), possibly minutes later, so
+      // the note must still be the one open.
+      aiAnswerModal(plugin.app, {
+        content: answer,
+        sourcePath: target.path,
+        onInsert: async () => {
+          const current = plugin.host.editTarget();
+          if (current?.path !== target.path) {
+            new Notice(plugin.t('That note is no longer open. Copy the answer instead.'));
+            return false;
+          }
+          await insertBlock(plugin, current, answer);
+          return true;
+        },
+      });
+    }
     new Notice(plugin.t('AI ran {0} tool call(s).', String(run.executed.length)));
   } catch (err) {
     new Notice(plugin.t('AI request failed: {0}', err instanceof Error ? err.message : String(err)));
