@@ -63,7 +63,7 @@ Claude Code, Codex, Cursor 등)는 아래 규칙을 따라 작업합니다.
   호출하지 마세요. 빈 `content`는 거부되며, 절을 일부러 비울 때만 `content: ""`와
   `clear: true`를 함께 보냅니다. 결과의 `removedLines`·`removedSubheadings`·`previousBody`로
   무엇이 지워졌는지 확인하세요.
-- 실험 폴더의 어느 `*.labnote.md`(README 또는 워크플로 노트) 본문 아무 줄에나 넣는
+- 실험 폴더의 어느 `*.labnote.md`(README 또는 워크플로 노트) 본문 아무 줄에나(frontmatter 안은 제외) 넣는
   `@issue;<ID>;<주제문장>` 마커는 "이 지점을 논의하자"는
   신호입니다. `@issue;`부터 줄 끝까지가 한 마커이고, 샘플 참조(`@dna;...`)와
   같은 문법입니다. ID는 사람이 짓지 않습니다 — 플러그인의 *Insert issue marker*
@@ -111,7 +111,9 @@ Reagent/Labware, 재사용 장치면 Equipment.**
   할 때만 `discuss: true`를 씁니다.
 - **마커 ID는 실험 폴더 안에서 유일해야 합니다.** 노트를 복제하거나 템플릿으로 다른
   노트를 만드는 것은 정당한 작업이지만, 마커가 있는 줄을 그대로 옮기면 ID가 따라가
-  두 논의가 한 이슈로 합쳐집니다. 복사된 줄의 마커는 **ID를 새로 만들거나(같은 규칙:
+  두 논의가 한 이슈로 합쳐집니다. Obsidian 탐색기의 "복사본 생성"으로 복제한 노트는
+  플러그인이 마커에 새 ID를 붙이지만, 파일을 직접 복사하거나 줄을 옮긴 경우는 그렇지
+  않습니다. 복사된 줄의 마커는 **ID를 새로 만들거나(같은 규칙:
   `ISS-` + 현재 시각 base36) 마커 자체를 지우세요.**
 - GitHub Issue를 **직접 생성하지 마세요** — push 후 서버측 `issue-sync`가
   `discuss: true` / `status: needs-review` 노트와 `@issue` 마커를 `[식별자]`
