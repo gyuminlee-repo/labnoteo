@@ -198,6 +198,8 @@ const obsidianKo: Record<string, string> = {
   'OK': '확인',
   'Cancel': '취소',
   'Sample added: {0}': '샘플이 추가되었습니다: {0}',
+  '{0} was added to Global samples because this note is outside an experiment folder.':
+    '이 노트는 실험 폴더 밖에 있어 {0}을(를) 전역 샘플에 추가했습니다.',
   'Sample updated: {0}': '샘플이 수정되었습니다: {0}',
   'Sample deleted: {0}': '샘플이 삭제되었습니다: {0}',
   '{0} is still used in notes ({1}). Remove it from the note(s) first, then delete.':
@@ -219,8 +221,8 @@ const obsidianKo: Record<string, string> = {
   'Autocomplete, highlighting and {Type}.json sync. Reload to apply.':
     '자동완성, 하이라이팅 및 {Type}.json 동기화. 적용하려면 다시 로드하세요.',
   'Custom sample types': '사용자 정의 샘플 타입',
-  'Comma-separated types in addition to the built-ins.':
-    '기본 제공 타입 외에 추가할 타입을 쉼표로 구분해 입력합니다.',
+  'Comma-separated types in addition to the built-ins. Use letters, digits and _ only (no spaces or -), e.g. CellLine, 배지.':
+    '기본 제공 타입 외에 추가할 타입을 쉼표로 구분해 입력합니다. 글자·숫자·_만 쓰세요(공백·- 불가). 예: CellLine, 배지',
   'Global sample folder': '전역 샘플 폴더',
   'Vault-relative folder for vault-global samples.':
     '볼트 전역 샘플을 저장할 볼트 기준 상대 폴더입니다.',
@@ -267,6 +269,24 @@ const obsidianKo: Record<string, string> = {
   'Nothing to summarize.': '요약할 내용이 없습니다.',
   'Nothing to extract.': '추출할 내용이 없습니다.',
   'Created {0} sample(s).': '샘플 {0}개를 생성했습니다.',
+  '"{0}" is not an experiment folder: its name must start with ###_ (e.g. 001_Name).':
+    '"{0}"은(는) 실험 폴더가 아닙니다. 폴더 이름은 ###_로 시작해야 합니다(예: 001_이름).',
+  '"{0}" is no longer an experiment folder: its name must start with ###_ (e.g. 001_Name). Workflow commands and Local samples will not find it.':
+    '"{0}"은(는) 더 이상 실험 폴더가 아닙니다. 폴더 이름은 ###_로 시작해야 합니다(예: 001_이름). 워크플로 명령과 로컬 샘플이 이 폴더를 찾지 못합니다.',
+  '"{0}" is no longer an experiment folder: its name must start with ###_ (e.g. 001_Name). Workflow commands and Local samples will not find it. Rename it to "{1}"?':
+    '"{0}"은(는) 더 이상 실험 폴더가 아닙니다. 폴더 이름은 ###_로 시작해야 합니다(예: 001_이름). 워크플로 명령과 로컬 샘플이 이 폴더를 찾지 못합니다. 이름을 "{1}"(으)로 바꿀까요?',
+  'These checklist labels do not match their file names. Update them?':
+    '아래 체크리스트 라벨이 파일 이름과 맞지 않습니다. 라벨을 고칠까요?',
+  'Update labels': '라벨 고치기',
+  '{0} label(s) updated.': '라벨 {0}개를 고쳤습니다.',
+  'Name this copy of the workflow': '복제한 워크플로의 이름',
+  '{0} table CSV file(s) kept their old name: the new name was taken or the rename failed.':
+    '표 CSV 파일 {0}개는 옛 이름 그대로 두었습니다. 새 이름의 파일이 이미 있거나 이름 변경에 실패했습니다.',
+  '{0} got a new ID because theirs did not match <Type>-<number>.':
+    '{0}개는 ID가 <타입>-<숫자> 형식이 아니어서 새 ID를 만들었습니다.',
+  '{0} skipped: unknown sample type.': '{0}개는 알 수 없는 샘플 타입이라 건너뛰었습니다.',
+  'This note is outside an experiment folder, so they were added to Global samples.':
+    '이 노트는 실험 폴더 밖에 있어 전역 샘플에 추가했습니다.',
 
   // MCP server
   'MCP server is desktop-only.': 'MCP 서버는 데스크톱 전용입니다.',
@@ -275,6 +295,11 @@ const obsidianKo: Record<string, string> = {
   'MCP server error: {0}': 'MCP 서버 오류: {0}',
   'Allow MCP tool "{0}" to modify the vault?': 'MCP 도구 "{0}"가 볼트를 수정하도록 허용할까요?',
   'Target: {0}': '대상: {0}',
+  'This replaces section "{0}", which now has {1} line(s).':
+    '절 "{0}"의 내용을 바꿉니다. 지금 {1}줄이 있습니다.',
+  'This empties section "{0}", which now has {1} line(s).':
+    '절 "{0}"의 내용을 모두 지웁니다. 지금 {1}줄이 있습니다.',
+  'Its {0} nested heading(s) are replaced too.': '그 안의 하위 제목 {0}개도 함께 바뀝니다.',
   'MCP tool "{0}" was not run: no answer in time.':
     'MCP 도구 "{0}"을(를) 실행하지 않았습니다: 시간 안에 응답이 없었습니다.',
   'MCP tool "{0}" was not run: the client disconnected.':

@@ -436,6 +436,14 @@ export function getLabsamplesFolder(documentPath: string): string {
 }
 
 /**
+ * Whether two labsamples folders are the same directory (separators, `./` and
+ * case ignored). A vault-root note's local folder is the default global one.
+ */
+export function isSameSampleFolder(a: string, b: string): boolean {
+  return path.normalizeForCompare(a).toLowerCase() === path.normalizeForCompare(b).toLowerCase();
+}
+
+/**
  * Load sample database from JSON files for a specific type
  */
 export async function loadSamplesByType(
@@ -660,12 +668,8 @@ export async function saveSamplesFromDocument(
   // unknown id do not — see mergeSampleDatabases' `seedable`.
   const seedable = new Set<string>();
 
-  const globalFolderResolved = globalLabsamplesFolder
-    ? path.normalizeForCompare(globalLabsamplesFolder).toLowerCase()
-    : '';
-  const localFolderResolved = path.normalizeForCompare(labsamplesFolder).toLowerCase();
   const skipGlobalDedupe =
-    Boolean(globalLabsamplesFolder) && globalFolderResolved === localFolderResolved;
+    Boolean(globalLabsamplesFolder) && isSameSampleFolder(labsamplesFolder, globalLabsamplesFolder!);
 
   for (const type of Object.keys(newDb)) {
     assertSafeSampleType(type);
@@ -774,14 +778,10 @@ export async function removeSourcesForDocument(
 
   // Mirror saveSamplesFromDocument's skipGlobalDedupe logic so we don't
   // process the same folder twice and double-report removals.
-  const localResolved = path.normalizeForCompare(localFolder).toLowerCase();
-  const globalResolved = globalLabsamplesFolder
-    ? path.normalizeForCompare(globalLabsamplesFolder).toLowerCase()
-    : '';
   const scopes: Array<{ scope: 'local' | 'global'; folder: string }> = [
     { scope: 'local', folder: localFolder },
   ];
-  if (globalLabsamplesFolder && globalResolved !== localResolved) {
+  if (globalLabsamplesFolder && !isSameSampleFolder(localFolder, globalLabsamplesFolder)) {
     scopes.push({ scope: 'global', folder: globalLabsamplesFolder });
   }
 

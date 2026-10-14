@@ -50,7 +50,9 @@ export function parseSampleTrigger(
 
   // `.*` (was `\S*`) so the search term may contain spaces — otherwise aliases
   // like "my plasmid" could not be searched after `@type;`.
-  const m = linePrefix.match(/@(\w+)[;:]?(.*)$/);
+  // Unicode letters (not `\w`, which is ASCII-only even with `u`) so custom
+  // types such as `배지` trigger too (#62).
+  const m = linePrefix.match(/@([\p{L}\p{N}_]+)[;:]?(.*)$/u);
   if (!m || m.index === undefined) return undefined;
 
   const rawType = m[1].toLowerCase();

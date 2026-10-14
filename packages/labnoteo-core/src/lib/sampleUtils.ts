@@ -22,7 +22,28 @@ export type SampleType = typeof SAMPLE_TYPES[number];
  * stateful `lastIndex` footgun on shared regex objects.
  */
 export function buildSampleIdPattern(type: string): RegExp {
-  return new RegExp(`\\b${escapeRegExp(type)}-\\d+(?:-\\d+)*\\b`, 'g');
+  // `\b` is ASCII-only, so before a non-ASCII type (`배지`) it would require an
+  // ASCII word character and never match at line start or after a space (#62).
+  const lead = /^\w/.test(type) ? '\\b' : '';
+  return new RegExp(`${lead}${escapeRegExp(type)}-\\d+(?:-\\d+)*\\b`, 'g');
+}
+
+/**
+ * `id` as a valid `{type}-<number>[-<number>…]` sample id with the type prefix
+ * in its canonical spelling (`equip-3` → `Equip-3`), or undefined when it does
+ * not have that shape. The check ignores case but the result does not: the
+ * highlighting pattern above is case-sensitive, so a lower-cased prefix would
+ * never be recognised in the note.
+ */
+export function normalizeSampleId(type: string, id: string): string | undefined {
+  const m = new RegExp(`^${escapeRegExp(type)}(-\\d+(?:-\\d+)*)$`, 'i').exec(id.trim());
+  return m ? `${type}${m[1]}` : undefined;
+}
+
+/** The known type spelled like `type` ignoring case, or undefined. */
+export function canonicalSampleType(type: string, types: readonly string[]): string | undefined {
+  const lower = type.trim().toLowerCase();
+  return types.find(t => t.toLowerCase() === lower);
 }
 
 /**

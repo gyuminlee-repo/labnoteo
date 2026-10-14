@@ -60,6 +60,13 @@ describe('parseSampleTrigger', () => {
     const t = parseSampleTrigger('@cellline:', [...TYPES, 'CellLine']);
     expect(t!.typesToSearch).toEqual(['CellLine']);
   });
+
+  // #62: `\w` is ASCII-only, so a Korean custom type never triggered.
+  it('triggers on a non-ASCII custom type', () => {
+    const t = parseSampleTrigger('배양에 @배지;', [...TYPES, '배지']);
+    expect(t).toEqual({ fullPrefix: '@배지;', searchTerm: '', typesToSearch: ['배지'], startCol: 4 });
+    expect(parseSampleTrigger('@배지', [...TYPES, '배지'])!.typesToSearch).toEqual(['배지']);
+  });
 });
 
 describe('buildSampleCompletionEntries', () => {
@@ -115,5 +122,18 @@ describe('findSampleIdRanges', () => {
 
   it('returns empty when no IDs present', () => {
     expect(findSampleIdRanges('nothing here', ['DNA'])).toEqual([]);
+  });
+
+  // #62: a leading `\b` needs an ASCII word char, which a Korean type is not.
+  it('finds ids of a non-ASCII type at line start and after a space', () => {
+    expect(findSampleIdRanges('배지-1 그리고 배지-22', ['배지'])).toEqual([
+      { start: 0, end: 4, type: '배지' },
+      { start: 9, end: 14, type: '배지' },
+    ]);
+  });
+
+  it('still finds an ASCII-type id glued to Korean text', () => {
+    expect(findSampleIdRanges('같게Plasmid-1', ['Plasmid'])).toEqual([{ start: 2, end: 11, type: 'Plasmid' }]);
+    expect(findSampleIdRanges('xDNA-1', ['DNA'])).toEqual([]);
   });
 });

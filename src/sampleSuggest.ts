@@ -27,6 +27,7 @@ import {
 } from '@labnoteo/core/lib/sampleUtils';
 import {
   loadSamplesByType,
+  isSameSampleFolder,
   type SampleRecord,
 } from '@labnoteo/core/lib/sampleStorage';
 import type LabnotePlugin from './main';
@@ -115,9 +116,11 @@ export class SampleEditorSuggest extends EditorSuggest<SuggestEntry> {
     const globalFolder = this.deps.globalFolder();
 
     const recordsByType: Record<string, SampleCandidate[]> = {};
+    // A vault-root note's local folder is the global one: read it once.
+    const readGlobal = Boolean(globalFolder) && !isSameSampleFolder(localFolder, globalFolder);
     for (const type of trigger.typesToSearch) {
       const local = await this.loadCached(localFolder, type);
-      const global = globalFolder ? await this.loadCached(globalFolder, type) : {};
+      const global = readGlobal ? await this.loadCached(globalFolder, type) : {};
       // Local definitions win over global on id collision.
       const merged = { ...global, ...local };
       recordsByType[type] = Object.entries(merged).map(([id, rec]) => ({
@@ -222,6 +225,7 @@ export class SampleEditorSuggest extends EditorSuggest<SuggestEntry> {
           type,
           folder: plugin.localSampleFolder(),
           mode: kind,
+          scope: 'local',
         });
         referenceText = created?.referenceText;
       }

@@ -21,9 +21,15 @@ import {
   type EditTarget,
   type UnitOpMethodLocation,
 } from '@labnoteo/core';
+import {
+  canonicalSampleType,
+  getSampleDisplayMeta,
+  normalizeSampleId,
+} from '@labnoteo/core/lib/sampleUtils';
 import type LabnotePlugin from '../main';
 import { createLlmProvider, type ChatMessage } from './provider';
 import { runAgent } from './agent';
+import { buildApprovalMessage } from './approvalMessage';
 import { getObsidianLanguage } from '../i18n';
 
 /**
@@ -215,6 +221,47 @@ export function parseJsonArray(raw: string): ExtractedSample[] {
   }
 }
 
+/** {@link prepareExtractedSamples} output: what to create, and what was fixed. */
+export interface PreparedSamples {
+  samples: Array<{ type: string; id?: string; alias?: string; description?: string }>;
+  /** Samples whose model-given id broke the `<Type>-<number>` rule and gets a new one. */
+  regenerated: number;
+  /** Samples dropped because their type is not a known sample type. */
+  unknownType: number;
+}
+
+/**
+ * Bring model-extracted samples in line with the sample rules before saving
+ * (#61): the type takes its known spelling (unknown types are dropped), an id
+ * keeps its canonical form when it is `<Type>-<number>` and is otherwise
+ * replaced by a generated one. A dropped id like `ND-11` is usually a model
+ * or catalog number, so it is kept as the alias when the model gave none.
+ */
+export function prepareExtractedSamples(
+  extracted: readonly ExtractedSample[],
+  types: readonly string[]
+): PreparedSamples {
+  const out: PreparedSamples = { samples: [], regenerated: 0, unknownType: 0 };
+  for (const s of extracted) {
+    const type = typeof s.type === 'string' ? canonicalSampleType(s.type, types) : undefined;
+    if (!type) {
+      out.unknownType++;
+      continue;
+    }
+    const rawId = typeof s.id === 'string' && s.id.trim() ? s.id.trim() : undefined;
+    const id = rawId === undefined ? undefined : normalizeSampleId(type, rawId);
+    const alias = typeof s.alias === 'string' && s.alias.trim() ? s.alias : undefined;
+    const description = typeof s.description === 'string' ? s.description : undefined;
+    if (rawId !== undefined && !id) {
+      out.regenerated++;
+      out.samples.push({ type, alias: alias ?? rawId, description });
+    } else {
+      out.samples.push({ type, id, alias, description });
+    }
+  }
+  return out;
+}
+
 /** Ask the model to extract sample definitions, then persist them via the tool. */
 export async function extractSamplesCommand(plugin: LabnotePlugin): Promise<void> {
   const target = plugin.host.editTarget();
@@ -229,18 +276,21 @@ export async function extractSamplesCommand(plugin: LabnotePlugin): Promise<void
     return;
   }
 
+  const types = getSampleDisplayMeta(plugin.settings.customSampleTypes).types;
   const out = await complete(plugin, [
     {
       role: 'system',
       content:
-        'Extract laboratory sample definitions from the text. Respond with ONLY a JSON array of objects with keys "type", "id" (optional), "alias" (optional), "description" (optional). "type" should be a sample type like DNA, RNA, Plasmid, Reagent, Primer, Protein, Equip, or Labware. No prose.',
+        'Extract laboratory sample definitions from the text. Respond with ONLY a JSON array of objects with keys "type", "id" (optional), "alias" (optional), "description" (optional). ' +
+        `"type" must be one of: ${types.join(', ')}. ` +
+        '"id" must look like "<type>-<number>" (e.g. "DNA-3"); omit it when the text gives no such id — do not use model or catalog numbers as ids. No prose.',
     },
     { role: 'user', content: text.slice(0, 6000) },
   ]);
   if (!out) return;
 
-  const samples = parseJsonArray(out).filter(s => s.type);
-  if (samples.length === 0) {
+  const prepared = prepareExtractedSamples(parseJsonArray(out).filter(s => s.type), types);
+  if (prepared.samples.length === 0) {
     new Notice(plugin.t('No samples found.'));
     return;
   }
@@ -249,17 +299,25 @@ export async function extractSamplesCommand(plugin: LabnotePlugin): Promise<void
   const ctx = toolContext(plugin);
 
   let created = 0;
-  for (const s of samples) {
-    const res = await runTool(tools, 'create_sample', ctx, {
-      type: s.type,
-      id: s.id,
-      alias: s.alias,
-      description: s.description,
-      documentPath: target.path,
-    });
-    if (res.ok) created++;
+  let inGlobal = false;
+  for (const s of prepared.samples) {
+    const res = await runTool(tools, 'create_sample', ctx, { ...s, documentPath: target.path });
+    if (res.ok) {
+      created++;
+      if ((res.data as { scope?: string } | undefined)?.scope === 'global') inGlobal = true;
+    }
   }
-  new Notice(plugin.t('Created {0} sample(s).', String(created)));
+  const parts = [plugin.t('Created {0} sample(s).', String(created))];
+  if (prepared.regenerated > 0) {
+    parts.push(plugin.t('{0} got a new ID because theirs did not match <Type>-<number>.', String(prepared.regenerated)));
+  }
+  if (prepared.unknownType > 0) {
+    parts.push(plugin.t('{0} skipped: unknown sample type.', String(prepared.unknownType)));
+  }
+  if (inGlobal) {
+    parts.push(plugin.t('This note is outside an experiment folder, so they were added to Global samples.'));
+  }
+  new Notice(parts.join(' '));
 }
 
 /**
@@ -307,12 +365,12 @@ export async function askAgentCommand(plugin: LabnotePlugin): Promise<void> {
         provider,
         ctx: toolContext(plugin),
         temperature: 0.2,
-        confirm: (call, tool) => {
+        confirm: (call, tool, preview) => {
           // Show the write target, not just the tool name: the model chooses
           // the path, so approving by name alone is blind approval.
           const path = typeof call.arguments.documentPath === 'string' ? call.arguments.documentPath : null;
           const prompt = plugin.t('Allow AI tool "{0}" to modify the vault?', tool.name);
-          return plugin.host.confirm(path ? `${prompt}\n\n${plugin.t('Target: {0}', path)}` : prompt, {
+          return plugin.host.confirm(buildApprovalMessage(plugin.t, prompt, path, preview), {
             confirmLabel: plugin.t('Allow'),
           });
         },

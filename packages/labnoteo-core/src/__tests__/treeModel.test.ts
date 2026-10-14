@@ -105,6 +105,25 @@ describe('buildSampleTree', () => {
     expect(rnaType.label).toBe('RNA [0]');
     expect(rnaType.children![0].label).toBe('No samples');
   });
+
+  // #64: a vault-root note's local folder is the global one.
+  it('lists samples once, under Global, when both scopes are the same folder', async () => {
+    const fs = new MemFileSystem();
+    await fs.write(
+      'resources/labsamples/DNA.json',
+      JSON.stringify({ 'DNA-1': { type: 'DNA', alias: null, descriptions: [], sources: [] } })
+    );
+
+    const [local, global] = await buildSampleTree(
+      fs,
+      { local: './resources/labsamples', global: 'resources/labsamples' },
+      ['DNA']
+    );
+
+    expect(local.children!.map(c => c.label)).toEqual(['DNA [0]']);
+    expect(local.children![0].payload).toEqual({ scope: 'local', type: 'DNA' });
+    expect(global.children!.map(c => c.label)).toEqual(['DNA [1]']);
+  });
 });
 
 describe('filterSampleTree', () => {

@@ -230,6 +230,7 @@ export class SampleTreeView extends ItemView {
             type: payload.type,
             folder: this.scopeFolder(payload.scope),
             mode: 'generate',
+            scope: payload.scope,
           });
         })
     );

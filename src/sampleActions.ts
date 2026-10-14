@@ -11,7 +11,7 @@ import { App, MarkdownView, Notice } from 'obsidian';
 import { planReferenceInsert, type EditTarget, type PickItem } from '@labnoteo/core';
 import {
   generateSampleId,
-  buildSampleIdPattern,
+  normalizeSampleId,
   buildSampleDefinitionText,
   buildSampleReferenceText,
   isCatalogSampleType,
@@ -26,13 +26,13 @@ import {
   getLabsamplesFolder,
   findSampleDefinitionMatch,
   findSampleUsages,
+  isSameSampleFolder,
   type SampleRecord,
 } from '@labnoteo/core/lib/sampleStorage';
 import {
   getExperimentDir,
   getExperimentLabsamplesFolder,
 } from '@labnoteo/core/lib/labnoteStructure';
-import * as posix from '@labnoteo/core/posix';
 import type LabnotePlugin from './main';
 import { promptModal, confirmModal, pickModal } from './modals';
 
@@ -101,7 +101,7 @@ export interface CreatedSample {
 export async function createSampleInteractive(
   app: App,
   plugin: LabnotePlugin,
-  opts: { type: string; folder: string; mode: 'generate' | 'manual' }
+  opts: { type: string; folder: string; mode: 'generate' | 'manual'; scope?: SampleScope }
 ): Promise<CreatedSample | undefined> {
   const { type, folder, mode } = opts;
 
@@ -114,12 +114,10 @@ export async function createSampleInteractive(
       value: `${type}-`,
       placeholder: plugin.t('e.g. {0}-12345', type),
       validate: v =>
-        buildSampleIdPattern(type).test(v.trim())
-          ? null
-          : plugin.t('Invalid ID. Expected {0}-<number>.', type),
+        normalizeSampleId(type, v) ? null : plugin.t('Invalid ID. Expected {0}-<number>.', type),
     });
     if (entered === undefined) return undefined;
-    id = entered.trim();
+    id = normalizeSampleId(type, entered) ?? entered.trim();
   }
 
   const aliasRaw = await promptModal(app, {
@@ -145,7 +143,14 @@ export async function createSampleInteractive(
   // reference it; a tree-created sample legitimately starts with none.
   await upsertSampleRecord(plugin.fs, folder, type, id, { alias, description, location });
   plugin.refreshSampleViews();
-  new Notice(plugin.t('Sample added: {0}', id));
+  // A vault-root note's "local" folder is the global one (#64): say where it went.
+  const landedInGlobal =
+    opts.scope === 'local' && isSameSampleFolder(folder, plugin.settings.globalSampleFolder);
+  new Notice(
+    landedInGlobal
+      ? plugin.t('{0} was added to Global samples because this note is outside an experiment folder.', id)
+      : plugin.t('Sample added: {0}', id)
+  );
 
   return {
     id,
@@ -194,6 +199,7 @@ export async function pickCatalogReference(
       type,
       folder: localFolder,
       mode: 'generate',
+      scope: 'local',
     });
     return created?.referenceText;
   }
@@ -352,10 +358,10 @@ export async function deleteSampleInteractive(
 
   const usages = await notesReferencingSample(app, plugin, folder, type, id);
   if (usages.length > 0) {
-    const names = usages.map(p => posix.basename(p));
-    const shown = names.slice(0, 3).join(', ');
+    // Full vault paths: notes in different experiments often share a name (#66).
+    const shown = usages.slice(0, 3).join(', ');
     const list =
-      names.length > 3 ? plugin.t('{0} (+{1} more)', shown, String(names.length - 3)) : shown;
+      usages.length > 3 ? plugin.t('{0} (+{1} more)', shown, String(usages.length - 3)) : shown;
     new Notice(
       plugin.t(
         '{0} is still used in notes ({1}). Remove it from the note(s) first, then delete.',
@@ -410,9 +416,7 @@ export async function moveSampleInteractive(
 
   // Same-folder guard (e.g. no experiment open so Local === Global): moving
   // would delete then re-create in place, or worse, silently no-op.
-  if (
-    posix.normalizeForCompare(src).toLowerCase() === posix.normalizeForCompare(tgt).toLowerCase()
-  ) {
+  if (isSameSampleFolder(src, tgt)) {
     new Notice(plugin.t('Local and Global folders are the same.'));
     return false;
   }

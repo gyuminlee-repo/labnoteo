@@ -8,6 +8,8 @@ import {
   sampleSuggestActions,
   getSampleDisplayMeta,
   SAMPLE_TYPES,
+  normalizeSampleId,
+  canonicalSampleType,
 } from '../lib/sampleUtils';
 import { parseSampleTrigger } from '../sample/sampleSuggest';
 
@@ -30,6 +32,31 @@ describe('buildSampleDefinitionText', () => {
     expect(buildSampleDefinitionText('Plasmid', 'Plasmid-1', 'pX', 'vector')).toBe(
       '@plasmid;Plasmid-1;pX;vector'
     );
+  });
+});
+
+describe('normalizeSampleId', () => {
+  it('accepts <type>-<number> ids and spells the prefix like the type', () => {
+    expect(normalizeSampleId('Equip', 'Equip-3')).toBe('Equip-3');
+    expect(normalizeSampleId('Equip', ' equip-3 ')).toBe('Equip-3');
+    expect(normalizeSampleId('DNA', 'DNA-1737000000000-2')).toBe('DNA-1737000000000-2');
+    expect(normalizeSampleId('배지', '배지-12')).toBe('배지-12');
+  });
+
+  // #61: AI extraction stored `ND-11` (a model number) as an Equip id.
+  it('rejects anything else', () => {
+    expect(normalizeSampleId('Equip', 'ND-11')).toBeUndefined();
+    expect(normalizeSampleId('Equip', 'Equip-')).toBeUndefined();
+    expect(normalizeSampleId('Equip', 'Equip-3a')).toBeUndefined();
+    expect(normalizeSampleId('Equip', 'xEquip-3')).toBeUndefined();
+    expect(normalizeSampleId('DNA', 'Plasmid-1')).toBeUndefined();
+  });
+});
+
+describe('canonicalSampleType', () => {
+  it('matches a known type ignoring case', () => {
+    expect(canonicalSampleType('equip', TYPES)).toBe('Equip');
+    expect(canonicalSampleType('Nope', TYPES)).toBeUndefined();
   });
 });
 

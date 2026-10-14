@@ -7,7 +7,7 @@
  * their native widget (`TreeItem` / DOM).
  */
 import type { LabnoteFs } from '../fs/labnoteFs';
-import { loadSamplesByType, type SampleRecord } from '../lib/sampleStorage';
+import { loadSamplesByType, isSameSampleFolder, type SampleRecord } from '../lib/sampleStorage';
 import {
   groupWorkflowsByCategory,
   type WorkflowItem,
@@ -164,11 +164,12 @@ async function buildScopeNode(
   fs: LabnoteFs,
   scope: SampleScope,
   folder: string,
-  types: readonly string[]
+  types: readonly string[],
+  skipRead = false
 ): Promise<TreeNode> {
   const typeNodes: TreeNode[] = [];
   for (const type of types) {
-    const records = await loadSamplesByType(fs, folder, type);
+    const records = skipRead ? {} : await loadSamplesByType(fs, folder, type);
     const ids = Object.keys(records);
     const sampleNodes: TreeNode[] = ids.map(id => {
       const rec = records[id];
@@ -219,8 +220,11 @@ export async function buildSampleTree(
   roots: SampleTreeRoots,
   types: readonly string[]
 ): Promise<TreeNode[]> {
+  // With no experiment (or a vault-root note) the local folder is the global
+  // one; list its samples once, under Global (#64).
+  const sameFolder = isSameSampleFolder(roots.local, roots.global);
   return [
-    await buildScopeNode(fs, 'local', roots.local, types),
+    await buildScopeNode(fs, 'local', roots.local, types, sameFolder),
     await buildScopeNode(fs, 'global', roots.global, types),
   ];
 }

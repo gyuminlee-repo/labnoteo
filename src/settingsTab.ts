@@ -72,7 +72,11 @@ export class LabnoteSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName(this.plugin.t('Custom sample types'))
-      .setDesc(this.plugin.t('Comma-separated types in addition to the built-ins.'))
+      .setDesc(
+        this.plugin.t(
+          'Comma-separated types in addition to the built-ins. Use letters, digits and _ only (no spaces or -), e.g. CellLine, 배지.'
+        )
+      )
       .addText(t =>
         t
           .setPlaceholder('CellLine, Strain')
