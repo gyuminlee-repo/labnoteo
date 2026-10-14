@@ -50,15 +50,56 @@ export async function exportTablesToCsv(plugin: LabnotePlugin, file: TFile): Pro
 
   const dir = posix.dirname(file.path);
   const stem = noteStem(file);
-  let written = 0;
-  for (const table of tables) {
-    const outPath = posix.join(dir, `${stem}_table${table.index + 1}.csv`);
-    await plugin.fs.write(outPath, tableToCsv(table.rows, { bom: true }));
-    written++;
+  const outputs = await Promise.all(
+    tables.map(async table => {
+      const path = posix.join(dir, `${stem}_table${table.index + 1}.csv`);
+      const csv = tableToCsv(table.rows, { bom: true });
+      const old = (await plugin.fs.exists(path)) ? normalizeCsv(await plugin.fs.read(path)) : undefined;
+      return { path, csv, fresh: normalizeCsv(csv), header: normalizeCsv(tableToCsv([table.rows[0]])), old };
+    })
+  );
+
+  const replaced = outputs.filter(
+    (o, k) =>
+      o.old !== undefined &&
+      o.old !== o.fresh &&
+      (!o.old.startsWith(o.header) || outputs.some((other, j) => j !== k && other.fresh === o.old))
+  );
+  if (replaced.length > 0) {
+    const list = replaced
+      .map(o => `- ${posix.basename(o.path)}: ${firstLine(o.old!)} → ${firstLine(o.fresh)}`)
+      .join('\n');
+    const ok = await confirmModal(
+      plugin.app,
+      plugin.t(
+        'These CSV files would now hold a different table (a table was added, removed or moved). Overwrite them?\n\n{0}',
+        list
+      ),
+      plugin.t('Overwrite')
+    );
+    if (!ok) {
+      new Notice(plugin.t('No changes made.'));
+      return;
+    }
+  }
+
+  for (const o of outputs) {
+    if (o.old !== o.fresh) await plugin.fs.write(o.path, o.csv);
   }
 
   const cleanup = await offerStaleCsvCleanup(plugin, file, tables.length);
-  new Notice([plugin.t('Exported {0} CSV file(s).', String(written)), cleanup].filter(Boolean).join(' '));
+  new Notice([plugin.t('Exported {0} CSV file(s).', String(outputs.length)), cleanup].filter(Boolean).join(' '));
+}
+
+/** CSV text without the BOM and CRLF a re-save in Excel may add or drop. */
+function normalizeCsv(text: string): string {
+  return text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
+}
+
+/** The header row of a CSV as shown in the overwrite prompt, cut when long. */
+function firstLine(csv: string): string {
+  const line = csv.split('\n', 1)[0];
+  return line.length > 60 ? `${line.slice(0, 59)}…` : line;
 }
 
 /** Export tables from the currently active markdown note (command palette). */

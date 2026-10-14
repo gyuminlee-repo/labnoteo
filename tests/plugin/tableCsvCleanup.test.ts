@@ -21,6 +21,8 @@ const DIR = 'labnote/001_Test';
 const NOTE = '001_WT020_A.labnote.md';
 const csv = (n: number) => `${DIR}/001_WT020_A.labnote_table${n}.csv`;
 const TABLE = '| a |\n|---|\n| 1 |\n';
+/** `TABLE` as exported. */
+const CSV_A = '\uFEFFa\n1\n';
 const noteFile = () => new TFile(`${DIR}/${NOTE}`) as unknown as VaultFile;
 
 const t = (key: string, ...args: unknown[]) =>
@@ -33,7 +35,7 @@ let app: App;
 beforeEach(() => {
   vi.mocked(confirmModal).mockReset();
   Notice.reset();
-  fs = new MemFileSystem({ [csv(1)]: 'old1', [csv(2)]: 'old2', [csv(3)]: 'old3' });
+  fs = new MemFileSystem({ [csv(1)]: CSV_A, [csv(2)]: CSV_A, [csv(3)]: CSV_A });
   trashed = [];
   app = {
     vault: {
@@ -90,6 +92,68 @@ describe('re-exporting tables (#74)', () => {
     await exportTablesToCsv(plugin(), noteFile());
 
     expect(confirmModal).not.toHaveBeenCalled();
+  });
+});
+
+describe('re-exporting after the tables changed (#80)', () => {
+  const plugin = () => ({ app, fs, t }) as unknown as LabnotePlugin;
+  const NEW = '| 보고 방식 |\n|---|\n| x |\n';
+  const CSV_NEW = '\uFEFF보고 방식\nx\n';
+
+  beforeEach(() => {
+    fs = new MemFileSystem({ [csv(1)]: CSV_A });
+  });
+
+  it('asks before a table added above shifts the CSVs, and writes nothing when declined', async () => {
+    await fs.write(`${DIR}/${NOTE}`, `${NEW}\n${TABLE}`);
+    vi.mocked(confirmModal).mockResolvedValue(false);
+
+    await exportTablesToCsv(plugin(), noteFile());
+
+    expect(vi.mocked(confirmModal).mock.calls[0][1]).toContain('- 001_WT020_A.labnote_table1.csv: a → 보고 방식');
+    expect(await fs.read(csv(1))).toBe(CSV_A);
+    expect(await fs.exists(csv(2))).toBe(false);
+    expect(Notice.shown.at(-1)).toBe('No changes made.');
+  });
+
+  it('overwrites the shifted CSVs when the user agrees', async () => {
+    await fs.write(`${DIR}/${NOTE}`, `${NEW}\n${TABLE}`);
+    vi.mocked(confirmModal).mockResolvedValue(true);
+
+    await exportTablesToCsv(plugin(), noteFile());
+
+    expect(await fs.read(csv(1))).toBe(CSV_NEW);
+    expect(await fs.read(csv(2))).toBe(CSV_A);
+    expect(Notice.shown.at(-1)).toBe('Exported 2 CSV file(s).');
+  });
+
+  it('catches a shift between tables with the same header', async () => {
+    await fs.write(`${DIR}/${NOTE}`, `| a |\n|---|\n| 0 |\n\n${TABLE}`);
+    vi.mocked(confirmModal).mockResolvedValue(false);
+
+    await exportTablesToCsv(plugin(), noteFile());
+
+    expect(confirmModal).toHaveBeenCalledOnce();
+  });
+
+  it('overwrites without asking when only the values of the same table changed', async () => {
+    await fs.write(`${DIR}/${NOTE}`, '| a |\n|---|\n| 9 |\n');
+
+    await exportTablesToCsv(plugin(), noteFile());
+
+    expect(confirmModal).not.toHaveBeenCalled();
+    expect(await fs.read(csv(1))).toBe('\uFEFFa\n9\n');
+  });
+
+  it('does not rewrite a CSV whose content is unchanged, even with CRLF from Excel', async () => {
+    fs = new MemFileSystem({ [csv(1)]: 'a\r\n1\r\n' });
+    await fs.write(`${DIR}/${NOTE}`, TABLE);
+    const write = vi.spyOn(fs, 'write');
+
+    await exportTablesToCsv(plugin(), noteFile());
+
+    expect(write).not.toHaveBeenCalled();
+    expect(Notice.shown.at(-1)).toBe('Exported 1 CSV file(s).');
   });
 });
 

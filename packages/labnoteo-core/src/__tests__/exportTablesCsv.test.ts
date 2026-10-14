@@ -47,6 +47,19 @@ describe('extractMarkdownTables', () => {
     expect(tableToCsv(rows)).toBe('a\n"x\ny\nz\nw"\n');
   });
 
+  // #90: the reading view shows a fenced block as text, not as a table.
+  it('skips pipe tables inside fenced code blocks', () => {
+    const example = '| 예시 | 값 |\n|---|---|\n| a | 1 |\n';
+    const real = '| 조성 | 비고 |\n|---|---|\n| M1 | ok |\n';
+    const md = `\`\`\`\n${example}\`\`\`\n\n${real}\n~~~md\n${example}~~~\n`;
+    expect(extractMarkdownTables(md)).toEqual([{ index: 0, rows: [['조성', '비고'], ['M1', 'ok']] }]);
+  });
+
+  it('keeps a ``` line inside a ~~~ block from closing it', () => {
+    const md = `~~~\n\`\`\`\n| a |\n|---|\n| 1 |\n~~~\n| b |\n|---|\n| 2 |\n`;
+    expect(extractMarkdownTables(md)).toEqual([{ index: 0, rows: [['b'], ['2']] }]);
+  });
+
   // #72: an escaped pipe in a sample alias stays inside one cell.
   it('keeps an escaped pipe as one cell', () => {
     const md = '| 시료 | 비고 |\n|---|---|\n| Equip-1;DNase \\| 등급 | ok |\n';

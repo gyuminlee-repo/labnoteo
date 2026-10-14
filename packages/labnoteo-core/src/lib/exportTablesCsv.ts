@@ -2,6 +2,7 @@
  * Extracts GFM pipe tables from a Markdown body and converts them to CSV.
  * Pure functions, no `vscode` import.
  */
+import { stepFence, type OpenFence } from '../sections/sectionEdit';
 
 export interface CsvTable {
   /** 0-based index of the table within the source document (0 = first table). */
@@ -52,13 +53,22 @@ function fitRow(cells: string[], width: number): string[] {
  * Finds every GFM pipe table in `markdown` (header row + `---` separator +
  * zero or more data rows). Tables are matched in document order. Data rows
  * are fitted to the header width and `<br>` becomes a newline inside a cell.
+ * Pipe rows inside fenced code blocks are not tables in the rendered note, so
+ * they are neither exported nor counted (#90).
  */
 export function extractMarkdownTables(markdown: string): CsvTable[] {
   const lines = markdown.replace(/\r\n/g, '\n').split('\n');
   const tables: CsvTable[] = [];
 
+  let fence: OpenFence | null = null;
   let i = 0;
   while (i < lines.length) {
+    const next = stepFence(lines[i], fence);
+    if (next !== fence || fence) {
+      fence = next;
+      i++;
+      continue;
+    }
     const isHeaderLine = lines[i].trim().startsWith('|');
     const nextIsSeparator = i + 1 < lines.length && SEPARATOR_ROW_RE.test(lines[i + 1]);
     if (isHeaderLine && nextIsSeparator) {

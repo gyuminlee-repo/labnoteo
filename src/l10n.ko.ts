@@ -148,6 +148,8 @@ const obsidianKo: Record<string, string> = {
   '{0} CSV file(s) moved to the trash.': 'CSV 파일 {0}개를 휴지통으로 옮겼습니다.',
   '{0} old CSV file(s) kept.': '이전 CSV 파일 {0}개는 남겨 두었습니다.',
   '{0} CSV file(s) could not be moved to the trash.': 'CSV 파일 {0}개를 휴지통으로 옮기지 못했습니다.',
+  'These CSV files would now hold a different table (a table was added, removed or moved). Overwrite them?\n\n{0}':
+    '다음 CSV 파일에 다른 표가 들어가게 됩니다(표가 추가·삭제되었거나 순서가 바뀌었습니다). 덮어쓸까요?\n\n{0}',
   'Command failed: {0}': '명령 실행 실패: {0}',
   'Yes': '예',
   'Workflow created: {0}': '워크플로가 생성되었습니다: {0}',
