@@ -155,4 +155,39 @@ describe('planBlockInsert', () => {
   it('trims blank lines around the block', () => {
     expect(apply('', 0, '\n\n- a\n\n')).toBe('- a\n');
   });
+
+  // #63: a summary run with the cursor at the top went into the front matter
+  // or above the title.
+  describe('cursor before the note body', () => {
+    const note = '---\ntitle: X\n---\n\n## [WT010 Seq]\n\n> desc\n\n## Conclusions and Discussion\n';
+    const end = `${note}\n- a\n- b\n`;
+
+    it('appends at the end when the cursor is in the front matter', () => {
+      expect(apply(note, 0)).toBe(end);
+      expect(apply(note, note.indexOf('title') + 3)).toBe(end);
+    });
+
+    it('appends at the end when the cursor is between the front matter and the title', () => {
+      expect(apply(note, note.indexOf('\n\n## [') + 1)).toBe(end);
+    });
+
+    it('appends at the end when the cursor is at the start of the first heading line', () => {
+      expect(apply(note, note.indexOf('## [WT010'))).toBe(end);
+    });
+
+    it('keeps inserting after the heading when the cursor is inside the heading line', () => {
+      expect(apply(note, note.indexOf('WT010'))).toBe(
+        '---\ntitle: X\n---\n\n## [WT010 Seq]\n\n- a\n- b\n\n> desc\n\n## Conclusions and Discussion\n'
+      );
+    });
+
+    it('ignores # lines in code when finding the first heading', () => {
+      const text = '```\n# not a heading\n```\n## Real\n';
+      expect(apply(text, 0)).toBe(`${text}\n- a\n- b\n`);
+    });
+
+    it('separates the block from a last line with no newline', () => {
+      expect(apply('---\na: 1\n---\n## H\ntext', 0)).toBe('---\na: 1\n---\n## H\ntext\n\n- a\n- b\n');
+    });
+  });
 });

@@ -33,6 +33,7 @@ import {
 } from '@labnoteo/core';
 import type LabnotePlugin from '../main';
 import { getObsidianLanguage } from '../i18n';
+import { buildApprovalMessage } from './approvalMessage';
 
 // Available in the CommonJS bundle at runtime (desktop/Electron).
 declare const require: (id: string) => unknown;
@@ -228,17 +229,29 @@ export class LabnoteMcpServer {
 
       // The tool itself declares whether it mutates, so a new mutating tool in
       // core cannot slip past this gate by being missing from a host allowlist.
-      if (this.tools.find(t => t.name === name)?.mutates) {
+      const tool = this.tools.find(t => t.name === name);
+      if (tool?.mutates) {
+        // A call the tool would reject anyway is not put to the user (#69).
+        const preview = tool.describe ? await tool.describe(this.context(), args) : undefined;
+        if (preview && 'error' in preview) {
+          return sendJson(res, 200, {
+            jsonrpc: '2.0',
+            id,
+            result: buildToolCallResult({ ok: false, error: preview.error }),
+          });
+        }
         // Surface the write target so the user is not blind-approving by tool
         // name alone (an LLM could target any note/sample path).
         const target =
           typeof args.documentPath === 'string' && args.documentPath.length > 0
             ? args.documentPath
             : null;
-        const prompt = this.plugin.t('Allow MCP tool "{0}" to modify the vault?', name);
-        const message = target
-          ? `${prompt}\n\n${this.plugin.t('Target: {0}', target)}`
-          : prompt;
+        const message = buildApprovalMessage(
+          this.plugin.t,
+          this.plugin.t('Allow MCP tool "{0}" to modify the vault?', name),
+          target,
+          preview
+        );
 
         // A client that gave up must not have its write applied by a late "Allow".
         // `res` (not `req`) closes early only when the connection drops.

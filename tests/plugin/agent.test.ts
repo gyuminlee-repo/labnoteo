@@ -167,6 +167,58 @@ describe('runAgent', () => {
     expect(toolMessage.content).toContain('denied');
   });
 
+  // #69: the approval prompt shows what the write removes, and a call the tool
+  // would reject is not put to the user at all.
+  describe('with a describe hook', () => {
+    const preview = {
+      kind: 'sectionEdit' as const,
+      documentPath: 'n.md',
+      heading: 'Results',
+      parentHeading: '',
+      removedLines: 4,
+      removedSubheadings: 0,
+      clearing: false,
+    };
+
+    it('passes the preview to confirm', async () => {
+      const { tools, ran } = makeTools();
+      tools[1].describe = async () => preview;
+      const seen: unknown[] = [];
+      await runAgent([{ role: 'user', content: 'write it' }], {
+        provider: new ScriptedProvider([turn([call('write_thing')])]),
+        ctx: ctx(),
+        tools,
+        confirm: async (_c, _t, p) => {
+          seen.push(p);
+          return true;
+        },
+      });
+      expect(seen).toEqual([preview]);
+      expect(ran).toEqual(['write_thing']);
+    });
+
+    it('reports the describe error to the model without asking', async () => {
+      const { tools, ran } = makeTools();
+      tools[1].describe = async () => ({ error: 'Section not found: Results' });
+      const provider = new ScriptedProvider([turn([call('write_thing')])]);
+      let asked = 0;
+      const run = await runAgent([{ role: 'user', content: 'write it' }], {
+        provider,
+        ctx: ctx(),
+        tools,
+        confirm: async () => {
+          asked++;
+          return true;
+        },
+      });
+      expect(asked).toBe(0);
+      expect(ran).toEqual([]);
+      expect(run.executed).toEqual([{ call: call('write_thing'), ok: false }]);
+      const toolMessage = provider.seen[1][provider.seen[1].length - 1];
+      expect(toolMessage.content).toBe(JSON.stringify({ error: 'Section not found: Results' }));
+    });
+  });
+
   it('feeds a tool error back instead of aborting the run', async () => {
     const { tools, ran } = makeTools();
     const provider = new ScriptedProvider([

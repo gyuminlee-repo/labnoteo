@@ -10,7 +10,13 @@
  * The loop is deliberately small: ask the model, run whatever it asked for,
  * feed the results back, repeat until it answers in prose or we hit the cap.
  */
-import { createLabnoteTools, runTool, type ToolContext, type ToolDef } from '@labnoteo/core';
+import {
+  createLabnoteTools,
+  runTool,
+  type SectionEditPreview,
+  type ToolContext,
+  type ToolDef,
+} from '@labnoteo/core';
 import type { ChatMessage, ChatResult, LlmProvider, ToolCall } from './provider';
 
 /**
@@ -29,8 +35,9 @@ export interface AgentDeps {
   /**
    * Ask the user to approve a mutating tool call. Returning false is a normal
    * outcome, not an error: the denial is reported to the model, which can adapt.
+   * `preview` is the tool's {@link ToolDef.describe} result, when it has one.
    */
-  confirm(call: ToolCall, tool: ToolDef): Promise<boolean>;
+  confirm(call: ToolCall, tool: ToolDef, preview?: SectionEditPreview): Promise<boolean>;
   /** Tools to offer. Defaults to the full core registry. */
   tools?: ToolDef[];
   temperature?: number;
@@ -94,10 +101,20 @@ export async function runAgent(
         continue;
       }
 
-      if (tool.mutates && !(await deps.confirm(call, tool))) {
-        history.push(resultMessage(call, { error: 'User denied this write.' }));
-        executed.push({ call, ok: false });
-        continue;
+      if (tool.mutates) {
+        // A call the tool would reject anyway is not put to the user; the
+        // model gets the real reason instead of "denied" (#69).
+        const preview = tool.describe ? await tool.describe(deps.ctx, call.arguments) : undefined;
+        if (preview && 'error' in preview) {
+          history.push(resultMessage(call, { error: preview.error }));
+          executed.push({ call, ok: false });
+          continue;
+        }
+        if (!(await deps.confirm(call, tool, preview))) {
+          history.push(resultMessage(call, { error: 'User denied this write.' }));
+          executed.push({ call, ok: false });
+          continue;
+        }
       }
 
       const res = await runTool(tools, call.name, deps.ctx, call.arguments);

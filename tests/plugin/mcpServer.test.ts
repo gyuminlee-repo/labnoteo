@@ -12,6 +12,8 @@ import {
   isAllowedOrigin,
   timingSafeEqual,
 } from '../../src/llm/mcpServer';
+import { buildApprovalMessage } from '../../src/llm/approvalMessage';
+import { createObsidianTranslator } from '../../src/i18n';
 
 // #47: a write approval must not hang forever, and a request the client has
 // abandoned must not be applied by a late "Allow".
@@ -195,5 +197,38 @@ describe('buildToolCallResult', () => {
       isError: true,
       content: [{ type: 'text', text: '"boom"' }],
     });
+  });
+});
+
+// #69: the prompt named only the tool and the note, so an empty update_section
+// was approved without knowing it wiped recorded results.
+describe('buildApprovalMessage', () => {
+  const t = createObsidianTranslator('en');
+  const preview = {
+    kind: 'sectionEdit' as const,
+    documentPath: 'n.md',
+    heading: 'Results',
+    parentHeading: '[UHW100 PCR]',
+    removedLines: 12,
+    removedSubheadings: 0,
+    clearing: false,
+  };
+
+  it('adds the target and what the section holds now', () => {
+    expect(buildApprovalMessage(t, 'Allow?', 'n.md', preview)).toBe(
+      'Allow?\n\nTarget: n.md\n\nThis replaces section "[UHW100 PCR] > Results", which now has 12 line(s).'
+    );
+  });
+
+  it('says when the section is emptied and nested headings go with it', () => {
+    expect(
+      buildApprovalMessage(t, 'Allow?', null, { ...preview, parentHeading: '', clearing: true, removedSubheadings: 2 })
+    ).toBe(
+      'Allow?\n\nThis empties section "Results", which now has 12 line(s). Its 2 nested heading(s) are replaced too.'
+    );
+  });
+
+  it('is just the prompt and target without a preview', () => {
+    expect(buildApprovalMessage(t, 'Allow?', 'n.md')).toBe('Allow?\n\nTarget: n.md');
   });
 });

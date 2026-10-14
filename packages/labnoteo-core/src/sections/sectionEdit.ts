@@ -12,6 +12,18 @@ import { escapeRegExp } from '../lib/regexUtils';
 export interface SectionEditResult {
   ok: boolean;
   md: string;
+  /** What the replaced body held, when `ok`. */
+  removed?: SectionBody;
+}
+
+/** The current body of one section, as {@link sectionBodyAt} reads it. */
+export interface SectionBody {
+  /** Body text without the blank lines framing it. */
+  text: string;
+  /** Non-blank lines in the body. */
+  lines: number;
+  /** Nested headings in the body (they are replaced along with it). */
+  subheadings: number;
 }
 
 /** An open code fence: which character opened it, and how long the run was. */
@@ -141,7 +153,37 @@ export function replaceSectionBodyAt(md: string, line: number, newBody: string):
     ...lines.slice(bodyEnd),
   ];
 
-  return { ok: true, md: next.join(newline) };
+  return { ok: true, md: next.join(newline), removed: summarizeBody(lines.slice(headingIdx + 1, bodyEnd)) };
+}
+
+/**
+ * The body of the section whose heading is on 0-based line `line` — what
+ * {@link replaceSectionBodyAt} would replace — or undefined when that line is
+ * not a heading.
+ */
+export function sectionBodyAt(md: string, line: number): SectionBody | undefined {
+  const lines = md.split(/\r?\n/);
+  const m = lines[line]?.match(ANY_HEADING_RE);
+  if (!m) return undefined;
+  return summarizeBody(lines.slice(line + 1, sectionBodyEnd(lines, line, m[1].length)));
+}
+
+function summarizeBody(body: readonly string[]): SectionBody {
+  let subheadings = 0;
+  let fence: OpenFence | null = null;
+  for (const l of body) {
+    const next = stepFence(l, fence);
+    if (next !== fence) {
+      fence = next;
+      continue;
+    }
+    if (!fence && ANY_HEADING_RE.test(l)) subheadings++;
+  }
+  return {
+    text: body.join('\n').replace(/^\s*\n/, '').trimEnd(),
+    lines: body.filter(l => l.trim() !== '').length,
+    subheadings,
+  };
 }
 
 /**

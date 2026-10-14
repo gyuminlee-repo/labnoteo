@@ -18,9 +18,15 @@ import {
   loadSamplesByType,
   upsertSampleRecord,
   getLabsamplesFolder,
+  isSameSampleFolder,
   type SampleRecord,
 } from '../lib/sampleStorage';
-import { generateSampleId } from '../lib/sampleUtils';
+import {
+  generateSampleId,
+  normalizeSampleId,
+  canonicalSampleType,
+  getSampleDisplayMeta,
+} from '../lib/sampleUtils';
 import { getExperimentDir } from '../lib/labnoteStructure';
 import {
   ensureWorkflowResources,
@@ -40,6 +46,7 @@ import {
 import {
   findSectionMatches,
   replaceSectionBodyAt,
+  sectionBodyAt,
   type SectionMatch,
 } from '../sections/sectionEdit';
 import * as posix from '../util/posixPath';
@@ -111,6 +118,31 @@ export interface ToolDef {
   mutates: boolean;
   inputSchema: JsonSchema;
   handler(ctx: ToolContext, args: Record<string, unknown>): Promise<ToolResult>;
+  /**
+   * What a mutating call would change, read before the host asks the user, so
+   * the approval prompt can say it (#69). Returns an error when the call would
+   * be rejected anyway; hosts then skip the prompt and report that error.
+   * Structured, not prose: the host words and translates it.
+   */
+  describe?(ctx: ToolContext, args: Record<string, unknown>): Promise<ToolPreview>;
+}
+
+/** {@link ToolDef.describe} result. */
+export type ToolPreview = { error: string } | SectionEditPreview;
+
+/** `update_section` preview: the section that will be replaced or cleared. */
+export interface SectionEditPreview {
+  kind: 'sectionEdit';
+  documentPath: string;
+  heading: string;
+  /** Enclosing heading of the target section, `''` at the top level. */
+  parentHeading: string;
+  /** Non-blank lines the current body holds. */
+  removedLines: number;
+  /** Nested headings replaced along with the body. */
+  removedSubheadings: number;
+  /** True when the call empties the section (`clear: true`). */
+  clearing: boolean;
 }
 
 // --- small arg helpers -----------------------------------------------------
@@ -168,6 +200,90 @@ function describeSections(matches: SectionMatch[]): string {
         `occurrence ${i + 1} under ${m.parentHeading ? `"${m.parentHeading}"` : 'the top level'} (line ${m.line + 1})`
     )
     .join('; ');
+}
+
+/** How much of a replaced section body `update_section` returns. */
+const PREVIOUS_BODY_LIMIT = 500;
+
+interface ResolvedSectionTarget {
+  documentPath: string;
+  heading: string;
+  /** Body to write: `''` only when the caller set `clear: true`. */
+  content: string;
+  md: string;
+  target: SectionMatch;
+  /** 0-based index among `total` candidates. */
+  index: number;
+  total: number;
+}
+
+/**
+ * Validate an `update_section` call and find its one target section, so the
+ * handler and the approval preview cannot disagree about it. Empty content is
+ * refused unless `clear: true` says it is meant (#69): models sent `""` to
+ * mean "no change" and wiped recorded results.
+ */
+async function resolveSectionTarget(
+  ctx: ToolContext,
+  args: Record<string, unknown>
+): Promise<ResolvedSectionTarget | { error: string }> {
+  const documentPath = safePath(ctx, args, 'documentPath');
+  const heading = str(args, 'heading');
+  const rawContent = typeof args.content === 'string' ? args.content : undefined;
+  if (!documentPath) {
+    const outside = outsideVaultError(args, 'documentPath');
+    if (outside) return { error: outside.error! };
+  }
+  if (!documentPath || !heading || rawContent === undefined) {
+    return { error: 'documentPath, heading and content are required' };
+  }
+  const clear = args.clear === true;
+  const blank = rawContent.trim() === '';
+  if (blank && !clear) {
+    return {
+      error:
+        'content is empty; nothing was written. To empty the section on purpose, call again with content "" and clear: true.',
+    };
+  }
+  if (!blank && clear) {
+    return { error: 'clear: true empties the section, so content must be "". Send one or the other.' };
+  }
+  const content = blank ? '' : rawContent;
+  const parentHeading = str(args, 'parentHeading');
+  const occurrence = args.occurrence;
+  if (occurrence !== undefined && (!Number.isInteger(occurrence) || (occurrence as number) < 1)) {
+    return { error: 'occurrence must be a positive integer (1-based)' };
+  }
+  if (!(await ctx.fs.exists(documentPath))) {
+    return { error: `File not found: ${documentPath}` };
+  }
+  const md = await ctx.fs.read(documentPath);
+  const all = findSectionMatches(md, heading);
+  if (all.length === 0) return { error: `Section not found: ${heading}` };
+
+  const candidates = parentHeading
+    ? all.filter(m => matchesParentHeading(m.parentHeading, parentHeading))
+    : all;
+  if (candidates.length === 0) {
+    return { error: `No "${heading}" section under "${parentHeading}". Candidates: ${describeSections(all)}.` };
+  }
+  let index = 0;
+  if (occurrence !== undefined) {
+    index = (occurrence as number) - 1;
+    if (index >= candidates.length) {
+      return {
+        error: `occurrence ${occurrence} is out of range: only ${candidates.length} "${heading}" section(s) match. Candidates: ${describeSections(candidates)}.`,
+      };
+    }
+  } else if (candidates.length > 1) {
+    return {
+      error:
+        `"${heading}" matches ${candidates.length} sections; nothing was written. ` +
+        `Call again with ${parentHeading ? 'occurrence' : 'parentHeading or occurrence'} to choose one. ` +
+        `Candidates: ${describeSections(candidates)}.`,
+    };
+  }
+  return { documentPath, heading, content, md, target: candidates[index], index, total: candidates.length };
 }
 
 const README_NAME = 'README.labnote.md';
@@ -265,7 +381,11 @@ export function createLabnoteTools(): ToolDef[] {
         type: 'object',
         properties: {
           type: { type: 'string' },
-          id: { type: 'string', description: 'Optional; auto-generated when omitted.' },
+          id: {
+            type: 'string',
+            description:
+              'Optional; auto-generated when omitted. Must be "<type>-<number>" (e.g. "Equip-3"); anything else is rejected, so omit it rather than inventing one.',
+          },
           alias: { type: 'string' },
           description: { type: 'string' },
           location: {
@@ -282,13 +402,24 @@ export function createLabnoteTools(): ToolDef[] {
         required: ['type', 'documentPath'],
       },
       async handler(ctx, args) {
-        const type = str(args, 'type');
+        const rawType = str(args, 'type');
         const documentPath = safePath(ctx, args, 'documentPath');
         if (!documentPath) {
           const outside = outsideVaultError(args, 'documentPath');
           if (outside) return outside;
         }
-        if (!type || !documentPath) return { ok: false, error: 'type and documentPath are required' };
+        if (!rawType || !documentPath) return { ok: false, error: 'type and documentPath are required' };
+        // Unknown types are still accepted, as before; known ones take their
+        // canonical spelling so `equip` and `Equip` share one file and id prefix.
+        const type = canonicalSampleType(rawType, getSampleDisplayMeta(ctx.customTypes).types) ?? rawType;
+        const rawId = str(args, 'id');
+        const normalizedId = rawId === undefined ? undefined : normalizeSampleId(type, rawId);
+        if (rawId !== undefined && !normalizedId) {
+          return {
+            ok: false,
+            error: `Invalid id "${rawId}": expected ${type}-<number>. Omit id to generate one.`,
+          };
+        }
         // The samples folder is derived from the note's directory and created on
         // write, so a mistyped path would leave a stray folder no experiment
         // owns. A folder path passes `exists` (it is true for folders too) but
@@ -301,7 +432,7 @@ export function createLabnoteTools(): ToolDef[] {
         }
 
         const folder = getLabsamplesFolder(documentPath);
-        const id = str(args, 'id') ?? generateSampleId(type);
+        const id = normalizedId ?? generateSampleId(type);
         const alias = str(args, 'alias') ?? null;
         const description = str(args, 'description') ?? null;
         // Unlike alias/description, an absent location is kept rather than
@@ -318,7 +449,17 @@ export function createLabnoteTools(): ToolDef[] {
           sources: [posix.basename(documentPath)],
           location,
         });
-        return { ok: true, data: { id, type } };
+        // A note outside any experiment (e.g. a vault-root note) resolves to the
+        // same folder as the global samples; say so instead of calling it local.
+        const scope =
+          ctx.globalSampleFolder && isSameSampleFolder(folder, ctx.globalSampleFolder) ? 'global' : 'local';
+        const result: ToolResult = { ok: true, data: { id, type, folder, scope } };
+        if (scope === 'global') {
+          result.warnings = [
+            `${documentPath} is outside an experiment folder, so the sample was written to the global samples folder (${folder}).`,
+          ];
+        }
+        return result;
       },
     },
 
@@ -347,13 +488,22 @@ export function createLabnoteTools(): ToolDef[] {
       description:
         'Replace the body of a section (matched by heading text at any level) in a note, without re-serializing the rest of the document. ' +
         'Workflow notes repeat headings such as "Method" under every unit operation: when the heading occurs more than once, pass parentHeading and/or occurrence, ' +
-        'otherwise nothing is written and the error lists the candidates.',
+        'otherwise nothing is written and the error lists the candidates. ' +
+        'The whole body is replaced, nested headings included; the result reports what was removed (removedLines, removedSubheadings, previousBody).',
       inputSchema: {
         type: 'object',
         properties: {
           documentPath: { type: 'string' },
           heading: { type: 'string', description: 'Heading text without the leading #s, e.g. "Method".' },
-          content: { type: 'string', description: 'New Markdown body for the section.' },
+          content: {
+            type: 'string',
+            description:
+              'New Markdown body for the section. Empty or whitespace-only content is rejected unless clear is true.',
+          },
+          clear: {
+            type: 'boolean',
+            description: 'Set to true, with content "", to empty the section on purpose.',
+          },
           parentHeading: {
             type: 'string',
             description:
@@ -369,58 +519,11 @@ export function createLabnoteTools(): ToolDef[] {
         required: ['documentPath', 'heading', 'content'],
       },
       async handler(ctx, args) {
-        const documentPath = safePath(ctx, args, 'documentPath');
-        const heading = str(args, 'heading');
-        const content = typeof args.content === 'string' ? args.content : undefined;
-        if (!documentPath) {
-          const outside = outsideVaultError(args, 'documentPath');
-          if (outside) return outside;
-        }
-        if (!documentPath || !heading || content === undefined) {
-          return { ok: false, error: 'documentPath, heading and content are required' };
-        }
-        const parentHeading = str(args, 'parentHeading');
-        const occurrence = args.occurrence;
-        if (occurrence !== undefined && (!Number.isInteger(occurrence) || (occurrence as number) < 1)) {
-          return { ok: false, error: 'occurrence must be a positive integer (1-based)' };
-        }
-        if (!(await ctx.fs.exists(documentPath))) {
-          return { ok: false, error: `File not found: ${documentPath}` };
-        }
-        const md = await ctx.fs.read(documentPath);
-        const all = findSectionMatches(md, heading);
-        if (all.length === 0) return { ok: false, error: `Section not found: ${heading}` };
+        const resolved = await resolveSectionTarget(ctx, args);
+        if ('error' in resolved) return { ok: false, error: resolved.error };
+        const { documentPath, heading, content, md, target, index, total } = resolved;
 
-        const candidates = parentHeading
-          ? all.filter(m => matchesParentHeading(m.parentHeading, parentHeading))
-          : all;
-        if (candidates.length === 0) {
-          return {
-            ok: false,
-            error: `No "${heading}" section under "${parentHeading}". Candidates: ${describeSections(all)}.`,
-          };
-        }
-        let index = 0;
-        if (occurrence !== undefined) {
-          index = (occurrence as number) - 1;
-          if (index >= candidates.length) {
-            return {
-              ok: false,
-              error: `occurrence ${occurrence} is out of range: only ${candidates.length} "${heading}" section(s) match. Candidates: ${describeSections(candidates)}.`,
-            };
-          }
-        } else if (candidates.length > 1) {
-          return {
-            ok: false,
-            error:
-              `"${heading}" matches ${candidates.length} sections; nothing was written. ` +
-              `Call again with ${parentHeading ? 'occurrence' : 'parentHeading or occurrence'} to choose one. ` +
-              `Candidates: ${describeSections(candidates)}.`,
-          };
-        }
-
-        const target = candidates[index];
-        const { ok, md: next } = replaceSectionBodyAt(md, target.line, content);
+        const { ok, md: next, removed } = replaceSectionBodyAt(md, target.line, content);
         if (!ok) return { ok: false, error: `Section not found: ${heading}` };
         await writeNote(ctx, documentPath, next);
         return {
@@ -430,8 +533,25 @@ export function createLabnoteTools(): ToolDef[] {
             heading,
             parentHeading: target.parentHeading,
             occurrence: index + 1,
-            total: candidates.length,
+            total,
+            removedLines: removed?.lines ?? 0,
+            removedSubheadings: removed?.subheadings ?? 0,
+            previousBody: (removed?.text ?? '').slice(0, PREVIOUS_BODY_LIMIT),
           },
+        };
+      },
+      async describe(ctx, args) {
+        const resolved = await resolveSectionTarget(ctx, args);
+        if ('error' in resolved) return { error: resolved.error };
+        const body = sectionBodyAt(resolved.md, resolved.target.line);
+        return {
+          kind: 'sectionEdit',
+          documentPath: resolved.documentPath,
+          heading: resolved.heading,
+          parentHeading: resolved.target.parentHeading,
+          removedLines: body?.lines ?? 0,
+          removedSubheadings: body?.subheadings ?? 0,
+          clearing: resolved.content === '',
         };
       },
     },

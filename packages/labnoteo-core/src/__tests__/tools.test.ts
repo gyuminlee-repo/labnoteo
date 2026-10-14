@@ -159,6 +159,42 @@ describe('create_sample / get_sample / list_samples', () => {
     const missing = await tool('create_sample').handler(ctx, { type: 'DNA' });
     expect(missing.error).toBe('type and documentPath are required');
   });
+
+  // #61: ids that break `<Type>-<number>` were stored as given.
+  it('rejects an id that is not <type>-<number> and writes nothing', async () => {
+    const before = fs.snapshot();
+    const res = await tool('create_sample').handler(ctx, { type: 'Equip', id: 'ND-11', documentPath: NOTE_PATH });
+    expect(res.ok).toBe(false);
+    expect(res.error).toBe('Invalid id "ND-11": expected Equip-<number>. Omit id to generate one.');
+    expect(fs.snapshot()).toEqual(before);
+  });
+
+  it('spells a known type and its id prefix canonically', async () => {
+    const res = await tool('create_sample').handler(ctx, { type: 'equip', id: 'equip-3', documentPath: NOTE_PATH });
+    expect(res.data).toMatchObject({ id: 'Equip-3', type: 'Equip' });
+    expect(await fs.exists(`${NOTE_DIR}/resources/labsamples/Equip.json`)).toBe(true);
+  });
+
+  it('canonicalises custom types from the context and still accepts unknown ones', async () => {
+    const custom = { ...ctx, customTypes: ['배지'] };
+    const known = await tool('create_sample').handler(custom, { type: '배지', id: '배지-2', documentPath: NOTE_PATH });
+    expect(known.data).toMatchObject({ id: '배지-2', type: '배지' });
+    const unknown = await tool('create_sample').handler(ctx, { type: 'Gizmo', documentPath: NOTE_PATH });
+    expect(unknown.ok).toBe(true);
+    expect((unknown.data as { id: string }).id).toMatch(/^Gizmo-\d/);
+  });
+
+  // #64: a vault-root note's local folder is the global one.
+  it('reports the folder and scope it wrote to', async () => {
+    const local = await tool('create_sample').handler(ctx, { type: 'DNA', id: 'DNA-1', documentPath: NOTE_PATH });
+    expect(local.data).toMatchObject({ folder: `${NOTE_DIR}/resources/labsamples`, scope: 'local' });
+    expect(local.warnings).toBeUndefined();
+
+    await fs.write('Welcome.md', '# Hi\n');
+    const root = await tool('create_sample').handler(ctx, { type: 'DNA', id: 'DNA-2', documentPath: 'Welcome.md' });
+    expect(root.data).toMatchObject({ folder: 'resources/labsamples', scope: 'global' });
+    expect(root.warnings?.[0]).toContain('outside an experiment folder');
+  });
 });
 
 describe('runTool — unsupported arguments', () => {
@@ -300,7 +336,16 @@ describe('update_section', () => {
       const res = await run({ parentHeading: 'UHW100' });
       expect(res).toEqual({
         ok: true,
-        data: { documentPath: NOTE_PATH, heading: 'Method', parentHeading: '[UHW100 PCR] 첫 증폭', occurrence: 1, total: 1 },
+        data: {
+          documentPath: NOTE_PATH,
+          heading: 'Method',
+          parentHeading: '[UHW100 PCR] 첫 증폭',
+          occurrence: 1,
+          total: 1,
+          removedLines: 1,
+          removedSubheadings: 0,
+          previousBody: 'pcr',
+        },
       });
       const after = await fs.read(NOTE_PATH);
       expect(after).toContain('embed-1');
@@ -337,6 +382,96 @@ describe('update_section', () => {
       expect((await run({ occurrence: 0 })).error).toContain('positive integer');
       expect((await run({ parentHeading: 'UXX999' })).error).toContain('No "Method" section under "UXX999"');
       expect(await fs.read(NOTE_PATH)).toBe(doc);
+    });
+  });
+
+  // #69: `content: ""` (meant as "no change") wiped a Results section and its subsections.
+  describe('empty content', () => {
+    const doc = [
+      '## [WD010 Design]',
+      '',
+      '#### Results',
+      '',
+      'OD600 0.82',
+      '',
+      '##### Gel',
+      '',
+      'band at 1 kb',
+      '',
+      '#### Notes',
+      '',
+      'n',
+      '',
+    ].join('\n');
+    const call = (extra: Record<string, unknown>) =>
+      tool('update_section').handler(ctx, { documentPath: NOTE_PATH, heading: 'Results', ...extra });
+
+    it('is refused without clear: true and writes nothing', async () => {
+      await fs.write(NOTE_PATH, doc);
+      for (const content of ['', '  \n ']) {
+        const res = await call({ content });
+        expect(res.ok).toBe(false);
+        expect(res.error).toContain('clear: true');
+      }
+      expect(await fs.read(NOTE_PATH)).toBe(doc);
+    });
+
+    it('empties the section with clear: true and reports what went', async () => {
+      await fs.write(NOTE_PATH, doc);
+      const res = await call({ content: '', clear: true });
+      expect(res.data).toMatchObject({
+        removedLines: 3,
+        removedSubheadings: 1,
+        previousBody: 'OD600 0.82\n\n##### Gel\n\nband at 1 kb',
+      });
+      const after = await fs.read(NOTE_PATH);
+      expect(after).not.toContain('OD600');
+      expect(after).toContain('#### Notes\n\nn');
+    });
+
+    it('rejects clear: true together with content', async () => {
+      await fs.write(NOTE_PATH, doc);
+      expect((await call({ content: 'x', clear: true })).error).toContain('content must be ""');
+      expect(await fs.read(NOTE_PATH)).toBe(doc);
+    });
+
+    it('caps previousBody', async () => {
+      await fs.write(NOTE_PATH, `#### Results\n\n${'a'.repeat(800)}\n`);
+      const res = await call({ content: 'new' });
+      expect((res.data as { previousBody: string }).previousBody).toHaveLength(500);
+    });
+  });
+
+  describe('describe', () => {
+    const doc = '## [WD010 Design]\n\n#### Results\n\nr1\nr2\n\n#### Notes\n\nn\n';
+
+    it('previews the section and how much it holds, without writing', async () => {
+      await fs.write(NOTE_PATH, doc);
+      const describe = tool('update_section').describe!;
+      expect(await describe(ctx, { documentPath: NOTE_PATH, heading: 'Results', content: 'x' })).toEqual({
+        kind: 'sectionEdit',
+        documentPath: NOTE_PATH,
+        heading: 'Results',
+        parentHeading: '[WD010 Design]',
+        removedLines: 2,
+        removedSubheadings: 0,
+        clearing: false,
+      });
+      expect(
+        await describe(ctx, { documentPath: NOTE_PATH, heading: 'Results', content: '', clear: true })
+      ).toMatchObject({ clearing: true });
+      expect(await fs.read(NOTE_PATH)).toBe(doc);
+    });
+
+    it('returns the error the call would fail with', async () => {
+      await fs.write(NOTE_PATH, doc);
+      const describe = tool('update_section').describe!;
+      expect(await describe(ctx, { documentPath: NOTE_PATH, heading: 'Missing', content: 'x' })).toEqual({
+        error: 'Section not found: Missing',
+      });
+      expect(await describe(ctx, { documentPath: NOTE_PATH, heading: 'Results', content: '' })).toHaveProperty(
+        'error'
+      );
     });
   });
 });

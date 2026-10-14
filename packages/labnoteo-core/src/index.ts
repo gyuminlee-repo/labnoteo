@@ -98,6 +98,8 @@ export {
   type ToolDef,
   type ToolContext,
   type ToolResult,
+  type ToolPreview,
+  type SectionEditPreview,
   type JsonSchema,
 } from './tools';
 

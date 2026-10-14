@@ -23,6 +23,7 @@
  */
 import { findSampleIdRanges } from './sampleSuggest';
 import { escapeRegExp } from '../lib/regexUtils';
+import { scanDocumentHead, isBeforeBody } from '../sections/documentHead';
 
 export interface ReferenceInsert {
   /** Absolute offset in the text where `text` is inserted. */
@@ -80,53 +81,11 @@ export function planReferenceInsert(
   }
   const cursorCol = pos - lineStart[cursorLine];
 
-  // Front matter: first line `---`, closed by the next `---`. `fmEndLine` is the
-  // closing fence's line index, or -1 when there is no (closed) front matter.
-  let fmEndLine = -1;
-  if (lines[0]?.trim() === '---') {
-    for (let i = 1; i < lines.length; i++) {
-      if (lines[i].trim() === '---') {
-        fmEndLine = i;
-        break;
-      }
-    }
-  }
-
-  // First heading + the set of heading lines, ignoring `#` lines inside fenced
-  // code blocks and inside the front matter (YAML comments look like headings).
-  const headingLines = new Set<number>();
-  let firstHeadingLine = -1;
-  {
-    let inFence = false;
-    let fenceChar = '';
-    for (let i = 0; i < lines.length; i++) {
-      if (fmEndLine !== -1 && i <= fmEndLine) continue;
-      const trimmed = lines[i].trimStart();
-      const fence = /^(```+|~~~+)/.exec(trimmed);
-      if (fence) {
-        const ch = fence[1][0];
-        if (!inFence) {
-          inFence = true;
-          fenceChar = ch;
-        } else if (ch === fenceChar) {
-          inFence = false;
-        }
-        continue;
-      }
-      if (inFence) continue;
-      if (/^#{1,6}\s/.test(trimmed)) {
-        headingLines.add(i);
-        if (firstHeadingLine === -1) firstHeadingLine = i;
-      }
-    }
-  }
-
-  const inFrontMatter = fmEndLine !== -1 && cursorLine <= fmEndLine;
-  const atOrAboveFirstHeading =
-    firstHeadingLine !== -1 && pos <= lineStart[firstHeadingLine];
+  const head = scanDocumentHead(lines);
+  const { headingLines } = head;
 
   // Rule 1: append at end of document.
-  if (inFrontMatter || atOrAboveFirstHeading) {
+  if (isBeforeBody(head, lineStart, cursorLine, pos)) {
     const prefix = text.length === 0 || text.endsWith('\n') ? '' : '\n';
     return { offset: text.length, text: `${prefix}${ref}\n` };
   }

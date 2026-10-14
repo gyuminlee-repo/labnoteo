@@ -9,6 +9,7 @@
  */
 import { findSectionMatches, sectionBodyEnd, stepFence, type OpenFence } from './sectionEdit';
 import { UNIT_OP_HEADING_PATTERN } from './workflowSectionParser';
+import { scanDocumentHead, isBeforeBody } from './documentHead';
 import { SW_PLACEHOLDERS, HW_PLACEHOLDERS } from '../lib/unitOpTemplate';
 
 /** The `#### Method` subsection of one unit operation. */
@@ -162,14 +163,30 @@ export interface BlockInsert {
  * cursor's line: after that line when it has text, in place of the line's
  * start when it is blank. A blank line separates the block from non-blank
  * neighbours.
+ *
+ * A cursor in the front matter or at/above the first heading (e.g. a note just
+ * opened, cursor at the top) appends the block at the end of the document
+ * instead, the same rule sample references follow (#63): text above the title
+ * belongs to no section, and inside the front matter it breaks the YAML.
  */
 export function planBlockInsert(text: string, cursor: number, block: string): BlockInsert {
   const body = block.replace(/^\s*\n/, '').trimEnd();
   const lines = text.split('\n');
   const pos = Math.max(0, Math.min(cursor, text.length));
   const lineIdx = text.slice(0, pos).split('\n').length - 1;
-  let lineStart = 0;
-  for (let i = 0; i < lineIdx; i++) lineStart += lines[i].length + 1;
+
+  const lineStarts: number[] = [];
+  let acc = 0;
+  for (const ln of lines) {
+    lineStarts.push(acc);
+    acc += ln.length + 1;
+  }
+  if (isBeforeBody(scanDocumentHead(lines), lineStarts, lineIdx, pos)) {
+    const sep = text.endsWith('\n\n') ? '' : text.endsWith('\n') ? '\n' : '\n\n';
+    return { offset: text.length, text: `${sep}${body}\n` };
+  }
+
+  const lineStart = lineStarts[lineIdx];
   const lineEnd = lineStart + lines[lineIdx].length;
 
   const isLast = lineIdx === lines.length - 1;
