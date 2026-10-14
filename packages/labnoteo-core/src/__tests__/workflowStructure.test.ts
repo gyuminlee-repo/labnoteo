@@ -26,6 +26,8 @@ import {
   rewriteWorkflowTitle,
   parseWorkflowHeading,
   relabelWorkflowChecklistEntries,
+  workflowAliasFromFileName,
+  planWorkflowRetitle,
 } from '../lib/workflowStructure';
 import { sanitizeTitle } from '../lib/labnoteStructure';
 
@@ -474,6 +476,111 @@ describe('rewriteWorkflowTitle', () => {
     expect(out).toContain('\n## [WT020 Protein/Enzyme Expression]\n');
     expect(out).toContain('### [UHW100 PCR] 1차');
     expect(parseWorkflowHeading(out)).toEqual({ id: 'WT020', name: 'Protein/Enzyme Expression', alias: '' });
+  });
+
+  it('rewrites only the parts asked for', () => {
+    const titleOnly = rewriteWorkflowTitle(note, 'WT020', 'Protein/Enzyme Expression', '2차', { heading: false });
+    expect(titleOnly).toContain('\ntitle: WT020 Protein/Enzyme Expression 2차\n');
+    expect(titleOnly).toContain('\n## [WT020 Protein/Enzyme Expression] 1차\n');
+    const headingOnly = rewriteWorkflowTitle(note, 'WT020', 'Protein/Enzyme Expression', '2차', { title: false });
+    expect(headingOnly).toContain('\ntitle: WT020 Protein/Enzyme Expression 1차\n');
+    expect(headingOnly).toContain('\n## [WT020 Protein/Enzyme Expression] 2차\n');
+  });
+});
+
+describe('workflowAliasFromFileName', () => {
+  const heading = { id: 'WT020', name: 'Protein/Enzyme Expression', alias: '1차' };
+
+  it('reads the alias after the catalog name, _ as spaces', () => {
+    expect(workflowAliasFromFileName('002_WT020_ProteinEnzyme_Expression_2차_발현.labnote.md', heading)).toBe(
+      '2차 발현'
+    );
+    expect(workflowAliasFromFileName('002_WT020_ProteinEnzyme_Expression.labnote.md', heading)).toBe('');
+  });
+
+  it('is undefined when the ID or the catalog-name part changed', () => {
+    expect(workflowAliasFromFileName('002_WT030_ProteinEnzyme_Expression_2차.labnote.md', heading)).toBeUndefined();
+    expect(workflowAliasFromFileName('002_WT020_Protein_Assay_2차.labnote.md', heading)).toBeUndefined();
+    expect(workflowAliasFromFileName('notes.md', heading)).toBeUndefined();
+  });
+});
+
+describe('planWorkflowRetitle (#71)', () => {
+  const OLD = '001_WB120_Biology-mediated_DNA_Transfers_열충격.labnote.md';
+  const NEW = '001_WB120_Biology-mediated_DNA_Transfers_전기천공.labnote.md';
+  const note = (title: string, alias: string) =>
+    ['---', `title: ${title}`, '---', '', `## [WB120 Biology-mediated DNA Transfers] ${alias}`, '', '본문'].join('\n');
+  const ORIGINAL = note('WB120 Biology-mediated DNA Transfers 열충격', '열충격');
+
+  it('follows an alias change made by renaming the file', () => {
+    expect(planWorkflowRetitle(ORIGINAL, NEW, OLD)).toEqual({
+      from: 'WB120 Biology-mediated DNA Transfers 열충격',
+      to: 'WB120 Biology-mediated DNA Transfers 전기천공',
+      content: note('WB120 Biology-mediated DNA Transfers 전기천공', '전기천공'),
+    });
+  });
+
+  it('reads _ in the new alias as spaces and drops a removed alias', () => {
+    const out = planWorkflowRetitle(ORIGINAL, '001_WB120_Biology-mediated_DNA_Transfers_M9_최소배지.labnote.md', OLD);
+    expect(out?.to).toBe('WB120 Biology-mediated DNA Transfers M9 최소배지');
+    const bare = planWorkflowRetitle(ORIGINAL, '001_WB120_Biology-mediated_DNA_Transfers.labnote.md', OLD);
+    expect(bare?.content).toContain('\ntitle: WB120 Biology-mediated DNA Transfers\n');
+    expect(bare?.content).toContain('\n## [WB120 Biology-mediated DNA Transfers]\n');
+  });
+
+  it('changes nothing when only the number changed, keeping the punctuation', () => {
+    const typed = note('WB120 Biology-mediated DNA Transfers LB_기본 (v2)', 'LB_기본 (v2)');
+    expect(
+      planWorkflowRetitle(
+        typed,
+        '002_WB120_Biology-mediated_DNA_Transfers_LB_기본_v2.labnote.md',
+        '001_WB120_Biology-mediated_DNA_Transfers_LB_기본_v2.labnote.md'
+      )
+    ).toBeUndefined();
+  });
+
+  it('keeps a title edited by hand', () => {
+    expect(planWorkflowRetitle(note('My own title', '열충격'), NEW, OLD)).toBeUndefined();
+  });
+
+  it('keeps a heading edited by hand while following the title', () => {
+    const out = planWorkflowRetitle(note('WB120 Biology-mediated DNA Transfers 열충격', '내 제목'), NEW, OLD);
+    expect(out?.content).toContain('\ntitle: WB120 Biology-mediated DNA Transfers 전기천공\n');
+    expect(out?.content).toContain('\n## [WB120 Biology-mediated DNA Transfers] 내 제목\n');
+  });
+
+  it('uses the heading for a note without a title', () => {
+    const noTitle = '## [WB120 Biology-mediated DNA Transfers] 열충격\n';
+    expect(planWorkflowRetitle(noTitle, NEW, OLD)).toEqual({
+      from: 'WB120 Biology-mediated DNA Transfers 열충격',
+      to: 'WB120 Biology-mediated DNA Transfers 전기천공',
+      content: '## [WB120 Biology-mediated DNA Transfers] 전기천공\n',
+    });
+  });
+
+  it('keeps catalog punctuation in the rewritten title', () => {
+    const wt = ['---', 'title: WT020 Protein/Enzyme Expression 1차', '---', '', '## [WT020 Protein/Enzyme Expression] 1차'].join(
+      '\n'
+    );
+    expect(
+      planWorkflowRetitle(
+        wt,
+        '002_WT020_ProteinEnzyme_Expression_2차.labnote.md',
+        '002_WT020_ProteinEnzyme_Expression_1차.labnote.md'
+      )?.to
+    ).toBe('WT020 Protein/Enzyme Expression 2차');
+  });
+
+  it('changes nothing when the ID or catalog-name part changed, or without a heading', () => {
+    expect(planWorkflowRetitle(ORIGINAL, '001_WB130_Biology-mediated_DNA_Transfers_전기천공.labnote.md', OLD)).toBeUndefined();
+    expect(planWorkflowRetitle(ORIGINAL, '001_WB120_Plasmid_Prep_전기천공.labnote.md', OLD)).toBeUndefined();
+    expect(planWorkflowRetitle('---\ntitle: WB120 X 열충격\n---\n', NEW, OLD)).toBeUndefined();
+  });
+
+  it('without an old name, fixes any part that does not match the file', () => {
+    expect(planWorkflowRetitle(ORIGINAL, NEW)?.to).toBe('WB120 Biology-mediated DNA Transfers 전기천공');
+    expect(planWorkflowRetitle(note('My own title', '열충격'), NEW)?.from).toBe('My own title');
+    expect(planWorkflowRetitle(ORIGINAL, OLD)).toBeUndefined();
   });
 });
 

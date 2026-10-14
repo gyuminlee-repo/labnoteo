@@ -64,6 +64,7 @@ import {
   collapseWorkflowRenames,
   defaultWorkflowTitle,
   parseWorkflowFileName,
+  planWorkflowRetitle,
   workflowLabelFor,
   type WorkflowRename,
   type WorkflowRelabel,
@@ -709,7 +710,8 @@ export async function renumberWorkflowsCommand(
       if (baseline !== undefined) {
         const relink = (content: string): string =>
           moved.length > 0 ? reconcileWorkflowChecklist(content, moved, { baseline }).content : content;
-        const { names, titles } = await readWorkflowFolder(host, labnoteDir);
+        const { names, notes } = await readWorkflowFolder(host, labnoteDir);
+        const titles = workflowLabels(notes);
         await processNoteThroughVault(app, host, readmePath, content => {
           const plan = planWorkflowChecklistSync(relink(content), names, titles);
           added = plan.added.length;
@@ -768,35 +770,61 @@ export async function moveTableCsvs(
 }
 
 /**
+ * A workflow note was renamed by hand from `from` to `to` in `dir`: its title
+ * and `## [ID name]` heading follow the new name when they matched the old one
+ * (#71). Returns whether the note changed.
+ */
+export async function retitleWorkflowAfterRename(
+  app: App,
+  host: LabnoteHost,
+  dir: string,
+  from: string,
+  to: string
+): Promise<boolean> {
+  const notePath = posix.join(dir, to);
+  if (!(await host.fs.exists(notePath))) return false;
+  return processNoteThroughVault(app, host, notePath, content => planWorkflowRetitle(content, to, from)?.content ?? content);
+}
+
+/** A workflow note's text, or undefined when it cannot be read (moved or deleted meanwhile). */
+async function readWorkflowNote(host: LabnoteHost, dir: string, fileName: string): Promise<string | undefined> {
+  try {
+    return await host.fs.read(posix.join(dir, fileName));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * The checklist label for a workflow file, from its note (see
  * `workflowLabelFor`); built from the file name alone when the note cannot be
  * read (moved or deleted meanwhile).
  */
 export async function readWorkflowLabel(host: LabnoteHost, dir: string, fileName: string): Promise<string> {
-  let content: string | undefined;
-  try {
-    content = await host.fs.read(posix.join(dir, fileName));
-  } catch {
-    content = undefined;
-  }
-  return workflowLabelFor(fileName, content);
+  return workflowLabelFor(fileName, await readWorkflowNote(host, dir, fileName));
 }
 
 /**
- * The folder listing and the label of every workflow file in it — the inputs
- * of `planWorkflowChecklistSync`, read up front because
- * `processNoteThroughVault` needs a synchronous transform.
+ * The folder listing and the text of every workflow note in it — the inputs
+ * of `planWorkflowChecklistSync` (via {@link workflowLabels}) and
+ * `planWorkflowRetitle`, read up front because `processNoteThroughVault`
+ * needs a synchronous transform.
  */
 async function readWorkflowFolder(
   host: LabnoteHost,
   labnoteDir: string
-): Promise<{ names: string[]; titles: Map<string, string> }> {
+): Promise<{ names: string[]; notes: Map<string, string | undefined> }> {
   const names = await host.fs.list(labnoteDir);
-  const titles = new Map<string, string>();
+  const notes = new Map<string, string | undefined>();
   for (const name of names) {
-    if (parseWorkflowFileName(name)) titles.set(name, await readWorkflowLabel(host, labnoteDir, name));
+    if (parseWorkflowFileName(name)) notes.set(name, await readWorkflowNote(host, labnoteDir, name));
   }
-  return { names, titles };
+  return { names, notes };
+}
+
+/** The checklist label of each workflow note read by {@link readWorkflowFolder}. */
+function workflowLabels(notes: ReadonlyMap<string, string | undefined>): Map<string, string> {
+  return new Map([...notes].map(([name, content]) => [name, workflowLabelFor(name, content)]));
 }
 
 /**
@@ -823,8 +851,9 @@ export async function addWorkflowFileToChecklist(
 /**
  * Make an experiment's README "Related Workflows" checklist match its folder:
  * list workflow files that are missing from it (moved in, copied, renumbered)
- * and, after asking, drop entries whose file is not in the folder. `dir`
- * defaults to the active note's experiment.
+ * and, after asking, drop entries whose file is not in the folder and fix notes
+ * and labels that no longer match their file names. `dir` defaults to the
+ * active note's experiment.
  */
 export async function syncWorkflowChecklistCommand(
   app: App,
@@ -842,8 +871,9 @@ export async function syncWorkflowChecklistCommand(
 
   await readmeSync.flushNow(labnoteDir);
   const readme = await host.fs.read(readmePath);
-  const { names, titles } = await readWorkflowFolder(host, labnoteDir);
-  const plan = planWorkflowChecklistSync(readme, names, titles);
+  const { names, notes } = await readWorkflowFolder(host, labnoteDir);
+  let titles = workflowLabels(notes);
+  let plan = planWorkflowChecklistSync(readme, names, titles);
   if (!plan.hasSection) {
     host.notify('warn', host.t('README.labnote.md has no "Related Workflows" section.'));
     return;
@@ -861,6 +891,38 @@ export async function syncWorkflowChecklistCommand(
     if (ok) remove = plan.stale.map(s => s.link);
   }
 
+  // A note renamed before its title followed the file name (#71). Fixed only
+  // when asked, before the labels so they are planned from the new titles.
+  const retitles = [...notes].flatMap(([name, content]) => {
+    const retitle = content === undefined ? undefined : planWorkflowRetitle(content, name);
+    return retitle ? [{ name, ...retitle }] : [];
+  });
+  let retitled = 0;
+  if (retitles.length > 0) {
+    const list = retitles.map(r => `- ${r.from} → ${r.to}`).join('\n');
+    const ok = await host.confirm(
+      `${host.t("These notes' title and heading do not match their file names. Update them?")}\n\n${list}`,
+      { confirmLabel: host.t('Update notes') }
+    );
+    if (ok) {
+      for (const { name } of retitles) {
+        const notePath = posix.join(labnoteDir, name);
+        const changed = await processNoteThroughVault(
+          app,
+          host,
+          notePath,
+          content => planWorkflowRetitle(content, name)?.content ?? content
+        );
+        if (changed) {
+          retitled++;
+          notes.set(name, await readWorkflowNote(host, labnoteDir, name));
+        }
+      }
+      titles = workflowLabels(notes);
+      plan = planWorkflowChecklistSync(readme, names, titles);
+    }
+  }
+
   // A label may have been written by hand, so labels change only when asked (#68).
   let relabel: WorkflowRelabel[] = [];
   if (plan.relabel.length > 0) {
@@ -872,11 +934,11 @@ export async function syncWorkflowChecklistCommand(
     if (ok) relabel = plan.relabel;
   }
 
-  if (plan.added.length === 0 && remove.length === 0 && relabel.length === 0) {
+  if (plan.added.length === 0 && remove.length === 0 && relabel.length === 0 && retitled === 0) {
     host.notify(
       'info',
       host.t(
-        plan.stale.length > 0 || plan.relabel.length > 0
+        plan.stale.length > 0 || plan.relabel.length > 0 || retitles.length > 0
           ? 'No changes made.'
           : 'The workflow checklist already matches the folder.'
       )
@@ -890,15 +952,12 @@ export async function syncWorkflowChecklistCommand(
       relabel
     )
   );
-  const summary = host.t(
-    'Workflow checklist updated: {0} added, {1} removed.',
-    String(plan.added.length),
-    String(remove.length)
-  );
-  host.notify(
-    'info',
-    relabel.length > 0 ? `${summary} ${host.t('{0} label(s) updated.', String(relabel.length))}` : summary
-  );
+  const parts = [
+    host.t('Workflow checklist updated: {0} added, {1} removed.', String(plan.added.length), String(remove.length)),
+  ];
+  if (retitled > 0) parts.push(host.t('{0} note(s) updated.', String(retitled)));
+  if (relabel.length > 0) parts.push(host.t('{0} label(s) updated.', String(relabel.length)));
+  host.notify('info', parts.join(' '));
 }
 
 // === README auto-sync on native rename / delete ==============================

@@ -13,6 +13,7 @@ import {
   addWorkflowFileToChecklist,
   syncWorkflowChecklistCommand,
   syncReadmeOrderOnRename,
+  retitleWorkflowAfterRename,
   type ReadmeSyncControl,
 } from '../../src/commands';
 
@@ -137,19 +138,75 @@ describe('syncWorkflowChecklistCommand', () => {
       [`${DIR}/${RENAMED}`]: '---\ntitle: WD030 Design\n---\n\n## [WD030 Design]\n',
     };
 
+    // The note's own title is stale too (#71): it is fixed first, then the
+    // label is planned from the new title.
     it('asks, showing old and new label, and applies on yes', async () => {
       const h = harness(files, true);
       await syncWorkflowChecklistCommand(h.app, h.host, h.sync, DIR);
+      expect(h.prompts[0]).toContain("These notes' title and heading do not match their file names.");
       expect(h.prompts[0]).toContain('- WD030 Design → WD030 Design 2차');
+      expect(h.prompts[1]).toContain('These checklist labels do not match their file names.');
+      expect(h.prompts[1]).toContain('- WD030 Design → WD030 Design 2차');
+      expect(await h.fs.read(`${DIR}/${RENAMED}`)).toBe('---\ntitle: WD030 Design 2차\n---\n\n## [WD030 Design] 2차\n');
       expect(links(await h.fs.read(README))).toEqual([`WD030 Design 2차 -> ${RENAMED}`]);
-      expect(h.calls.at(-1)).toBe('notify Workflow checklist updated: 0 added, 0 removed. 1 label(s) updated.');
+      expect(h.calls.at(-1)).toBe(
+        'notify Workflow checklist updated: 0 added, 0 removed. 1 note(s) updated. 1 label(s) updated.'
+      );
     });
 
     it('changes nothing on no', async () => {
       const h = harness(files, false);
       await syncWorkflowChecklistCommand(h.app, h.host, h.sync, DIR);
       expect(await h.fs.read(README)).toBe(files[README]);
+      expect(await h.fs.read(`${DIR}/${RENAMED}`)).toBe(files[`${DIR}/${RENAMED}`]);
       expect(h.calls.at(-1)).toBe('notify No changes made.');
+    });
+  });
+
+  // #71: a note renamed while 0.92.0 only moved its label.
+  describe('notes whose title no longer matches their file', () => {
+    const RENAMED = '002_WD030_Design_2차.labnote.md';
+    const NOTE = '---\ntitle: WD030 Design\n---\n\n## [WD030 Design]\n';
+    const files = {
+      [README]: readme([`- [ ] [WD030 Design 2차](./${RENAMED})`]),
+      [`${DIR}/${RENAMED}`]: NOTE,
+    };
+
+    it('asks, then fixes the title and heading without touching the label', async () => {
+      const h = harness(files, true);
+      await syncWorkflowChecklistCommand(h.app, h.host, h.sync, DIR);
+      expect(h.prompts).toHaveLength(1);
+      expect(h.prompts[0]).toContain('- WD030 Design → WD030 Design 2차');
+      expect(await h.fs.read(`${DIR}/${RENAMED}`)).toBe('---\ntitle: WD030 Design 2차\n---\n\n## [WD030 Design] 2차\n');
+      expect(await h.fs.read(README)).toBe(files[README]);
+      expect(h.calls.at(-1)).toBe('notify Workflow checklist updated: 0 added, 0 removed. 1 note(s) updated.');
+    });
+
+    it('changes nothing on no', async () => {
+      const h = harness(files, false);
+      await syncWorkflowChecklistCommand(h.app, h.host, h.sync, DIR);
+      expect(await h.fs.read(`${DIR}/${RENAMED}`)).toBe(NOTE);
+      expect(h.calls.at(-1)).toBe('notify No changes made.');
+    });
+  });
+
+  describe('retitleWorkflowAfterRename (#71)', () => {
+    const OLD = '002_WD030_Design_1차.labnote.md';
+    const NEW = '002_WD030_Design_2차.labnote.md';
+
+    it('gives the note the new alias when its title matched the old name', async () => {
+      const h = harness({ [`${DIR}/${NEW}`]: '---\ntitle: WD030 Design 1차\n---\n\n## [WD030 Design] 1차\n' }, true);
+      expect(await retitleWorkflowAfterRename(h.app, h.host, DIR, OLD, NEW)).toBe(true);
+      expect(await h.fs.read(`${DIR}/${NEW}`)).toBe('---\ntitle: WD030 Design 2차\n---\n\n## [WD030 Design] 2차\n');
+    });
+
+    it('keeps a title edited by hand, and skips a note that is gone', async () => {
+      const own = '---\ntitle: 내 워크플로\n---\n\n## [WD030 Design] 1차\n';
+      const h = harness({ [`${DIR}/${NEW}`]: own }, true);
+      expect(await retitleWorkflowAfterRename(h.app, h.host, DIR, OLD, NEW)).toBe(false);
+      expect(await h.fs.read(`${DIR}/${NEW}`)).toBe(own);
+      expect(await retitleWorkflowAfterRename(h.app, h.host, DIR, NEW, '003_WD030_Design_3차.labnote.md')).toBe(false);
+      expect(h.calls).toEqual([]);
     });
   });
 

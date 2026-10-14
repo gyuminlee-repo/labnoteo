@@ -753,39 +753,116 @@ export function workflowLabelFor(fileName: string, content?: string): string {
   const parts = parseWorkflowFileName(fileName);
   if (!parts || content === undefined) return defaultWorkflowTitle(fileName);
   const text = content.replace(/\r\n/g, '\n');
+  const title = frontMatterTitle(text);
+  if (title && labelMatchesFileName(title, fileName)) return title;
+  const heading = parseWorkflowHeading(text);
+  const alias = heading ? workflowAliasFromFileName(fileName, heading) : undefined;
+  if (heading && alias !== undefined) return workflowTitleText(heading.id, heading.name, alias);
+  return defaultWorkflowTitle(fileName);
+}
+
+/** The note's front-matter `title`, trimmed; undefined when absent, empty or unreadable. */
+function frontMatterTitle(text: string): string | undefined {
   let title: unknown;
   try {
     title = parseFrontMatterYaml(text).frontMatter.title;
   } catch {
-    title = undefined;
+    return undefined;
   }
-  if (typeof title === 'string' && title.trim() && labelMatchesFileName(title.trim(), fileName)) {
-    return title.trim();
+  return typeof title === 'string' && title.trim() ? title.trim() : undefined;
+}
+
+/** `ID name alias` — the {@link createWorkflowContent} title form. */
+function workflowTitleText(id: string, name: string, alias: string): string {
+  return alias.trim() ? `${id} ${name} ${alias.trim()}` : `${id} ${name}`;
+}
+
+/**
+ * The alias part of workflow file `fileName` whose note has `heading`: what
+ * follows the heading's catalog name in the file name, `_` read as spaces, or
+ * `''` when nothing follows. Undefined when the file's ID or catalog-name part
+ * no longer matches the heading.
+ */
+export function workflowAliasFromFileName(fileName: string, heading: WorkflowHeading): string | undefined {
+  const parts = parseWorkflowFileName(fileName);
+  if (!parts || heading.id !== parts.id) return undefined;
+  const safe = sanitizePathSegment(heading.name);
+  if (parts.safeName === safe) return '';
+  if (safe && parts.safeName.startsWith(`${safe}_`)) {
+    return parts.safeName.slice(safe.length + 1).replace(/_/g, ' ');
   }
+  return undefined;
+}
+
+/** {@link planWorkflowRetitle} result. */
+export interface WorkflowRetitle {
+  /** The note's title before (its heading text when it has no title). */
+  from: string;
+  /** The title the note gets. */
+  to: string;
+  /** The note with its title and/or heading rewritten. */
+  content: string;
+}
+
+/**
+ * Make a workflow note's front-matter `title` and `## [ID name] alias` heading
+ * name the same workflow as its file `toName` (#71), with the alias taken from
+ * the file name ({@link workflowAliasFromFileName}, the text the checklist
+ * label gets too). Only the parts that do not match `toName` are rewritten.
+ *
+ * With `fromName` (a rename), the note changes only when its title — its
+ * heading when it has no title — matched the old name, and each part only if
+ * it did: a title or heading edited by hand is kept. Undefined when nothing
+ * changes, the note has no such heading, or the file's ID or catalog-name part
+ * no longer matches the heading.
+ */
+export function planWorkflowRetitle(
+  content: string,
+  toName: string,
+  fromName?: string
+): WorkflowRetitle | undefined {
+  const text = content.replace(/\r\n/g, '\n');
   const heading = parseWorkflowHeading(text);
-  if (heading && heading.id === parts.id) {
-    const safe = sanitizePathSegment(heading.name);
-    if (parts.safeName === safe) return `${parts.id} ${heading.name}`;
-    if (safe && parts.safeName.startsWith(`${safe}_`)) {
-      const alias = parts.safeName.slice(safe.length + 1).replace(/_/g, ' ');
-      return `${parts.id} ${heading.name} ${alias}`;
-    }
-  }
-  return defaultWorkflowTitle(fileName);
+  if (!heading) return undefined;
+  const alias = workflowAliasFromFileName(toName, heading);
+  if (alias === undefined) return undefined;
+
+  const title = frontMatterTitle(text);
+  const headingText = workflowTitleText(heading.id, heading.name, heading.alias);
+  const current = title ?? headingText;
+  const matchedOld = (label: string) => fromName === undefined || labelMatchesFileName(label, fromName);
+  if (!matchedOld(current)) return undefined;
+
+  const fixTitle = title !== undefined && !labelMatchesFileName(title, toName) && matchedOld(title);
+  const fixHeading = !labelMatchesFileName(headingText, toName) && matchedOld(headingText);
+  if (!fixTitle && !fixHeading) return undefined;
+  const next = rewriteWorkflowTitle(content, heading.id, heading.name, alias, {
+    title: fixTitle,
+    heading: fixHeading,
+  });
+  if (next === content) return undefined;
+  return { from: current, to: workflowTitleText(heading.id, heading.name, alias), content: next };
 }
 
 /**
  * Give a workflow note a new alias: its front-matter `title` becomes
  * `ID name alias` (the {@link createWorkflowContent} form) and its
  * `## [ID name]` heading line carries the alias. Nothing else changes; the
- * front matter is edited line by line, not re-serialized.
+ * front matter is edited line by line, not re-serialized. `parts` limits the
+ * rewrite to the title or the heading.
  */
-export function rewriteWorkflowTitle(content: string, id: string, name: string, alias: string): string {
+export function rewriteWorkflowTitle(
+  content: string,
+  id: string,
+  name: string,
+  alias: string,
+  parts: { title?: boolean; heading?: boolean } = {}
+): string {
   const newline = content.includes('\r\n') ? '\r\n' : '\n';
   const lines = content.split(/\r?\n/);
   const suffix = alias.trim() ? ` ${alias.trim()}` : '';
 
-  if (lines[0]?.trim() === '---') {
+  if (parts.title !== false && lines[0]?.trim() === '---') {
     for (let i = 1; i < lines.length && lines[i].trim() !== '---'; i++) {
       if (/^title\s*:/.test(lines[i])) {
         lines[i] = serializeFrontMatterEntry('title', `${id} ${name}${suffix}`);
@@ -793,9 +870,11 @@ export function rewriteWorkflowTitle(content: string, id: string, name: string, 
       }
     }
   }
-  const h2 = new RegExp(`^##\\s+\\[${escapeRegExp(id)}\\s+[^\\]]+\\]`);
-  const at = lines.findIndex(l => h2.test(l));
-  if (at !== -1) lines[at] = `## [${id} ${name}]${suffix}`;
+  if (parts.heading !== false) {
+    const h2 = new RegExp(`^##\\s+\\[${escapeRegExp(id)}\\s+[^\\]]+\\]`);
+    const at = lines.findIndex(l => h2.test(l));
+    if (at !== -1) lines[at] = `## [${id} ${name}]${suffix}`;
+  }
   return lines.join(newline);
 }
 

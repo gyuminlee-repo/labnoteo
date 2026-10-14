@@ -279,6 +279,10 @@ const obsidianKo: Record<string, string> = {
     '아래 체크리스트 라벨이 파일 이름과 맞지 않습니다. 라벨을 고칠까요?',
   'Update labels': '라벨 고치기',
   '{0} label(s) updated.': '라벨 {0}개를 고쳤습니다.',
+  "These notes' title and heading do not match their file names. Update them?":
+    '아래 노트의 title과 제목이 파일 이름과 맞지 않습니다. 노트를 고칠까요?',
+  'Update notes': '노트 고치기',
+  '{0} note(s) updated.': '노트 {0}개를 고쳤습니다.',
   'Name this copy of the workflow': '복제한 워크플로의 이름',
   '{0} table CSV file(s) kept their old name: the new name was taken or the rename failed.':
     '표 CSV 파일 {0}개는 옛 이름 그대로 두었습니다. 새 이름의 파일이 이미 있거나 이름 변경에 실패했습니다.',

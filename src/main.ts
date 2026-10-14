@@ -48,6 +48,7 @@ import {
   syncWorkflowChecklistCommand,
   addWorkflowFileToChecklist,
   moveTableCsvs,
+  retitleWorkflowAfterRename,
   insertUnitOperationCommand,
   insertWorkflowLinkCommand,
   syncReadmeOrderOnRename,
@@ -580,10 +581,12 @@ export default class LabnotePlugin extends Plugin {
           case 'restored':
             this.queueReadmeSync(effect.dir).renames.push({ from: effect.from, to: effect.to });
             this.scheduleReadmeSync(effect.dir);
-            // Renumbering holds the folder and moves the CSVs itself (#60).
+            // Renumbering holds the folder and moves the CSVs itself (#60);
+            // it keeps the names after the number, so titles stay as they are.
             if (!this.readmeSyncHolds.has(effect.dir)) {
               const { dir, from, to } = effect;
               this.run(() => this.moveTableCsvsAfterRename(dir, from, to));
+              this.run(() => this.retitleAfterRename(file, dir, from, to));
             }
             return;
           case 'strayMoved':
@@ -693,6 +696,21 @@ export default class LabnotePlugin extends Plugin {
         this.t('{0} table CSV file(s) kept their old name: the new name was taken or the rename failed.', String(skipped))
       );
     }
+  }
+
+  /**
+   * A workflow note was renamed by hand: its title and heading follow the new
+   * name (#71). Waits for open modals first: with "Automatically update
+   * internal links" off, Obsidian edits notes at offsets computed before its
+   * prompt, so changing the note's title line first could corrupt a link to it
+   * in the note (see #41). Skipped when the note moved again meanwhile or the
+   * prompt never closed; "Sync workflow checklist with folder" fixes it then.
+   */
+  private async retitleAfterRename(file: TFile, dir: string, from: string, to: string): Promise<void> {
+    const path = file.path;
+    const settled = await this.waitForNoModal();
+    if (this.unloaded || !settled || file.path !== path) return;
+    await retitleWorkflowAfterRename(this.app, this.host, dir, from, to);
   }
 
   /**
