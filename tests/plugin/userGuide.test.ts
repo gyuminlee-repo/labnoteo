@@ -29,7 +29,7 @@ describe('openUserGuide', () => {
     const { fs, host, asHost } = makeHost();
     expect(QUICKSTART_DOC_CONTENT.length).toBeGreaterThan(0);
 
-    await openUserGuide(asHost);
+    await openUserGuide(asHost, '1.0.0');
 
     expect(await fs.read(QUICKSTART_DOC_PATH)).toBe(QUICKSTART_DOC_CONTENT);
     expect(await fs.exists('.labnoteo/SETUP.md')).toBe(false);
@@ -41,7 +41,7 @@ describe('openUserGuide', () => {
   it('opens an existing copy without overwriting the researcher’s edits', async () => {
     const { fs, host, asHost } = makeHost({ [QUICKSTART_DOC_PATH]: '# my notes\n' });
 
-    await openUserGuide(asHost);
+    await openUserGuide(asHost, '1.0.0');
 
     expect(await fs.read(QUICKSTART_DOC_PATH)).toBe('# my notes\n');
     expect(host.notify).not.toHaveBeenCalled();

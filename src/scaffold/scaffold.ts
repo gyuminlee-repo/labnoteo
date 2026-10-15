@@ -14,6 +14,7 @@
 import type { LabnoteHost } from '@labnoteo/core';
 import {
   HOOKS_DIR_PATH,
+  ISSUE_SYNC_WORKFLOW_PATH,
   LEGACY_ASSET_PATHS,
   LEGACY_DIRS,
   MANAGED_BLOCK_BEGIN,
@@ -24,6 +25,13 @@ import {
   STALE_IGNORE_LINES,
   type ScaffoldAsset,
 } from './assets';
+import {
+  compareVersions,
+  contentHash,
+  readInstallRecord,
+  sameFiles,
+  writeInstallRecord,
+} from './installRecord';
 
 /**
  * Merge `snippet` into `existing`, appending only the (trimmed) lines that are
@@ -181,12 +189,26 @@ export async function isVaultGitRepository(host: LabnoteHost): Promise<boolean> 
 /**
  * Iterate the scaffold registry and provision each asset into the vault.
  */
-export async function setupResearchAutomationCommand(host: LabnoteHost): Promise<void> {
+export async function setupResearchAutomationCommand(
+  host: LabnoteHost,
+  pluginVersion: string
+): Promise<void> {
   const result: ScaffoldResult = { written: 0, merged: 0, skipped: 0, removed: 0 };
 
   for (const asset of SCAFFOLD_ASSETS) {
     const tally = await applyAsset(host, asset);
     if (tally) result[tally] += 1;
+  }
+
+  // A declined overwrite is recorded too: the file then counts as edited, and
+  // plugin load only mentions it again once the template changes.
+  const record = await readInstallRecord(host);
+  const files = { ...record.files };
+  for (const asset of SCAFFOLD_ASSETS) {
+    if (!asset.seed) files[asset.vaultPath] = contentHash(asset.content);
+  }
+  if (!sameFiles(files, record.files) || record.pluginVersion !== pluginVersion) {
+    await writeInstallRecord(host, { pluginVersion, files });
   }
 
   result.removed = await removeLegacyAssets(host);
@@ -232,4 +254,122 @@ export async function setupResearchAutomationCommand(host: LabnoteHost): Promise
       );
     }
   }
+}
+
+/** Outcome of {@link refreshAutomationFiles}. */
+export interface RefreshResult {
+  /** Files brought up to this plugin version without asking. */
+  updated: string[];
+  /** Files with a newer template left alone (edited, or not installed yet). */
+  pending: string[];
+}
+
+/** Up to three paths, then a count of the rest. */
+function shortList(host: LabnoteHost, paths: string[]): string {
+  const shown = paths.slice(0, 3).join(', ');
+  return paths.length > 3 ? host.t('{0} (+{1} more)', shown, String(paths.length - 3)) : shown;
+}
+
+/**
+ * On plugin load, bring scaffolded files up to the templates embedded in this
+ * version, so an update needs no "Setup research automation" re-run:
+ *  - a file still matching the template it was last reconciled with (per
+ *    `.labnoteo/installed.json`) was not edited, so it is replaced;
+ *  - the AGENTS.md managed block is refreshed whenever it is present;
+ *  - `.gitignore`/`CLAUDE.md` get missing lines once per template change, so
+ *    a line the user deleted is not re-added on every load;
+ *  - an edited file, or one this version adds, is only reported (once the
+ *    template has changed since the last reconcile) for the setup command;
+ *  - `wiki-staging/` skeletons are never touched.
+ * Nothing is installed into a vault without the automation beyond refreshing
+ * an untouched QUICKSTART.md, and a record written by a newer plugin stops an
+ * older one from reverting its files.
+ */
+export async function refreshAutomationFiles(
+  host: LabnoteHost,
+  pluginVersion: string,
+  assets: ScaffoldAsset[] = SCAFFOLD_ASSETS
+): Promise<RefreshResult> {
+  const result: RefreshResult = { updated: [], pending: [] };
+  const record = await readInstallRecord(host);
+  if (record.pluginVersion && compareVersions(record.pluginVersion, pluginVersion) > 0) return result;
+  const setUp = await host.fs.exists(ISSUE_SYNC_WORKFLOW_PATH);
+  const files = { ...record.files };
+
+  for (const asset of assets) {
+    if (asset.seed) continue;
+    const path = asset.vaultPath;
+    const template = contentHash(asset.content);
+    const exists = await host.fs.exists(path);
+
+    if (asset.merge === 'managed-block') {
+      if (!exists) continue;
+      const current = await host.fs.read(path);
+      // Without the markers the user took the block out; do not put it back.
+      if (!current.includes(MANAGED_BLOCK_BEGIN)) continue;
+      const next = upsertManagedBlock(current, asset.content);
+      if (next !== current) {
+        await host.fs.write(path, next);
+        result.updated.push(path);
+      }
+      files[path] = template;
+      continue;
+    }
+
+    if (asset.merge === 'append-missing') {
+      if (!setUp || !exists || files[path] === template) continue;
+      const current = await host.fs.read(path);
+      const next = appendMissingLines(current, asset.content);
+      if (next !== current) {
+        await host.fs.write(path, next);
+        result.updated.push(path);
+      }
+      files[path] = template;
+      continue;
+    }
+
+    if (!exists) {
+      // A recorded file that is gone was deleted on purpose.
+      if (setUp && !(path in files)) result.pending.push(path);
+      continue;
+    }
+    const current = await host.fs.read(path);
+    if (sameContent(current, asset.content)) {
+      files[path] = template;
+      continue;
+    }
+    const recorded = files[path];
+    if (recorded !== undefined && contentHash(current) === recorded) {
+      await host.fs.write(path, asset.content);
+      files[path] = template;
+      result.updated.push(path);
+    } else if (setUp && recorded !== template) {
+      result.pending.push(path);
+    }
+  }
+
+  if (!sameFiles(files, record.files)) {
+    await writeInstallRecord(host, { pluginVersion, files });
+  }
+
+  if (result.updated.length > 0) {
+    host.notify(
+      'info',
+      host.t(
+        'Updated {0} automation file(s) to this plugin version: {1}',
+        String(result.updated.length),
+        shortList(host, result.updated)
+      )
+    );
+  }
+  if (result.pending.length > 0) {
+    host.notify(
+      'info',
+      host.t(
+        'These automation files have a newer version but were edited or are not installed yet, so they were left as they are: {0}. Run "Setup research automation" to update them.',
+        shortList(host, result.pending)
+      )
+    );
+  }
+  return result;
 }

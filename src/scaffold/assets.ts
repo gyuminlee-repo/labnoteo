@@ -66,6 +66,11 @@ export interface ScaffoldAsset {
   content: string;
   /** Reconciliation strategy when the file already exists. Default `overwrite`. */
   merge?: ScaffoldMergeStrategy;
+  /**
+   * A starting skeleton the user fills in (`wiki-staging/`). Only the setup
+   * command writes it; refreshing on plugin load would replace their writing.
+   */
+  seed?: boolean;
 }
 
 /**
@@ -78,6 +83,13 @@ export const LABNOTEO_DIR = '.labnoteo';
 
 /** Hook directory, used verbatim as the `git config core.hooksPath` argument. */
 export const HOOKS_DIR_PATH = `${LABNOTEO_DIR}/hooks`;
+
+/**
+ * Which template each installed file was last reconciled with, so a plugin
+ * update can tell an untouched file (refresh it) from one the user edited.
+ * Lives in the vault, not plugin data, so every clone and teammate agrees.
+ */
+export const INSTALL_RECORD_PATH = `${LABNOTEO_DIR}/installed.json`;
 
 /** Vault path of the admin/developer setup guide, surfaced in the completion notice. */
 export const SETUP_DOC_PATH = `${LABNOTEO_DIR}/SETUP.md`;
@@ -174,15 +186,15 @@ export const SCAFFOLD_ASSETS: ScaffoldAsset[] = [
 
   // Phase 5 — Living Manuscript Wiki.
   { vaultPath: '.github/workflows/wiki-sync.yml', content: wikiSyncWorkflow },
-  { vaultPath: 'wiki-staging/Home.md', content: wikiHome },
-  { vaultPath: 'wiki-staging/Abstract.md', content: wikiAbstract },
-  { vaultPath: 'wiki-staging/Introduction.md', content: wikiIntroduction },
-  { vaultPath: 'wiki-staging/Research-Questions.md', content: wikiResearchQuestions },
-  { vaultPath: 'wiki-staging/Methods.md', content: wikiMethods },
-  { vaultPath: 'wiki-staging/Results.md', content: wikiResults },
-  { vaultPath: 'wiki-staging/Discussion.md', content: wikiDiscussion },
-  { vaultPath: 'wiki-staging/Limitations.md', content: wikiLimitations },
-  { vaultPath: 'wiki-staging/Future-Work.md', content: wikiFutureWork },
-  { vaultPath: 'wiki-staging/Evidence-Index.md', content: wikiEvidenceIndex },
-  { vaultPath: 'wiki-staging/References.md', content: wikiReferences },
+  { vaultPath: 'wiki-staging/Home.md', content: wikiHome, seed: true },
+  { vaultPath: 'wiki-staging/Abstract.md', content: wikiAbstract, seed: true },
+  { vaultPath: 'wiki-staging/Introduction.md', content: wikiIntroduction, seed: true },
+  { vaultPath: 'wiki-staging/Research-Questions.md', content: wikiResearchQuestions, seed: true },
+  { vaultPath: 'wiki-staging/Methods.md', content: wikiMethods, seed: true },
+  { vaultPath: 'wiki-staging/Results.md', content: wikiResults, seed: true },
+  { vaultPath: 'wiki-staging/Discussion.md', content: wikiDiscussion, seed: true },
+  { vaultPath: 'wiki-staging/Limitations.md', content: wikiLimitations, seed: true },
+  { vaultPath: 'wiki-staging/Future-Work.md', content: wikiFutureWork, seed: true },
+  { vaultPath: 'wiki-staging/Evidence-Index.md', content: wikiEvidenceIndex, seed: true },
+  { vaultPath: 'wiki-staging/References.md', content: wikiReferences, seed: true },
 ];

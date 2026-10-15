@@ -84,6 +84,7 @@ import { exportTablesToCsv, exportActiveNoteTablesToCsv } from './exportCsv';
 import { openUserGuide } from './userGuide';
 import { LabnoteSettingTab } from './settingsTab';
 import { SETUP_DOC_PATH } from './scaffold/assets';
+import { refreshAutomationFiles } from './scaffold/scaffold';
 import {
   draftMethodCommand,
   summarizeResultsCommand,
@@ -168,6 +169,12 @@ export default class LabnotePlugin extends Plugin {
       })
     );
     this.addSettingTab(new LabnoteSettingTab(this.app, this));
+
+    this.app.workspace.onLayoutReady(() =>
+      this.run(async () => {
+        await refreshAutomationFiles(this.host, this.manifest.version);
+      })
+    );
 
     if (this.settings.mcpEnabled) {
       // Defer to layout-ready so we don't block plugin init on the listener.
@@ -288,7 +295,7 @@ export default class LabnotePlugin extends Plugin {
     this.addCommand({
       id: 'setup-research-automation',
       name: this.t('Setup research automation'),
-      callback: () => this.run(() => setupResearchAutomationCommand(this.host)),
+      callback: () => this.run(() => setupResearchAutomationCommand(this.host, this.manifest.version)),
     });
 
     this.addCommand({
@@ -1271,7 +1278,7 @@ export default class LabnotePlugin extends Plugin {
     this.addCommand({
       id: 'open-user-guide',
       name: this.t('Open user guide'),
-      callback: () => void openUserGuide(this.host),
+      callback: () => void openUserGuide(this.host, this.manifest.version),
     });
   }
 
