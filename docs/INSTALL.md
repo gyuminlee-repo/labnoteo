@@ -132,6 +132,11 @@ GitHub 자동화가 필요 없다면 [QUICKSTART](https://github.com/sblabkribb/
 `CLAUDE.md`, `QUICKSTART.md`, `wiki-staging/`를 현재 보관함에 씁니다. 덮어쓰기 전에는
 확인을 받고(내용이 이미 같은 파일은 묻지 않고 건너뜀), 기존 `.gitignore`에는 누락된 줄만 추가합니다.
 
+플러그인을 업데이트하면 Obsidian을 켤 때 직접 고치지 않은 파일은 자동으로 새 버전에
+맞춰집니다. 직접 고친 파일이나 새로 추가된 파일이 있으면 알림이 뜨니, 그때 이 명령을
+다시 실행하세요. 자동 갱신 기록(`.labnoteo/installed.json`)이 없는 보관함은 업데이트 후
+한 번 다시 실행해야 합니다.
+
 자세한 내용은 [연구노트 자동화](../README.md#연구노트-자동화)와 설치 후 보관함에
 생기는 관리자 문서 `.labnoteo/SETUP.md`를 참고하세요.
 

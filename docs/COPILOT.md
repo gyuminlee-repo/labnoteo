@@ -144,8 +144,8 @@ Copilot 설정의 *Custom vault instructions* 칸은 **보관함 루트 `AGENTS.
 
 - 그 칸에서 편집할 때는 labnoteo 관리 마커 블록을 건드리지 않도록 **사용자 규칙을
   마커 바깥에** 쓰세요.
-- *연구노트 자동화 설정*을 다시 실행해 `AGENTS.md`가 갱신되면 **새 Agent Chat을
-  시작**해야 반영됩니다.
+- 플러그인 업데이트나 *연구노트 자동화 설정*으로 `AGENTS.md`가 갱신되면 **새 Agent
+  Chat을 시작**해야 반영됩니다.
 - Copilot이 에이전트에 심는 **Skills**는 설정 → Copilot → **Skills**에서 에이전트별로
   켜고 끌 수 있습니다.
 - Copilot은 대화를 보관함의 `copilot/copilot-conversations/`에 저장합니다(메모리·사용자

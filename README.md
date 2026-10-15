@@ -1,6 +1,6 @@
 # Labnote Assistant for Obsidian (labnoteo)
 
-**버전 0.94.0**
+**버전 0.95.0**
 
 [English](README.en.md)
 
@@ -91,6 +91,8 @@ Obsidian 설치와 git·GitHub 계정 준비부터 커뮤니티 플러그인·�
 - **Living-Manuscript Wiki(선택)** — `wiki-sync.yml`. 사람이 검토·머지한 `wiki-staging/` 초안을 GitHub Wiki로 발행.
 
 번들 스크립트는 **무의존성** Node ESM이라 보관함에서 `npm install`이 필요 없습니다. 서버측 자동화는 전부 **결정적**이라 GitHub-hosted 러너만으로 동작하고, "이 노트에 논의가 필요한가?" 같은 AI 판단은 **로컬 AI 에이전트**가 `AGENTS.md` 규칙에 따라 수행합니다 — 이슈 생성/Wiki 발행은 서버가 단독 담당하므로 중복이 없습니다. 자동화는 **노트를 되쓰지 않으며**, `status` 변경과 과학적 판단은 사람의 몫입니다.
+
+**업데이트** — 플러그인을 업데이트하면 Obsidian을 켤 때 설치된 파일을 새 버전에 맞춥니다. 설치한 뒤 직접 고치지 않은 파일(`QUICKSTART.md`, `.labnoteo/` 스크립트·`SETUP.md`, `.github/` 워크플로 등)은 그대로 교체하고, `AGENTS.md`는 관리 블록만 고치며, `.gitignore`/`CLAUDE.md`에는 빠진 줄만 더한 뒤 바꾼 파일을 알려 줍니다. 직접 고친 파일과 새 버전에서 추가된 파일은 건드리지 않고 목록만 알려 주므로, 그때 *연구노트 자동화 설정*을 다시 실행하세요. `wiki-staging/` 초안은 자동으로 바꾸지 않습니다. 파일마다 어느 템플릿과 맞췄는지는 `.labnoteo/installed.json`에 기록되니 함께 커밋하세요. 이 기록이 없는 보관함(자동 갱신 전 버전으로 설치)은 *연구노트 자동화 설정*을 한 번 다시 실행해야 그 뒤로 자동 갱신됩니다. 서버 동작은 갱신된 파일을 커밋·push해야 바뀝니다.
 
 전체 자산 표·전제 조건·백필 절차는 설치 후 보관함에 생기는 관리자 문서 `.labnoteo/SETUP.md`를, 일상 사용법은 `QUICKSTART.md`를 참고하세요. `AGENTS.md`는 [Copilot과도 공유](docs/COPILOT.md#agentsmd-공유-규칙)됩니다.
 

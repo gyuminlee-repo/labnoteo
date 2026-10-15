@@ -55,7 +55,7 @@ export class LabnoteSettingTab extends PluginSettingTab {
           .onClick(() => {
             // Settings is a modal: close it or the guide opens hidden behind it.
             (this.app as unknown as { setting?: { close(): void } }).setting?.close();
-            void openUserGuide(this.plugin.host);
+            void openUserGuide(this.plugin.host, this.plugin.manifest.version);
           })
       );
 

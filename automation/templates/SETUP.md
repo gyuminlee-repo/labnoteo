@@ -146,6 +146,7 @@ vault/
 | --- | --- |
 | `QUICKSTART.md` | 연구원용 일상 사용 가이드(5분 따라하기 + 치트시트 + 기능 참조 + FAQ) |
 | `.labnoteo/SETUP.md` | 이 문서 — 관리자/개발자용 설정 가이드 |
+| `.labnoteo/installed.json` | 파일마다 마지막으로 맞춘 템플릿 기록. 플러그인 업데이트 때 직접 고치지 않은 파일만 자동 갱신하는 데 씀([업데이트](#업데이트) 참고) |
 
 ## 워크플로우 실행 조건 (문의가 가장 잦은 지점)
 
@@ -216,18 +217,27 @@ node .labnoteo/scripts/validate.mjs --notes-only  # 위에서 대용량 재검�
 
 ## 업데이트
 
-플러그인을 업데이트한 뒤 "Setup research automation" 명령을 다시 실행하면 스크립트와
-문서가 갱신됩니다. 변경 사항은 Git diff로 검토한 뒤 커밋하세요. (`AGENTS.md`는 마커
-블록만, `.gitignore`/`CLAUDE.md`는 누락 줄만 갱신되므로 사용자 수정이 보존됩니다.
-반면 `QUICKSTART.md`와 이 문서는 **통째로 교체**되므로, 덧붙여 둔 메모가 있다면 미리
-옮겨 두세요.)
+플러그인을 업데이트하면 Obsidian을 켤 때 스크립트와 문서가 자동으로 갱신되고, 바꾼
+파일을 알림으로 알려 줍니다. 변경 사항은 Git diff로 검토한 뒤 커밋하세요.
+
+- 설치한 뒤 **직접 고치지 않은** 파일은 새 버전으로 통째로 교체합니다. 어느 템플릿과
+  맞췄는지는 `.labnoteo/installed.json`에 기록되며, 이 파일도 함께 커밋합니다.
+- `AGENTS.md`는 마커 블록만, `.gitignore`/`CLAUDE.md`는 누락 줄만 갱신되므로 사용자
+  수정이 보존됩니다.
+- **직접 고친** 파일(`QUICKSTART.md`에 덧붙인 메모 등)과 새 버전에서 **추가된** 파일은
+  건드리지 않고 목록만 알려 줍니다. 그때 "Setup research automation" 명령을 다시
+  실행하면 파일마다 덮어쓸지 묻습니다. 덮어쓰지 않기로 한 파일은 템플릿이 다시 바뀔
+  때까지 알리지 않습니다.
+- `wiki-staging/` 초안은 자동으로 바꾸지 않습니다.
+- `installed.json`이 없는 보관함(자동 갱신 전 버전으로 설치)은 업데이트 후 명령을 한 번
+  다시 실행해야 그 뒤로 자동 갱신됩니다.
 
 **갱신된 스크립트는 커밋하고 push해야 서버 동작이 바뀝니다.** GitHub Actions는 플러그인이
 아니라 저장소에 **커밋된** `.labnoteo/scripts/*.mjs`를 실행합니다. 재설정만 하고 push하지
 않으면 서버는 계속 옛 스크립트를 돌리고, 로그도 옛 메시지를 출력합니다.
 
 ```sh
-git add .labnoteo .github AGENTS.md CLAUDE.md QUICKSTART.md .gitignore
+git add .labnoteo .github AGENTS.md CLAUDE.md QUICKSTART.md .gitignore   # .labnoteo/installed.json 포함
 git commit -m "chore(labnoteo): 자동화 자산 갱신"
 git push
 ```

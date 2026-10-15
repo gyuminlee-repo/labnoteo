@@ -50,6 +50,10 @@ const obsidianKo: Record<string, string> = {
 
   // User guide / view hints
   'Created the user guide: {0}': '사용법 문서를 만들었습니다: {0}',
+  'Updated {0} automation file(s) to this plugin version: {1}':
+    '자동화 파일 {0}개를 이 플러그인 버전에 맞게 갱신했습니다: {1}',
+  'These automation files have a newer version but were edited or are not installed yet, so they were left as they are: {0}. Run "Setup research automation" to update them.':
+    "다음 자동화 파일은 새 버전이 있지만 직접 고쳤거나 아직 설치되지 않아 그대로 두었습니다: {0}. 갱신하려면 '연구노트 자동화 설정'을 실행하세요.",
   'Right-click an item to create a workflow or insert a unit operation. No experiment yet? Run "{0}" first.':
     '항목을 우클릭해 워크플로를 만들거나 유닛 오퍼레이션을 넣습니다. 실험이 없다면 먼저 "{0}"을(를) 실행하세요.',
   'Type @dna (or another type) in a note, or right-click → "{0}" to register a sample.':
