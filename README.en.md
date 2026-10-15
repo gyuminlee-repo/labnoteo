@@ -111,6 +111,8 @@ Beyond the notebook itself, labnoteo can turn your vault into a lightweight rese
 
 The bundled scripts are **zero-dependency** Node ESM, so no `npm install` is needed in the vault. All server-side automation is **deterministic** (GitHub-hosted runners, no server-side LLM); AI judgments are made by a **local AI agent** following `AGENTS.md`, while issue creation and Wiki publishing stay solely with the server, so nothing is duplicated. Automation **never rewrites your notes**; `status` changes and scientific judgment stay with you.
 
+**Updates** — after a plugin update, Obsidian brings the installed files up to the new version when it starts. Files you have not edited since they were installed (`QUICKSTART.md`, the `.labnoteo/` scripts and `SETUP.md`, the `.github/` workflows, …) are replaced, `AGENTS.md` gets only its managed block refreshed, and `.gitignore`/`CLAUDE.md` only gain missing lines; you are told which files changed. Files you edited, and files the new version adds, are left alone and only listed, so run *Setup research automation* again then. `wiki-staging/` drafts are never changed automatically. Which template each file was matched to is recorded in `.labnoteo/installed.json`; commit it along with the rest. A vault without that record (set up by a version before automatic updates) needs one more *Setup research automation* run before updates become automatic. Server-side behavior changes only once the updated files are committed and pushed.
+
 See the generated `.labnoteo/SETUP.md` (admins) for the full asset table, prerequisites, and backfill procedure, and `QUICKSTART.md` (researchers) for day-to-day usage. `AGENTS.md` is [shared with Copilot](docs/COPILOT.md).
 
 ## Settings
