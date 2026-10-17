@@ -6,8 +6,13 @@
  */
 import { Notice, TFile } from 'obsidian';
 import * as posix from '@labnoteo/core/posix';
-import { extractMarkdownTables, tableToCsv } from '@labnoteo/core/lib/exportTablesCsv';
-import { staleTableCsvs } from '@labnoteo/core/lib/workflowStructure';
+import {
+  classifyCsvOverwrites,
+  extractMarkdownTables,
+  tableToCsv,
+  type CsvOverwriteKind,
+} from '@labnoteo/core/lib/exportTablesCsv';
+import { siblingTableCsvs, staleTableCsvs } from '@labnoteo/core/lib/workflowStructure';
 import { confirmModal } from './modals';
 import { listFileNames, trashTableCsvs } from './commands';
 import type LabnotePlugin from './main';
@@ -55,40 +60,58 @@ export async function exportTablesToCsv(plugin: LabnotePlugin, file: TFile): Pro
       const path = posix.join(dir, `${stem}_table${table.index + 1}.csv`);
       const csv = tableToCsv(table.rows, { bom: true });
       const old = (await plugin.fs.exists(path)) ? normalizeCsv(await plugin.fs.read(path)) : undefined;
-      return { path, csv, fresh: normalizeCsv(csv), header: normalizeCsv(tableToCsv([table.rows[0]])), old };
+      return { path, csv, fresh: normalizeCsv(csv), old };
     })
   );
-
-  const replaced = outputs.filter(
-    (o, k) =>
-      o.old !== undefined &&
-      o.old !== o.fresh &&
-      (!o.old.startsWith(o.header) || outputs.some((other, j) => j !== k && other.fresh === o.old))
+  const existingCount = Math.max(
+    0,
+    ...siblingTableCsvs(file.name, await plugin.fs.list(dir)).map(f => Number(/_table(\d+)\.csv$/.exec(f)![1]))
   );
-  if (replaced.length > 0) {
-    const list = replaced
+  const kinds = classifyCsvOverwrites(outputs, existingCount);
+
+  const listOf = (kind: CsvOverwriteKind) =>
+    outputs
+      .filter((_, k) => kinds[k] === kind)
       .map(o => `- ${posix.basename(o.path)}: ${firstLine(o.old!)} → ${firstLine(o.fresh)}`)
       .join('\n');
-    const ok = await confirmModal(
-      plugin.app,
+  const sections: string[] = [];
+  const moved = listOf('moved');
+  if (moved) {
+    sections.push(
       plugin.t(
         'These CSV files would now hold a different table (a table was added, removed or moved). Overwrite them?\n\n{0}',
-        list
-      ),
-      plugin.t('Overwrite')
+        moved
+      )
     );
+  }
+  const headerChanged = listOf('headerChanged');
+  if (headerChanged) {
+    sections.push(plugin.t('The header of these CSV files changed. Overwrite them?\n\n{0}', headerChanged));
+  }
+  if (sections.length > 0) {
+    const ok = await confirmModal(plugin.app, sections.join('\n\n'), plugin.t('Overwrite'));
     if (!ok) {
       new Notice(plugin.t('No changes made.'));
       return;
     }
   }
 
+  let written = 0;
   for (const o of outputs) {
-    if (o.old !== o.fresh) await plugin.fs.write(o.path, o.csv);
+    if (o.old === o.fresh) continue;
+    await plugin.fs.write(o.path, o.csv);
+    written++;
   }
 
+  const unchanged = outputs.length - written;
+  const exported =
+    written === 0
+      ? plugin.t('The CSV files are already up to date ({0}).', String(outputs.length))
+      : unchanged > 0
+        ? plugin.t('Exported {0} CSV file(s) ({1} unchanged file(s) left as they were).', String(written), String(unchanged))
+        : plugin.t('Exported {0} CSV file(s).', String(written));
   const cleanup = await offerStaleCsvCleanup(plugin, file, tables.length);
-  new Notice([plugin.t('Exported {0} CSV file(s).', String(outputs.length)), cleanup].filter(Boolean).join(' '));
+  new Notice([exported, cleanup].filter(Boolean).join(' '));
 }
 
 /** CSV text without the BOM and CRLF a re-save in Excel may add or drop. */

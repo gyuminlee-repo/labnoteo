@@ -149,6 +149,9 @@ const obsidianKo: Record<string, string> = {
   'Delete these lines from .gitignore so agent skills can be committed: {0}':
     '에이전트 스킬이 커밋되도록 .gitignore에서 다음 줄을 직접 지우세요: {0}',
   'Exported {0} CSV file(s).': 'CSV 파일 {0}개를 내보냈습니다.',
+  'Exported {0} CSV file(s) ({1} unchanged file(s) left as they were).':
+    'CSV 파일 {0}개를 내보냈습니다(내용이 같은 {1}개는 그대로 둠).',
+  'The CSV files are already up to date ({0}).': 'CSV 파일이 이미 최신입니다({0}개).',
   'No tables found in this note.': '이 노트에서 표를 찾을 수 없습니다.',
   'These table CSV files no longer match a table in the note. Move them to the trash?\n\n{0}':
     '다음 표 CSV 파일은 이 노트에 더 이상 해당하는 표가 없습니다. 휴지통으로 옮길까요?\n\n{0}',
@@ -160,6 +163,8 @@ const obsidianKo: Record<string, string> = {
   '{0} CSV file(s) could not be moved to the trash.': 'CSV 파일 {0}개를 휴지통으로 옮기지 못했습니다.',
   'These CSV files would now hold a different table (a table was added, removed or moved). Overwrite them?\n\n{0}':
     '다음 CSV 파일에 다른 표가 들어가게 됩니다(표가 추가·삭제되었거나 순서가 바뀌었습니다). 덮어쓸까요?\n\n{0}',
+  'The header of these CSV files changed. Overwrite them?\n\n{0}':
+    '다음 CSV 파일의 머리글이 바뀌었습니다. 덮어쓸까요?\n\n{0}',
   'Command failed: {0}': '명령 실행 실패: {0}',
   'Yes': '예',
   'Workflow created: {0}': '워크플로가 생성되었습니다: {0}',

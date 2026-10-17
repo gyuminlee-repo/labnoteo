@@ -1,5 +1,64 @@
 // Globals convention (no `import ... from 'vitest'`) — see sampleDefinition.test.ts.
-import { extractMarkdownTables, tableToCsv, UTF8_BOM } from '../lib/exportTablesCsv';
+import { classifyCsvOverwrites, extractMarkdownTables, tableToCsv, UTF8_BOM } from '../lib/exportTablesCsv';
+
+// #80, #92
+describe('classifyCsvOverwrites', () => {
+  const T1 = 'Name,Mass\nA,1\nB,2\n';
+  const T2 = 'Sample,OD\nX,0.5\n';
+
+  it('tells new, unchanged and updated tables apart', () => {
+    expect(
+      classifyCsvOverwrites(
+        [
+          { fresh: T1 },
+          { fresh: T2, old: T2 },
+          { fresh: 'Sample,OD\nX,0.9\n', old: 'Sample,OD\nX,0.7\n' },
+        ],
+        3
+      )
+    ).toEqual(['new', 'same', 'updated']);
+  });
+
+  it('overwrites a renamed header when the values are the same', () => {
+    expect(classifyCsvOverwrites([{ fresh: 'Name,Mass (mg)\nA,1\nB,2\n', old: T1 }], 1)).toEqual(['updated']);
+  });
+
+  it('asks about a header change when the values changed too', () => {
+    expect(classifyCsvOverwrites([{ fresh: 'Name,Mass (mg)\nA,3\n', old: T1 }], 1)).toEqual(['headerChanged']);
+  });
+
+  it('does not match a header-only table by its (empty) values', () => {
+    expect(classifyCsvOverwrites([{ fresh: 'Other\n', old: 'Name\n' }], 1)).toEqual(['headerChanged']);
+  });
+
+  it('reports a table added above as moved', () => {
+    expect(classifyCsvOverwrites([{ fresh: T2, old: T1 }, { fresh: T1 }], 1)).toEqual(['moved', 'new']);
+  });
+
+  it('reports the first table removed as moved, by the table count', () => {
+    expect(classifyCsvOverwrites([{ fresh: 'Sample,OD\nY,0.1\n', old: T1 }], 2)).toEqual(['moved']);
+  });
+
+  it('reports a moved header as moved', () => {
+    expect(
+      classifyCsvOverwrites(
+        [
+          { fresh: 'Sample,OD\nY,0.1\n', old: T1 },
+          { fresh: 'Name,Mass\nC,9\n', old: T2 },
+        ],
+        2
+      )
+    ).toEqual(['moved', 'moved']);
+  });
+
+  it('keeps a renamed header unasked while old CSVs make the count differ', () => {
+    expect(classifyCsvOverwrites([{ fresh: 'Name,Mass (mg)\nA,1\nB,2\n', old: T1 }], 3)).toEqual(['updated']);
+  });
+
+  it('reads a header with a line break inside quotes as one record', () => {
+    expect(classifyCsvOverwrites([{ fresh: '"Name\nlong",Mass\nA,1\nB,2\n', old: T1 }], 1)).toEqual(['updated']);
+  });
+});
 
 describe('tableToCsv', () => {
   const rows = [
