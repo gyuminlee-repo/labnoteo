@@ -325,6 +325,21 @@ const obsidianKo: Record<string, string> = {
     '아래 체크리스트 라벨이 파일 이름과 맞지 않습니다. 라벨을 고칠까요?',
   'Update labels': '라벨 고치기',
   '{0} label(s) updated.': '라벨 {0}개를 고쳤습니다.',
+  'These workflow files are listed more than once in the checklist. Remove the extra entries?':
+    '아래 워크플로 파일이 체크리스트에 두 번 이상 올라 있습니다. 중복 항목을 지울까요?',
+  'Remove duplicates': '중복 지우기',
+  '{0} duplicate entry(ies) removed.': '중복 항목 {0}개를 지웠습니다.',
+  '{0} checklist link(s) fixed.': '체크리스트 링크 {0}개를 고쳤습니다.',
+  'These workflow notes are in a subfolder of this experiment. Move them back to the experiment folder?':
+    '아래 워크플로 노트는 이 실험의 하위 폴더에 있습니다. 실험 폴더로 다시 옮길까요?',
+  'Move to experiment folder': '실험 폴더로 옮기기',
+  '{0} was not moved: the experiment folder already has a file with that name.':
+    '{0}은(는) 실험 폴더에 같은 이름의 파일이 있어 옮기지 않았습니다.',
+  'These workflow notes are in more than one subfolder of this experiment. Move the right one back to the experiment folder yourself: {0}':
+    '아래 워크플로 노트가 이 실험의 하위 폴더 여러 곳에 있습니다. 맞는 쪽을 직접 실험 폴더로 옮기세요: {0}',
+  '{0} note(s) moved back to the experiment folder.': '노트 {0}개를 실험 폴더로 옮겼습니다.',
+  '{0} was moved to {1} and is no longer recognised as a workflow step. If that was a mistake, move it back directly under the experiment folder or run "{2}".':
+    '{0}을(를) {1}(으)로 옮겨 실험 단계로 인식되지 않습니다. 실수였다면 실험 폴더 바로 아래로 되돌리거나 "{2}"을(를) 실행하세요.',
   "These notes' title and heading do not match their file names. Update them?":
     '아래 노트의 title과 제목이 파일 이름과 맞지 않습니다. 노트를 고칠까요?',
   'Update notes': '노트 고치기',

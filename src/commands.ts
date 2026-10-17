@@ -62,6 +62,9 @@ import {
   planWorkflowChecklistSync,
   removeWorkflowChecklistEntries,
   relabelWorkflowChecklistEntries,
+  dedupeWorkflowChecklistEntries,
+  normalizeWorkflowChecklistLabels,
+  relinkWorkflowChecklistEntries,
   collapseWorkflowRenames,
   defaultWorkflowTitle,
   parseWorkflowFileName,
@@ -70,6 +73,7 @@ import {
   workflowLabelFor,
   type WorkflowRename,
   type WorkflowRelabel,
+  type WorkflowSubfolderNotes,
 } from '@labnoteo/core/lib/workflowStructure';
 import { removeWorkflowFromReadme } from '@labnoteo/core/lib/workflowDelete';
 // Re-exported so command registration in main.ts imports every command from one
@@ -937,6 +941,19 @@ async function readWorkflowFolder(
   return { names, notes };
 }
 
+/** Workflow notes below `labnoteDir`'s top level, by file name. */
+function workflowNotesInSubfolders(app: App, labnoteDir: string): WorkflowSubfolderNotes {
+  const prefix = `${labnoteDir}/`;
+  const files = new Map<string, string[]>();
+  for (const file of app.vault.getFiles()) {
+    if (!file.path.startsWith(prefix)) continue;
+    const rel = file.path.slice(prefix.length);
+    if (!rel.includes('/') || !parseWorkflowFileName(file.name)) continue;
+    files.set(file.name, [...(files.get(file.name) ?? []), rel]);
+  }
+  return { dir: labnoteDir, files };
+}
+
 /** The checklist label of each workflow note read by {@link readWorkflowFolder}. */
 function workflowLabels(notes: ReadonlyMap<string, string | undefined>): Map<string, string> {
   return new Map([...notes].map(([name, content]) => [name, workflowLabelFor(name, content)]));
@@ -985,25 +1002,78 @@ export async function syncWorkflowChecklistCommand(
   }
 
   await readmeSync.flushNow(labnoteDir);
-  const readme = await host.fs.read(readmePath);
-  const { names, notes } = await readWorkflowFolder(host, labnoteDir);
+  let readme = await host.fs.read(readmePath);
+  let { names, notes } = await readWorkflowFolder(host, labnoteDir);
   let titles = workflowLabels(notes);
-  let plan = planWorkflowChecklistSync(readme, names, titles);
+  let subfolders = workflowNotesInSubfolders(app, labnoteDir);
+  let plan = planWorkflowChecklistSync(readme, names, titles, subfolders);
   if (!plan.hasSection) {
     host.notify('warn', host.t('README.labnote.md has no "Related Workflows" section.'));
     return;
   }
 
+  // A note dragged into `images/` or another subfolder stops being a step (#94).
+  let movedBack = 0;
+  const inSubfolder = plan.stale.filter(s => s.reason === 'subfolder');
+  const movable = inSubfolder.filter(s => s.found?.length === 1);
+  const ambiguous = inSubfolder.filter(s => (s.found?.length ?? 0) > 1);
+  if (ambiguous.length > 0) {
+    host.notify(
+      'warn',
+      host.t(
+        'These workflow notes are in more than one subfolder of this experiment. Move the right one back to the experiment folder yourself: {0}',
+        ambiguous.map(s => `${posix.basename(s.link)} (${s.found!.join(', ')})`).join('; ')
+      )
+    );
+  }
+  if (movable.length > 0) {
+    const list = movable.map(s => `- ${posix.basename(s.link)} (${posix.dirname(s.found![0])}/)`).join('\n');
+    const ok = await host.confirm(
+      `${host.t('These workflow notes are in a subfolder of this experiment. Move them back to the experiment folder?')}\n\n${list}`,
+      { confirmLabel: host.t('Move to experiment folder') }
+    );
+    if (ok) {
+      const relinks: { from: string; to: string }[] = [];
+      for (const s of movable) {
+        const name = posix.basename(s.found![0]);
+        const file = app.vault.getFileByPath(posix.join(labnoteDir, s.found![0]));
+        if (!file) continue;
+        if (await host.fs.exists(posix.join(labnoteDir, name))) {
+          host.notify(
+            'warn',
+            host.t('{0} was not moved: the experiment folder already has a file with that name.', s.found![0])
+          );
+          continue;
+        }
+        await app.fileManager.renameFile(file, posix.join(labnoteDir, name));
+        movedBack++;
+        if (s.link !== name) relinks.push({ from: s.link, to: name });
+      }
+      // Obsidian rewrites the link only when "Automatically update internal links" is on.
+      if (relinks.length > 0) {
+        await processNoteThroughVault(app, host, readmePath, content => relinkWorkflowChecklistEntries(content, relinks));
+      }
+      if (movedBack > 0) {
+        readme = await host.fs.read(readmePath);
+        ({ names, notes } = await readWorkflowFolder(host, labnoteDir));
+        titles = workflowLabels(notes);
+        subfolders = workflowNotesInSubfolders(app, labnoteDir);
+        plan = planWorkflowChecklistSync(readme, names, titles, subfolders);
+      }
+    }
+  }
+
   let remove: string[] = [];
-  if (plan.stale.length > 0) {
-    const list = plan.stale
+  const removable = plan.stale.filter(s => s.reason !== 'subfolder');
+  if (removable.length > 0) {
+    const list = removable
       .map(s => `- ${s.link} (${host.t(s.reason === 'missing' ? 'file not found' : 'in another folder')})`)
       .join('\n');
     const ok = await host.confirm(
       `${host.t('These checklist entries do not point to a workflow file in this folder. Remove them from the checklist?')}\n\n${list}`,
       { confirmLabel: host.t('Remove from checklist') }
     );
-    if (ok) remove = plan.stale.map(s => s.link);
+    if (ok) remove = removable.map(s => s.link);
   }
 
   // A note renamed before its title followed the file name (#71). Fixed only
@@ -1034,7 +1104,7 @@ export async function syncWorkflowChecklistCommand(
         }
       }
       titles = workflowLabels(notes);
-      plan = planWorkflowChecklistSync(readme, names, titles);
+      plan = planWorkflowChecklistSync(readme, names, titles, subfolders);
     }
   }
 
@@ -1077,11 +1147,36 @@ export async function syncWorkflowChecklistCommand(
     if (ok) relabel = plan.relabel;
   }
 
-  if (plan.added.length === 0 && remove.length === 0 && relabel.length === 0 && notesUpdated === 0) {
+  // Entries piled up while a bracketed alias broke the line (#95).
+  let duplicates: string[] = [];
+  if (plan.duplicates.length > 0) {
+    const list = [...new Set(plan.duplicates)].map(name => `- ${name}`).join('\n');
+    const ok = await host.confirm(
+      `${host.t('These workflow files are listed more than once in the checklist. Remove the extra entries?')}\n\n${list}`,
+      { confirmLabel: host.t('Remove duplicates') }
+    );
+    if (ok) duplicates = plan.duplicates;
+  }
+  // Escaping a label changes only the link text, not what it reads.
+  const relinked = plan.unescaped.length;
+
+  if (
+    plan.added.length === 0 &&
+    remove.length === 0 &&
+    relabel.length === 0 &&
+    duplicates.length === 0 &&
+    relinked === 0 &&
+    notesUpdated === 0 &&
+    movedBack === 0
+  ) {
     host.notify(
       'info',
       host.t(
-        plan.stale.length > 0 || plan.relabel.length > 0 || retitles.length > 0 || experimenters.length > 0
+        plan.stale.length > 0 ||
+          plan.relabel.length > 0 ||
+          plan.duplicates.length > 0 ||
+          retitles.length > 0 ||
+          experimenters.length > 0
           ? 'No changes made.'
           : 'The workflow checklist already matches the folder.'
       )
@@ -1090,16 +1185,24 @@ export async function syncWorkflowChecklistCommand(
   }
 
   await processNoteThroughVault(app, host, readmePath, content =>
-    relabelWorkflowChecklistEntries(
-      removeWorkflowChecklistEntries(planWorkflowChecklistSync(content, names, titles).content, remove),
-      relabel
+    normalizeWorkflowChecklistLabels(
+      dedupeWorkflowChecklistEntries(
+        relabelWorkflowChecklistEntries(
+          removeWorkflowChecklistEntries(planWorkflowChecklistSync(content, names, titles).content, remove),
+          relabel
+        ),
+        [...new Set(duplicates)]
+      )
     )
   );
   const parts = [
     host.t('Workflow checklist updated: {0} added, {1} removed.', String(plan.added.length), String(remove.length)),
   ];
+  if (movedBack > 0) parts.push(host.t('{0} note(s) moved back to the experiment folder.', String(movedBack)));
   if (notesUpdated > 0) parts.push(host.t('{0} note(s) updated.', String(notesUpdated)));
   if (relabel.length > 0) parts.push(host.t('{0} label(s) updated.', String(relabel.length)));
+  if (duplicates.length > 0) parts.push(host.t('{0} duplicate entry(ies) removed.', String(duplicates.length)));
+  if (relinked > 0) parts.push(host.t('{0} checklist link(s) fixed.', String(relinked)));
   host.notify('info', parts.join(' '));
 }
 
