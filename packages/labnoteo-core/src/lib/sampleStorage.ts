@@ -11,6 +11,7 @@ import {
   SampleType,
   buildSampleDefinitionText,
   escapeSamplePipes,
+  hasSampleAliasSeparator,
   isCatalogSampleType,
 } from './sampleUtils';
 import { escapeRegExp } from './regexUtils';
@@ -412,7 +413,13 @@ export function findSampleDefinitionMatch(
   let match = nextSampleMatch(idPattern, text, type);
   while (match) {
     if (match[1] === id && match[0].startsWith('@')) {
-      return { start: match.index, length: match[0].length };
+      // The match stops at a `;` inside an old alias; take the whole
+      // definition so a rewrite leaves no tail behind (#98).
+      const legacy =
+        currentAlias && hasSampleAliasSeparator(currentAlias)
+          ? legacyDefinitionSpan(text, aliasStartOf(text, match), currentAlias)
+          : undefined;
+      return { start: match.index, length: (legacy?.end ?? match.index + match[0].length) - match.index };
     }
     match = nextSampleMatch(idPattern, text, type);
   }
@@ -431,6 +438,35 @@ export function findSampleDefinitionMatch(
   }
 
   return null;
+}
+
+/** Offset where the alias of a pattern match starts: past the id, its delimiter and spaces. */
+function aliasStartOf(text: string, match: RegExpExecArray): number {
+  const delimiter = match.index + match[0].indexOf(match[1]) + match[1].length;
+  return delimiter + 1 + /^[ \t]*/.exec(text.slice(delimiter + 1))![0].length;
+}
+
+/**
+ * The extent of a definition whose alias holds `;` or `:` (allowed before
+ * #98), which the pattern cuts short at that character. `aliasStart` is where
+ * the alias begins. When the text there is `oldAlias` followed by a line end
+ * or by `;`/`:` and a description, returns the end of the definition and that
+ * description; otherwise undefined.
+ */
+export function legacyDefinitionSpan(
+  text: string,
+  aliasStart: number,
+  oldAlias: string
+): { end: number; description: string | null } | undefined {
+  const aliasEsc = escapeSamplePipes(oldAlias);
+  if (!text.startsWith(aliasEsc, aliasStart)) return undefined;
+  const aliasEnd = aliasStart + aliasEsc.length;
+  const next = text[aliasEnd];
+  if (next === undefined || next === '\n' || next === '\r') return { end: aliasEnd, description: null };
+  if (next !== ';' && next !== ':') return undefined;
+  const raw = /^(?:\\\||[^\n;|])*/.exec(text.slice(aliasEnd + 1))![0].trimEnd();
+  const description = unescapeSamplePipes(raw.trim());
+  return { end: aliasEnd + 1 + raw.length, description: description || null };
 }
 
 /** One replacement planned by {@link planAliasRewrite}, in original-text offsets. */
@@ -454,6 +490,8 @@ export interface AliasRewriteEdit {
  *   may carry the rest of the sentence. Only a leading `oldAlias` followed by
  *   whitespace or that end is replaced; an empty `newAlias` drops the `;` too,
  *   leaving the bare id. Anything else is left as written.
+ * - An `oldAlias` holding `;` or `:` (allowed before #98) is cut short by the
+ *   pattern, so it is compared against the text after the id instead.
  *
  * Edits are in document order and do not overlap.
  */
@@ -472,6 +510,7 @@ export function planAliasRewrite(
   const startsWithAlias = (s: string, alias: string): boolean =>
     s.startsWith(alias) && (s.length === alias.length || /\s/.test(s[alias.length]));
 
+  const legacy = hasSampleAliasSeparator(oldAlias);
   const pattern = buildSampleDefinitionPattern(type);
   let match: RegExpExecArray | null;
   while ((match = nextSampleMatch(pattern, text, type)) !== null) {
@@ -479,6 +518,35 @@ export function planAliasRewrite(
     // The alias group starts right after the id and its `;`/`|` delimiter.
     const delimiter = match.index + match[0].indexOf(match[1]) + match[1].length;
     const raw = match[2];
+
+    if (legacy) {
+      const aliasStart = aliasStartOf(text, match);
+      let edit: AliasRewriteEdit | undefined;
+      if (match[0].startsWith('@')) {
+        const span = legacyDefinitionSpan(text, aliasStart, oldAlias);
+        if (span) {
+          edit = {
+            start: match.index,
+            end: span.end,
+            text: buildSampleDefinitionText(type, id, newAlias || null, span.description),
+            kind: 'definition',
+          };
+        }
+      } else if (text.startsWith(oldEsc, aliasStart)) {
+        const next = text[aliasStart + oldEsc.length];
+        if (next === undefined || /[\s;:|]/.test(next)) {
+          const end = aliasStart + oldEsc.length;
+          edit = newAlias
+            ? { start: aliasStart, end, text: newEsc, kind: 'reference' }
+            : { start: delimiter, end, text: '', kind: 'reference' };
+        }
+      }
+      if (edit) {
+        edits.push(edit);
+        pattern.lastIndex = Math.max(pattern.lastIndex, edit.end);
+      }
+      continue;
+    }
 
     if (match[0].startsWith('@')) {
       if (unescapeSamplePipes(raw.trim()) !== oldAlias) continue;
@@ -601,6 +669,27 @@ export async function loadSamplesByType(
   return records;
 }
 
+const isReferenceCatalogFile = (name: string, type: string): boolean =>
+  name.startsWith(`${type}_`) && name.endsWith('.json');
+
+/**
+ * Whether `labsamplesFolder` holds a `{type}_*.json` product catalog, without
+ * reading it: cheap enough for autocomplete, which runs on every keystroke
+ * (#99). An empty catalog file still counts.
+ */
+export async function hasReferenceCatalog(
+  fs: LabnoteFs,
+  labsamplesFolder: string,
+  type: string
+): Promise<boolean> {
+  if (!labsamplesFolder || !(await fs.exists(labsamplesFolder))) return false;
+  try {
+    return (await fs.list(labsamplesFolder)).some((name) => isReferenceCatalogFile(name, type));
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Load reference DB: all JSON files matching {type}_{suffix}.json in labsamples folder.
  * Used for Reagent/Labware product catalog (read-only). Same record format as loadSamplesByType.
@@ -614,8 +703,6 @@ export async function loadReferenceSamplesByType(
   if (!(await fs.exists(labsamplesFolder))) {
     return merged;
   }
-  const prefix = `${type}_`;
-  const suffix = '.json';
   let names: string[];
   try {
     names = await fs.list(labsamplesFolder);
@@ -624,7 +711,7 @@ export async function loadReferenceSamplesByType(
     return merged;
   }
   for (const name of names) {
-    if (!name.startsWith(prefix) || !name.endsWith(suffix)) {
+    if (!isReferenceCatalogFile(name, type)) {
       continue;
     }
     const filePath = path.join(labsamplesFolder, name);
@@ -1013,6 +1100,107 @@ export function findSampleUsages(
     }
   }
   return hits;
+}
+
+/** One Local sample to bring along with a note moved to another experiment (#97). */
+export interface SampleAdoption {
+  type: string;
+  /** The id as the old registry keys it. */
+  id: string;
+  /** What to write into the new experiment's registry. */
+  record: SampleRecord;
+  /** `copy` when a note left in the old experiment still uses it. */
+  action: 'move' | 'copy';
+}
+
+/**
+ * The `{Type}.json` types the samples in `text` belong to, so a caller loads
+ * only the registries a note can use.
+ */
+export function sampleTypesInText(text: string, additionalTypes?: string[]): string[] {
+  return [...new Set(extractSampleInfoFromText(text, additionalTypes).map((s) => s.type))];
+}
+
+const findRecordIgnoringCase = (
+  records: Record<string, SampleRecord> | undefined,
+  id: string
+): [string, SampleRecord] | undefined => {
+  if (!records) return undefined;
+  if (records[id]) return [id, records[id]];
+  const lower = id.toLowerCase();
+  return Object.entries(records).find(([key]) => key.toLowerCase() === lower);
+};
+
+/**
+ * Plan bringing a moved note's Local samples into the experiment it moved to
+ * (#97). A note reads Local samples from its own experiment's registry, so
+ * after a move the ones it used stay behind and its references stop resolving.
+ *
+ * - Only ids the note's text uses are considered.
+ * - An id already in the new experiment's or the Global registry resolves as
+ *   is and is skipped.
+ * - An id `usedElsewhere` (keys from {@link sampleReferenceKey}) is still used
+ *   by a note left in the old experiment, so it is copied rather than moved.
+ *   This is read from note text, not `sources`: `sources` only grows when a
+ *   note is saved, so a note copied in and never edited is missing from it.
+ */
+export function planLocalSampleAdoption(opts: {
+  noteText: string;
+  /** File name of the note after the move; becomes the new record's source. */
+  newName: string;
+  from: SampleDatabase;
+  to: SampleDatabase;
+  global: SampleDatabase;
+  usedElsewhere: ReadonlySet<string>;
+  additionalTypes?: string[];
+}): SampleAdoption[] {
+  const out: SampleAdoption[] = [];
+  const seen = new Set<string>();
+  for (const s of extractSampleInfoFromText(opts.noteText, opts.additionalTypes)) {
+    const key = sampleReferenceKey(s.type, s.id);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (findRecordIgnoringCase(opts.to[s.type], s.id)) continue;
+    if (findRecordIgnoringCase(opts.global[s.type], s.id)) continue;
+    const found = findRecordIgnoringCase(opts.from[s.type], s.id);
+    if (!found) continue;
+    const [id, record] = found;
+    out.push({
+      type: s.type,
+      id,
+      record: { ...record, sources: [opts.newName] },
+      action: opts.usedElsewhere.has(key) ? 'copy' : 'move',
+    });
+  }
+  return out;
+}
+
+/**
+ * Atomically drop `sourceName` from one record's `sources`, leaving every other
+ * field and id in the file as it is at write time. Returns whether it changed.
+ */
+export async function removeSampleSource(
+  fs: LabnoteFs,
+  labsamplesFolder: string,
+  type: string,
+  id: string,
+  sourceName: string
+): Promise<boolean> {
+  assertSafeSampleType(type);
+  const filePath = path.join(labsamplesFolder, `${type}.json`);
+  if (!(await fs.exists(filePath))) return false;
+
+  let changed = false;
+  await fs.modify(filePath, (raw) => {
+    const records = parseSampleRecords(raw);
+    const record = records[id];
+    const sources = Array.isArray(record?.sources) ? record.sources : [];
+    if (!record || !sources.includes(sourceName)) return raw;
+    records[id] = { ...record, sources: sources.filter((s) => s !== sourceName) };
+    changed = true;
+    return JSON.stringify(records, null, 2);
+  });
+  return changed;
 }
 
 /**

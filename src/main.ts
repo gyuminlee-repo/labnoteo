@@ -35,7 +35,12 @@ import {
   suggestCopiedWorkflowFileName,
   type WorkflowHeading,
 } from '@labnoteo/core/lib/workflowStructure';
-import { saveSamplesFromDocument, resolveLocalSampleFolder } from '@labnoteo/core/lib/sampleStorage';
+import {
+  saveSamplesFromDocument,
+  resolveLocalSampleFolder,
+  getLabsamplesFolder,
+  hasReferenceCatalog,
+} from '@labnoteo/core/lib/sampleStorage';
 import { VaultFileSystem } from './vaultFileSystem';
 import { createObsidianTranslator } from './i18n';
 import { createObsidianHost } from './obsidianHost';
@@ -63,12 +68,19 @@ import * as posix from '@labnoteo/core/posix';
 import {
   diagnoseExperimentPath,
   getExperimentDir,
+  getExperimentLabsamplesFolder,
   suggestExperimentFolderName,
 } from '@labnoteo/core/lib/labnoteStructure';
 import { SampleEditorSuggest } from './sampleSuggest';
 import { openSampleDefinition } from './sampleDefinitionModal';
 import { pickModal, workflowAliasModal } from './modals';
 import { createSampleInteractive, pickCatalogReference, insertSampleReference } from './sampleActions';
+import {
+  offerSamplesAfterMove,
+  offerSamplesLeftBehind,
+  type RelocatedNote,
+  type SampleRelocationDeps,
+} from './sampleRelocation';
 import {
   createSampleHighlightPlugin,
   createSampleReadingHighlighter,
@@ -132,6 +144,12 @@ export default class LabnotePlugin extends Plugin {
   private readonly copiedWorkflows = new Set<string>();
   // Pending "moved in but not listed" notices, coalesced per experiment folder.
   private readonly movedInTimers = new Map<string, number>();
+  // Notes moved between experiments whose Local samples may need bringing
+  // along (#97), coalesced per (old experiment, new experiment) pair.
+  private readonly samplesMoved = new Map<
+    string,
+    { fromDir: string; toDir: string; notes: RelocatedNote[]; timer: number }
+  >();
   // Pending unit-op TOC auto-sync flushes, coalesced per workflow-note path.
   private readonly unitOpTocTimers = new Map<string, number>();
   // Whether each note's latest editor change was an undo/redo, so the TOC sync
@@ -208,6 +226,10 @@ export default class LabnotePlugin extends Plugin {
       window.clearTimeout(handle);
     }
     this.movedInTimers.clear();
+    for (const pending of this.samplesMoved.values()) {
+      window.clearTimeout(pending.timer);
+    }
+    this.samplesMoved.clear();
     // Same for pending unit-op TOC auto-sync flushes.
     for (const handle of this.unitOpTocTimers.values()) {
       window.clearTimeout(handle);
@@ -267,9 +289,9 @@ export default class LabnotePlugin extends Plugin {
     this.addCommand({
       id: 'insert-issue-marker',
       name: this.t('Insert issue marker'),
-      editorCallback: editor => {
-        if (!insertIssueMarkerCommand(editor, this.host) || this.issueAutomationHintShown) return;
+      editorCallback: editor =>
         this.run(async () => {
+          if (!(await insertIssueMarkerCommand(editor, this.host)) || this.issueAutomationHintShown) return;
           const state = await issueAutomationState(this.host);
           if (state === 'ready') return;
           this.issueAutomationHintShown = true;
@@ -282,8 +304,7 @@ export default class LabnotePlugin extends Plugin {
                 )
               : this.t('Issue marker inserted. To open it as an issue, run "Setup research automation" first.')
           );
-        });
-      },
+        }),
     });
 
     this.addCommand({
@@ -423,7 +444,15 @@ export default class LabnotePlugin extends Plugin {
   }
 
   private syncWorkflowChecklist(dir?: string): Promise<void> {
-    return syncWorkflowChecklistCommand(this.app, this.host, this.readmeSyncControl(), dir);
+    const adoptSamples = this.settings.sampleTracking
+      ? (experimentDir: string, names: string[]) =>
+          offerSamplesLeftBehind(this.sampleRelocationDeps(), experimentDir, names)
+      : undefined;
+    return syncWorkflowChecklistCommand(this.app, this.host, this.readmeSyncControl(), dir, adoptSamples);
+  }
+
+  private sampleRelocationDeps(): SampleRelocationDeps {
+    return { app: this.app, host: this.host, ...this.sampleCleanupOpts() };
   }
 
   /** Right-click in a lab-note editor → create a workflow + insert a link at the cursor. */
@@ -526,7 +555,12 @@ export default class LabnotePlugin extends Plugin {
     // Catalog types (Reagent/Labware/Equip) are curated: search the read-only
     // product catalog first; without one, a generated id is registered instead.
     let referenceText: string | undefined;
-    if (isCatalogSampleType(type)) {
+    const localFolder = getExperimentLabsamplesFolder(target.path) ?? getLabsamplesFolder(target.path);
+    if (
+      isCatalogSampleType(type) &&
+      ((await hasReferenceCatalog(this.fs, localFolder, type)) ||
+        (await hasReferenceCatalog(this.fs, this.settings.globalSampleFolder, type)))
+    ) {
       referenceText = await pickCatalogReference(this.app, this, {
         type,
         docPath: target.path,
@@ -574,6 +608,9 @@ export default class LabnotePlugin extends Plugin {
         }
         if (!(file instanceof TFile)) return;
         const newPath = file.path;
+        // Ahead of the copy branch, which returns early: a copy moved to
+        // another experiment needs its samples too.
+        this.offerLocalSamplesMoved(oldPath, newPath);
         if (this.copiedWorkflows.delete(oldPath)) {
           if (posix.dirname(newPath) !== posix.dirname(oldPath)) return;
           if (isValidWorkflowPath(newPath)) this.run(() => this.offerListRenamedCopy(file));
@@ -965,6 +1002,38 @@ export default class LabnotePlugin extends Plugin {
         });
       }, 1000)
     );
+  }
+
+  /**
+   * A note moved into another experiment leaves the Local samples it used in
+   * the old experiment's registry, where it can no longer find them (#97).
+   * Once Obsidian's link-update prompt is gone, offer to bring them along,
+   * once per (old, new) experiment pair for a batch of moves.
+   */
+  private offerLocalSamplesMoved(oldPath: string, newPath: string): void {
+    if (!this.settings.sampleTracking || !/\.md$/i.test(newPath)) return;
+    if (posix.basename(newPath) === 'README.labnote.md') return;
+    const fromDir = getExperimentDir(oldPath);
+    const toDir = getExperimentDir(newPath);
+    if (!fromDir || !toDir || fromDir === toDir) return;
+    // Renaming or moving a whole experiment folder renames every note in it;
+    // by then its old folder no longer exists.
+    if (!this.app.vault.getAbstractFileByPath(fromDir)) return;
+
+    const key = `${fromDir}\u0000${toDir}`;
+    const pending = this.samplesMoved.get(key);
+    if (pending) window.clearTimeout(pending.timer);
+    const notes = (pending?.notes ?? []).filter(n => n.path !== oldPath);
+    notes.push({ path: newPath, oldName: posix.basename(oldPath) });
+    const timer = window.setTimeout(() => {
+      this.samplesMoved.delete(key);
+      this.run(async () => {
+        const ready = await this.waitForNoModal();
+        if (this.unloaded) return;
+        await offerSamplesAfterMove(this.sampleRelocationDeps(), fromDir, toDir, notes, ready);
+      });
+    }, 1000);
+    this.samplesMoved.set(key, { fromDir, toDir, notes, timer });
   }
 
   /** Resolve true once no modal is open (checked every 250ms), false after 30s. */

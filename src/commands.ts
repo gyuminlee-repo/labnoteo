@@ -29,6 +29,7 @@ import {
   parseFrontMatterYaml,
   parseIssueMarkers,
   planIssueMarkerInsertion,
+  issueSentenceRange,
   serializeFrontMatterEntry,
   setDiscussFlag,
 } from '@labnoteo/core';
@@ -206,15 +207,16 @@ export async function changeExperimentStatusCommand(
  *
  * Discussion comes up mid-sentence while writing, so this is an editor command
  * rather than a note-level one: select the sentence that raises the question
- * and it becomes the topic; with no selection the marker is left open and the
- * cursor lands where the topic goes. Text after the selection is never pulled
+ * and it becomes the topic. With no selection the topic is asked for,
+ * prefilled with the sentence on the cursor's line; a marker without one would
+ * be rejected by `validate` (#100). Text after the selection is never pulled
  * into the marker — see {@link planIssueMarkerInsertion} for where it goes.
  * Only the primary selection is used, so one command yields one ID.
  *
  * The ID exists so the topic can be reworded later without orphaning the issue
  * it opened, which is also why it is generated rather than typed.
  */
-export function insertIssueMarkerCommand(editor: Editor, host: LabnoteHost): boolean {
+export async function insertIssueMarkerCommand(editor: Editor, host: LabnoteHost): Promise<boolean> {
   // IDs are a timestamp plus a counter, so generating a duplicate is not
   // actually possible; this scan is kept only because it costs nothing.
   //
@@ -222,28 +224,55 @@ export function insertIssueMarkerCommand(editor: Editor, host: LabnoteHost): boo
   // which carries the ID along and never goes through this command. Two notes
   // then point at one issue and the discussions merge silently. The pre-commit
   // hook and the server `validate` catch that, since only they see the folder.
-  const doc = editor.getValue();
-  const used = new Set(parseIssueMarkers(doc).markers.map(m => m.id));
-  let id = generateIssueMarkerId();
-  while (used.has(id)) id = generateIssueMarkerId();
-
-  const plan = planIssueMarkerInsertion(
-    doc,
-    editor.posToOffset(editor.getCursor('from')),
-    editor.posToOffset(editor.getCursor('to')),
-    id
-  );
-  if ('reason' in plan) {
+  const newId = (doc: string): string => {
+    const used = new Set(parseIssueMarkers(doc).markers.map(m => m.id));
+    let id = generateIssueMarkerId();
+    while (used.has(id)) id = generateIssueMarkerId();
+    return id;
+  };
+  const refuse = (reason: 'conflict' | 'table' | 'frontMatter'): false => {
     host.notify(
       'warn',
-      plan.reason === 'table'
+      reason === 'table'
         ? host.t('Issue markers cannot go inside a table. Run this on a line below the table.')
-        : plan.reason === 'frontMatter'
+        : reason === 'frontMatter'
           ? host.t('Issue markers cannot go in the front matter. Run this in the note body.')
           : host.t('This line already has an issue marker. A line can hold only one.')
     );
     return false;
+  };
+
+  let doc = editor.getValue();
+  const from = editor.posToOffset(editor.getCursor('from'));
+  const to = editor.posToOffset(editor.getCursor('to'));
+  let plan;
+  if (from !== to) {
+    plan = planIssueMarkerInsertion(doc, from, to, newId(doc));
+  } else {
+    // Refuse a line that cannot take a marker before asking for a topic.
+    const probe = planIssueMarkerInsertion(doc, from, to, newId(doc), '-');
+    if ('reason' in probe) return refuse(probe.reason);
+    const topic = (
+      await host.prompt({
+        title: host.t('Issue topic sentence'),
+        prompt: host.t('This sentence becomes the issue title. Keep the sentence from this line or type another.'),
+        value: issueSentenceRange(doc, from)?.text ?? '',
+        validate: v => (v.trim() ? null : host.t('Enter the topic sentence of the issue.')),
+      })
+    )?.trim();
+    if (!topic) return false;
+    // The note may have changed while the prompt was open.
+    doc = editor.getValue();
+    const caret = editor.posToOffset(editor.getCursor('from'));
+    const sentence = issueSentenceRange(doc, caret);
+    plan =
+      sentence && sentence.text === topic
+        ? // As if the sentence had been selected: it becomes the marker.
+          planIssueMarkerInsertion(doc, sentence.from, sentence.to, newId(doc))
+        : // A new sentence leaves the line as written.
+          planIssueMarkerInsertion(doc, caret, caret, newId(doc), topic);
   }
+  if ('reason' in plan) return refuse(plan.reason);
 
   const { edit, cursor } = plan;
   editor.replaceRange(edit.insert, editor.offsetToPos(edit.from), editor.offsetToPos(edit.to));
@@ -991,7 +1020,9 @@ export async function syncWorkflowChecklistCommand(
   app: App,
   host: LabnoteHost,
   readmeSync: ReadmeSyncControl,
-  dir?: string
+  dir?: string,
+  /** Offer the Local samples these notes left in another experiment (#97); returns how many came in. */
+  adoptSamples?: (experimentDir: string, names: string[]) => Promise<number>
 ): Promise<void> {
   const labnoteDir = dir ?? (await resolveLabnoteDir(app, host));
   if (!labnoteDir) return;
@@ -1160,6 +1191,8 @@ export async function syncWorkflowChecklistCommand(
   // Escaping a label changes only the link text, not what it reads.
   const relinked = plan.unescaped.length;
 
+  const samplesBrought = adoptSamples ? await adoptSamples(labnoteDir, names) : 0;
+
   if (
     plan.added.length === 0 &&
     remove.length === 0 &&
@@ -1167,7 +1200,8 @@ export async function syncWorkflowChecklistCommand(
     duplicates.length === 0 &&
     relinked === 0 &&
     notesUpdated === 0 &&
-    movedBack === 0
+    movedBack === 0 &&
+    samplesBrought === 0
   ) {
     host.notify(
       'info',
@@ -1203,6 +1237,9 @@ export async function syncWorkflowChecklistCommand(
   if (relabel.length > 0) parts.push(host.t('{0} label(s) updated.', String(relabel.length)));
   if (duplicates.length > 0) parts.push(host.t('{0} duplicate entry(ies) removed.', String(duplicates.length)));
   if (relinked > 0) parts.push(host.t('{0} checklist link(s) fixed.', String(relinked)));
+  if (samplesBrought > 0) {
+    parts.push(host.t('Brought {0} local sample(s) into {1}.', String(samplesBrought), posix.basename(labnoteDir)));
+  }
   host.notify('info', parts.join(' '));
 }
 

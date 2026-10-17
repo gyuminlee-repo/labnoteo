@@ -2,11 +2,12 @@
  * Click-to-pick date/time editing for unit operation `#### Meta` blocks.
  *
  * A CodeMirror 6 `ViewPlugin` marks the value of every `- Start_date: '…'` /
- * `- End_date: '…'` line as clickable (and, when the value is still empty, adds
- * a small calendar affordance so there is something to click). Clicking opens
- * the platform's native date/time picker via `<input type="datetime-local">`
- * and writes the chosen value back through a single editor transaction, so
- * undo/redo and Obsidian's own save pipeline keep working normally.
+ * `- End_date: '…'` line as clickable and adds a small calendar affordance at
+ * the end of the line, which is the only thing to click while the value is
+ * still empty. Clicking opens the platform's native date/time picker via
+ * `<input type="datetime-local">` and writes the chosen value back through
+ * editor transactions, so undo/redo and Obsidian's own save pipeline keep
+ * working normally.
  *
  * Line parsing lives in `@labnoteo/core/lib/dateUtils` ({@link findMetaDateFieldInLine})
  * so it stays unit-tested and shared with any other consumer.
@@ -35,9 +36,9 @@ const ICON_CLASS = 'labnote-date-pick';
 const PICKER_CLASS = 'labnote-datetime-picker';
 
 /** The field that is open, if any; at most one exists at a time. */
-let openPicker: { commit: () => void; close: () => void } | null = null;
+let openPicker: { commit: () => void; cancel: () => void; close: () => void } | null = null;
 
-/** Calendar affordance rendered when a date field has no value yet. */
+/** Calendar affordance rendered at the end of every date field line. */
 class DatePickIconWidget extends WidgetType {
   constructor(
     private readonly label: string,
@@ -101,17 +102,17 @@ export function createMetaDatePickerExtension(label: string) {
                   line.from + match.valueEnd,
                   Decoration.mark({ class: VALUE_CLASS })
                 );
-              } else {
-                // Empty value: no text to click, so offer an icon instead.
-                builder.add(
-                  line.to,
-                  line.to,
-                  Decoration.widget({
-                    widget: new DatePickIconWidget(label, line.number),
-                    side: 1,
-                  })
-                );
               }
+              // Always offered, filled or not, so the field has one entry
+              // point that does not depend on hitting the value text (#85).
+              builder.add(
+                line.to,
+                line.to,
+                Decoration.widget({
+                  widget: new DatePickIconWidget(label, line.number),
+                  side: 1,
+                })
+              );
             }
             pos = line.to + 1;
           }
@@ -133,7 +134,7 @@ export function createMetaDatePickerExtension(label: string) {
           if (!openPicker || (event.key !== 'Enter' && event.key !== 'Escape')) return false;
           event.preventDefault();
           if (event.key === 'Enter') openPicker.commit();
-          else openPicker.close();
+          else openPicker.cancel();
           return true;
         },
       })
@@ -163,6 +164,17 @@ function openPickerOnLine(view: EditorView, lineNumber: number, x: number, y: nu
 
   const initial =
     toDateTimeLocalValue(match.value) || toDateTimeLocalValue(getSeoulDateTimeString());
+  const originalLine = line.text;
+  let written = false;
+
+  // The document may have changed while the picker was open, so the target
+  // line is resolved again on every write instead of trusting captured offsets.
+  const currentLine = () => {
+    if (lineNumber > view.state.doc.lines) return null;
+    const current = view.state.doc.line(lineNumber);
+    const target = findMetaDateFieldInLine(current.text);
+    return target && target.field === match.field ? { current, target } : null;
+  };
 
   openDateTimePicker({
     x,
@@ -170,31 +182,48 @@ function openPickerOnLine(view: EditorView, lineNumber: number, x: number, y: nu
     initial,
     onPick: picked => {
       const value = fromDateTimeLocalValue(picked);
-      if (!value) return;
-      // The document may have changed while the picker was open, so resolve the
-      // target range again instead of trusting the captured offsets.
-      if (lineNumber > view.state.doc.lines) return;
-      const current = view.state.doc.line(lineNumber);
-      const target = findMetaDateFieldInLine(current.text);
-      if (!target || target.field !== match.field) return;
+      const found = value ? currentLine() : null;
+      if (!value || !found) return;
+      const { current, target } = found;
       view.dispatch({
         changes: {
           from: current.from + target.valueStart,
           to: current.from + target.valueEnd,
           insert: target.quote ? value : `'${value}'`,
         },
+        userEvent: 'input.date',
       });
-      view.focus();
+      written = true;
+    },
+    onClose: reason => {
+      if (reason === 'cancel' && written) {
+        const found = currentLine();
+        if (found) {
+          view.dispatch({
+            changes: { from: found.current.from, to: found.current.to, insert: originalLine },
+            userEvent: 'input.date',
+          });
+        }
+      }
+      // Deferred so the key that closed the field has finished before the
+      // editor takes focus; otherwise its default action lands there (#85).
+      // A click elsewhere decides focus by itself.
+      if (reason !== 'outside') window.setTimeout(() => view.focus(), 0);
     },
   });
 }
+
+/** How the field was closed: kept (Enter), reverted (Escape) or clicked away. */
+type PickerCloseReason = 'commit' | 'cancel' | 'outside';
 
 interface DateTimePickerOptions {
   x: number;
   y: number;
   /** `YYYY-MM-DDTHH:mm`, the value shape `datetime-local` expects. */
   initial: string;
+  /** Write a chosen value into the note. May run more than once per field. */
   onPick: (value: string) => void;
+  onClose: (reason: PickerCloseReason) => void;
 }
 
 /**
@@ -208,8 +237,12 @@ interface DateTimePickerOptions {
  *
  * Deliberately *not* closed on blur. The editor reclaims focus right after the
  * field opens, and treating that as intent to dismiss made the field vanish
- * before it could be used. It closes on a pick, on Enter/Escape, or on a click
- * elsewhere.
+ * before it could be used. It closes on Enter (keep), Escape (revert) or a
+ * click elsewhere (keep).
+ *
+ * Each `change` is written into the note straight away but leaves the field
+ * open: Chromium can fire `change` for every segment typed into a
+ * `datetime-local` field, and closing on it ended typing after one digit.
  */
 function openDateTimePicker(opts: DateTimePickerOptions): void {
   // Never leave a second field behind if one is somehow still open.
@@ -225,28 +258,40 @@ function openDateTimePicker(opts: DateTimePickerOptions): void {
   document.body.appendChild(input);
 
   let closed = false;
-  const close = (): void => {
+  const finish = (reason: PickerCloseReason): void => {
     if (closed) return;
     closed = true;
     if (openPicker === handle) openPicker = null;
     document.removeEventListener('pointerdown', onOutsidePointerDown, true);
     input.remove();
+    opts.onClose(reason);
   };
-  const commit = (): void => {
-    const value = input.value;
-    close();
-    if (value) opts.onPick(value);
+  const pick = (): void => {
+    if (input.value) opts.onPick(input.value);
   };
-  const handle = { commit, close };
+  const handle = {
+    commit: (): void => {
+      pick();
+      finish('commit');
+    },
+    cancel: (): void => finish('cancel'),
+    close: (): void => finish('outside'),
+  };
   openPicker = handle;
   function onOutsidePointerDown(event: PointerEvent): void {
-    if (event.target !== input) close();
+    if (event.target !== input) handle.close();
   }
 
-  input.addEventListener('change', commit);
+  input.addEventListener('change', pick);
   input.addEventListener('keydown', event => {
-    if (event.key === 'Enter') commit();
-    else if (event.key === 'Escape') close();
+    if (event.key !== 'Enter' && event.key !== 'Escape') return;
+    // Without this the key's default action reaches the editor, which gets
+    // focus back as the field closes: Enter split the Meta line or replaced a
+    // selection in it (#85).
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.key === 'Enter') handle.commit();
+    else handle.cancel();
   });
   // Armed a tick later so the very click that opened the field cannot close it.
   window.setTimeout(() => {

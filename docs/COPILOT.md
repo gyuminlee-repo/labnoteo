@@ -217,6 +217,11 @@ MCP 클라이언트나 로컬 `claude` CLI에 노출합니다. **데스크톱 �
   생략해 자동 생성하세요. 알려진 타입은 대소문자를 맞춰 저장합니다(`equip-3` → `Equip-3`).
   결과에는 저장한 폴더(`folder`)와 범위(`scope`: `local`/`global`)가 들어 있고, 실험 폴더
   밖 노트로 만들어 전역 샘플 폴더에 저장했다면 `Warning:`으로 알려 줍니다.
+- **별칭·설명의 금지 글자**: `create_sample`의 `alias`에 `;`·`:`가, `description`에 `;`가
+  있으면 아무것도 쓰지 않고 `Invalid alias`/`Invalid description` 오류를 돌려줍니다. 노트에서
+  ID·별칭·설명을 가르는 글자라 별칭이 잘려 읽히기 때문입니다. `1:10`은 `1-10`처럼 바꿔 다시
+  부르세요. `AI: Extract sample definitions`는 묻지 않고 별칭의 `;`·`:`를 `-`로, 설명의 `;`를
+  `,`로 바꿔 저장합니다.
 - **없는 경로는 거부**: `create_sample`의 `documentPath`는 이미 있는 노트(`.md`)여야 하고,
   `create_workflow`의 `documentPath`는 `README.labnote.md`가 있는 실험 폴더 안이어야 합니다.
   아니면 아무것도 쓰지 않고 `Note not found`/`Experiment not found` 오류를 돌려줍니다.

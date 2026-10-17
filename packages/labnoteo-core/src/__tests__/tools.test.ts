@@ -89,6 +89,29 @@ describe('create_sample / get_sample / list_samples', () => {
     expect((res.data as { id: string }).id).toMatch(/^RNA-/);
   });
 
+  it('rejects an alias with ";" or ":" and a description with ";" without writing (#98)', async () => {
+    for (const args of [{ alias: 'EXT-01;여름' }, { alias: '1:10' }, { description: '여름; 추출' }]) {
+      const res = await tool('create_sample').handler(ctx, {
+        type: 'DNA',
+        id: 'DNA-7',
+        documentPath: NOTE_PATH,
+        ...args,
+      });
+      expect(res.ok).toBe(false);
+      expect(res.error).toMatch(/retry/);
+    }
+    const listed = await tool('list_samples').handler(ctx, { type: 'DNA', documentPath: NOTE_PATH });
+    expect(listed.data).toEqual([]);
+    const ok = await tool('create_sample').handler(ctx, {
+      type: 'DNA',
+      id: 'DNA-7',
+      alias: '1-10',
+      description: '여름: 추출',
+      documentPath: NOTE_PATH,
+    });
+    expect(ok.ok).toBe(true);
+  });
+
   it('lists samples of a type', async () => {
     await tool('create_sample').handler(ctx, { type: 'DNA', id: 'DNA-1', documentPath: NOTE_PATH });
     await tool('create_sample').handler(ctx, { type: 'DNA', id: 'DNA-2', documentPath: NOTE_PATH });

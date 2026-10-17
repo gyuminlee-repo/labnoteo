@@ -11,6 +11,8 @@ import {
   normalizeSampleId,
   canonicalSampleType,
   escapeSamplePipes,
+  hasSampleAliasSeparator,
+  hasSampleDescriptionSeparator,
 } from '../lib/sampleUtils';
 import { buildSampleInsertText, parseSampleTrigger } from '../sample/sampleSuggest';
 
@@ -70,6 +72,20 @@ describe('buildSampleReferenceText', () => {
 
   it('emits id;alias when an alias is present', () => {
     expect(buildSampleReferenceText('DNA-123', '별칭')).toBe('DNA-123;별칭');
+  });
+});
+
+// #98: `;`/`:` end an alias and `;` ends a description in a note.
+describe('sample field separators', () => {
+  it('flags ";" and ":" in an alias', () => {
+    expect(hasSampleAliasSeparator('EXT-01;여름')).toBe(true);
+    expect(hasSampleAliasSeparator('1:10')).toBe(true);
+    expect(hasSampleAliasSeparator('EXT-01 여름, 1-10 / A|B')).toBe(false);
+  });
+
+  it('flags only ";" in a description', () => {
+    expect(hasSampleDescriptionSeparator('여름; 추출')).toBe(true);
+    expect(hasSampleDescriptionSeparator('희석 1:10, 4°C')).toBe(false);
   });
 });
 
@@ -147,5 +163,16 @@ describe('sampleSuggestActions', () => {
   it('offers no actions for @sample (multi-type)', () => {
     const t = parseSampleTrigger('@sample:', TYPES)!;
     expect(sampleSuggestActions(t)).toEqual({ generate: false, manual: false, catalog: false });
+  });
+
+  // #99: "Search catalog" led nowhere in a vault without a catalog file.
+  it('leaves catalog out when no catalog file exists, keeping generate + manual', () => {
+    const t = parseSampleTrigger('@reagent;', TYPES)!;
+    expect(sampleSuggestActions(t, { catalogAvailable: false })).toEqual({
+      generate: true,
+      manual: true,
+      catalog: false,
+    });
+    expect(sampleSuggestActions(t, { catalogAvailable: true }).catalog).toBe(true);
   });
 });

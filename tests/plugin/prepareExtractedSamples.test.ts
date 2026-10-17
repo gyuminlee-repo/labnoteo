@@ -32,6 +32,20 @@ describe('prepareExtractedSamples', () => {
     expect(out.regenerated).toBe(2);
   });
 
+  it('replaces the characters that would split a sample in a note (#98)', () => {
+    const out = prepareExtractedSamples(
+      [
+        { type: 'DNA', id: 'DNA-1', alias: 'EXT-01;여름', description: '여름 추출; 2차' },
+        { type: 'DNA', id: 'ratio:1', description: '희석 1:10' },
+      ],
+      TYPES
+    );
+    expect(out.samples).toEqual([
+      { type: 'DNA', id: 'DNA-1', alias: 'EXT-01-여름', description: '여름 추출, 2차' },
+      { type: 'DNA', alias: 'ratio-1', description: '희석 1:10' },
+    ]);
+  });
+
   it('skips unknown types and accepts custom ones', () => {
     const out = prepareExtractedSamples([{ type: 'Gizmo' }, { type: '배지', id: '배지-1' }], TYPES);
     expect(out.samples).toEqual([{ type: '배지', id: '배지-1', alias: undefined, description: undefined }]);

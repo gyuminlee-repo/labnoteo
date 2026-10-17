@@ -251,11 +251,14 @@ export function prepareExtractedSamples(
     }
     const rawId = typeof s.id === 'string' && s.id.trim() ? s.id.trim() : undefined;
     const id = rawId === undefined ? undefined : normalizeSampleId(type, rawId);
-    const alias = typeof s.alias === 'string' && s.alias.trim() ? s.alias : undefined;
-    const description = typeof s.description === 'string' ? s.description : undefined;
+    // `create_sample` rejects the characters that split a sample in a note
+    // (#98); nobody can be asked here, so replace them instead.
+    const toAlias = (v: string) => v.replace(/[;:]/g, '-');
+    const alias = typeof s.alias === 'string' && s.alias.trim() ? toAlias(s.alias) : undefined;
+    const description = typeof s.description === 'string' ? s.description.replace(/;/g, ',') : undefined;
     if (rawId !== undefined && !id) {
       out.regenerated++;
-      out.samples.push({ type, alias: alias ?? rawId, description });
+      out.samples.push({ type, alias: alias ?? toAlias(rawId), description });
     } else {
       out.samples.push({ type, id, alias, description });
     }
