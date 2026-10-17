@@ -128,6 +128,10 @@ const obsidianKo: Record<string, string> = {
   'Discussion flag cleared.': '논의 표시를 해제했습니다.',
   'Issue marker inserted. To open it as an issue, run "Setup research automation" first.':
     "이슈 마커를 넣었습니다. 이슈로 올리려면 먼저 '연구노트 자동화 설정'을 실행하세요.",
+  'Issue topic sentence': '이슈 주제 문장',
+  'This sentence becomes the issue title. Keep the sentence from this line or type another.':
+    '이 문장이 이슈 제목이 됩니다. 이 줄의 문장을 그대로 두거나 다른 문장을 입력하세요.',
+  'Enter the topic sentence of the issue.': '이슈의 주제 문장을 입력하세요.',
   'Flagged for discussion. This vault is not a git repository yet, so no issue will open. Finish the repository setup in {0} first.':
     '논의 표시를 설정했습니다. 이 보관함은 아직 git 저장소가 아니라 이슈가 생성되지 않습니다. 먼저 {0}의 저장소 연결을 마치세요.',
   'Issue marker inserted. This vault is not a git repository yet, so no issue will open. Finish the repository setup in {0} first.':

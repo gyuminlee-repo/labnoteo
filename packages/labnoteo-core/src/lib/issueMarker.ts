@@ -258,12 +258,16 @@ const isTableRow = (line: string): boolean => /^\s*\|/.test(line);
  *   the first is read, so the second would merge into its title.
  * - A selection starting in the front matter, its `---` lines included, is
  *   refused (`frontMatter`): a marker there is broken YAML, not an issue (#87).
+ *
+ * `topic`, when given, is the topic instead of the selected text (#100: typed
+ * for a bare caret). Where the marker goes is decided the same way.
  */
 export function planIssueMarkerInsertion(
   doc: string,
   from: number,
   to: number,
-  id: string
+  id: string,
+  topic?: string
 ): IssueMarkerInsertion {
   if (from > to) [from, to] = [to, from];
   const { fmEndLine } = scanDocumentHead(doc.split('\n'));
@@ -273,7 +277,7 @@ export function planIssueMarkerInsertion(
   // A selection that swallowed its line break (triple-click) ends on that line.
   while (to > from && doc[to - 1] === '\n') to--;
 
-  const title = doc.slice(from, to).trim().replace(/\s*\n\s*/g, ' ');
+  const title = (topic ?? doc.slice(from, to)).trim().replace(/\s*\n\s*/g, ' ');
   const marker = renderIssueMarker({ id, title });
   const lineStartOf = (i: number): number => (i === 0 ? 0 : doc.lastIndexOf('\n', i - 1) + 1);
   const lineEndOf = (i: number): number => {
@@ -311,6 +315,30 @@ export function planIssueMarkerInsertion(
   const candidates = resultLine.match(new RegExp(MARKER_START_RE.source, 'gi')) ?? [];
   if (candidates.length > 1) return { reason: 'conflict' };
   return { edit, cursor: edit.from + edit.insert.length };
+}
+
+/**
+ * The sentence on the line holding `offset`, to prefill the topic when nothing
+ * is selected (#100). Leading Markdown syntax is left out: quote marks (`> `),
+ * a list marker (`- `, `1. `) with its task box (`[ ] `), or heading hashes.
+ * Selecting `[from, to)` and planning the marker gives what selecting that
+ * sentence by hand would. Undefined for a line with no text.
+ */
+export function issueSentenceRange(
+  doc: string,
+  offset: number
+): { from: number; to: number; text: string } | undefined {
+  const lineStart = offset <= 0 ? 0 : doc.lastIndexOf('\n', offset - 1) + 1;
+  const nl = doc.indexOf('\n', offset);
+  const line = doc.slice(lineStart, nl === -1 ? doc.length : nl).replace(/\r$/, '');
+  const prefix = /^[ \t]*(?:>[ \t]*)*(?:#{1,6}(?=[ \t]|$)|(?:[-*+]|\d+[.)])[ \t]+(?:\[[^\]\n]\](?=[ \t]|$))?)?/.exec(
+    line
+  )![0];
+  const body = line.slice(prefix.length);
+  const text = body.trim();
+  if (!text) return undefined;
+  const from = lineStart + prefix.length + (body.length - body.trimStart().length);
+  return { from, to: from + text.length, text };
 }
 
 /**

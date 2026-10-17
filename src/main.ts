@@ -267,9 +267,9 @@ export default class LabnotePlugin extends Plugin {
     this.addCommand({
       id: 'insert-issue-marker',
       name: this.t('Insert issue marker'),
-      editorCallback: editor => {
-        if (!insertIssueMarkerCommand(editor, this.host) || this.issueAutomationHintShown) return;
+      editorCallback: editor =>
         this.run(async () => {
+          if (!(await insertIssueMarkerCommand(editor, this.host)) || this.issueAutomationHintShown) return;
           const state = await issueAutomationState(this.host);
           if (state === 'ready') return;
           this.issueAutomationHintShown = true;
@@ -282,8 +282,7 @@ export default class LabnotePlugin extends Plugin {
                 )
               : this.t('Issue marker inserted. To open it as an issue, run "Setup research automation" first.')
           );
-        });
-      },
+        }),
     });
 
     this.addCommand({

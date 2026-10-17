@@ -11,6 +11,7 @@ import {
   findEnclosingHeading,
   findIssueMarkerRanges,
   generateIssueMarkerId,
+  issueSentenceRange,
   parseIssueMarkers,
   planIssueMarkerInsertion,
   reassignIssueMarkerIds,
@@ -310,6 +311,80 @@ describe('planIssueMarkerInsertion', () => {
     const doc = '---\ntitle: 시험\n---\n본문 문장\n# 제목\n';
     expect(insert(doc, ...select(doc, '본문 문장')).out).toBe(
       '---\ntitle: 시험\n---\n@issue;ISS-t;본문 문장\n# 제목\n'
+    );
+  });
+
+  // #100: a bare caret used to leave the topic empty.
+  describe('with a typed topic', () => {
+    const withTopic = (doc: string, at: number, topic: string): string => {
+      const plan = planIssueMarkerInsertion(doc, at, at, ID, topic);
+      if ('reason' in plan) throw new Error(`refused: ${plan.reason}`);
+      return doc.slice(0, plan.edit.from) + plan.edit.insert + doc.slice(plan.edit.to);
+    };
+
+    it('keeps the line and places the marker as for a bare caret', () => {
+      const doc = '0 µM에서도 높음. 누출 의심\n다음 줄';
+      expect(withTopic(doc, doc.indexOf('도 높음'), ' 누출 원인 논의 ')).toBe(
+        '0 µM에서도 높음. 누출 의심 @issue;ISS-t;누출 원인 논의\n다음 줄'
+      );
+      expect(withTopic('', 0, '새 논의')).toBe('@issue;ISS-t;새 논의');
+      expect(withTopic('### [UHW010 A]\n', 6, '조건 확인')).toBe('### [UHW010 A]\n@issue;ISS-t;조건 확인\n');
+    });
+
+    it('still refuses where a marker cannot go', () => {
+      expect(planIssueMarkerInsertion('| a | b |', 2, 2, ID, 'x')).toEqual({ reason: 'table' });
+      expect(planIssueMarkerInsertion('foo @issue;ISS-a;기존', 0, 0, ID, 'x')).toEqual({ reason: 'conflict' });
+    });
+  });
+});
+
+describe('issueSentenceRange (#100)', () => {
+  const ID = 'ISS-t';
+  const sentence = (doc: string, at = 0) => issueSentenceRange(doc, at)?.text;
+
+  it('leaves out list, task, quote and heading syntax', () => {
+    expect(sentence('- C-04는 형광이 낮음')).toBe('C-04는 형광이 낮음');
+    expect(sentence('  12. 두 번째 단계 ')).toBe('두 번째 단계');
+    expect(sentence('- [ ] 재측정 필요')).toBe('재측정 필요');
+    expect(sentence('* [x] 완료한 일')).toBe('완료한 일');
+    expect(sentence('> > 인용한 문장')).toBe('인용한 문장');
+    expect(sentence('> - 인용 안 목록')).toBe('인용 안 목록');
+    expect(sentence('## Results')).toBe('Results');
+    expect(sentence('수율 40%. 원인 불명')).toBe('수율 40%. 원인 불명');
+  });
+
+  it('keeps text that only looks like syntax', () => {
+    expect(sentence('#태그로 시작')).toBe('#태그로 시작');
+    expect(sentence('-5도에서 보관')).toBe('-5도에서 보관');
+  });
+
+  it('reads the line holding the offset', () => {
+    const doc = '첫 줄\n- 둘째 줄\n셋째';
+    expect(sentence(doc, doc.indexOf('째 줄'))).toBe('둘째 줄');
+    expect(sentence(doc, doc.length)).toBe('셋째');
+  });
+
+  it('is undefined for a line with no text', () => {
+    expect(issueSentenceRange('', 0)).toBeUndefined();
+    expect(issueSentenceRange('a\n\nb', 2)).toBeUndefined();
+    expect(issueSentenceRange('- [ ] ', 0)).toBeUndefined();
+    expect(issueSentenceRange('## ', 0)).toBeUndefined();
+  });
+
+  it('selecting the range gives the same marker as selecting the sentence by hand', () => {
+    for (const doc of ['- C-04는 형광이 낮음\n다음', '## Results\n본문', '> 인용한 문장']) {
+      const r = issueSentenceRange(doc, 0)!;
+      expect(doc.slice(r.from, r.to)).toBe(r.text);
+      const fromRange = planIssueMarkerInsertion(doc, r.from, r.to, ID);
+      const [from, to] = [doc.indexOf(r.text), doc.indexOf(r.text) + r.text.length];
+      expect(fromRange).toEqual(planIssueMarkerInsertion(doc, from, to, ID));
+    }
+    const doc = '- C-04는 형광이 낮음';
+    const r = issueSentenceRange(doc, 3)!;
+    const plan = planIssueMarkerInsertion(doc, r.from, r.to, ID);
+    if ('reason' in plan) throw new Error('refused');
+    expect(doc.slice(0, plan.edit.from) + plan.edit.insert + doc.slice(plan.edit.to)).toBe(
+      '- @issue;ISS-t;C-04는 형광이 낮음'
     );
   });
 });
