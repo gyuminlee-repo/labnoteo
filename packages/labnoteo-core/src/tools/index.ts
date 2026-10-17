@@ -26,6 +26,8 @@ import {
   normalizeSampleId,
   canonicalSampleType,
   getSampleDisplayMeta,
+  hasSampleAliasSeparator,
+  hasSampleDescriptionSeparator,
 } from '../lib/sampleUtils';
 import { getExperimentDir } from '../lib/labnoteStructure';
 import {
@@ -386,8 +388,15 @@ export function createLabnoteTools(): ToolDef[] {
             description:
               'Optional; auto-generated when omitted. Must be "<type>-<number>" (e.g. "Equip-3"); anything else is rejected, so omit it rather than inventing one.',
           },
-          alias: { type: 'string' },
-          description: { type: 'string' },
+          alias: {
+            type: 'string',
+            description:
+              'Must not contain ";" or ":" (they separate the id, alias and description in a note); use "-" or "/" instead, e.g. "1-10".',
+          },
+          description: {
+            type: 'string',
+            description: 'Must not contain ";" (it ends the description in a note); use "," instead.',
+          },
           location: {
             type: 'string',
             description:
@@ -420,6 +429,20 @@ export function createLabnoteTools(): ToolDef[] {
             error: `Invalid id "${rawId}": expected ${type}-<number>. Omit id to generate one.`,
           };
         }
+        const alias = str(args, 'alias');
+        if (alias !== undefined && hasSampleAliasSeparator(alias)) {
+          return {
+            ok: false,
+            error: `Invalid alias "${alias}": ";" and ":" separate the id, alias and description in a note. Replace them (e.g. with "-" or "/") and retry.`,
+          };
+        }
+        const description = str(args, 'description');
+        if (description !== undefined && hasSampleDescriptionSeparator(description)) {
+          return {
+            ok: false,
+            error: `Invalid description "${description}": ";" ends the description in a note. Replace it (e.g. with ",") and retry.`,
+          };
+        }
         // The samples folder is derived from the note's directory and created on
         // write, so a mistyped path would leave a stray folder no experiment
         // owns. A folder path passes `exists` (it is true for folders too) but
@@ -438,8 +461,8 @@ export function createLabnoteTools(): ToolDef[] {
         // id adds this note as a source and the description in front, and an
         // omitted alias or location keeps what was recorded in Obsidian.
         await mergeSampleRecord(ctx.fs, folder, type, id, {
-          alias: str(args, 'alias'),
-          description: str(args, 'description'),
+          alias,
+          description,
           sources: [posix.basename(documentPath)],
           location: str(args, 'location'),
         });

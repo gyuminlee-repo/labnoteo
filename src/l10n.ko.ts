@@ -205,8 +205,9 @@ const obsidianKo: Record<string, string> = {
   'Search catalog': '카탈로그 검색',
   'Search {0} catalog': '{0} 카탈로그 검색',
   'Insert a reference from the product catalog': '제품 카탈로그에서 참조를 삽입합니다',
-  'No {0} catalog found. Add resources/labsamples/{0}_*.json.':
-    '{0} 카탈로그가 없습니다. resources/labsamples/{0}_*.json 파일을 추가하세요.',
+  'No {0} catalog entries found (resources/labsamples/{0}_*.json). Create a new {0} sample instead?':
+    '{0} 카탈로그에 항목이 없습니다(resources/labsamples/{0}_*.json). 대신 새 {0} 샘플을 만들까요?',
+  'Create sample': '샘플 만들기',
 
   // Go to definition popup
   'Go to definition': '정의로 이동',
@@ -259,6 +260,20 @@ const obsidianKo: Record<string, string> = {
     '{0}은(는) 이 실험 밖의 노트에서 쓰이고 있습니다({1}). 옮기면 그 노트에서는 이 시료를 찾지 못합니다. 그래도 옮길까요?',
   'Move anyway': '그래도 옮기기',
   'Sample moved: {0}': '샘플을 이동했습니다: {0}',
+  'An alias cannot contain ";" or ":", which separate the ID, alias and description in a note. Use "-" or "/" instead (e.g. 1-10).':
+    '별칭에는 ";"나 ":"를 쓸 수 없습니다. 노트에서 ID·별칭·설명을 가르는 글자입니다. 대신 "-"나 "/"를 쓰세요(예: 1-10).',
+  'A description cannot contain ";", which ends the description in a note. Use "," instead.':
+    '설명에는 ";"를 쓸 수 없습니다. 노트에서 설명을 끝내는 글자입니다. 대신 ","를 쓰세요.',
+  "Notes in {0} use {1} local sample(s) that are still in another experiment's registry, so the notes cannot find them. Bring them into {0}?":
+    '{0}의 노트가 쓰는 로컬 시료 {1}개가 다른 실험의 대장에 남아 있어 노트에서 찾을 수 없습니다. {0}(으)로 가져올까요?',
+  'move from {0}': '{0}에서 옮김',
+  'copy from {0} (still used there)': '{0}에서 복사(그 실험의 다른 노트도 씀)',
+  'Bring samples': '시료 가져오기',
+  'Brought {0} local sample(s) into {1}.': '로컬 시료 {0}개를 {1}(으)로 가져왔습니다.',
+  'The local samples stay in {0}. To bring them later, run "{1}" from a note in {2}.':
+    '로컬 시료는 {0}에 그대로 두었습니다. 나중에 가져오려면 {2}의 노트에서 "{1}"을(를) 실행하세요.',
+  'These samples are registered in more than one other experiment, so they were not brought in: {0}':
+    '다음 시료는 다른 실험 여러 곳의 대장에 있어 어느 쪽을 가져올지 정할 수 없으므로 가져오지 않았습니다: {0}',
   'Sample not found: {0}': '샘플을 찾을 수 없습니다: {0}',
   'Open an experiment note first to move samples.': '샘플을 이동하려면 먼저 실험 노트를 여세요.',
   'Local and Global folders are the same.': '로컬과 전역 폴더가 동일합니다.',

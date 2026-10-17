@@ -23,6 +23,11 @@ import {
   resolveLocalSampleFolder,
   planAliasRewrite,
   applyAliasRewrite,
+  planLocalSampleAdoption,
+  legacyDefinitionSpan,
+  hasReferenceCatalog,
+  removeSampleSource,
+  sampleTypesInText,
   type SampleDatabase,
   type SampleRecord,
 } from '../lib/sampleStorage';
@@ -454,6 +459,60 @@ describe('planAliasRewrite', () => {
   it('plans nothing when the alias did not change', () => {
     expect(planAliasRewrite('DNA-1;same\n', 'DNA', 'DNA-1', 'same', 'same')).toEqual([]);
   });
+
+  // #98: an old alias with ";" or ":" was read back cut at that character.
+  it('rewrites references and definitions of an old alias holding ";" or ":"', () => {
+    const text = 'DNA-1;EXT-01;여름 을 썼다\n@dna;DNA-1;EXT-01;여름;여름 추출\n@dna;DNA-1;EXT-01;여름\n';
+    expect(rewrite(text, 'DNA-1', 'EXT-01;여름', 'EXT-01 여름')).toBe(
+      'DNA-1;EXT-01 여름 을 썼다\n@dna;DNA-1;EXT-01 여름;여름 추출\n@dna;DNA-1;EXT-01 여름\n'
+    );
+    expect(rewrite('희석 DNA-2;1:10 사용\n@dna;DNA-2;1:10;설명\n', 'DNA-2', '1:10', '1-10')).toBe(
+      '희석 DNA-2;1-10 사용\n@dna;DNA-2;1-10;설명\n'
+    );
+  });
+
+  it('leaves an old alias with ";" alone where the text does not match it', () => {
+    const text = 'DNA-1;EXT-01;가을 사용\n@dna;DNA-1;EXT-01;여름X\n';
+    expect(planAliasRewrite(text, 'DNA', 'DNA-1', 'EXT-01;여름', 'new')).toEqual([]);
+  });
+
+  it('drops an old alias with ";" from a reference when the new alias is empty', () => {
+    expect(rewrite('DNA-1;EXT-01;여름 사용\n', 'DNA-1', 'EXT-01;여름', '')).toBe('DNA-1 사용\n');
+  });
+});
+
+describe('legacyDefinitionSpan (#98)', () => {
+  const text = '@dna;DNA-1;EXT-01;여름;여름 추출  \n다음 줄';
+  const aliasStart = text.indexOf('EXT');
+
+  it('covers the old alias and the description after it', () => {
+    expect(legacyDefinitionSpan(text, aliasStart, 'EXT-01;여름')).toEqual({
+      end: text.indexOf('  \n'),
+      description: '여름 추출',
+    });
+  });
+
+  it('ends at the alias when no description follows', () => {
+    const bare = '@dna;DNA-1;EXT-01;여름\n';
+    expect(legacyDefinitionSpan(bare, aliasStart, 'EXT-01;여름')).toEqual({
+      end: bare.indexOf('\n'),
+      description: null,
+    });
+  });
+
+  it('is undefined when the text is not the old alias', () => {
+    expect(legacyDefinitionSpan(text, aliasStart, 'EXT-01;가을')).toBeUndefined();
+    expect(legacyDefinitionSpan('@dna;DNA-1;EXT-01;여름X\n', aliasStart, 'EXT-01;여름')).toBeUndefined();
+  });
+
+  it('lets findSampleDefinitionMatch replace the whole definition', () => {
+    const def = '@dna;DNA-1;EXT-01;여름;여름 추출';
+    const doc = `본문\n${def}\n`;
+    expect(findSampleDefinitionMatch(doc, 'DNA', 'DNA-1', 'EXT-01;여름')).toEqual({
+      start: doc.indexOf(def),
+      length: def.length,
+    });
+  });
 });
 
 describe('saveSamplesFromDocument + loadSamplesByType (MemFileSystem round-trip)', () => {
@@ -794,5 +853,118 @@ describe('findSampleUsages', () => {
     const custom = [{ path: 'x.md', text: 'see Strain-3 in the freezer' }];
     expect(findSampleUsages(custom, 'Strain', 'Strain-3', ['Strain'])).toEqual(['x.md']);
     expect(findSampleUsages(custom, 'Strain', 'Strain-3')).toEqual([]);
+  });
+});
+
+describe('planLocalSampleAdoption (#97)', () => {
+  const rec = (alias: string, sources: string[]): SampleRecord => ({
+    type: 'RNA',
+    alias,
+    descriptions: ['총 RNA'],
+    sources,
+    location: 'Freezer-1',
+  });
+  const NOTE = '추출 산물: RNA-1;총RNA-A1, RNA-2;총RNA-A2, RNA-3;전역';
+  const base = {
+    noteText: NOTE,
+    newName: '002_WB050_RNA_Extraction.labnote.md',
+    from: {
+      RNA: {
+        'RNA-1': rec('총RNA-A1', ['001_WB050_RNA_Extraction.labnote.md']),
+        'RNA-2': rec('총RNA-A2', ['001_WB050_RNA_Extraction.labnote.md']),
+        'RNA-9': rec('안 씀', ['001_WB050_RNA_Extraction.labnote.md']),
+      },
+    } as SampleDatabase,
+    to: {} as SampleDatabase,
+    global: { RNA: { 'RNA-3': rec('전역', []) } } as SampleDatabase,
+    usedElsewhere: new Set<string>(),
+  };
+
+  it('moves the Local samples the note uses, with the note as their only source', () => {
+    const plan = planLocalSampleAdoption(base);
+    expect(plan.map(a => [a.id, a.action])).toEqual([
+      ['RNA-1', 'move'],
+      ['RNA-2', 'move'],
+    ]);
+    expect(plan[0].record).toEqual({ ...rec('총RNA-A1', []), sources: [base.newName] });
+  });
+
+  it('copies a sample a note left in the old experiment still uses, even when sources miss it', () => {
+    const plan = planLocalSampleAdoption({
+      ...base,
+      usedElsewhere: new Set([sampleReferenceKey('RNA', 'rna-2')]),
+    });
+    expect(plan.map(a => [a.id, a.action])).toEqual([
+      ['RNA-1', 'move'],
+      ['RNA-2', 'copy'],
+    ]);
+  });
+
+  it('skips ids the new experiment or the Global registry already resolves', () => {
+    const plan = planLocalSampleAdoption({ ...base, to: { RNA: { 'rna-1': rec('있음', []) } } });
+    expect(plan.map(a => a.id)).toEqual(['RNA-2']);
+  });
+
+  it('matches registry ids ignoring case and keeps the registry spelling', () => {
+    const plan = planLocalSampleAdoption({ ...base, noteText: 'rna-1 사용' });
+    expect(plan.map(a => a.id)).toEqual(['RNA-1']);
+  });
+
+  it('plans nothing for a note without samples from the old registry', () => {
+    expect(planLocalSampleAdoption({ ...base, noteText: 'DNA-5;플라스미드' })).toEqual([]);
+  });
+
+  it('lists the registry types a note uses', () => {
+    expect(sampleTypesInText('RNA-1;a, DNA-2;b, RNA-3').sort()).toEqual(['DNA', 'RNA']);
+  });
+});
+
+describe('hasReferenceCatalog (#99)', () => {
+  const FOLDER = 'resources/labsamples';
+
+  it('sees a {Type}_*.json file without reading it, empty or not', async () => {
+    const fs = new MemFileSystem();
+    expect(await hasReferenceCatalog(fs, FOLDER, 'Reagent')).toBe(false);
+    await fs.write(`${FOLDER}/Reagent.json`, '{}');
+    await fs.write(`${FOLDER}/Labware_Corning.json`, '{}');
+    expect(await hasReferenceCatalog(fs, FOLDER, 'Reagent')).toBe(false);
+    await fs.write(`${FOLDER}/Reagent_Sigma.json`, '');
+    expect(await hasReferenceCatalog(fs, FOLDER, 'Reagent')).toBe(true);
+    expect(await hasReferenceCatalog(fs, FOLDER, 'Labware')).toBe(true);
+  });
+
+  it('is false for an empty folder setting', async () => {
+    expect(await hasReferenceCatalog(new MemFileSystem(), '', 'Reagent')).toBe(false);
+  });
+});
+
+describe('removeSampleSource (#97)', () => {
+  const FOLDER = 'labnote/001_A/resources/labsamples';
+  const record = (sources: string[]): SampleRecord => ({
+    type: 'RNA',
+    alias: 'a',
+    descriptions: ['d1', 'd2'],
+    sources,
+    location: null,
+  });
+
+  it('drops one source and leaves other fields and ids as they are', async () => {
+    const fs = new MemFileSystem();
+    await putSampleRecord(fs, FOLDER, 'RNA', 'RNA-1', record(['x.labnote.md', 'y.labnote.md']));
+    await putSampleRecord(fs, FOLDER, 'RNA', 'RNA-2', record(['x.labnote.md']));
+
+    expect(await removeSampleSource(fs, FOLDER, 'RNA', 'RNA-1', 'x.labnote.md')).toBe(true);
+    const records = await loadSamplesByType(fs, FOLDER, 'RNA');
+    expect(records['RNA-1']).toEqual(record(['y.labnote.md']));
+    expect(records['RNA-2']).toEqual(record(['x.labnote.md']));
+  });
+
+  it('reports false and leaves the file untouched when the source is not listed', async () => {
+    const fs = new MemFileSystem();
+    await putSampleRecord(fs, FOLDER, 'RNA', 'RNA-1', record(['y.labnote.md']));
+    const before = fs.snapshot();
+    expect(await removeSampleSource(fs, FOLDER, 'RNA', 'RNA-1', 'x.labnote.md')).toBe(false);
+    expect(await removeSampleSource(fs, FOLDER, 'RNA', 'RNA-9', 'y.labnote.md')).toBe(false);
+    expect(fs.snapshot()).toEqual(before);
   });
 });

@@ -16,6 +16,8 @@ import {
   buildSampleReferenceText,
   isCatalogSampleType,
   getSampleDisplayMeta,
+  hasSampleAliasSeparator,
+  hasSampleDescriptionSeparator,
 } from '@labnoteo/core/lib/sampleUtils';
 import {
   loadSamplesByType,
@@ -56,6 +58,24 @@ export function resolveScopeFolder(plugin: LabnotePlugin, scope: SampleScope): s
 /** Trim to a non-empty string or null. */
 function clean(value: string | undefined): string | null {
   return value && value.trim() ? value.trim() : null;
+}
+
+/** Block the characters that would split the alias in a note (#98). */
+function validateAlias(plugin: LabnotePlugin): (value: string) => string | null {
+  return v =>
+    hasSampleAliasSeparator(v)
+      ? plugin.t(
+          'An alias cannot contain ";" or ":", which separate the ID, alias and description in a note. Use "-" or "/" instead (e.g. 1-10).'
+        )
+      : null;
+}
+
+/** Block the character that would end the description in a note (#98). */
+function validateDescription(plugin: LabnotePlugin): (value: string) => string | null {
+  return v =>
+    hasSampleDescriptionSeparator(v)
+      ? plugin.t('A description cannot contain ";", which ends the description in a note. Use "," instead.')
+      : null;
 }
 
 /**
@@ -143,12 +163,14 @@ export async function createSampleInteractive(
       : plugin.t('Enter an alias for the new {0} sample (optional)', type),
     value: existing?.record.alias ?? '',
     placeholder: plugin.t('e.g. Sample-A'),
+    validate: validateAlias(plugin),
   });
   if (aliasRaw === undefined) return undefined;
   const descRaw = await promptModal(app, {
     title: plugin.t('Enter a description (optional)'),
     value: existing?.record.descriptions?.[0] ?? '',
     placeholder: plugin.t('e.g. Sample used in experiment 1'),
+    validate: validateDescription(plugin),
   });
   if (descRaw === undefined) return undefined;
   const locationRaw = await promptModal(app, {
@@ -230,9 +252,9 @@ async function findRegisteredSample(
  * Search the read-only product catalog (`{Type}_*.json`) for a catalog type
  * (Reagent/Labware/Equip) and return the chosen entry's reference text
  * (`id;alias`). Merges the document's local catalog with the vault-global one
- * (local wins). When no catalog exists, guides the user and falls back to
- * registering a sample with a generated id, as the sample view does (returning
- * its reference).
+ * (local wins). When the catalog has no entries, offers to register a sample
+ * with a generated id instead, as the sample view does (returning its
+ * reference).
  */
 export async function pickCatalogReference(
   app: App,
@@ -256,10 +278,17 @@ export async function pickCatalogReference(
   }));
 
   if (items.length === 0) {
-    new Notice(
-      plugin.t('No {0} catalog found. Add resources/labsamples/{0}_*.json.', type)
+    // The action is listed only when a catalog file exists (#99), so this is
+    // an empty file or one removed since; ask before switching to creation.
+    const ok = await confirmModal(
+      app,
+      plugin.t(
+        'No {0} catalog entries found (resources/labsamples/{0}_*.json). Create a new {0} sample instead?',
+        type
+      ),
+      plugin.t('Create sample')
     );
-    // Fallback: register a custom sample with a generated id, then reference it.
+    if (!ok) return undefined;
     const created = await createSampleInteractive(app, plugin, {
       type,
       folder: localFolder,
@@ -293,12 +322,14 @@ export async function editSampleInteractive(
     title: plugin.t('Enter a new alias'),
     value: record.alias ?? '',
     placeholder: plugin.t('e.g. Sample-A'),
+    validate: validateAlias(plugin),
   });
   if (aliasRaw === undefined) return false;
   const descRaw = await promptModal(app, {
     title: plugin.t('Enter a new description'),
     value: record.descriptions?.[0] ?? '',
     placeholder: plugin.t('e.g. Sample used in experiment 1'),
+    validate: validateDescription(plugin),
   });
   if (descRaw === undefined) return false;
   const locationRaw = await promptModal(app, {
@@ -396,7 +427,7 @@ async function notesReferencingSample(
 }
 
 /** A note's text, from its open editor when it has one. */
-interface ScopedNote {
+export interface ScopedNote {
   path: string;
   text: string;
   editor?: Editor;
@@ -407,7 +438,7 @@ interface ScopedNote {
  * folder, the whole vault for the Global one. An open note is read from its
  * editor so just-typed, unsaved text counts.
  */
-async function notesInSampleScope(app: App, folder: string): Promise<ScopedNote[]> {
+export async function notesInSampleScope(app: App, folder: string): Promise<ScopedNote[]> {
   const editors = new Map<string, Editor>();
   for (const leaf of app.workspace.getLeavesOfType('markdown')) {
     const view = leaf.view;

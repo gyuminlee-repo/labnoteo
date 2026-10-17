@@ -23,13 +23,17 @@ import {
 } from '@labnoteo/core';
 import {
   getSampleDisplayMeta,
+  isCatalogSampleType,
   sampleSuggestActions,
 } from '@labnoteo/core/lib/sampleUtils';
 import {
   loadSamplesByType,
+  getLabsamplesFolder,
+  hasReferenceCatalog,
   isSameSampleFolder,
   type SampleRecord,
 } from '@labnoteo/core/lib/sampleStorage';
+import { getExperimentLabsamplesFolder } from '@labnoteo/core/lib/labnoteStructure';
 import type LabnotePlugin from './main';
 import { createSampleInteractive, pickCatalogReference } from './sampleActions';
 
@@ -59,6 +63,7 @@ export class SampleEditorSuggest extends EditorSuggest<SuggestEntry> {
     string,
     { records: Record<string, SampleRecord>; expiry: number }
   >();
+  private readonly catalogCache = new Map<string, { exists: boolean; expiry: number }>();
   private static readonly CACHE_TTL_MS = 1500;
 
   constructor(app: App, private readonly deps: SampleSuggestDeps) {
@@ -86,10 +91,30 @@ export class SampleEditorSuggest extends EditorSuggest<SuggestEntry> {
     return records;
   }
 
+  /**
+   * Whether a `{type}_*.json` catalog exists for the note, in the same folders
+   * "Search catalog" reads ({@link pickCatalogReference}), memoised like the
+   * records. Without one the action is left out (#99).
+   */
+  private async catalogExists(docPath: string, type: string): Promise<boolean> {
+    const localFolder = getExperimentLabsamplesFolder(docPath) ?? getLabsamplesFolder(docPath);
+    const globalFolder = this.deps.globalFolder();
+    const key = `${localFolder}\u0000${globalFolder}\u0000${type}`;
+    const now = Date.now();
+    const hit = this.catalogCache.get(key);
+    if (hit && hit.expiry > now) return hit.exists;
+    const exists =
+      (await hasReferenceCatalog(this.deps.fs, localFolder, type)) ||
+      (Boolean(globalFolder) && (await hasReferenceCatalog(this.deps.fs, globalFolder, type)));
+    this.catalogCache.set(key, { exists, expiry: now + SampleEditorSuggest.CACHE_TTL_MS });
+    return exists;
+  }
+
   /** Drop cached records so the next trigger re-reads from disk. Called after a
    *  sample-sync write so freshly-defined samples appear immediately. */
   clearCache(): void {
     this.recordCache.clear();
+    this.catalogCache.clear();
   }
 
   onTrigger(
@@ -141,7 +166,10 @@ export class SampleEditorSuggest extends EditorSuggest<SuggestEntry> {
     const actions: SuggestEntry[] = [];
     if (trigger.typesToSearch.length === 1) {
       const type = trigger.typesToSearch[0];
-      const flags = sampleSuggestActions(trigger);
+      const catalogAvailable = isCatalogSampleType(type)
+        ? await this.catalogExists(context.file.path, type)
+        : false;
+      const flags = sampleSuggestActions(trigger, { catalogAvailable });
       // A curated product is the preferred pick for catalog types, so it leads.
       if (flags.catalog) actions.push({ kind: 'catalog', type });
       if (flags.generate) actions.push({ kind: 'generate', type });

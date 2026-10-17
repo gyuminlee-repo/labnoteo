@@ -1020,7 +1020,9 @@ export async function syncWorkflowChecklistCommand(
   app: App,
   host: LabnoteHost,
   readmeSync: ReadmeSyncControl,
-  dir?: string
+  dir?: string,
+  /** Offer the Local samples these notes left in another experiment (#97); returns how many came in. */
+  adoptSamples?: (experimentDir: string, names: string[]) => Promise<number>
 ): Promise<void> {
   const labnoteDir = dir ?? (await resolveLabnoteDir(app, host));
   if (!labnoteDir) return;
@@ -1189,6 +1191,8 @@ export async function syncWorkflowChecklistCommand(
   // Escaping a label changes only the link text, not what it reads.
   const relinked = plan.unescaped.length;
 
+  const samplesBrought = adoptSamples ? await adoptSamples(labnoteDir, names) : 0;
+
   if (
     plan.added.length === 0 &&
     remove.length === 0 &&
@@ -1196,7 +1200,8 @@ export async function syncWorkflowChecklistCommand(
     duplicates.length === 0 &&
     relinked === 0 &&
     notesUpdated === 0 &&
-    movedBack === 0
+    movedBack === 0 &&
+    samplesBrought === 0
   ) {
     host.notify(
       'info',
@@ -1232,6 +1237,9 @@ export async function syncWorkflowChecklistCommand(
   if (relabel.length > 0) parts.push(host.t('{0} label(s) updated.', String(relabel.length)));
   if (duplicates.length > 0) parts.push(host.t('{0} duplicate entry(ies) removed.', String(duplicates.length)));
   if (relinked > 0) parts.push(host.t('{0} checklist link(s) fixed.', String(relinked)));
+  if (samplesBrought > 0) {
+    parts.push(host.t('Brought {0} local sample(s) into {1}.', String(samplesBrought), posix.basename(labnoteDir)));
+  }
   host.notify('info', parts.join(' '));
 }
 

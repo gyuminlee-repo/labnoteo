@@ -73,6 +73,19 @@ export function escapeSamplePipes(text: string): string {
 }
 
 /**
+ * Whether an alias holds `;` or `:`, which end the alias in a note (`ID;alias;
+ * description`), so the rest would be read back as a description (#98).
+ */
+export function hasSampleAliasSeparator(alias: string): boolean {
+  return /[;:]/.test(alias);
+}
+
+/** Whether a description holds `;`, which ends it in a note (#98). */
+export function hasSampleDescriptionSeparator(description: string): boolean {
+  return description.includes(';');
+}
+
+/**
  * Build the `;alias;description` suffix of a sample definition string while
  * keeping field positions stable.
  *
@@ -140,19 +153,22 @@ export function isCatalogSampleType(type: string): boolean {
  * - a concrete authored single type gets `generate` ("Generate new ID") and
  *   `manual` ("Enter info") actions,
  * - a concrete catalog type (Reagent/Labware/Equip) additionally gets `catalog`
- *   ("Search catalog"): picking a curated product is preferred, but a vault
- *   without a catalog must still be able to register one (#40),
+ *   ("Search catalog") when a catalog file exists (`catalogAvailable`, #99):
+ *   picking a curated product is preferred, but a vault without a catalog
+ *   must still be able to register one (#40),
  * - `@sample` expands to many types, so it gets no actions.
  *
  * Typed structurally (not against `SampleTrigger`) to avoid a module cycle
  * between `lib/sampleUtils` and `sample/sampleSuggest`.
  */
-export function sampleSuggestActions(trigger: {
-  typesToSearch: readonly string[];
-}): { generate: boolean; manual: boolean; catalog: boolean } {
+export function sampleSuggestActions(
+  trigger: { typesToSearch: readonly string[] },
+  opts: { catalogAvailable?: boolean } = {}
+): { generate: boolean; manual: boolean; catalog: boolean } {
   const specific = trigger.typesToSearch.length === 1 ? trigger.typesToSearch[0] : null;
   if (!specific) return { generate: false, manual: false, catalog: false };
-  return { generate: true, manual: true, catalog: isCatalogSampleType(specific) };
+  const catalog = isCatalogSampleType(specific) && (opts.catalogAvailable ?? true);
+  return { generate: true, manual: true, catalog };
 }
 
 /**
