@@ -32,6 +32,7 @@ import {
   sameFiles,
   writeInstallRecord,
 } from './installRecord';
+import { LEGACY_TEMPLATE_HASHES } from './legacyTemplateHashes';
 
 /**
  * Merge `snippet` into `existing`, appending only the (trimmed) lines that are
@@ -260,8 +261,10 @@ export async function setupResearchAutomationCommand(
 export interface RefreshResult {
   /** Files brought up to this plugin version without asking. */
   updated: string[];
-  /** Files with a newer template left alone (edited, or not installed yet). */
+  /** Files with a newer template left alone: edited, or not verifiable without a record. */
   pending: string[];
+  /** Files of a set-up vault that are not there and were never recorded. */
+  missing: string[];
 }
 
 /** Up to three paths, then a count of the rest. */
@@ -278,8 +281,11 @@ function shortList(host: LabnoteHost, paths: string[]): string {
  *  - the AGENTS.md managed block is refreshed whenever it is present;
  *  - `.gitignore`/`CLAUDE.md` get missing lines once per template change, so
  *    a line the user deleted is not re-added on every load;
- *  - an edited file, or one this version adds, is only reported (once the
- *    template has changed since the last reconcile) for the setup command;
+ *  - without a record (vaults set up before 0.95.0), a file is untouched when
+ *    it hashes to a template an earlier release shipped (`legacy`), or when
+ *    the plugin owns it (built scripts);
+ *  - an edited file, or a missing one, is reported once per template change
+ *    for the setup command, and recorded so the next load stays quiet;
  *  - `wiki-staging/` skeletons are never touched.
  * Nothing is installed into a vault without the automation beyond refreshing
  * an untouched QUICKSTART.md, and a record written by a newer plugin stops an
@@ -288,9 +294,10 @@ function shortList(host: LabnoteHost, paths: string[]): string {
 export async function refreshAutomationFiles(
   host: LabnoteHost,
   pluginVersion: string,
-  assets: ScaffoldAsset[] = SCAFFOLD_ASSETS
+  assets: ScaffoldAsset[] = SCAFFOLD_ASSETS,
+  legacy: Readonly<Record<string, readonly string[]>> = LEGACY_TEMPLATE_HASHES
 ): Promise<RefreshResult> {
-  const result: RefreshResult = { updated: [], pending: [] };
+  const result: RefreshResult = { updated: [], pending: [], missing: [] };
   const record = await readInstallRecord(host);
   if (record.pluginVersion && compareVersions(record.pluginVersion, pluginVersion) > 0) return result;
   const setUp = await host.fs.exists(ISSUE_SYNC_WORKFLOW_PATH);
@@ -330,7 +337,10 @@ export async function refreshAutomationFiles(
 
     if (!exists) {
       // A recorded file that is gone was deleted on purpose.
-      if (setUp && !(path in files)) result.pending.push(path);
+      if (setUp && !(path in files)) {
+        result.missing.push(path);
+        files[path] = template;
+      }
       continue;
     }
     const current = await host.fs.read(path);
@@ -339,12 +349,16 @@ export async function refreshAutomationFiles(
       continue;
     }
     const recorded = files[path];
-    if (recorded !== undefined && contentHash(current) === recorded) {
+    const hash = contentHash(current);
+    const untouched =
+      recorded !== undefined ? hash === recorded : asset.owned === true || (legacy[path]?.includes(hash) ?? false);
+    if (untouched) {
       await host.fs.write(path, asset.content);
       files[path] = template;
       result.updated.push(path);
     } else if (setUp && recorded !== template) {
       result.pending.push(path);
+      files[path] = template;
     }
   }
 
@@ -366,8 +380,17 @@ export async function refreshAutomationFiles(
     host.notify(
       'info',
       host.t(
-        'These automation files have a newer version but were edited or are not installed yet, so they were left as they are: {0}. Run "Setup research automation" to update them.',
+        'These automation files changed after they were installed, or cannot be checked against an earlier version, so they were left as they are: {0}. Run "Setup research automation" to get the new version.',
         shortList(host, result.pending)
+      )
+    );
+  }
+  if (result.missing.length > 0) {
+    host.notify(
+      'info',
+      host.t(
+        'These automation files are not in the vault: {0}. Run "Setup research automation" to install them if you need them.',
+        shortList(host, result.missing)
       )
     );
   }
