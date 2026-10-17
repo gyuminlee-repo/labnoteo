@@ -224,13 +224,14 @@ node .labnoteo/scripts/validate.mjs --notes-only  # 위에서 대용량 재검�
   맞췄는지는 `.labnoteo/installed.json`에 기록되며, 이 파일도 함께 커밋합니다.
 - `AGENTS.md`는 마커 블록만, `.gitignore`/`CLAUDE.md`는 누락 줄만 갱신되므로 사용자
   수정이 보존됩니다.
-- **직접 고친** 파일(`QUICKSTART.md`에 덧붙인 메모 등)과 새 버전에서 **추가된** 파일은
+- **직접 고친** 파일(`QUICKSTART.md`에 덧붙인 메모 등)과 보관함에 **없는** 파일은
   건드리지 않고 목록만 알려 줍니다. 그때 "Setup research automation" 명령을 다시
-  실행하면 파일마다 덮어쓸지 묻습니다. 덮어쓰지 않기로 한 파일은 템플릿이 다시 바뀔
-  때까지 알리지 않습니다.
+  실행하면 파일마다 덮어쓸지 묻습니다. 한 번 알린 파일은 템플릿이 다시 바뀔 때까지
+  다시 알리지 않습니다.
 - `wiki-staging/` 초안은 자동으로 바꾸지 않습니다.
-- `installed.json`이 없는 보관함(자동 갱신 전 버전으로 설치)은 업데이트 후 명령을 한 번
-  다시 실행해야 그 뒤로 자동 갱신됩니다.
+- `installed.json`이 없는 보관함(0.95.0 이전 버전으로 설치)도 이전 버전이 만든 그대로인
+  파일과 `.labnoteo/scripts/*.mjs`는 자동으로 갱신됩니다. 고친 파일은 위처럼 한 번만
+  알립니다.
 
 **갱신된 스크립트는 커밋하고 push해야 서버 동작이 바뀝니다.** GitHub Actions는 플러그인이
 아니라 저장소에 **커밋된** `.labnoteo/scripts/*.mjs`를 실행합니다. 재설정만 하고 push하지

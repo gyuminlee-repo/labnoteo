@@ -63,7 +63,7 @@ describe('re-exporting tables (#74)', () => {
     expect(vi.mocked(confirmModal).mock.calls[0][1]).toContain('001_WT020_A.labnote_table2.csv\n001_WT020_A.labnote_table3.csv');
     expect(trashed).toEqual([csv(2), csv(3)]);
     expect(await fs.exists(csv(1))).toBe(true);
-    expect(Notice.shown.at(-1)).toBe('Exported 1 CSV file(s). 2 CSV file(s) moved to the trash.');
+    expect(Notice.shown.at(-1)).toBe('The CSV files are already up to date (1). 2 CSV file(s) moved to the trash.');
   });
 
   it('keeps them when the user declines', async () => {
@@ -74,7 +74,7 @@ describe('re-exporting tables (#74)', () => {
 
     expect(trashed).toEqual([]);
     expect(await fs.exists(csv(3))).toBe(true);
-    expect(Notice.shown.at(-1)).toBe('Exported 1 CSV file(s). 2 old CSV file(s) kept.');
+    expect(Notice.shown.at(-1)).toBe('The CSV files are already up to date (1). 2 old CSV file(s) kept.');
   });
 
   it('offers every CSV when the note has no table left', async () => {
@@ -153,7 +153,61 @@ describe('re-exporting after the tables changed (#80)', () => {
     await exportTablesToCsv(plugin(), noteFile());
 
     expect(write).not.toHaveBeenCalled();
+    expect(Notice.shown.at(-1)).toBe('The CSV files are already up to date (1).');
+  });
+});
+
+describe('re-exporting after a header was renamed (#92)', () => {
+  const plugin = () => ({ app, fs, t }) as unknown as LabnotePlugin;
+  const overwritePrompts = () =>
+    vi.mocked(confirmModal).mock.calls.map(c => String(c[1])).filter(m => m.includes('Overwrite them?'));
+
+  beforeEach(() => {
+    fs = new MemFileSystem({ [csv(1)]: CSV_A });
+  });
+
+  it('overwrites without asking when only the header changed', async () => {
+    await fs.write(`${DIR}/${NOTE}`, '| a (mg) |\n|---|\n| 1 |\n');
+
+    await exportTablesToCsv(plugin(), noteFile());
+
+    expect(confirmModal).not.toHaveBeenCalled();
+    expect(await fs.read(csv(1))).toBe('\uFEFFa (mg)\n1\n');
     expect(Notice.shown.at(-1)).toBe('Exported 1 CSV file(s).');
+  });
+
+  it('asks with the header wording when the header and the values changed', async () => {
+    await fs.write(`${DIR}/${NOTE}`, '| b |\n|---|\n| 2 |\n');
+    vi.mocked(confirmModal).mockResolvedValue(false);
+
+    await exportTablesToCsv(plugin(), noteFile());
+
+    const [prompt] = overwritePrompts();
+    expect(prompt).toContain('The header of these CSV files changed.');
+    expect(prompt).toContain('- 001_WT020_A.labnote_table1.csv: a → b');
+    expect(prompt).not.toContain('a table was added, removed or moved');
+    expect(await fs.read(csv(1))).toBe(CSV_A);
+  });
+
+  it('still does not ask about a renamed header while old CSVs are kept', async () => {
+    fs = new MemFileSystem({ [csv(1)]: CSV_A, [csv(2)]: 'x\n1\n' });
+    await fs.write(`${DIR}/${NOTE}`, '| a (mg) |\n|---|\n| 1 |\n');
+    vi.mocked(confirmModal).mockResolvedValue(false);
+
+    await exportTablesToCsv(plugin(), noteFile());
+
+    expect(overwritePrompts()).toEqual([]);
+    expect(await fs.read(csv(1))).toBe('\uFEFFa (mg)\n1\n');
+    expect(Notice.shown.at(-1)).toBe('Exported 1 CSV file(s). 1 old CSV file(s) kept.');
+  });
+
+  it('counts only the files it wrote', async () => {
+    fs = new MemFileSystem({ [csv(1)]: CSV_A, [csv(2)]: '\uFEFFa\n5\n' });
+    await fs.write(`${DIR}/${NOTE}`, `${TABLE}\n| a |\n|---|\n| 9 |\n`);
+
+    await exportTablesToCsv(plugin(), noteFile());
+
+    expect(Notice.shown.at(-1)).toBe('Exported 1 CSV file(s) (1 unchanged file(s) left as they were).');
   });
 });
 

@@ -52,8 +52,10 @@ const obsidianKo: Record<string, string> = {
   'Created the user guide: {0}': '사용법 문서를 만들었습니다: {0}',
   'Updated {0} automation file(s) to this plugin version: {1}':
     '자동화 파일 {0}개를 이 플러그인 버전에 맞게 갱신했습니다: {1}',
-  'These automation files have a newer version but were edited or are not installed yet, so they were left as they are: {0}. Run "Setup research automation" to update them.':
-    "다음 자동화 파일은 새 버전이 있지만 직접 고쳤거나 아직 설치되지 않아 그대로 두었습니다: {0}. 갱신하려면 '연구노트 자동화 설정'을 실행하세요.",
+  'These automation files changed after they were installed, or cannot be checked against an earlier version, so they were left as they are: {0}. Run "Setup research automation" to get the new version.':
+    "다음 자동화 파일은 설치 후 내용이 바뀌었거나 이전 버전 기록으로 확인할 수 없어 그대로 두었습니다: {0}. 새 버전을 받으려면 '연구노트 자동화 설정'을 실행하세요.",
+  'These automation files are not in the vault: {0}. Run "Setup research automation" to install them if you need them.':
+    "다음 자동화 파일이 보관함에 없습니다: {0}. 필요하면 '연구노트 자동화 설정'으로 설치하세요.",
   'Right-click an item to create a workflow or insert a unit operation. No experiment yet? Run "{0}" first.':
     '항목을 우클릭해 워크플로를 만들거나 유닛 오퍼레이션을 넣습니다. 실험이 없다면 먼저 "{0}"을(를) 실행하세요.',
   'Type @dna (or another type) in a note, or right-click → "{0}" to register a sample.':
@@ -149,6 +151,9 @@ const obsidianKo: Record<string, string> = {
   'Delete these lines from .gitignore so agent skills can be committed: {0}':
     '에이전트 스킬이 커밋되도록 .gitignore에서 다음 줄을 직접 지우세요: {0}',
   'Exported {0} CSV file(s).': 'CSV 파일 {0}개를 내보냈습니다.',
+  'Exported {0} CSV file(s) ({1} unchanged file(s) left as they were).':
+    'CSV 파일 {0}개를 내보냈습니다(내용이 같은 {1}개는 그대로 둠).',
+  'The CSV files are already up to date ({0}).': 'CSV 파일이 이미 최신입니다({0}개).',
   'No tables found in this note.': '이 노트에서 표를 찾을 수 없습니다.',
   'These table CSV files no longer match a table in the note. Move them to the trash?\n\n{0}':
     '다음 표 CSV 파일은 이 노트에 더 이상 해당하는 표가 없습니다. 휴지통으로 옮길까요?\n\n{0}',
@@ -160,6 +165,8 @@ const obsidianKo: Record<string, string> = {
   '{0} CSV file(s) could not be moved to the trash.': 'CSV 파일 {0}개를 휴지통으로 옮기지 못했습니다.',
   'These CSV files would now hold a different table (a table was added, removed or moved). Overwrite them?\n\n{0}':
     '다음 CSV 파일에 다른 표가 들어가게 됩니다(표가 추가·삭제되었거나 순서가 바뀌었습니다). 덮어쓸까요?\n\n{0}',
+  'The header of these CSV files changed. Overwrite them?\n\n{0}':
+    '다음 CSV 파일의 머리글이 바뀌었습니다. 덮어쓸까요?\n\n{0}',
   'Command failed: {0}': '명령 실행 실패: {0}',
   'Yes': '예',
   'Workflow created: {0}': '워크플로가 생성되었습니다: {0}',
@@ -325,6 +332,21 @@ const obsidianKo: Record<string, string> = {
     '아래 체크리스트 라벨이 파일 이름과 맞지 않습니다. 라벨을 고칠까요?',
   'Update labels': '라벨 고치기',
   '{0} label(s) updated.': '라벨 {0}개를 고쳤습니다.',
+  'These workflow files are listed more than once in the checklist. Remove the extra entries?':
+    '아래 워크플로 파일이 체크리스트에 두 번 이상 올라 있습니다. 중복 항목을 지울까요?',
+  'Remove duplicates': '중복 지우기',
+  '{0} duplicate entry(ies) removed.': '중복 항목 {0}개를 지웠습니다.',
+  '{0} checklist link(s) fixed.': '체크리스트 링크 {0}개를 고쳤습니다.',
+  'These workflow notes are in a subfolder of this experiment. Move them back to the experiment folder?':
+    '아래 워크플로 노트는 이 실험의 하위 폴더에 있습니다. 실험 폴더로 다시 옮길까요?',
+  'Move to experiment folder': '실험 폴더로 옮기기',
+  '{0} was not moved: the experiment folder already has a file with that name.':
+    '{0}은(는) 실험 폴더에 같은 이름의 파일이 있어 옮기지 않았습니다.',
+  'These workflow notes are in more than one subfolder of this experiment. Move the right one back to the experiment folder yourself: {0}':
+    '아래 워크플로 노트가 이 실험의 하위 폴더 여러 곳에 있습니다. 맞는 쪽을 직접 실험 폴더로 옮기세요: {0}',
+  '{0} note(s) moved back to the experiment folder.': '노트 {0}개를 실험 폴더로 옮겼습니다.',
+  '{0} was moved to {1} and is no longer recognised as a workflow step. If that was a mistake, move it back directly under the experiment folder or run "{2}".':
+    '{0}을(를) {1}(으)로 옮겨 실험 단계로 인식되지 않습니다. 실수였다면 실험 폴더 바로 아래로 되돌리거나 "{2}"을(를) 실행하세요.',
   "These notes' title and heading do not match their file names. Update them?":
     '아래 노트의 title과 제목이 파일 이름과 맞지 않습니다. 노트를 고칠까요?',
   'Update notes': '노트 고치기',

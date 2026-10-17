@@ -31,7 +31,15 @@ function harness(files: Record<string, string>, answer: boolean) {
   const prompts: string[] = [];
   const app = {
     workspace: { getActiveFile: () => new TFile(README) },
+    fileManager: {
+      renameFile: async (file: TFile, newPath: string) => {
+        calls.push(`rename ${file.path} -> ${newPath}`);
+        await fs.write(newPath, await fs.read(file.path));
+        await fs.remove(file.path);
+      },
+    },
     vault: {
+      getFiles: () => Object.keys(fs.snapshot()).map(p => new TFile(p)),
       getFileByPath: (path: string) => (path in fs.snapshot() ? new TFile(path) : null),
       process: async (file: TFile, fn: (data: string) => string) => {
         calls.push('write');
@@ -257,6 +265,116 @@ describe('syncWorkflowChecklistCommand', () => {
       { from: OTHER_OLD, to: OTHER_NEW },
     ]);
     expect(links(await h.fs.read(README))).toEqual([`WD030 Design 2차 -> ${NEW}`, `내 라벨 -> ${OTHER_NEW}`]);
+  });
+
+  // #94: a workflow note dragged into a subfolder of its experiment.
+  describe('a workflow note in a subfolder', () => {
+    const NOTE = '003_WD040_Assay.labnote.md';
+    const base = (link: string) => ({
+      [README]: readme([`- [ ] [WD030 Design](./${REGISTERED})`, `- [x] [WD040 Assay](${link})`]),
+      [`${DIR}/${REGISTERED}`]: '---\ntitle: WD030 Design\n---\n',
+      [`${DIR}/images/${NOTE}`]: '---\ntitle: WD040 Assay\n---\n',
+    });
+
+    it('asks to move it back instead of removing its entry (name-only link)', async () => {
+      const h = harness(base(NOTE), true);
+      await syncWorkflowChecklistCommand(h.app, h.host, h.sync, DIR);
+      expect(h.prompts).toHaveLength(1);
+      expect(h.prompts[0]).toContain('These workflow notes are in a subfolder of this experiment.');
+      expect(h.prompts[0]).toContain(`- ${NOTE} (images/)`);
+      expect(h.calls).toContain(`rename ${DIR}/images/${NOTE} -> ${DIR}/${NOTE}`);
+      expect(await h.fs.exists(`${DIR}/${NOTE}`)).toBe(true);
+      expect(links(await h.fs.read(README))).toEqual([`WD030 Design -> ${REGISTERED}`, `WD040 Assay -> ${NOTE}`]);
+      expect(h.calls.at(-1)).toBe(
+        'notify Workflow checklist updated: 0 added, 0 removed. 1 note(s) moved back to the experiment folder.'
+      );
+    });
+
+    it('points a subfolder link back at the experiment folder, keeping the check', async () => {
+      const h = harness(base(`images/${NOTE}`), true);
+      await syncWorkflowChecklistCommand(h.app, h.host, h.sync, DIR);
+      expect(h.prompts).toHaveLength(1);
+      expect(await h.fs.read(README)).toContain(`- [x] [WD040 Assay](./${NOTE})`);
+      expect(parseWorkflowChecklistFromReadme(await h.fs.read(README))).toHaveLength(2);
+    });
+
+    it('keeps the note and its entry when declined, and does not offer to remove it', async () => {
+      const files = base(`images/${NOTE}`);
+      const h = harness(files, false);
+      await syncWorkflowChecklistCommand(h.app, h.host, h.sync, DIR);
+      expect(h.prompts).toHaveLength(1);
+      expect(await h.fs.read(README)).toBe(files[README]);
+      expect(await h.fs.exists(`${DIR}/images/${NOTE}`)).toBe(true);
+      expect(h.calls.at(-1)).toBe('notify No changes made.');
+    });
+
+    it('does not move over a file of the same name in the experiment folder', async () => {
+      const h = harness({ ...base(`images/${NOTE}`), [`${DIR}/${NOTE}`]: 'other' }, true);
+      await syncWorkflowChecklistCommand(h.app, h.host, h.sync, DIR);
+      expect(await h.fs.read(`${DIR}/${NOTE}`)).toBe('other');
+      expect(await h.fs.exists(`${DIR}/images/${NOTE}`)).toBe(true);
+      expect(h.calls).toContain(
+        `notify images/${NOTE} was not moved: the experiment folder already has a file with that name.`
+      );
+    });
+
+    it('only points at notes found in more than one subfolder', async () => {
+      const h = harness({ ...base(NOTE), [`${DIR}/resources/${NOTE}`]: 'copy' }, true);
+      await syncWorkflowChecklistCommand(h.app, h.host, h.sync, DIR);
+      expect(h.prompts).toEqual([]);
+      expect(h.calls).toContain(
+        `notify These workflow notes are in more than one subfolder of this experiment. Move the right one back to the experiment folder yourself: ${NOTE} (images/${NOTE}, resources/${NOTE})`
+      );
+      expect(h.calls.at(-1)).toBe('notify No changes made.');
+    });
+  });
+
+  // #95: before 0.96.0 a bracketed alias broke the line, and each sync added it again.
+  describe('a README broken by a bracketed alias', () => {
+    const LOC = '004_WD010_Design_LOC-01.labnote.md';
+    const label = 'WD010 Design LOC-01]';
+    const files = {
+      [README]: readme([
+        `- [ ] [WD030 Design](./${REGISTERED})`,
+        `- [x] [${label}](./${LOC})`,
+        `- [ ] [${label}](./${LOC})`,
+        `- [ ] [${label}](./${LOC})`,
+      ]),
+      [`${DIR}/${REGISTERED}`]: '---\ntitle: WD030 Design\n---\n',
+      [`${DIR}/${LOC}`]: `---\ntitle: '${label}'\n---\n`,
+    };
+
+    it('asks to remove the duplicates and fixes the link text', async () => {
+      const h = harness(files, true);
+      await syncWorkflowChecklistCommand(h.app, h.host, h.sync, DIR);
+      expect(h.prompts).toHaveLength(1);
+      expect(h.prompts[0]).toContain('These workflow files are listed more than once in the checklist.');
+      expect(h.prompts[0]).toContain(`- ${LOC}`);
+      const md = await h.fs.read(README);
+      expect(md).toBe(
+        readme([`- [ ] [WD030 Design](./${REGISTERED})`, `- [x] [WD010 Design LOC-01\\]](./${LOC})`])
+      );
+      expect(h.calls.at(-1)).toBe(
+        'notify Workflow checklist updated: 0 added, 0 removed. 2 duplicate entry(ies) removed. 3 checklist link(s) fixed.'
+      );
+
+      const again = harness({ ...files, [README]: md }, true);
+      await syncWorkflowChecklistCommand(again.app, again.host, again.sync, DIR);
+      expect(again.calls.at(-1)).toBe('notify The workflow checklist already matches the folder.');
+    });
+
+    it('still fixes the link text when the duplicates are kept', async () => {
+      const h = harness(files, false);
+      await syncWorkflowChecklistCommand(h.app, h.host, h.sync, DIR);
+      expect(links(await h.fs.read(README))).toEqual([
+        `WD030 Design -> ${REGISTERED}`,
+        `${label} -> ${LOC}`,
+        `${label} -> ${LOC}`,
+        `${label} -> ${LOC}`,
+      ]);
+      expect(await h.fs.read(README)).not.toContain(`[${label}](`);
+      expect(h.calls.at(-1)).toBe('notify Workflow checklist updated: 0 added, 0 removed. 3 checklist link(s) fixed.');
+    });
   });
 
   it('warns when the README has no Related Workflows section', async () => {

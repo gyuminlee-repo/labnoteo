@@ -23,6 +23,7 @@ import {
 } from '@labnoteo/core/lib/dateUtils';
 import { getSampleDisplayMeta, isCatalogSampleType } from '@labnoteo/core/lib/sampleUtils';
 import {
+  classifyWorkflowMoveOut,
   classifyWorkflowRename,
   createWorkflowFileName,
   isCopiedWorkflowFileName,
@@ -580,6 +581,7 @@ export default class LabnotePlugin extends Plugin {
           return;
         }
         this.noticeWorkflowMovedIn(oldPath, newPath);
+        this.noticeWorkflowMovedOut(oldPath, newPath);
         const strayOrigin = this.strayWorkflows.get(oldPath);
         this.strayWorkflows.delete(oldPath);
         // Only same-folder workflow-file renames touch the README.
@@ -906,6 +908,26 @@ export default class LabnotePlugin extends Plugin {
     if (await addWorkflowFileToChecklist(this.app, this.host, posix.dirname(path), file.name)) {
       this.host.notify('info', this.t('Added "{0}" to the README checklist.', file.name));
     }
+  }
+
+  /**
+   * A workflow note dragged into a subfolder such as `images/` or out of the
+   * experiment is no longer a workflow step (#94). Say so, since the README
+   * entry may still point at it.
+   */
+  private noticeWorkflowMovedOut(oldPath: string, newPath: string): void {
+    const moved = classifyWorkflowMoveOut(oldPath, newPath);
+    // Renaming or moving a whole experiment folder renames every note in it.
+    if (!moved || !this.app.vault.getAbstractFileByPath(moved.dir)) return;
+    this.host.notify(
+      'warn',
+      this.t(
+        '{0} was moved to {1} and is no longer recognised as a workflow step. If that was a mistake, move it back directly under the experiment folder or run "{2}".',
+        posix.basename(newPath),
+        moved.location,
+        this.t('Sync workflow checklist with folder')
+      )
+    );
   }
 
   /**

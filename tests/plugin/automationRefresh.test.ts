@@ -17,6 +17,7 @@ import {
   type ScaffoldAsset,
 } from '../../src/scaffold/assets';
 import { compareVersions, contentHash } from '../../src/scaffold/installRecord';
+import { LEGACY_HASH_SELF_CHECK, LEGACY_TEMPLATE_HASHES } from '../../src/scaffold/legacyTemplateHashes';
 import obsidianKo from '../../src/l10n.ko';
 
 function makeHost(files: Record<string, string> = {}) {
@@ -106,8 +107,8 @@ describe('refreshAutomationFiles', () => {
     expect(result.updated).toEqual([]);
   });
 
-  it('records an unrecorded file that already matches, and reports one that differs', async () => {
-    const { fs, asHost } = makeHost({
+  it('records an unrecorded file that already matches, and reports one that differs only once', async () => {
+    const { fs, host, asHost } = makeHost({
       [ISSUE_SYNC_WORKFLOW_PATH]: 'wf\n',
       'DOC.md': 'from an older release\n',
     });
@@ -116,7 +117,48 @@ describe('refreshAutomationFiles', () => {
 
     expect(await fs.read('DOC.md')).toBe('from an older release\n');
     expect(result.pending).toEqual(['DOC.md']);
-    expect((await readRecord(fs)).files[ISSUE_SYNC_WORKFLOW_PATH]).toBe(contentHash('wf\n'));
+    const saved = await readRecord(fs);
+    expect(saved.files[ISSUE_SYNC_WORKFLOW_PATH]).toBe(contentHash('wf\n'));
+    expect(saved.files['DOC.md']).toBe(contentHash('v2\n'));
+
+    host.notify.mockClear();
+    const again = await refreshAutomationFiles(asHost, '1.1.0', ASSETS);
+    expect(again.pending).toEqual([]);
+    expect(host.notify).not.toHaveBeenCalled();
+    expect(await fs.read('DOC.md')).toBe('from an older release\n');
+  });
+
+  // #93: vaults set up before 0.95.0 have no record.
+  it('replaces an unrecorded file that is an earlier release\'s template', async () => {
+    const { fs, asHost } = makeHost({ [ISSUE_SYNC_WORKFLOW_PATH]: 'wf\n', 'DOC.md': 'v1\r\n' });
+
+    const result = await refreshAutomationFiles(asHost, '1.1.0', ASSETS, { 'DOC.md': [contentHash('v1\n')] });
+
+    expect(await fs.read('DOC.md')).toBe('v2\n');
+    expect(result).toEqual({ updated: ['DOC.md'], pending: [], missing: [] });
+  });
+
+  it('replaces an unrecorded plugin-owned file without an earlier hash', async () => {
+    const owned: ScaffoldAsset[] = [...ASSETS, { vaultPath: '.labnoteo/scripts/x.mjs', content: 'new\n', owned: true }];
+    const { fs, asHost } = makeHost({ [ISSUE_SYNC_WORKFLOW_PATH]: 'wf\n', '.labnoteo/scripts/x.mjs': 'old\n' });
+
+    const result = await refreshAutomationFiles(asHost, '1.1.0', owned, {});
+
+    expect(await fs.read('.labnoteo/scripts/x.mjs')).toBe('new\n');
+    expect(result.updated).toContain('.labnoteo/scripts/x.mjs');
+  });
+
+  it('refreshes an earlier guide left out of a 0.95.0 record', async () => {
+    const { fs, asHost } = makeHost({
+      [ISSUE_SYNC_WORKFLOW_PATH]: 'wf\n',
+      'DOC.md': 'v1\n',
+      [INSTALL_RECORD_PATH]: record({ [ISSUE_SYNC_WORKFLOW_PATH]: contentHash('wf\n') }, '0.95.0'),
+    });
+
+    const result = await refreshAutomationFiles(asHost, '0.96.0', ASSETS, { 'DOC.md': [contentHash('v1\n')] });
+
+    expect(await fs.read('DOC.md')).toBe('v2\n');
+    expect(result.pending).toEqual([]);
   });
 
   it('leaves everything alone when a newer plugin wrote the record', async () => {
@@ -129,7 +171,7 @@ describe('refreshAutomationFiles', () => {
     const result = await refreshAutomationFiles(asHost, '1.1.0', ASSETS);
 
     expect(await fs.read('DOC.md')).toBe('v3\n');
-    expect(result).toEqual({ updated: [], pending: [] });
+    expect(result).toEqual({ updated: [], pending: [], missing: [] });
   });
 
   it('refreshes only the managed block of AGENTS.md, and only when it is there', async () => {
@@ -169,16 +211,18 @@ describe('refreshAutomationFiles', () => {
     expect(result.pending).not.toContain('wiki-staging/Home.md');
   });
 
-  it('reports a file this version adds, but not one deleted after being installed', async () => {
+  it('reports a missing file once, but not one deleted after being installed', async () => {
     const added = makeHost({ [ISSUE_SYNC_WORKFLOW_PATH]: 'wf\n' });
-    expect((await refreshAutomationFiles(added.asHost, '1.1.0', ASSETS)).pending).toEqual(['DOC.md']);
+    expect((await refreshAutomationFiles(added.asHost, '1.1.0', ASSETS)).missing).toEqual(['DOC.md']);
+    expect(added.host.notify).toHaveBeenCalledWith('info', expect.stringContaining('are not in the vault: DOC.md'));
     expect(await added.fs.exists('DOC.md')).toBe(false);
+    expect((await refreshAutomationFiles(added.asHost, '1.1.0', ASSETS)).missing).toEqual([]);
 
     const deleted = makeHost({
       [ISSUE_SYNC_WORKFLOW_PATH]: 'wf\n',
       [INSTALL_RECORD_PATH]: record({ 'DOC.md': contentHash('v1\n') }),
     });
-    expect((await refreshAutomationFiles(deleted.asHost, '1.1.0', ASSETS)).pending).toEqual([]);
+    expect((await refreshAutomationFiles(deleted.asHost, '1.1.0', ASSETS)).missing).toEqual([]);
   });
 
   it('installs nothing and writes no record into a vault without the automation', async () => {
@@ -234,8 +278,28 @@ describe('compareVersions', () => {
 describe('refresh strings are translated', () => {
   it.each([
     'Updated {0} automation file(s) to this plugin version: {1}',
-    'These automation files have a newer version but were edited or are not installed yet, so they were left as they are: {0}. Run "Setup research automation" to update them.',
+    'These automation files changed after they were installed, or cannot be checked against an earlier version, so they were left as they are: {0}. Run "Setup research automation" to get the new version.',
+    'These automation files are not in the vault: {0}. Run "Setup research automation" to install them if you need them.',
   ])('%s', key => {
     expect(obsidianKo[key]).toBeTruthy();
+  });
+});
+
+describe('earlier template hashes (#93)', () => {
+  it('were made with the same hash function', () => {
+    expect(contentHash(LEGACY_HASH_SELF_CHECK.text)).toBe(LEGACY_HASH_SELF_CHECK.hash);
+  });
+
+  it('cover installed files only, and every plain template file', () => {
+    const paths = new Set(SCAFFOLD_ASSETS.map(a => a.vaultPath));
+    for (const path of Object.keys(LEGACY_TEMPLATE_HASHES)) expect(paths).toContain(path);
+    const plain = SCAFFOLD_ASSETS.filter(a => !a.merge && !a.seed && !a.owned).map(a => a.vaultPath);
+    expect(Object.keys(LEGACY_TEMPLATE_HASHES).sort()).toEqual(plain.sort());
+  });
+
+  it('mark every built script as plugin-owned', () => {
+    const scripts = SCAFFOLD_ASSETS.filter(a => a.vaultPath.startsWith('.labnoteo/scripts/'));
+    expect(scripts.length).toBe(3);
+    expect(scripts.every(a => a.owned)).toBe(true);
   });
 });

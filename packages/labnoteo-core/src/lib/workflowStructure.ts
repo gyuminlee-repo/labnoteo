@@ -121,6 +121,32 @@ export function classifyWorkflowRename(
     : { kind: 'strayMoved', dir, origin: strayOrigin };
 }
 
+/** {@link classifyWorkflowMoveOut} result. */
+export interface WorkflowMoveOut {
+  /** The experiment folder the note left. */
+  dir: string;
+  /** Where it went: relative to `dir` (`images/`) when still inside it, else the vault folder (`/` for the root). */
+  location: string;
+}
+
+/**
+ * A workflow note moved to a folder where it is no longer a workflow step
+ * (#94): a subfolder of its experiment such as `images/`, or anywhere outside
+ * an experiment folder's top level. Null for other renames, for a move to
+ * another experiment folder (still a workflow note there), and for a move into
+ * a dot folder such as Obsidian's `.trash/`, which is a deletion.
+ */
+export function classifyWorkflowMoveOut(oldPath: string, newPath: string): WorkflowMoveOut | null {
+  if (!isValidWorkflowPath(oldPath) || isValidWorkflowPath(newPath)) return null;
+  const dir = path.dirname(oldPath);
+  const newDir = path.dirname(newPath);
+  if (newDir === dir) return null;
+  if (newDir === '.') return { dir, location: '/' };
+  if (newDir.split('/').some(segment => segment.startsWith('.'))) return null;
+  const location = newDir.startsWith(`${dir}/`) ? newDir.slice(dir.length + 1) : newDir;
+  return { dir, location: `${location}/` };
+}
+
 /**
  * Get the next workflow number based on existing files
  * @param existingFiles Array of existing file names (e.g., ['001_WD010_Design.md'])
@@ -234,7 +260,21 @@ export function createWorkflowFileName(
  * object is safe to share.
  */
 const CHECKLIST_ENTRY_RE =
-  /^(?:-\s+)?\[([ x])\]\s*\[([^\]]+)\]\((?:\.\/)?([^)]+\.labnote\.md)\)/i;
+  /^(?:-\s+)?\[([ x])\]\s*\[(.+?)\]\((?:\.\/)?([^)]+\.labnote\.md)\)/i;
+
+/**
+ * A checklist label as written into the link text. An alias may carry
+ * brackets (`[재]`, `LOC-01]`, #95); unescaped, an unbalanced one ends the
+ * link text early and the entry renders as plain text.
+ */
+export function escapeChecklistLabel(label: string): string {
+  return label.replace(/[\\[\]]/g, '\\$&');
+}
+
+/** The label {@link escapeChecklistLabel} wrote. */
+function unescapeChecklistLabel(raw: string): string {
+  return raw.replace(/\\([\\[\]])/g, '$1');
+}
 
 /** Whether `line` is a workflow checklist entry this module owns. */
 function isWorkflowChecklistLine(line: string): boolean {
@@ -283,7 +323,7 @@ export function parseWorkflowChecklistFromReadme(readmeContent: string): Workflo
     if (checkboxMatch) {
       items.push({
         done: checkboxMatch[1].toLowerCase() === 'x',
-        title: checkboxMatch[2],
+        title: unescapeChecklistLabel(checkboxMatch[2]),
         fileName: checkboxMatch[3],
       });
     }
@@ -306,7 +346,7 @@ export function generateWorkflowChecklist(items: WorkflowChecklistItem[]): strin
       const checkbox = item.done ? '[x]' : '[ ]';
       // Standard Markdown task-list item (`- [ ]`) so Obsidian renders an
       // interactive checkbox instead of literal `[ ]` text.
-      return `- ${checkbox} [${item.title}](./${item.fileName})`;
+      return `- ${checkbox} [${escapeChecklistLabel(item.title)}](./${item.fileName})`;
     })
     .join('\n');
 }
@@ -670,8 +710,24 @@ export interface StaleWorkflowEntry {
   /** The link exactly as written in the README (without a leading `./`). */
   link: string;
   title: string;
-  /** `missing`: points into this folder at a file that is not there. `elsewhere`: points into another folder. */
-  reason: 'missing' | 'elsewhere';
+  /**
+   * `missing`: points into this folder at a file that is not there.
+   * `elsewhere`: points into another folder. `subfolder`: the file sits in a
+   * subfolder of this experiment (#94), at each of `found`.
+   */
+  reason: 'missing' | 'elsewhere' | 'subfolder';
+  /** For `subfolder`: the file's paths relative to the experiment folder (`images/003_….labnote.md`). */
+  found?: string[];
+}
+
+/**
+ * Workflow notes below an experiment folder's top level, for
+ * {@link planWorkflowChecklistSync}: `files` maps a file name to its paths
+ * relative to `dir`.
+ */
+export interface WorkflowSubfolderNotes {
+  dir: string;
+  files: ReadonlyMap<string, readonly string[]>;
 }
 
 /** A checklist label to replace: entry for `fileName`, label `from` → `to`. */
@@ -695,6 +751,17 @@ export interface WorkflowChecklistSyncPlan {
    * {@link relabelWorkflowChecklistEntries}.
    */
   relabel: WorkflowRelabel[];
+  /**
+   * Files of this folder listed more than once, one name per extra entry. Not
+   * removed by `content`; see {@link dedupeWorkflowChecklistEntries}.
+   */
+  duplicates: string[];
+  /**
+   * Labels of entries whose link text is not escaped the way
+   * {@link escapeChecklistLabel} writes it (#95); see
+   * {@link normalizeWorkflowChecklistLabels}.
+   */
+  unescaped: string[];
   /** README with `added` appended and the checklist re-sorted; unchanged when nothing is added. */
   content: string;
 }
@@ -904,7 +971,8 @@ export function rewriteWorkflowTitle(
 export function planWorkflowChecklistSync(
   readmeContent: string,
   existingNames: readonly string[],
-  titles: ReadonlyMap<string, string> = new Map()
+  titles: ReadonlyMap<string, string> = new Map(),
+  subfolders?: WorkflowSubfolderNotes
 ): WorkflowChecklistSyncPlan {
   const hasSection = findWorkflowSection(readmeContent.split('\n')).header !== -1;
   const items = parseWorkflowChecklistFromReadme(readmeContent);
@@ -916,12 +984,22 @@ export function planWorkflowChecklistSync(
   for (const item of items) {
     const target = linkTargetInFolder(item.fileName);
     if (target === null) {
-      stale.push({ link: item.fileName, title: item.title, reason: 'elsewhere' });
+      const found = subfolderMatches(item.fileName, subfolders);
+      stale.push(
+        found
+          ? { link: item.fileName, title: item.title, reason: 'subfolder', found }
+          : { link: item.fileName, title: item.title, reason: 'elsewhere' }
+      );
       continue;
     }
     listed.add(target);
     if (!present.has(target)) {
-      stale.push({ link: item.fileName, title: item.title, reason: 'missing' });
+      const found = subfolders?.files.get(target);
+      stale.push(
+        found && found.length > 0
+          ? { link: item.fileName, title: item.title, reason: 'subfolder', found: [...found] }
+          : { link: item.fileName, title: item.title, reason: 'missing' }
+      );
       continue;
     }
     const label = titles.get(target);
@@ -934,12 +1012,26 @@ export function planWorkflowChecklistSync(
     .filter(name => parseWorkflowFileName(name) !== null && !listed.has(name))
     .map(name => ({ done: false, title: titles.get(name) || defaultWorkflowTitle(name), fileName: name }));
 
+  const duplicates: string[] = [];
+  const unescaped: string[] = [];
+  const seen = new Set<string>();
+  for (const { raw, target } of checklistEntries(readmeContent)) {
+    if (target !== null && present.has(target)) {
+      if (seen.has(target)) duplicates.push(target);
+      seen.add(target);
+    }
+    const label = unescapeChecklistLabel(raw);
+    if (escapeChecklistLabel(label) !== raw) unescaped.push(label);
+  }
+
   if (!hasSection || added.length === 0) {
     return {
       hasSection,
       added: hasSection ? added : [],
       stale,
       relabel: hasSection ? relabel : [],
+      duplicates,
+      unescaped,
       content: readmeContent,
     };
   }
@@ -947,7 +1039,101 @@ export function planWorkflowChecklistSync(
     readmeContent,
     generateWorkflowChecklist(sortWorkflowChecklistItems([...items, ...added]))
   );
-  return { hasSection, added, stale, relabel, content };
+  return { hasSection, added, stale, relabel, duplicates, unescaped, content };
+}
+
+/**
+ * The subfolder path a link with a folder part points at, when it is one of
+ * `subfolders`: relative (`images/X`) or vault-absolute (`labnote/001_A/images/X`).
+ * A link into another experiment (`../002_B/images/X`) does not match.
+ */
+function subfolderMatches(link: string, subfolders: WorkflowSubfolderNotes | undefined): string[] | undefined {
+  if (!subfolders) return undefined;
+  let decoded = link;
+  try {
+    decoded = decodeURI(link);
+  } catch {
+    // Compared as written.
+  }
+  const normalized = path.normalize(decoded).replace(/^\//, '');
+  const rel = (subfolders.files.get(path.basename(normalized)) ?? []).find(
+    r => normalized === r || normalized === `${subfolders.dir}/${r}`
+  );
+  return rel === undefined ? undefined : [rel];
+}
+
+/**
+ * Point the checklist entries linking exactly to `from` at `./to` instead,
+ * keeping checkbox and label: a note moved back from a subfolder whose link
+ * Obsidian did not update (#94).
+ */
+export function relinkWorkflowChecklistEntries(
+  readmeContent: string,
+  links: readonly { from: string; to: string }[]
+): string {
+  if (links.length === 0) return readmeContent;
+  const lines = readmeContent.split('\n');
+  for (const { index, link } of checklistEntries(readmeContent)) {
+    const r = links.find(l => l.from === link);
+    if (!r) continue;
+    const written = lines[index].includes(`](./${link})`) ? `](./${link})` : `](${link})`;
+    lines[index] = lines[index].replace(written, () => `](./${r.to})`);
+  }
+  return lines.join('\n');
+}
+
+/** Each checklist entry of the "Related Workflows" section: line index, raw label, in-folder target. */
+function checklistEntries(
+  readmeContent: string
+): { index: number; done: boolean; raw: string; link: string; target: string | null }[] {
+  const lines = readmeContent.split('\n');
+  const { header, end } = findWorkflowSection(lines);
+  if (header === -1) return [];
+  const entries = [];
+  for (let i = header + 1; i < end; i++) {
+    const m = lines[i].trim().match(CHECKLIST_ENTRY_RE);
+    if (m) {
+      entries.push({ index: i, done: m[1].toLowerCase() === 'x', raw: m[2], link: m[3], target: linkTargetInFolder(m[3]) });
+    }
+  }
+  return entries;
+}
+
+/**
+ * Apply {@link WorkflowChecklistSyncPlan.duplicates}: keep the first entry for
+ * each of `fileNames` and drop the later ones, checking the kept one when any
+ * of them was checked.
+ */
+export function dedupeWorkflowChecklistEntries(readmeContent: string, fileNames: readonly string[]): string {
+  if (fileNames.length === 0) return readmeContent;
+  const wanted = new Set(fileNames);
+  const lines = readmeContent.split('\n');
+  const first = new Map<string, number>();
+  const drop = new Set<number>();
+  for (const { index, done, target } of checklistEntries(readmeContent)) {
+    if (target === null || !wanted.has(target)) continue;
+    const kept = first.get(target);
+    if (kept === undefined) {
+      first.set(target, index);
+      continue;
+    }
+    drop.add(index);
+    if (done) lines[kept] = lines[kept].replace(/^(\s*(?:-\s+)?)\[ \]/, '$1[x]');
+  }
+  return lines.filter((_, i) => !drop.has(i)).join('\n');
+}
+
+/**
+ * Apply {@link WorkflowChecklistSyncPlan.unescaped}: rewrite each entry's link
+ * text the way {@link escapeChecklistLabel} writes it. The label reads the same.
+ */
+export function normalizeWorkflowChecklistLabels(readmeContent: string): string {
+  const lines = readmeContent.split('\n');
+  for (const { index, raw } of checklistEntries(readmeContent)) {
+    const label = escapeChecklistLabel(unescapeChecklistLabel(raw));
+    if (label !== raw) lines[index] = lines[index].replace(`[${raw}](`, () => `[${label}](`);
+  }
+  return lines.join('\n');
 }
 
 /**
@@ -967,8 +1153,8 @@ export function relabelWorkflowChecklistEntries(
     const m = lines[i].trim().match(CHECKLIST_ENTRY_RE);
     if (!m) continue;
     const target = linkTargetInFolder(m[3]);
-    const r = relabel.find(x => x.fileName === target && x.from === m[2]);
-    if (r) lines[i] = lines[i].replace(`[${m[2]}](`, () => `[${r.to}](`);
+    const r = relabel.find(x => x.fileName === target && x.from === unescapeChecklistLabel(m[2]));
+    if (r) lines[i] = lines[i].replace(`[${m[2]}](`, () => `[${escapeChecklistLabel(r.to)}](`);
   }
   return lines.join('\n');
 }

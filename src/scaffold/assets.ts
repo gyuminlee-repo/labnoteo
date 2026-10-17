@@ -71,6 +71,11 @@ export interface ScaffoldAsset {
    * command writes it; refreshing on plugin load would replace their writing.
    */
   seed?: boolean;
+  /**
+   * A build output the user does not edit (`.labnoteo/scripts/*.mjs`). Without
+   * a record it is refreshed anyway: it is not in Git, so no earlier hash is known.
+   */
+  owned?: boolean;
 }
 
 /**
@@ -160,18 +165,18 @@ export const STALE_IGNORE_LINES: string[] = ['.claude/', '.agents/'];
  */
 export const SCAFFOLD_ASSETS: ScaffoldAsset[] = [
   // Phase 2c — large-file protection.
-  { vaultPath: `${LABNOTEO_DIR}/scripts/check-large-files.mjs`, content: checkLargeFilesScript },
+  { vaultPath: `${LABNOTEO_DIR}/scripts/check-large-files.mjs`, content: checkLargeFilesScript, owned: true },
   { vaultPath: `${HOOKS_DIR_PATH}/pre-commit`, content: preCommitHook },
   { vaultPath: SETUP_DOC_PATH, content: setupReadme },
   { vaultPath: QUICKSTART_DOC_PATH, content: QUICKSTART_DOC_CONTENT },
   { vaultPath: '.gitignore', content: gitignoreSnippet, merge: 'append-missing' },
 
   // Phase 3 — deterministic validation.
-  { vaultPath: `${LABNOTEO_DIR}/scripts/validate.mjs`, content: validateScript },
+  { vaultPath: `${LABNOTEO_DIR}/scripts/validate.mjs`, content: validateScript, owned: true },
   { vaultPath: '.github/workflows/validate.yml', content: validateWorkflow },
 
   // Phase 4a — deterministic Experiment ↔ Issue.
-  { vaultPath: `${LABNOTEO_DIR}/scripts/issue-sync.mjs`, content: issueSyncScript },
+  { vaultPath: `${LABNOTEO_DIR}/scripts/issue-sync.mjs`, content: issueSyncScript, owned: true },
   { vaultPath: ISSUE_SYNC_WORKFLOW_PATH, content: experimentIssuesWorkflow },
   { vaultPath: '.github/ISSUE_TEMPLATE/experiment.md', content: experimentIssueTemplate },
 

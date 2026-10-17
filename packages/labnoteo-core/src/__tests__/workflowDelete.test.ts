@@ -39,4 +39,19 @@ describe('removeWorkflowFromReadme', () => {
     expect(res.changed).toBe(true);
     expect(res.content).not.toContain('003_WD010_실험.labnote.md');
   });
+
+  // #95
+  it('matches entries whose label has brackets, escaped or not', () => {
+    const md = [
+      '## Related Workflows',
+      '',
+      '- [ ] [WD010 Design LOC-01]](./004_WD010_Design_LOC-01.labnote.md)',
+      '- [ ] [WD010 Design LOC-01\\]](./004_WD010_Design_LOC-01.labnote.md)',
+      '- [ ] [WB045 \\[재\\] 겨울](./005_WB045_재_겨울.labnote.md)',
+    ].join('\n');
+    expect(removeWorkflowFromReadme(md, '004_WD010_Design_LOC-01.labnote.md').content).toBe(
+      ['## Related Workflows', '', '- [ ] [WB045 \\[재\\] 겨울](./005_WB045_재_겨울.labnote.md)'].join('\n')
+    );
+    expect(removeWorkflowFromReadme(md, '005_WB045_재_겨울.labnote.md').content).not.toContain('005_');
+  });
 });

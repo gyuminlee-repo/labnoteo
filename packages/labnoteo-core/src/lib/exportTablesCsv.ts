@@ -107,3 +107,69 @@ export function tableToCsv(rows: string[][], opts: { bom?: boolean } = {}): stri
   const body = rows.map((row) => row.map(escapeCsvCell).join(',')).join('\n') + '\n';
   return opts.bom ? UTF8_BOM + body : body;
 }
+
+/** What re-exporting a table does to its existing CSV; see {@link classifyCsvOverwrites}. */
+export type CsvOverwriteKind =
+  /** No CSV yet. */
+  | 'new'
+  /** Same content; left as it is. */
+  | 'same'
+  /** The same table with new values or a renamed header; overwritten without asking. */
+  | 'updated'
+  /** Header and values both changed; asked about as a header change. */
+  | 'headerChanged'
+  /** The CSV would now hold another table (one was added, removed or moved); asked about. */
+  | 'moved';
+
+/** One table's export: the CSV it writes and the one already there, both without BOM and with LF. */
+export interface CsvOverwriteInput {
+  fresh: string;
+  old?: string;
+}
+
+/** A CSV split after its first record (the header), honouring line breaks inside quotes. */
+function splitCsvHeader(csv: string): { header: string; data: string } {
+  let quoted = false;
+  for (let i = 0; i < csv.length; i++) {
+    const ch = csv[i];
+    if (ch === '"') quoted = !quoted;
+    else if (ch === '\n' && !quoted) return { header: csv.slice(0, i), data: csv.slice(i + 1) };
+  }
+  return { header: csv, data: '' };
+}
+
+/**
+ * Classify each table's re-export against the CSV already at its
+ * `_tableN.csv` path (#80, #92). `existingCount` is the highest table number
+ * among the note's existing CSVs. The checks run in order:
+ *
+ * 1. the old content is another table's new content → `moved`
+ * 2. the header is unchanged → `updated`
+ * 3. only the header changed, with at least one data row equal → `updated`
+ *    (a header-only table cannot be told apart this way)
+ * 4. the old header is another table's new header, or the table count
+ *    changed → `moved`
+ * 5. otherwise → `headerChanged`
+ *
+ * The table-count check comes after 2–3 because CSVs the user chose to keep
+ * after a table was removed leave it true on every later export, and a renamed
+ * header must still not be asked about then.
+ */
+export function classifyCsvOverwrites(
+  outputs: readonly CsvOverwriteInput[],
+  existingCount: number
+): CsvOverwriteKind[] {
+  const fresh = outputs.map(o => splitCsvHeader(o.fresh));
+  return outputs.map((o, k) => {
+    if (o.old === undefined) return 'new';
+    if (o.old === o.fresh) return 'same';
+    if (outputs.some((other, j) => j !== k && other.fresh === o.old)) return 'moved';
+    const old = splitCsvHeader(o.old);
+    if (old.header === fresh[k].header) return 'updated';
+    if (fresh[k].data !== '' && old.data === fresh[k].data) return 'updated';
+    if (fresh.some((other, j) => j !== k && other.header === old.header) || existingCount !== outputs.length) {
+      return 'moved';
+    }
+    return 'headerChanged';
+  });
+}

@@ -27,6 +27,10 @@ import {
   rewriteWorkflowTitle,
   parseWorkflowHeading,
   relabelWorkflowChecklistEntries,
+  dedupeWorkflowChecklistEntries,
+  normalizeWorkflowChecklistLabels,
+  relinkWorkflowChecklistEntries,
+  classifyWorkflowMoveOut,
   workflowAliasFromFileName,
   planWorkflowRetitle,
   planWorkflowExperimenterSync,
@@ -861,6 +865,38 @@ describe('planWorkflowChecklistSync', () => {
     expect(plan.added.map(a => a.fileName)).toEqual(['001_WT030_Moved.labnote.md']);
   });
 
+  // #94
+  it('tells a note moved into a subfolder of this experiment from a missing or moved-away one', () => {
+    const dir = 'labnote/001_A';
+    const md = readme([
+      '- [ ] [Name only](./003_WD040_Assay.labnote.md)',
+      '- [ ] [Relative](images/004_WD050_Scan.labnote.md)',
+      '- [ ] [Absolute](labnote/001_A/images/005_WD060_Gel.labnote.md)',
+      '- [ ] [Other](../002_B/images/004_WD050_Scan.labnote.md)',
+      '- [ ] [Gone](./006_WD070_Gone.labnote.md)',
+    ]);
+    const files = new Map([
+      ['003_WD040_Assay.labnote.md', ['images/003_WD040_Assay.labnote.md']],
+      ['004_WD050_Scan.labnote.md', ['images/004_WD050_Scan.labnote.md']],
+      ['005_WD060_Gel.labnote.md', ['images/005_WD060_Gel.labnote.md']],
+    ]);
+    const plan = planWorkflowChecklistSync(md, [], new Map(), { dir, files });
+    expect(plan.stale.map(s => [s.link, s.reason, s.found])).toEqual([
+      ['003_WD040_Assay.labnote.md', 'subfolder', ['images/003_WD040_Assay.labnote.md']],
+      ['images/004_WD050_Scan.labnote.md', 'subfolder', ['images/004_WD050_Scan.labnote.md']],
+      ['labnote/001_A/images/005_WD060_Gel.labnote.md', 'subfolder', ['images/005_WD060_Gel.labnote.md']],
+      ['../002_B/images/004_WD050_Scan.labnote.md', 'elsewhere', undefined],
+      ['006_WD070_Gone.labnote.md', 'missing', undefined],
+    ]);
+  });
+
+  it('relinks a moved-back entry to ./name, keeping checkbox and label', () => {
+    const md = readme(['- [x] [WD050 \\[Scan\\]](images/004_WD050_Scan.labnote.md)']);
+    expect(
+      relinkWorkflowChecklistEntries(md, [{ from: 'images/004_WD050_Scan.labnote.md', to: '004_WD050_Scan.labnote.md' }])
+    ).toContain('- [x] [WD050 \\[Scan\\]](./004_WD050_Scan.labnote.md)');
+  });
+
   it('decodes escaped links before comparing', () => {
     const md = readme(['- [ ] [A](./001_WD010_%EC%8B%A4%ED%97%98.labnote.md)']);
     const plan = planWorkflowChecklistSync(md, ['001_WD010_실험.labnote.md']);
@@ -902,6 +938,73 @@ describe('removeWorkflowChecklistEntries', () => {
         '- [ ] [There](../002_B/001_WT030_X.labnote.md)',
       ].join('\n')
     );
+  });
+});
+
+// #95: an alias with brackets must not break the checklist line.
+describe('checklist labels with brackets', () => {
+  const md = (entries: string[]) => ['## Related Workflows', '', ...entries, '', '## Notes', ''].join('\n');
+  const A = '001_WB045_DNA_Extraction_재_겨울_추출.labnote.md';
+  const B = '002_WD010_Design_LOC-01.labnote.md';
+
+  it('escapes brackets and backslashes when writing, and reads the label back', () => {
+    const items = [
+      { done: false, title: 'WB045 DNA Extraction [재] 겨울 추출', fileName: A },
+      { done: true, title: 'WD010 Design LOC-01]', fileName: B },
+      { done: false, title: 'WD020 Path C:\\', fileName: '003_WD020_Path_C.labnote.md' },
+    ];
+    const out = generateWorkflowChecklist(items);
+    expect(out.split('\n')).toEqual([
+      `- [ ] [WB045 DNA Extraction \\[재\\] 겨울 추출](./${A})`,
+      `- [x] [WD010 Design LOC-01\\]](./${B})`,
+      '- [ ] [WD020 Path C:\\\\](./003_WD020_Path_C.labnote.md)',
+    ]);
+    expect(parseWorkflowChecklistFromReadme(md([out]))).toEqual(items);
+  });
+
+  it('reads entries written before 0.96.0 with unescaped brackets', () => {
+    const readme = md([`- [ ] [WB045 DNA Extraction [재] 겨울 추출](./${A})`, `- [ ] [WD010 Design LOC-01]](./${B})`]);
+    expect(parseWorkflowChecklistFromReadme(readme).map(i => `${i.title}:${i.fileName}`)).toEqual([
+      `WB045 DNA Extraction [재] 겨울 추출:${A}`,
+      `WD010 Design LOC-01]:${B}`,
+    ]);
+  });
+
+  it('adds nothing for a listed bracketed entry, so a second sync stays quiet', () => {
+    const readme = md([`- [ ] [WD010 Design LOC-01]](./${B})`]);
+    const plan = planWorkflowChecklistSync(readme, [B], new Map([[B, 'WD010 Design LOC-01]']]));
+    expect(plan.added).toEqual([]);
+    expect(plan.relabel).toEqual([]);
+    expect(plan.unescaped).toEqual(['WD010 Design LOC-01]']);
+    const fixed = normalizeWorkflowChecklistLabels(readme);
+    expect(fixed).toContain(`- [ ] [WD010 Design LOC-01\\]](./${B})`);
+    const again = planWorkflowChecklistSync(fixed, [B], new Map([[B, 'WD010 Design LOC-01]']]));
+    expect(again.added).toEqual([]);
+    expect(again.unescaped).toEqual([]);
+    expect(again.duplicates).toEqual([]);
+  });
+
+  it('reports and removes duplicates of files in the folder, keeping a check', () => {
+    const readme = md([
+      `- [ ] [WD010 Design LOC-01]](./${B})`,
+      '- [ ] [Gone](./004_WD040_Gone.labnote.md)',
+      `- [x] [WD010 Design LOC-01\\]](./${B})`,
+      '- [ ] [Gone](./004_WD040_Gone.labnote.md)',
+      `- [ ] [WD010 Design LOC-01\\]](./${B})`,
+    ]);
+    const plan = planWorkflowChecklistSync(readme, [B]);
+    expect(plan.duplicates).toEqual([B, B]);
+    expect(dedupeWorkflowChecklistEntries(readme, [B])).toBe(
+      md([`- [x] [WD010 Design LOC-01]](./${B})`, '- [ ] [Gone](./004_WD040_Gone.labnote.md)', '- [ ] [Gone](./004_WD040_Gone.labnote.md)'])
+    );
+  });
+
+  it('relabels an entry whose stored label is escaped', () => {
+    const readme = md([`- [ ] [WD010 Design LOC-01\\]](./${B})`]);
+    const out = relabelWorkflowChecklistEntries(readme, [
+      { fileName: B, from: 'WD010 Design LOC-01]', to: 'WD010 Design [LOC-02]' },
+    ]);
+    expect(out).toContain(`- [ ] [WD010 Design \\[LOC-02\\]](./${B})`);
   });
 });
 
@@ -978,6 +1081,23 @@ describe('classifyWorkflowRename', () => {
   it('ignores moves to another folder or into a subfolder', () => {
     expect(classifyWorkflowRename(valid, 'labnote/002_Other/001_WB030_Gibson.labnote.md')).toBeNull();
     expect(classifyWorkflowRename(valid, `${dir}/sub/001_WB030_Gibson.labnote.md`)).toBeNull();
+  });
+
+  // #94
+  it('reports a move into a subfolder or out of the experiment, not to another one or the trash', () => {
+    expect(classifyWorkflowMoveOut(valid, `${dir}/images/001_WB030_Gibson.labnote.md`)).toEqual({
+      dir,
+      location: 'images/',
+    });
+    expect(classifyWorkflowMoveOut(valid, 'archive/old/001_WB030_Gibson.labnote.md')).toEqual({
+      dir,
+      location: 'archive/old/',
+    });
+    expect(classifyWorkflowMoveOut(valid, '001_WB030_Gibson.labnote.md')).toEqual({ dir, location: '/' });
+    expect(classifyWorkflowMoveOut(valid, '.trash/001_WB030_Gibson.labnote.md')).toBeNull();
+    expect(classifyWorkflowMoveOut(valid, 'labnote/002_Other/001_WB030_Gibson.labnote.md')).toBeNull();
+    expect(classifyWorkflowMoveOut(valid, broken)).toBeNull();
+    expect(classifyWorkflowMoveOut(`${dir}/images/001_WB030_Gibson.labnote.md`, `${dir}/x/001_WB030_Gibson.labnote.md`)).toBeNull();
   });
 
   it('relinks the README entry after broken → restored', () => {
