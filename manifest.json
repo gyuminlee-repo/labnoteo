@@ -1,7 +1,7 @@
 {
   "id": "labnoteo",
   "name": "Labnote Assistant",
-  "version": "0.96.0",
+  "version": "0.97.0",
   "minAppVersion": "1.5.0",
   "description": "Markdown-based lab notebook with sample tracking, workflow checklists, and LLM assistance for biology and bioinformatics experiments.",
   "author": "Korea Biofoundry (KRIBB)",
