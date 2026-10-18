@@ -101,7 +101,7 @@ describe('changing the status to needs-review', () => {
 
   it('says to run the setup when the automation is not installed', async () => {
     expect(await notified({}, 'needs-review')).toEqual([
-      'Experiment status changed: {0} To open a review issue, run "Setup research automation" first.',
+      'Experiment status changed: {0} → {1} To open a review issue, run "Setup research automation" first.',
     ]);
   });
 
@@ -112,9 +112,50 @@ describe('changing the status to needs-review', () => {
 
   it('adds nothing when the automation is ready, or for another status', async () => {
     expect(await notified({ [WORKFLOW_YML]: '', '.git': '' }, 'needs-review')).toEqual([
-      'Experiment status changed: {0}',
+      'Experiment status changed: {0} → {1}',
     ]);
-    expect(await notified({}, 'in-progress')).toEqual(['Experiment status changed: {0}']);
+    expect(await notified({}, 'in-progress')).toEqual(['Experiment status changed: {0} → {1}']);
+  });
+});
+
+// #126: from a workflow note, Ctrl+Z cannot reach the README the command changed.
+describe('the status-change notice', () => {
+  async function shownFrom(active: string, dir?: string, readme = note()): Promise<string> {
+    const fs = new MemFileSystem({ [README]: readme });
+    const shown: string[] = [];
+    const app = {
+      workspace: { getActiveFile: () => new TFile(active), getLeavesOfType: () => [] },
+      vault: { getFileByPath: () => null },
+    } as unknown as App;
+    const host = {
+      fs,
+      t: (s: string, ...args: string[]) => args.reduce((acc, a, i) => acc.replace(`{${i}}`, a), s),
+      notify: (_kind: string, message: string) => shown.push(message),
+      pick: async () => 'discontinued',
+    } as unknown as LabnoteHost;
+    await changeExperimentStatusCommand(app, host, undefined, dir);
+    return shown.at(-1) ?? '';
+  }
+
+  it('shows the old and new status', async () => {
+    expect(await shownFrom(README)).toBe('Experiment status changed: planned → discontinued');
+  });
+
+  it('names the README and how to undo when run from another note', async () => {
+    expect(await shownFrom(WORKFLOW)).toBe(
+      "Experiment status changed: planned → discontinued Changed 001_Test's README, not this note. " +
+        'To undo, run "Change experiment status" again and pick planned.'
+    );
+  });
+
+  it('says (none) and offers no undo for a README without a status', async () => {
+    const shown = await shownFrom(WORKFLOW, undefined, '---\ncreated_date: 2026-10-01\n---\n\n# Body\n');
+    expect(shown).toContain('(none) → discontinued');
+    expect(shown).not.toContain('To undo');
+  });
+
+  it('changes the experiment it is handed, whatever note is active (#128)', async () => {
+    expect(await shownFrom('labnote/002_Other/README.labnote.md', DIR)).toContain("Changed 001_Test's README");
   });
 });
 

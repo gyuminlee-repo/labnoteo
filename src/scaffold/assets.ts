@@ -49,8 +49,8 @@ import wikiReferences from '../../automation/templates/wiki/References.md';
  *  - `append-missing`: keep the file, append only lines it does not already
  *    contain (used for `.gitignore` so user patterns are preserved).
  *  - `managed-block`: keep the file, insert/refresh only the labnoteo-managed
- *    marker block (used for `AGENTS.md` so user rules outside the markers are
- *    preserved and re-runs stay idempotent).
+ *    marker block (used for `AGENTS.md` and `QUICKSTART.md` so user text
+ *    outside the markers is preserved and re-runs stay idempotent).
  */
 export type ScaffoldMergeStrategy = 'overwrite' | 'append-missing' | 'managed-block';
 
@@ -76,6 +76,14 @@ export interface ScaffoldAsset {
    * a record it is refreshed anyway: it is not in Git, so no earlier hash is known.
    */
   owned?: boolean;
+  /**
+   * A `managed-block` file earlier releases wrote whole, without the markers.
+   * Such a copy is not one the user took the block out of: unedited, it is
+   * replaced by the marked form; edited, the setup command asks first.
+   */
+  migrateUnmarked?: boolean;
+  /** Written below the block only when the file is created or migrated. */
+  trailer?: string;
 }
 
 /**
@@ -107,6 +115,18 @@ export const QUICKSTART_DOC_PATH = 'QUICKSTART.md';
  * guide" can provide it without installing the Git automation.
  */
 export const QUICKSTART_DOC_CONTENT: string = quickstartDoc;
+
+/** Where QUICKSTART.md invites the lab's own text, which updates leave alone. */
+export const QUICKSTART_TRAILER = '이 줄 아래에 연구실 규칙을 적으세요. 업데이트는 위 블록만 바꿉니다.';
+
+/** Also written by "Open user guide", which installs nothing else. */
+export const QUICKSTART_ASSET: ScaffoldAsset = {
+  vaultPath: QUICKSTART_DOC_PATH,
+  content: QUICKSTART_DOC_CONTENT,
+  merge: 'managed-block',
+  migrateUnmarked: true,
+  trailer: QUICKSTART_TRAILER,
+};
 
 /**
  * Vault path of the workflow that opens Issues from `@issue` markers and the
@@ -168,7 +188,7 @@ export const SCAFFOLD_ASSETS: ScaffoldAsset[] = [
   { vaultPath: `${LABNOTEO_DIR}/scripts/check-large-files.mjs`, content: checkLargeFilesScript, owned: true },
   { vaultPath: `${HOOKS_DIR_PATH}/pre-commit`, content: preCommitHook },
   { vaultPath: SETUP_DOC_PATH, content: setupReadme },
-  { vaultPath: QUICKSTART_DOC_PATH, content: QUICKSTART_DOC_CONTENT },
+  QUICKSTART_ASSET,
   { vaultPath: '.gitignore', content: gitignoreSnippet, merge: 'append-missing' },
 
   // Phase 3 — deterministic validation.

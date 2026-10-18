@@ -23,6 +23,7 @@ const obsidianKo: Record<string, string> = {
   'Export tables to CSV': '표를 CSV로 내보내기',
   'Open workflow view': '워크플로 뷰 열기',
   'Open sample view': '샘플 뷰 열기',
+  'Open sample definition': '샘플 정의 열기 (편집·이동·삭제)',
   'Open user guide': '사용법 열기',
   'Toggle MCP server': 'MCP 서버 켜기/끄기',
   'AI: Draft Method section': 'AI: Method 섹션 초안 작성',
@@ -58,8 +59,9 @@ const obsidianKo: Record<string, string> = {
     "다음 자동화 파일은 설치 후 내용이 바뀌었거나 이전 버전 기록으로 확인할 수 없어 그대로 두었습니다: {0}. 새 버전을 받으려면 '연구노트 자동화 설정'을 실행하세요.",
   'These automation files are not in the vault: {0}. Run "Setup research automation" to install them if you need them.':
     "다음 자동화 파일이 보관함에 없습니다: {0}. 필요하면 '연구노트 자동화 설정'으로 설치하세요.",
-  'Right-click an item to create a workflow or insert a unit operation. No experiment yet? Run "{0}" first.':
-    '항목을 우클릭해 워크플로를 만들거나 유닛 오퍼레이션을 넣습니다. 실험이 없다면 먼저 "{0}"을(를) 실행하세요.',
+  'Click an experiment to open its README, or right-click it to change its status. Right-click a catalog item to create a workflow or insert a unit operation. No experiment yet? Run "{0}" first.':
+    '실험을 클릭하면 README가 열리고, 우클릭하면 상태를 바꿉니다. 카탈로그 항목을 우클릭해 워크플로를 만들거나 유닛 오퍼레이션을 넣습니다. 실험이 없다면 먼저 "{0}"을(를) 실행하세요.',
+  'Experiments': '실험',
   'Type @dna (or another type) in a note, or right-click → "{0}" to register a sample.':
     '노트에서 @dna처럼 입력하거나 우클릭 → "{0}"(으)로 샘플을 등록합니다.',
 
@@ -77,6 +79,8 @@ const obsidianKo: Record<string, string> = {
   'current': '현재',
   'Workflow name': '워크플로 이름',
   'Enter a name for this workflow': '이 워크플로의 상세 별칭을 입력하세요',
+  'Unit operation alias': '유닛 오퍼레이션 별칭',
+  'Run or condition of this step (optional)': '이 공정의 회차·조건 별칭(선택)',
 
   // Notices / results
   'Experiment created: {0}': '실험이 생성되었습니다: {0}',
@@ -116,7 +120,9 @@ const obsidianKo: Record<string, string> = {
   'Added "{0}" to the README checklist.': '"{0}"을(를) README 체크리스트에 등록했습니다.',
   'Workflow notes moved into {0} are not in its README checklist yet. Run "{1}" to add them.':
     '{0}(으)로 옮겨 온 워크플로 노트가 README 체크리스트에 없습니다. "{1}"을(를) 실행해 등록하세요.',
-  'Experiment status changed: {0}': '실험 상태가 변경되었습니다: {0}',
+  'Experiment status changed: {0} → {1}': '실험 상태가 변경되었습니다: {0} → {1}',
+  '(none)': '(없음)',
+  'To undo, run "{0}" again and pick {1}.': '되돌리려면 "{0}"을(를) 다시 실행해 {1}을(를) 고르세요.',
   'This vault is not a git repository yet, so no review issue will open. Finish the repository setup in {0} first.':
     '이 보관함은 아직 git 저장소가 아니라 검토 이슈가 생성되지 않습니다. 먼저 {0}의 저장소 연결을 마치세요.',
   'To open a review issue, run "Setup research automation" first.':
@@ -145,13 +151,24 @@ const obsidianKo: Record<string, string> = {
     '표 안에서는 이슈 마커를 넣을 수 없습니다. 표 아래 줄에서 실행하세요.',
   'Issue markers cannot go in the front matter. Run this in the note body.':
     '머리말(front matter)에는 이슈 마커를 넣을 수 없습니다. 본문에서 실행하세요.',
+  'Issue markers inside a code block open no issue. Run this on a line outside the code block.':
+    '코드 블록 안의 이슈 마커는 이슈를 열지 않습니다. 코드 블록 밖의 줄에서 실행하세요.',
+  'This marker ID appears more than once in this note.': '이 마커 ID는 이 노트에 두 번 이상 있습니다.',
+  'This marker ID is already used in {0}.': '이 마커 ID는 이미 {0}에서 쓰고 있습니다.',
+  'Marker ID {0} appears twice in this note, so the two questions merge into one issue. Delete one of these markers and insert it again with "Insert issue marker".':
+    '마커 ID {0}이(가) 이 노트에 두 번 있어 두 질문이 한 이슈로 합쳐집니다. 그중 하나를 지우고 "논의 이슈 마커 삽입"으로 다시 넣으세요.',
+  'Marker ID {0} is also used in {1}, so the two questions merge into one issue. Delete the marker in this note (underlined) and insert it again with "Insert issue marker".':
+    '마커 ID {0}은(는) {1}에서도 쓰고 있어 두 질문이 한 이슈로 합쳐집니다. 이 노트의 그 마커(물결 밑줄)를 지우고 "논의 이슈 마커 삽입"으로 다시 넣으세요.',
   'A date cannot go on a front matter line that has a value. Run this in the body or on an empty value.':
     '머리말(front matter)의 값이 있는 줄에는 날짜를 넣을 수 없습니다. 본문이나 빈 값 칸에서 실행하세요.',
   'This line already has an issue marker. A line can hold only one.':
     '이 줄에는 이미 이슈 마커가 있습니다. 한 줄에 하나만 둘 수 있습니다.',
   'Front matter of this note could not be read, so it was left unchanged. Fix the YAML and try again: {0}':
     '이 노트의 front matter를 읽을 수 없어 변경하지 않았습니다. YAML을 고친 뒤 다시 시도하세요: {0}',
-  'Overwrite {0}?': '{0} 파일을 덮어쓰시겠습니까?',
+  '{0} differs from the new version. Edits made after it was installed are lost if you replace it. Replace it with the new version?':
+    '{0}이(가) 새 버전과 다릅니다. 설치 뒤에 직접 고친 내용이 있다면 바꿀 때 사라집니다. 새 버전으로 바꿀까요?',
+  'From then on, updates change only the marked block and keep what you write below it.':
+    '이번에 바꾸면 다음부터는 업데이트가 표시된 블록만 바꾸고, 그 아래 적은 내용은 그대로 둡니다.',
   'Research automation set up ({0} written, {1} merged, {2} skipped, {3} removed). Researchers: see {4}. Admin setup: {5} (run `git config core.hooksPath {6}`).':
     '연구노트 자동화를 설정했습니다 (생성 {0} · 병합 {1} · 건너뜀 {2} · 정리 {3}). 연구원 안내는 {4}, 관리자 설정은 {5} 문서를 확인하고 `git config core.hooksPath {6}`을 실행하세요.',
   'Remove {0} file(s) left by the previous layout ({1})? Afterwards run `git config core.hooksPath {2}` so the pre-commit hook keeps working.':
@@ -203,6 +220,16 @@ const obsidianKo: Record<string, string> = {
   'Delete sample': '샘플 삭제',
   'Move to Global': '전역으로 이동',
   'Move to Local': '로컬로 이동',
+  'Change type': '타입 변경',
+  'Change the type of {0}': '{0}의 타입 변경',
+  'Pick the new type': '새 타입 선택',
+  'Change {0} to {1}? Its record moves from {2}.json to {3}.json.':
+    '{0}을(를) {1}(으)로 바꿀까요? 기록이 {2}.json에서 {3}.json으로 옮겨집니다.',
+  'The notes that use it change too ({0}):': '이 샘플을 쓰는 노트도 함께 바뀝니다({0}):',
+  'Changed {0} to {1}.': '{0}을(를) {1}(으)로 바꿨습니다.',
+  'Sample tracking is off for this note.': '이 노트는 샘플 추적이 꺼져 있습니다.',
+  'No samples are registered yet.': '아직 등록된 샘플이 없습니다.',
+  'Search by ID or alias': 'ID나 별칭으로 검색',
   'Open a note to insert into.': '삽입할 노트를 여세요.',
   'Open a note first to add a local sample.': '로컬 샘플을 추가하려면 먼저 노트를 여세요.',
   'Notes outside an experiment use the Global samples below. Open an experiment note to see its samples.':
@@ -257,6 +284,10 @@ const obsidianKo: Record<string, string> = {
   'Global {0} sample': '전역 {0} 샘플',
   'Global samples already have the alias {0} ({1}). Autocomplete will show both, marked Local and Global.':
     '전역 샘플에 같은 별칭 {0}({1})이 이미 있습니다. 자동완성에는 로컬과 전역으로 구분되어 둘 다 보입니다.',
+  'This experiment already has the alias {0} ({1}). Autocomplete cannot tell the two apart, so picking the existing sample is usually better.':
+    '이 실험에 같은 별칭 {0}({1})이 이미 있습니다. 자동완성에서 둘을 구분할 수 없으니 있는 샘플을 고르는 편이 좋습니다.',
+  'Global samples already have the alias {0} ({1}). Autocomplete cannot tell the two apart, so picking the existing sample is usually better.':
+    '전역 샘플에 같은 별칭 {0}({1})이 이미 있습니다. 자동완성에서 둘을 구분할 수 없으니 있는 샘플을 고르는 편이 좋습니다.',
   '{0} was added to Global samples because this note is outside an experiment folder.':
     '이 노트는 실험 폴더 밖에 있어 {0}을(를) 전역 샘플에 추가했습니다.',
   'Sample updated: {0}': '샘플이 수정되었습니다: {0}',
@@ -362,6 +393,13 @@ const obsidianKo: Record<string, string> = {
   'Configure an AI provider in settings first.': '먼저 설정에서 AI 프로바이더를 구성하세요.',
   'Contacting {0}…': '{0}에 연결 중…',
   'AI request failed: {0}': 'AI 요청 실패: {0}',
+  'Settings': '설정',
+  'Cannot connect to {0} ({1}). Check that it is running and that {2} is right.':
+    '{0}에 연결할 수 없습니다({1}). 실행 중인지, {2} 값이 맞는지 확인하세요.',
+  'The API key is missing or wrong. Check {0}.': 'API 키가 없거나 잘못되었습니다. {0} 값을 확인하세요.',
+  'Model {0} was not found. Check {1}.': '모델 {0}을(를) 찾을 수 없습니다. {1} 값을 확인하세요.',
+  '{0} has no such address (404). Check {1}: enter only the server address, without a path such as /v1 or /api.':
+    '{0}에서 요청 주소를 찾을 수 없습니다(404). {1} 값을 확인하세요. /v1이나 /api 같은 경로 없이 서버 주소만 적습니다.',
   'This Method section already has content. Replace it with the AI draft?':
     '이 Method 절에는 이미 내용이 있습니다. AI 초안으로 바꿀까요?',
   'Replace': '바꾸기',
@@ -431,6 +469,8 @@ const obsidianKo: Record<string, string> = {
     '같은 절 {1}개 중 {0}번째로, 제목이 {2}번째 줄에 있습니다.',
   'This creates a {0} sample with a new ID.': '{0} 샘플을 새 ID로 만듭니다.',
   'This creates {0} sample {1}.': '{0} 샘플 {1}을(를) 만듭니다.',
+  'This creates catalog workflow {0} {1}. File: {2}. It is also added to the checklist in {3}.':
+    '카탈로그 워크플로 {0} {1}을(를) 새로 만듭니다. 파일: {2}. {3}의 체크리스트에도 등록합니다.',
   'This adds to {0} sample {1}.': '이미 있는 {0} 샘플 {1}에 더합니다.',
   'Alias: {0}': '별칭: {0}',
   'Storage location: {0}': '보관 위치: {0}',

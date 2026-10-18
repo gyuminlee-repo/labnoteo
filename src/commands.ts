@@ -71,6 +71,7 @@ import {
   relinkWorkflowChecklistEntries,
   collapseWorkflowRenames,
   defaultWorkflowTitle,
+  isValidWorkflowPath,
   parseWorkflowFileName,
   planWorkflowRetitle,
   planWorkflowExperimenterSync,
@@ -157,9 +158,11 @@ export async function createExperimentCommand(app: App, host: LabnoteHost): Prom
 export async function changeExperimentStatusCommand(
   app: App,
   host: LabnoteHost,
-  stamp: (content: string) => string = c => c
+  stamp: (content: string) => string = c => c,
+  experimentDir?: string
 ): Promise<void> {
-  const labnoteDir = await resolveLabnoteDir(app, host);
+  // The workflow view names the experiment itself; the active file may be another one (#128).
+  const labnoteDir = experimentDir ?? (await resolveLabnoteDir(app, host));
   if (!labnoteDir) return;
 
   const readmePath = posix.join(labnoteDir, README);
@@ -188,7 +191,14 @@ export async function changeExperimentStatusCommand(
   const updated = renderNote({ ...frontMatter, status: chosen }, body);
 
   await writeNoteThroughVault(app, host, readmePath, stamp(updated));
-  let message = host.t('Experiment status changed: {0}', chosen);
+  let message = host.t('Experiment status changed: {0} → {1}', current ?? host.t('(none)'), chosen);
+  // Ctrl+Z only reaches the README when it is the open note (#126).
+  if (app.workspace.getActiveFile()?.path !== readmePath) {
+    message += ` ${host.t("Changed {0}'s README, not this note.", posix.basename(labnoteDir))}`;
+    if (current) {
+      message += ` ${host.t('To undo, run "{0}" again and pick {1}.', host.t('Change experiment status'), current)}`;
+    }
+  }
   // `needs-review` only opens a review issue through the automation (#79).
   if (chosen === 'needs-review') {
     const state = await issueAutomationState(host);
@@ -257,14 +267,16 @@ export async function insertIssueMarkerCommand(editor: Editor, host: LabnoteHost
     while (used.has(id)) id = generateIssueMarkerId();
     return id;
   };
-  const refuse = (reason: 'conflict' | 'table' | 'frontMatter'): false => {
+  const refuse = (reason: 'conflict' | 'table' | 'frontMatter' | 'codeBlock'): false => {
     host.notify(
       'warn',
       reason === 'table'
         ? host.t('Issue markers cannot go inside a table. Run this on a line below the table.')
         : reason === 'frontMatter'
           ? host.t('Issue markers cannot go in the front matter. Run this in the note body.')
-          : host.t('This line already has an issue marker. A line can hold only one.')
+          : reason === 'codeBlock'
+            ? host.t('Issue markers inside a code block open no issue. Run this on a line outside the code block.')
+            : host.t('This line already has an issue marker. A line can hold only one.')
     );
     return false;
   };
@@ -657,15 +669,25 @@ export async function insertWorkflowLinkCommand(
  */
 export async function insertUnitOpAndUpdateToc(
   host: LabnoteHost,
-  input: InsertUnitOperationInput
+  input: InsertUnitOperationInput,
+  askAlias?: (input: InsertUnitOperationInput) => Promise<string | undefined>
 ): Promise<boolean> {
+  // Asked only where the insert will go ahead: `insertUnitOperation` refuses a
+  // note that is no workflow, which would come after the alias was typed.
+  let alias = input.alias;
+  const opened = host.editTarget();
+  if (askAlias && opened && isValidWorkflowPath(opened.path)) {
+    alias = await askAlias(input);
+    if (alias === undefined) return false;
+  }
+
   // Resolve the insertion point BEFORE inserting and hand it to the insert, so
   // the new heading can be found again after the whole-doc TOC rewrite.
   const before = host.editTarget();
   const at = before ? await unitOpInsertPointAtCursor(before) : undefined;
   const insertOffset = at?.offset ?? -1;
 
-  const ok = await insertUnitOperation(host, { ...input, at });
+  const ok = await insertUnitOperation(host, { ...input, alias, at });
   if (!ok) return false;
 
   const target = host.editTarget();
@@ -713,14 +735,36 @@ export async function insertUnitOperationCommand(app: App, host: LabnoteHost): P
   if (!chosen) return;
 
   const { op, kind } = chosen;
-  await insertUnitOpAndUpdateToc(host, {
-    opId: op.id,
-    opName: op.name,
-    opDescription: op.description,
-    opType: kind,
-    equipment: op.equipment,
-    software: op.software,
-  });
+  await insertUnitOpAndUpdateToc(
+    host,
+    {
+      opId: op.id,
+      opName: op.name,
+      opDescription: op.description,
+      opType: kind,
+      equipment: op.equipment,
+      software: op.software,
+    },
+    unitOpAliasPrompt(app, host)
+  );
+}
+
+/**
+ * The alias prompt of {@link insertUnitOpAndUpdateToc} (#118): the same fixed
+ * `[id name]` prefix as a workflow's name. Empty inserts without an alias;
+ * Escape inserts nothing.
+ */
+export function unitOpAliasPrompt(
+  app: App,
+  host: LabnoteHost
+): (input: InsertUnitOperationInput) => Promise<string | undefined> {
+  return input =>
+    workflowAliasModal(app, {
+      id: input.opId,
+      catalogName: input.opName,
+      title: host.t('Unit operation alias'),
+      placeholder: host.t('Run or condition of this step (optional)'),
+    });
 }
 
 /**

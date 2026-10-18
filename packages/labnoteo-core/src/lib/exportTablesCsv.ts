@@ -88,7 +88,29 @@ export function extractMarkdownTables(markdown: string): CsvTable[] {
   return tables;
 }
 
+/** A leading character Excel reads as the start of a formula (full-width forms included). */
+const FORMULA_START_RE = /^[=@+\-＝＠＋－]/;
+/** A signed number Excel reads as one: `-80`, `+5`, `-1.2e3`, `-.5`, `-80%`, `-1,250`. */
+const SIGNED_NUMBER_RE = /^[+-](?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?%?$/i;
+
+/**
+ * Whether Excel would evaluate `cell` instead of showing it (#122): `=2:1`
+ * turns into `#NAME?` and `+82-2-000-0000` into 80. Signed numbers stay
+ * numbers, and a lone `-` (a common "none") is not a formula.
+ */
+function readsAsFormula(cell: string): boolean {
+  if (!FORMULA_START_RE.test(cell)) return false;
+  const ascii = cell.replace(/^[＋－]/, (c) => (c === '＋' ? '+' : '-'));
+  if (!/^[+-]/.test(ascii)) return true;
+  return ascii.length > 1 && !SIGNED_NUMBER_RE.test(ascii);
+}
+
 function escapeCsvCell(cell: string): string {
+  // A tab inside the quotes (OWASP's advice for Excel) keeps the text as typed;
+  // a leading `'` would stay visible, since Excel does not hide it in a CSV.
+  if (readsAsFormula(cell)) {
+    return `"\t${cell.replace(/"/g, '""')}"`;
+  }
   if (/[",\n]/.test(cell)) {
     return `"${cell.replace(/"/g, '""')}"`;
   }
@@ -180,9 +202,14 @@ export function firstDifferingRow(
 /**
  * Classify each table's re-export against the CSV already at its
  * `_tableN.csv` path (#80, #92). `existingCount` is the highest table number
- * among the note's existing CSVs. The checks run in order:
+ * among the note's existing CSVs; `staleOld` holds the contents of the CSVs
+ * numbered past the note's tables (left after a table was removed). The checks
+ * run in order:
  *
- * 1. the old content is another table's new content → `moved`
+ * 1. the old content is another table's new content, or the new content is
+ *    another CSV's old content (stale ones included) → `moved`. The second half
+ *    catches a removed table (#117): its CSV's old content is gone from the
+ *    note, but the next table's content now arrives where it was.
  * 2. the header is unchanged → `updated`
  * 3. only the header changed, with at least one data row equal → `updated`
  *    (a header-only table cannot be told apart this way)
@@ -196,13 +223,17 @@ export function firstDifferingRow(
  */
 export function classifyCsvOverwrites(
   outputs: readonly CsvOverwriteInput[],
-  existingCount: number
+  existingCount: number,
+  staleOld: readonly string[] = []
 ): CsvOverwriteKind[] {
   const fresh = outputs.map(o => splitCsvHeader(o.fresh));
   return outputs.map((o, k) => {
     if (o.old === undefined) return 'new';
     if (o.old === o.fresh) return 'same';
     if (outputs.some((other, j) => j !== k && other.fresh === o.old)) return 'moved';
+    if (outputs.some((other, j) => j !== k && other.old === o.fresh) || staleOld.includes(o.fresh)) {
+      return 'moved';
+    }
     const old = splitCsvHeader(o.old);
     if (old.header === fresh[k].header) return 'updated';
     if (fresh[k].data !== '' && old.data === fresh[k].data) return 'updated';

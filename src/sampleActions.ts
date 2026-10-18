@@ -32,6 +32,8 @@ import {
   isSameSampleFolder,
   planAliasRewrite,
   applyAliasRewrite,
+  planSampleIdRewrite,
+  sampleIdForType,
   type AliasRewriteEdit,
   type SampleRecord,
 } from '@labnoteo/core/lib/sampleStorage';
@@ -202,8 +204,22 @@ export async function createSampleInteractive(
     };
   }
 
-  const twin = alias ? await globalSampleWithAlias(plugin, type, folder, alias) : undefined;
-  if (twin) {
+  // A twin in the same folder is worse than a Global one (#125): autocomplete
+  // shows the two with identical text and no Local/Global tag to tell them apart.
+  const sibling = alias ? await sampleWithAliasIn(plugin, type, folder, alias) : undefined;
+  const twin = alias && !sibling ? await globalSampleWithAlias(plugin, type, folder, alias) : undefined;
+  if (sibling) {
+    new Notice(
+      plugin.t(
+        isSameSampleFolder(folder, plugin.settings.globalSampleFolder)
+          ? 'Global samples already have the alias {0} ({1}). Autocomplete cannot tell the two apart, so picking the existing sample is usually better.'
+          : 'This experiment already has the alias {0} ({1}). Autocomplete cannot tell the two apart, so picking the existing sample is usually better.',
+        alias!,
+        sibling
+      ),
+      8000
+    );
+  } else if (twin) {
     new Notice(
       plugin.t(
         'Global samples already have the alias {0} ({1}). Autocomplete will show both, marked Local and Global.',
@@ -249,8 +265,18 @@ async function globalSampleWithAlias(
 ): Promise<string | undefined> {
   const globalFolder = plugin.settings.globalSampleFolder;
   if (!globalFolder || isSameSampleFolder(folder, globalFolder)) return undefined;
+  return sampleWithAliasIn(plugin, type, globalFolder, alias);
+}
+
+/** The ID of a `type` sample in `folder` with `alias` (trimmed, case ignored). */
+async function sampleWithAliasIn(
+  plugin: LabnotePlugin,
+  type: string,
+  folder: string,
+  alias: string
+): Promise<string | undefined> {
   const wanted = alias.trim().toLowerCase();
-  const records = await loadSamplesByType(plugin.fs, globalFolder, type);
+  const records = await loadSamplesByType(plugin.fs, folder, type);
   return Object.keys(records).find(id => records[id].alias?.trim().toLowerCase() === wanted);
 }
 
@@ -437,6 +463,39 @@ export async function resolveSampleDefinition(
 }
 
 /**
+ * Every registered sample `docPath` can see, as `ID | alias | scope` picker
+ * items for the `Open sample definition` command (#121): the note's Local
+ * samples then the Global ones, or only the Global ones without a note.
+ */
+export async function listSampleDefinitions(
+  plugin: LabnotePlugin,
+  docPath: string | undefined
+): Promise<PickItem<{ type: string; id: string; resolved: ResolvedSampleDefinition }>[]> {
+  const globalFolder = plugin.settings.globalSampleFolder;
+  const local = docPath ? noteLabsamplesFolder(docPath, globalFolder) : undefined;
+  const scopes: Array<{ scope: 'local' | 'global'; folder: string }> = [];
+  if (local && !isSameSampleFolder(local, globalFolder)) scopes.push({ scope: 'local', folder: local });
+  if (globalFolder) scopes.push({ scope: 'global', folder: globalFolder });
+
+  const types = getSampleDisplayMeta(plugin.settings.customSampleTypes).types;
+  const items: PickItem<{ type: string; id: string; resolved: ResolvedSampleDefinition }>[] = [];
+  for (const { scope, folder } of scopes) {
+    for (const type of types) {
+      const records = await loadSamplesByType(plugin.fs, folder, type);
+      for (const [id, record] of Object.entries(records)) {
+        const where = scope === 'local' ? plugin.t('Local {0} sample', type) : plugin.t('Global {0} sample', type);
+        items.push({
+          label: [id, record.alias ?? '-', where].join(' | '),
+          detail: record.descriptions?.[0],
+          value: { type, id, resolved: { scope, folder, record } },
+        });
+      }
+    }
+  }
+  return items;
+}
+
+/**
  * Collect the notes that still reference `(type, id)`, scoped to the sample's
  * experiment for a Local sample and to the whole vault for a Global one (its
  * folder is outside any experiment). Prefers the live editor text of an open
@@ -608,6 +667,111 @@ export async function deleteSampleInteractive(
   await deleteSampleRecord(plugin.fs, folder, type, id);
   plugin.refreshSampleViews();
   new Notice(plugin.t('Sample deleted: {0}', id));
+  return true;
+}
+
+/**
+ * The notes in `folder`'s scope that `plan` would change. A Global sample is
+ * skipped in experiments with a Local record of the same id, since their notes
+ * resolve to that one.
+ */
+async function planNotesInScope(
+  app: App,
+  plugin: LabnotePlugin,
+  opts: { folder: string; type: string; id: string },
+  plan: (text: string) => AliasRewriteEdit[]
+): Promise<Array<ScopedNote & { edits: AliasRewriteEdit[] }>> {
+  const { folder, type, id } = opts;
+  const isGlobal = !getExperimentDir(folder);
+  const shadowed = new Map<string, boolean>();
+  const planned: Array<ScopedNote & { edits: AliasRewriteEdit[] }> = [];
+  for (const note of await notesInSampleScope(app, folder)) {
+    const edits = plan(note.text);
+    if (edits.length === 0) continue;
+    if (isGlobal) {
+      const local = noteLabsamplesFolder(note.path, plugin.settings.globalSampleFolder);
+      if (!isSameSampleFolder(local, folder)) {
+        if (!shadowed.has(local)) {
+          shadowed.set(local, Boolean((await loadSamplesByType(plugin.fs, local, type))[id]));
+        }
+        if (shadowed.get(local)) continue;
+      }
+    }
+    planned.push({ ...note, edits });
+  }
+  return planned;
+}
+
+/**
+ * Change a sample's type (#116): pick the new type, give the record the same
+ * numbers under the new prefix (a new id when that one is taken), and rewrite
+ * the notes that use it. One confirmation covers both, and declining changes
+ * nothing: a note left with the old id would bring the old record back the
+ * next time it is saved. Returns false when cancelled.
+ */
+export async function changeSampleTypeInteractive(
+  app: App,
+  plugin: LabnotePlugin,
+  opts: { folder: string; type: string; id: string }
+): Promise<boolean> {
+  const { folder, type, id } = opts;
+  const record = (await loadSamplesByType(plugin.fs, folder, type))[id];
+  if (!record) {
+    new Notice(plugin.t('Sample not found: {0}', id));
+    return false;
+  }
+  const types = getSampleDisplayMeta(plugin.settings.customSampleTypes).types.filter(t => t !== type);
+  const newType = await pickModal(
+    app,
+    types.map(t => ({ label: t, value: t })),
+    { title: plugin.t('Change the type of {0}', id), placeholder: plugin.t('Pick the new type') }
+  );
+  if (newType === undefined) return false;
+
+  const globalFolder = plugin.settings.globalSampleFolder;
+  const taken = async (candidate: string): Promise<boolean> => {
+    for (const f of [folder, globalFolder]) {
+      if (f && (await loadSamplesByType(plugin.fs, f, newType))[candidate]) return true;
+    }
+    return false;
+  };
+  let newId = sampleIdForType(type, id, newType) ?? generateSampleId(newType);
+  while (await taken(newId)) newId = generateSampleId(newType);
+
+  const plan = (text: string): AliasRewriteEdit[] => planSampleIdRewrite(text, type, id, newType, newId);
+  const planned = await planNotesInScope(app, plugin, opts, plan);
+  const shownMax = 8;
+  const lines = planned.slice(0, shownMax).map(n => {
+    const defs = n.edits.filter(e => e.kind === 'definition').length;
+    return `- ${n.path} (${plugin.t('{0} definition(s), {1} reference(s)', String(defs), String(n.edits.length - defs))})`;
+  });
+  if (planned.length > shownMax) lines.push(`(+${planned.length - shownMax})`);
+  let message = plugin.t('Change {0} to {1}? Its record moves from {2}.json to {3}.json.', id, newId, type, newType);
+  if (planned.length > 0) {
+    message += `\n\n${plugin.t('The notes that use it change too ({0}):', String(planned.length))}\n${lines.join('\n')}`;
+  }
+  if (!(await confirmModal(app, message, plugin.t('Change type')))) return false;
+
+  await putSampleRecord(plugin.fs, folder, newType, newId, { ...record, type: newType });
+  await deleteSampleRecord(plugin.fs, folder, type, id);
+  let updated = 0;
+  for (const note of planned) {
+    if (note.editor) {
+      // Re-planned on the live text, as one transaction so one undo reverts the note.
+      const editor = note.editor;
+      const edits = plan(editor.getValue());
+      if (edits.length === 0) continue;
+      editor.transaction({
+        changes: edits.map(e => ({ from: editor.offsetToPos(e.start), to: editor.offsetToPos(e.end), text: e.text })),
+      });
+      updated++;
+    } else if (await processNoteThroughVault(app, plugin.host, note.path, content => applyAliasRewrite(content, plan(content)))) {
+      updated++;
+    }
+  }
+  plugin.refreshSampleViews();
+  const done = plugin.t('Changed {0} to {1}.', id, newId);
+  new Notice(planned.length > 0 ? `${done} ${plugin.t('{0} note(s) updated.', String(updated))}` : done);
   return true;
 }
 

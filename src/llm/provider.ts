@@ -22,6 +22,7 @@
 import { requestUrl } from 'obsidian';
 import type { ToolDef } from '@labnoteo/core';
 import type { LabnoteSettings } from '../settings';
+import { LlmHttpError } from './llmError';
 
 /** One tool invocation the model asked for, in provider-neutral form. */
 export interface ToolCall {
@@ -160,7 +161,7 @@ class OllamaProvider implements LlmProvider {
       throw: false,
     });
     if (res.status >= 400) {
-      throw new Error(`Ollama request failed (${res.status}): ${res.text}`);
+      throw new LlmHttpError('Ollama', res.status, res.text);
     }
     return {
       content: res.json?.message?.content ?? '',
@@ -212,7 +213,7 @@ class OpenAiProvider implements LlmProvider {
       throw: false,
     });
     if (res.status >= 400) {
-      throw new Error(`OpenAI request failed (${res.status}): ${res.text}`);
+      throw new LlmHttpError('OpenAI', res.status, res.text);
     }
     const message = res.json?.choices?.[0]?.message;
     return {

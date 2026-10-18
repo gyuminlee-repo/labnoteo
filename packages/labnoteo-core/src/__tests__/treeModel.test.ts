@@ -1,5 +1,6 @@
 // Globals convention (no `import ... from 'vitest'`) — see sampleDefinition.test.ts.
 import {
+  buildExperimentTree,
   buildWorkflowTree,
   buildSampleTree,
   filterSampleTree,
@@ -171,5 +172,52 @@ describe('filterSampleTree', () => {
     expect(filtered).toHaveLength(2);
     expect(filtered[0].label).toBe('Samples (Local)');
     expect(filtered[0].children).toEqual([]);
+  });
+});
+
+// #128: the vault's experiments, by status, in the workflow view.
+describe('buildExperimentTree', () => {
+  const tree = buildExperimentTree(
+    [
+      { folder: 'labnote/010_Later', title: 'Later run', status: 'planned' },
+      { folder: 'labnote/002_GFP', title: 'GFP expression', status: 'planned' },
+      { folder: 'labnote/003_Old', status: 'completed' },
+      { folder: 'labnote/004_Draft' },
+      { folder: 'labnote/005_Odd', title: '005_Odd', status: 'waiting' },
+      { folder: 'labnote/001_First', title: 'First', status: 'in-progress' },
+    ],
+    { root: 'Experiments', noStatus: '(none)' }
+  );
+
+  it('groups by status in lifecycle order, then other values, then no status', () => {
+    expect(tree.label).toBe('Experiments [6]');
+    expect(tree.children!.map(g => g.label)).toEqual([
+      'planned [2]',
+      'in-progress [1]',
+      'completed [1]',
+      'waiting [1]',
+      '(none) [1]',
+    ]);
+  });
+
+  it('sorts experiments by folder number and labels them with the title', () => {
+    const planned = tree.children![0].children!;
+    expect(planned.map(e => e.label)).toEqual(['002_GFP · GFP expression', '010_Later · Later run']);
+    expect(planned[0].payload).toEqual({
+      folder: 'labnote/002_GFP',
+      readmePath: 'labnote/002_GFP/README.labnote.md',
+    });
+  });
+
+  it('shows the folder alone without a title, or one that repeats it', () => {
+    const labels = tree.children!.flatMap(g => g.children!.map(e => e.label));
+    expect(labels).toContain('003_Old');
+    expect(labels).toContain('005_Odd');
+  });
+
+  it('has an empty root without experiments', () => {
+    const empty = buildExperimentTree([]);
+    expect(empty.label).toBe('Experiments [0]');
+    expect(empty.children).toEqual([]);
   });
 });

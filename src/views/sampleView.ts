@@ -22,6 +22,7 @@ import {
   editSampleInteractive,
   deleteSampleInteractive,
   moveSampleInteractive,
+  changeSampleTypeInteractive,
   insertSampleReference,
   type SampleScope,
 } from '../sampleActions';
@@ -320,6 +321,18 @@ export class SampleTreeView extends ItemView {
             fromScope: sample.scope,
             fromFolder: this.scopeFolder(sample.scope),
             toFolder: this.scopeFolder(toScope),
+            type: sample.type,
+            id: sample.id,
+          });
+        })
+    );
+    menu.addItem(item =>
+      item
+        .setTitle(this.plugin.t('Change type'))
+        .setIcon('replace')
+        .onClick(() => {
+          void changeSampleTypeInteractive(this.app, this.plugin, {
+            folder,
             type: sample.type,
             id: sample.id,
           });

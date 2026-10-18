@@ -2,7 +2,13 @@
  * The text of the "allow this write?" prompt, shared by the MCP server and the
  * built-in AI so both describe a write the same way.
  */
-import type { SampleCreatePreview, SectionEditPreview, ToolPreview, Translator } from '@labnoteo/core';
+import type {
+  SampleCreatePreview,
+  SectionEditPreview,
+  ToolPreview,
+  Translator,
+  WorkflowCreatePreview,
+} from '@labnoteo/core';
 
 /**
  * `prompt`, then the write target, then what the write changes (#69, #113):
@@ -19,7 +25,19 @@ export function buildApprovalMessage(
   if (target) parts.push(t('Target: {0}', target));
   if (preview?.kind === 'sectionEdit') parts.push(describeSectionEdit(t, preview));
   if (preview?.kind === 'sampleCreate') parts.push(describeSampleCreate(t, preview));
+  if (preview?.kind === 'workflowCreate') parts.push(describeWorkflowCreate(t, preview));
   return parts.join('\n\n');
+}
+
+// Two calls on one experiment otherwise read the same (#124).
+function describeWorkflowCreate(t: Translator, p: WorkflowCreatePreview): string {
+  return t(
+    'This creates catalog workflow {0} {1}. File: {2}. It is also added to the checklist in {3}.',
+    p.workflowId,
+    p.workflowName,
+    p.fileName,
+    p.readmePath
+  );
 }
 
 function describeSectionEdit(t: Translator, p: SectionEditPreview): string {

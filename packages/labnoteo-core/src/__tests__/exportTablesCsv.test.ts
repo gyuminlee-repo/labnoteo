@@ -82,6 +82,32 @@ describe('classifyCsvOverwrites', () => {
   it('reads a header with a line break inside quotes as one record', () => {
     expect(classifyCsvOverwrites([{ fresh: '"Name\nlong",Mass\nA,1\nB,2\n', old: T1 }], 1)).toEqual(['updated']);
   });
+
+  // #117: both tables share a header, so the header check alone said `updated`.
+  const RNA = '샘플,값\nRNA,1\n';
+  const DNA = '샘플,값\nDNA,2\n';
+  const PRO = '샘플,값\nPRO,3\n';
+
+  it('asks when the first of two same-header tables is removed', () => {
+    expect(classifyCsvOverwrites([{ fresh: DNA, old: RNA }], 2, [DNA])).toEqual(['moved']);
+  });
+
+  it('asks when the first of three same-header tables is removed', () => {
+    expect(
+      classifyCsvOverwrites(
+        [
+          { fresh: DNA, old: RNA },
+          { fresh: PRO, old: DNA },
+        ],
+        3,
+        [PRO]
+      )
+    ).toEqual(['moved', 'moved']);
+  });
+
+  it('still overwrites edited values without asking while a kept CSV is left over (#92)', () => {
+    expect(classifyCsvOverwrites([{ fresh: '샘플,값\nDNA,5\n', old: DNA }], 2, [DNA])).toEqual(['updated']);
+  });
 });
 
 describe('tableToCsv', () => {
@@ -104,6 +130,22 @@ describe('tableToCsv', () => {
 
   it('quotes cells containing commas, quotes, or newlines', () => {
     expect(tableToCsv([['a,b', 'say "hi"', 'plain']])).toBe('"a,b","say ""hi""",plain\n');
+  });
+
+  // #122: Excel evaluates these instead of showing them.
+  it('puts a tab inside quotes before cells Excel would read as a formula', () => {
+    const cells = ['=2:1', '=B2*1.5', '@reagent;Reagent-1;완충액', '+82-2-000-0000', '-20 °C', '＝1+1', '＠x', '－a'];
+    expect(tableToCsv(cells.map(c => [c]))).toBe(cells.map(c => `"\t${c}"`).join('\n') + '\n');
+  });
+
+  it('leaves signed numbers and a lone dash as they are', () => {
+    const cells = ['-80', '+5', '-1.2e3', '-0.5', '-.5', '-80%', '－80', '-', '+'];
+    expect(tableToCsv(cells.map(c => [c]))).toBe(cells.join('\n') + '\n');
+    expect(tableToCsv([['-1,250']])).toBe('"-1,250"\n');
+  });
+
+  it('still doubles quotes in a protected cell with a comma', () => {
+    expect(tableToCsv([['=A1,"x"']])).toBe('"\t=A1,""x"""\n');
   });
 });
 

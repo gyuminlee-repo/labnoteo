@@ -14,9 +14,14 @@ import {
   type UnitOperationItem,
 } from '../lib/workflowDataLoader';
 import { sampleTypeColors } from '../lib/sampleUtils';
+import { EXPERIMENT_STATUSES } from '../lib/experimentStatus';
+import * as path from '../util/posixPath';
 
 /** A node kind; mirrors the VS Code `contextValue`s used for menu wiring. */
 export type TreeNodeKind =
+  | 'experimentRoot'
+  | 'experimentStatus'
+  | 'experiment'
   | 'sampleRoot'
   | 'sampleType'
   | 'sample'
@@ -38,6 +43,70 @@ export interface TreeNode {
   children?: TreeNode[];
   /** Kind-specific data the platform layer needs for actions. */
   payload?: unknown;
+}
+
+// ===========================================================================
+// Experiments of the vault, by status
+// ===========================================================================
+
+/** One experiment, read from its README's front matter. */
+export interface ExperimentEntry {
+  /** The `labnote/###_Name` folder. */
+  folder: string;
+  title?: string;
+  status?: string;
+}
+
+/**
+ * The vault's experiments grouped by `status`, in {@link EXPERIMENT_STATUSES}
+ * order. Experiments without a status, and each value outside that list, get
+ * groups of their own after those; empty groups are left out. Each experiment
+ * shows as `001_GFP · title` and carries its folder and README path.
+ */
+export function buildExperimentTree(
+  experiments: ExperimentEntry[],
+  labels: { root?: string; noStatus?: string } = {}
+): TreeNode {
+  const noStatus = labels.noStatus ?? '(none)';
+  const groups = new Map<string, ExperimentEntry[]>();
+  for (const e of experiments) {
+    const status = e.status?.trim() ?? '';
+    groups.set(status, [...(groups.get(status) ?? []), e]);
+  }
+  const known = EXPERIMENT_STATUSES as readonly string[];
+  const unknown = [...groups.keys()].filter(s => s && !known.includes(s)).sort((a, b) => a.localeCompare(b));
+  const order = [...known, ...unknown, ''].filter(s => groups.has(s));
+
+  return {
+    id: 'experiments',
+    label: `${labels.root ?? 'Experiments'} [${experiments.length}]`,
+    kind: 'experimentRoot',
+    icon: 'beaker',
+    children: order.map(status => {
+      const members = [...groups.get(status)!].sort((a, b) =>
+        path.basename(a.folder).localeCompare(path.basename(b.folder), undefined, { numeric: true })
+      );
+      return {
+        id: `experimentStatus:${status}`,
+        label: `${status || noStatus} [${members.length}]`,
+        kind: 'experimentStatus' as const,
+        icon: 'folder',
+        payload: { status: status || undefined },
+        children: members.map(e => {
+          const name = path.basename(e.folder);
+          const title = e.title?.trim();
+          return {
+            id: `experiment:${e.folder}`,
+            label: title && title !== name ? `${name} · ${title}` : name,
+            kind: 'experiment' as const,
+            icon: 'file',
+            tooltip: e.folder,
+            payload: { folder: e.folder, readmePath: path.join(e.folder, 'README.labnote.md') },
+          };
+        }),
+      };
+    }),
+  };
 }
 
 // ===========================================================================

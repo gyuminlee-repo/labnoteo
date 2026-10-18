@@ -17,10 +17,11 @@
  * Zero runtime deps: node built-ins + inlined `@labnoteo/core`.
  */
 import { readFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { isValidStatus, EXPERIMENT_STATUSES } from '@labnoteo/core/lib/experimentStatus';
 import { parseFrontMatterYaml, parseIssueMarkers } from '@labnoteo/core';
 import { run as runLargeFileCheck } from './lib/largeFiles';
+import { isVaultRoot, vaultRootFromScript } from './lib/vaultRoot';
 import {
   findExperimentReadmes,
   README_NAME,
@@ -185,7 +186,13 @@ export function run(argv: string[] = process.argv.slice(2)): number {
   const largeFileCode = notesOnly ? 0 : runLargeFileCheck([]);
 
   if (errors.length === 0 && largeFileCode === 0) {
-    console.log(`✅ validate: ${notes.length}개 노트 검증 통과.`);
+    // Zero notes is not a pass: nothing was checked (#129). It stays exit 0 so
+    // a vault without experiments yet does not fail a manual run.
+    if (notes.length === 0) {
+      console.log('⚠ validate: 검증할 실험 노트가 없습니다(labnote/**/README.labnote.md 0개).');
+    } else {
+      console.log(`✅ validate: ${notes.length}개 노트 검증 통과.`);
+    }
     return 0;
   }
   if (errors.length > 0) {
@@ -195,5 +202,15 @@ export function run(argv: string[] = process.argv.slice(2)): number {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  // Here, not in `run()`: the checks read vault-relative paths, and the tests
+  // call `run()` from this repo's root, which is no vault.
+  const root = vaultRootFromScript(fileURLToPath(import.meta.url));
+  if (root) process.chdir(root);
+  if (!isVaultRoot(process.cwd())) {
+    console.error(
+      `❌ validate: 보관함 루트를 찾지 못했습니다(${process.cwd()}에 .labnoteo/ 없음). 보관함 루트에서 실행하세요.`
+    );
+    process.exit(2);
+  }
   process.exit(run());
 }

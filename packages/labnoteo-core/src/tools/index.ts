@@ -32,10 +32,12 @@ import {
 import { getExperimentDir } from '../lib/labnoteStructure';
 import {
   ensureWorkflowResources,
+  getWorkflowFilePath,
   loadWorkflows,
   loadUnitOperations,
   type UnitOperationItem,
 } from '../lib/workflowDataLoader';
+import { WORKFLOWS_CATALOG } from '../catalog';
 import {
   getNextWorkflowNumber,
   createWorkflowFileName,
@@ -130,7 +132,7 @@ export interface ToolDef {
 }
 
 /** {@link ToolDef.describe} result. */
-export type ToolPreview = { error: string } | SectionEditPreview | SampleCreatePreview;
+export type ToolPreview = { error: string } | SectionEditPreview | SampleCreatePreview | WorkflowCreatePreview;
 
 /** `update_section` preview: the section that will be replaced or cleared. */
 export interface SectionEditPreview {
@@ -165,6 +167,16 @@ export interface SampleCreatePreview {
   /** Samples folder the record goes to. */
   folder: string;
   scope: 'local' | 'global';
+}
+
+/** `create_workflow` preview: the file it creates and the README it registers it in (#124). */
+export interface WorkflowCreatePreview {
+  kind: 'workflowCreate';
+  workflowId: string;
+  workflowName: string;
+  /** Expected at approval time; the handler numbers the file again when it runs. */
+  fileName: string;
+  readmePath: string;
 }
 
 // --- small arg helpers -----------------------------------------------------
@@ -372,6 +384,49 @@ async function resolveSampleCreate(
 }
 
 const README_NAME = 'README.labnote.md';
+
+interface ResolvedWorkflowCreate {
+  labnoteDir: string;
+  readmePath: string;
+  info: { id: string; name: string; description: string };
+  fileName: string;
+}
+
+/**
+ * Validate a `create_workflow` call, so the handler and the approval preview
+ * (#124) agree on what it creates. Reads only: the preview runs before the
+ * user allows anything, so a vault without the catalog files yet is read from
+ * the bundled catalog the handler would seed them with.
+ */
+async function resolveWorkflowCreate(
+  ctx: ToolContext,
+  args: Record<string, unknown>
+): Promise<ResolvedWorkflowCreate | { error: string }> {
+  const documentPath = safePath(ctx, args, 'documentPath');
+  const workflowId = str(args, 'workflowId');
+  if (!documentPath) {
+    const outside = outsideVaultError(args, 'documentPath');
+    if (outside) return { error: outside.error! };
+  }
+  if (!documentPath || !workflowId) return { error: 'documentPath and workflowId are required' };
+  const labnoteDir = getExperimentDir(documentPath);
+  if (!labnoteDir) return { error: 'documentPath is not inside a labnote/### experiment folder' };
+  // An experiment is its README; without one the write would create a stray
+  // folder that no experiment view or automation sees.
+  const readmePath = posix.join(labnoteDir, README_NAME);
+  if (!(await ctx.fs.exists(readmePath))) {
+    return { error: `Experiment not found: ${labnoteDir} (no ${README_NAME})` };
+  }
+
+  const seeded = ctx.workspaceRoot && !(await ctx.fs.exists(getWorkflowFilePath(ctx.workspaceRoot, 'workflows')));
+  const workflows = seeded ? WORKFLOWS_CATALOG.workflows : (await loadWorkflows(ctx.fs, ctx.workspaceRoot)).workflows;
+  const wf = workflows.find(w => w.id === workflowId);
+  if (!wf) return { error: `Workflow not found: ${workflowId}` };
+
+  const info = { id: wf.id, name: wf.name, description: wf.description };
+  const sequence = getNextWorkflowNumber(await ctx.fs.list(labnoteDir));
+  return { labnoteDir, readmePath, info, fileName: createWorkflowFileName(sequence, info) };
+}
 
 async function findUnitOp(
   ctx: ToolContext,
@@ -635,37 +690,12 @@ export function createLabnoteTools(): ToolDef[] {
         required: ['documentPath', 'workflowId'],
       },
       async handler(ctx, args) {
-        const documentPath = safePath(ctx, args, 'documentPath');
-        const workflowId = str(args, 'workflowId');
-        if (!documentPath) {
-          const outside = outsideVaultError(args, 'documentPath');
-          if (outside) return outside;
-        }
-        if (!documentPath || !workflowId) {
-          return { ok: false, error: 'documentPath and workflowId are required' };
-        }
-        const labnoteDir = getExperimentDir(documentPath);
-        if (!labnoteDir) {
-          return { ok: false, error: 'documentPath is not inside a labnote/### experiment folder' };
-        }
-        // An experiment is its README; without one the write below would
-        // create a stray folder that no experiment view or automation sees.
-        const readmePath = posix.join(labnoteDir, README_NAME);
-        if (!(await ctx.fs.exists(readmePath))) {
-          return { ok: false, error: `Experiment not found: ${labnoteDir} (no ${README_NAME})` };
-        }
+        const resolved = await resolveWorkflowCreate(ctx, args);
+        if ('error' in resolved) return { ok: false, error: resolved.error };
+        const { labnoteDir, readmePath, info, fileName } = resolved;
 
         await ensureWorkflowResources(ctx.fs, ctx.workspaceRoot);
-        const catalog = await loadWorkflows(ctx.fs, ctx.workspaceRoot);
-        const wf = catalog.workflows.find(w => w.id === workflowId);
-        if (!wf) return { ok: false, error: `Workflow not found: ${workflowId}` };
-
         const experimenter = parseExperimenterFromReadme(await ctx.fs.read(readmePath));
-
-        const existingFiles = await ctx.fs.list(labnoteDir);
-        const sequence = getNextWorkflowNumber(existingFiles);
-        const info = { id: wf.id, name: wf.name, description: wf.description };
-        const fileName = createWorkflowFileName(sequence, info);
         const workflowPath = posix.join(labnoteDir, fileName);
         // The new workflow file cannot be open yet, but the README very well
         // may be — both go through the hook so the host owns note writes.
@@ -677,7 +707,7 @@ export function createLabnoteTools(): ToolDef[] {
 
         const readme = await ctx.fs.read(readmePath);
         const items = parseWorkflowChecklistFromReadme(readme);
-        items.push({ done: false, title: `${wf.id} ${wf.name}`, fileName });
+        items.push({ done: false, title: `${info.id} ${info.name}`, fileName });
         await writeNote(
           ctx,
           readmePath,
@@ -685,6 +715,17 @@ export function createLabnoteTools(): ToolDef[] {
         );
 
         return { ok: true, data: { path: workflowPath, fileName } };
+      },
+      async describe(ctx, args) {
+        const resolved = await resolveWorkflowCreate(ctx, args);
+        if ('error' in resolved) return { error: resolved.error };
+        return {
+          kind: 'workflowCreate',
+          workflowId: resolved.info.id,
+          workflowName: resolved.info.name,
+          fileName: resolved.fileName,
+          readmePath: resolved.readmePath,
+        };
       },
     },
   ];

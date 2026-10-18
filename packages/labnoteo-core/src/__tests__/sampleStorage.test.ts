@@ -26,6 +26,8 @@ import {
   moveSampleFolder,
   planAliasRewrite,
   applyAliasRewrite,
+  planSampleIdRewrite,
+  sampleIdForType,
   planLocalSampleAdoption,
   legacyDefinitionSpan,
   hasReferenceCatalog,
@@ -151,6 +153,19 @@ describe('moving the Global sample folder (#101)', () => {
     expect(result).toMatchObject({ moved: 1, catalogsMoved: 1 });
     expect(await fs.read('new/Reagent_sigma.json')).toBe('{}');
     expect(await fs.exists('old')).toBe(false);
+  });
+
+  it('still reports the move when the emptied folder cannot be removed', async () => {
+    const fs = new MemFileSystem();
+    await putSampleRecord(fs, 'old', 'DNA', 'DNA-1', record('a'));
+    fs.rmdir = async () => {
+      throw new Error('Path is a directory: rm returned EISDIR (is a directory) old');
+    };
+
+    const result = await moveSampleFolder(fs, 'old', 'new', TYPES);
+
+    expect(result).toMatchObject({ moved: 1, skipped: [] });
+    expect(Object.keys(await loadSamplesByType(fs, 'new', 'DNA'))).toEqual(['DNA-1']);
   });
 });
 
@@ -477,6 +492,36 @@ describe('findSampleDefinitionMatch (#37)', () => {
       start: text.indexOf(def),
       length: def.length,
     });
+  });
+});
+
+// #116: a sample registered under the wrong type moves to the right one.
+describe('sampleIdForType', () => {
+  it('swaps the type prefix and keeps the numbers', () => {
+    expect(sampleIdForType('RNA', 'RNA-1792298689414-3', 'DNA')).toBe('DNA-1792298689414-3');
+    expect(sampleIdForType('RNA', 'rna-12', 'Cell_Line')).toBe('Cell_Line-12');
+    expect(sampleIdForType('RNA', 'DNA-12', 'Primer')).toBeUndefined();
+  });
+});
+
+describe('planSampleIdRewrite', () => {
+  const rewrite = (text: string) =>
+    applyAliasRewrite(text, planSampleIdRewrite(text, 'RNA', 'RNA-1', 'DNA', 'DNA-1'));
+
+  it('rewrites references and definitions, keeping alias, description and keyword case', () => {
+    expect(rewrite('@rna;RNA-1;pUC19;플라스미드\n사용: RNA-1;pUC19, rna-1')).toBe(
+      '@dna;DNA-1;pUC19;플라스미드\n사용: DNA-1;pUC19, DNA-1'
+    );
+    expect(rewrite('@RNA:RNA-1;x')).toBe('@DNA:DNA-1;x');
+  });
+
+  it('leaves other ids alone', () => {
+    expect(rewrite('RNA-12 RNA-1-3 XRNA-1 RNA-1')).toBe('RNA-12 RNA-1-3 XRNA-1 DNA-1');
+  });
+
+  it('tells definitions from references', () => {
+    const edits = planSampleIdRewrite('@rna;RNA-1;a RNA-1', 'RNA', 'RNA-1', 'DNA', 'DNA-1');
+    expect(edits.map(e => e.kind)).toEqual(['definition', 'reference']);
   });
 });
 

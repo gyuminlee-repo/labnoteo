@@ -76,11 +76,17 @@ export async function exportTablesToCsv(plugin: LabnotePlugin, file: TFile): Pro
       ? ` (${plugin.t('row {0}: {1} → {2}', String(diff.row), clip(diff.from), clip(diff.to))})`
       : '';
   };
+  const siblings = await plugin.fs.list(dir);
   const existingCount = Math.max(
     0,
-    ...siblingTableCsvs(file.name, await plugin.fs.list(dir)).map(f => Number(/_table(\d+)\.csv$/.exec(f)![1]))
+    ...siblingTableCsvs(file.name, siblings).map(f => Number(/_table(\d+)\.csv$/.exec(f)![1]))
   );
-  const kinds = classifyCsvOverwrites(outputs, existingCount);
+  const staleOld = await Promise.all(
+    staleTableCsvs(file.name, siblings, tables.length).map(async name =>
+      normalizeCsv(await plugin.fs.read(posix.join(dir, name)))
+    )
+  );
+  const kinds = classifyCsvOverwrites(outputs, existingCount, staleOld);
 
   const listOf = (kind: CsvOverwriteKind) =>
     outputs

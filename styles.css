@@ -78,6 +78,13 @@
   font-weight: var(--font-medium);
 }
 
+/* A marker whose ID another marker of the experiment also uses: both would
+   land in one issue. Editor only; the title says where the other one is. */
+.labnote-issue-marker-duplicate {
+  text-decoration: wavy underline var(--text-warning);
+  text-underline-offset: 3px;
+}
+
 /* --- Meta date fields (click to pick a date/time) ------------------------ */
 .labnote-date-value {
   cursor: pointer;

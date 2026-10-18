@@ -289,4 +289,21 @@ describe('buildApprovalMessage', () => {
       ).toBe('Allow?\n\nThis adds to Reagent sample Reagent-3.\nSaved in the global samples folder g.');
     });
   });
+
+  // #124
+  it('names the catalog workflow, the new file and the README of create_workflow', () => {
+    const readmePath = 'labnote/043_X/README.labnote.md';
+    expect(
+      buildApprovalMessage(t, 'Allow?', readmePath, {
+        kind: 'workflowCreate',
+        workflowId: 'WT110',
+        workflowName: 'Micro-scale Parallel Cell Fermentation',
+        fileName: '002_WT110_Micro-scale_Parallel_Cell_Fermentation.labnote.md',
+        readmePath,
+      })
+    ).toBe(
+      `Allow?\n\nTarget: ${readmePath}\n\nThis creates catalog workflow WT110 Micro-scale Parallel Cell Fermentation. ` +
+        `File: 002_WT110_Micro-scale_Parallel_Cell_Fermentation.labnote.md. It is also added to the checklist in ${readmePath}.`
+    );
+  });
 });

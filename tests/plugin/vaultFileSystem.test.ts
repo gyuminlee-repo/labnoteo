@@ -165,3 +165,34 @@ describe('VaultFileSystem path handling', () => {
     expect(outcomes).toContainEqual(final);
   });
 });
+
+/** Desktop Obsidian removes with `fs.rm`, which throws EISDIR for a folder unless recursive. */
+class FsRmAdapter extends FakeAdapter {
+  async rmdir(p: string, recursive: boolean): Promise<void> {
+    if (!recursive) {
+      const err = new Error(`Path is a directory: rm returned EISDIR (is a directory) ${p}`) as ErrnoError;
+      err.code = 'EISDIR';
+      throw err;
+    }
+    await super.rmdir(p, recursive);
+  }
+}
+
+describe('VaultFileSystem rmdir on the desktop adapter', () => {
+  it('removes an empty folder', async () => {
+    const adapter = new FsRmAdapter();
+    const fs = new VaultFileSystem(asAdapter(adapter));
+    await fs.mkdir('resources/labsamples');
+    await fs.rmdir('resources/labsamples');
+    expect(adapter.dirs.has('resources/labsamples')).toBe(false);
+  });
+
+  it('leaves a folder that still has files', async () => {
+    const adapter = new FsRmAdapter();
+    const fs = new VaultFileSystem(asAdapter(adapter));
+    await fs.write('resources/labsamples/DNA.json', '{}');
+    await fs.rmdir('resources/labsamples');
+    expect(adapter.dirs.has('resources/labsamples')).toBe(true);
+    expect(adapter.files.has('resources/labsamples/DNA.json')).toBe(true);
+  });
+});

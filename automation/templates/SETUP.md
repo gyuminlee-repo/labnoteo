@@ -102,7 +102,7 @@ vault/
 
 | 경로 | 설명 |
 | --- | --- |
-| `.labnoteo/scripts/validate.mjs` | status 허용값 / 중복 id / `@issue` 마커 형식·폴더 내 ID 중복 / 대용량 파일 중앙 재검사 (결정적). `--notes-only`는 마지막 대용량 재검사를 생략(훅 전용) |
+| `.labnoteo/scripts/validate.mjs` | status 허용값 / 중복 id / `@issue` 마커 형식·폴더 내 ID 중복 / 대용량 파일 중앙 재검사 (결정적). `--notes-only`는 마지막 대용량 재검사를 생략(훅 전용). 어느 폴더에서 실행해도 스크립트가 있는 보관함을 검사하고, 보관함을 찾지 못하면 종료 코드 2. 실험 노트가 0개면 통과 대신 경고 |
 | `.github/workflows/validate.yml` | `labnote/**` push마다 `node .labnoteo/scripts/validate.mjs` 실행. Actions 탭에서 **수동 실행**도 가능(항상 전체 검사) |
 
 ### Experiment ↔ Issue (결정적, AI 불필요)
@@ -222,9 +222,13 @@ node .labnoteo/scripts/validate.mjs --notes-only  # 위에서 대용량 재검�
 
 - 설치한 뒤 **직접 고치지 않은** 파일은 새 버전으로 통째로 교체합니다. 어느 템플릿과
   맞췄는지는 `.labnoteo/installed.json`에 기록되며, 이 파일도 함께 커밋합니다.
-- `AGENTS.md`는 마커 블록만, `.gitignore`/`CLAUDE.md`는 누락 줄만 갱신되므로 사용자
-  수정이 보존됩니다.
-- **직접 고친** 파일(`QUICKSTART.md`에 덧붙인 메모 등)과 보관함에 **없는** 파일은
+- `AGENTS.md`와 `QUICKSTART.md`는 마커 블록만, `.gitignore`/`CLAUDE.md`는 누락 줄만
+  갱신되므로 사용자 수정이 보존됩니다. 연구실 규칙은 `QUICKSTART.md`의 마커 블록 **아래**에
+  적으세요.
+- 마커가 없는 옛 `QUICKSTART.md`(0.99.0 이전)는 고치지 않았으면 자동으로 마커 형식으로
+  바뀝니다. 직접 고쳤다면 아래처럼 목록에만 오르고, 설정 명령에서 승인하면 새 형식으로
+  바뀝니다(고친 내용은 사라지므로 먼저 옮겨 두세요).
+- **직접 고친** 파일과 보관함에 **없는** 파일은
   건드리지 않고 목록만 알려 줍니다. 그때 "Setup research automation" 명령을 다시
   실행하면 파일마다 덮어쓸지 묻습니다. 한 번 알린 파일은 템플릿이 다시 바뀔 때까지
   다시 알리지 않습니다.

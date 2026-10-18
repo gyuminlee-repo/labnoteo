@@ -119,6 +119,23 @@ describe('insertUnitOperation', () => {
     });
   });
 
+  // #118: the same unit operation run twice needs names to tell the runs apart.
+  it('puts the alias after [id name] in the heading', async () => {
+    const { host, inserted } = makeHost({ targetPath: VALID_WORKFLOW, doc: EMPTY_WORKFLOW });
+
+    await insertUnitOperation(host, { opId: 'UHW180', opName: 'Incubation', opType: 'hw', alias: ' 1차 37도 ' });
+
+    expect(inserted[0]).toContain('\n### [UHW180 Incubation] 1차 37도\n');
+  });
+
+  it('writes the bare heading for an empty alias', async () => {
+    const { host, inserted } = makeHost({ targetPath: VALID_WORKFLOW, doc: EMPTY_WORKFLOW });
+
+    await insertUnitOperation(host, { opId: 'UHW180', opName: 'Incubation', opType: 'hw', alias: '  ' });
+
+    expect(inserted[0]).toContain('\n### [UHW180 Incubation]\n');
+  });
+
   it('places the block at the end of the unit-operations section', async () => {
     const { host, doc } = makeHost({ targetPath: VALID_WORKFLOW, doc: EMPTY_WORKFLOW });
 

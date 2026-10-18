@@ -12,7 +12,8 @@ Claude Code, Codex, Cursor 등)는 아래 규칙을 따라 작업합니다.
 - 최초 1회 `git config core.hooksPath .labnoteo/hooks`를 실행해 pre-commit 훅을 활성화합니다.
 - 커밋 전 `node .labnoteo/scripts/check-large-files.mjs`로 대용량 파일을 확인합니다.
 - `git commit --no-verify`는 **금지**입니다 (대용량 훅 우회 방지).
-- push 전 `node .labnoteo/scripts/validate.mjs`가 통과하는지 확인합니다.
+- push 전 보관함 루트에서 `node .labnoteo/scripts/validate.mjs`가 통과하는지 확인합니다.
+  `⚠ 검증할 실험 노트가 없습니다`는 통과가 아닙니다(실험 폴더가 없다는 뜻).
 - **`.labnoteo/` 아래가 갱신되어 있으면 같은 커밋에 포함합니다.** GitHub Actions는
   플러그인이 아니라 저장소에 커밋된 스크립트를 실행하므로, 사용자가 *연구노트 자동화
   설정*을 다시 돌려 스크립트가 바뀐 상태에서 노트만 커밋하면 서버는 계속 옛 동작을

@@ -7,13 +7,14 @@
  * (when missing) and opens it.
  */
 import type { LabnoteHost } from '@labnoteo/core';
-import { QUICKSTART_DOC_CONTENT, QUICKSTART_DOC_PATH } from './scaffold/assets';
+import { QUICKSTART_ASSET, QUICKSTART_DOC_CONTENT, QUICKSTART_DOC_PATH } from './scaffold/assets';
+import { managedFileContent } from './scaffold/scaffold';
 import { compareVersions, contentHash, readInstallRecord, writeInstallRecord } from './scaffold/installRecord';
 
 export async function openUserGuide(host: LabnoteHost, pluginVersion: string): Promise<void> {
   // An existing copy may carry the researcher's own notes, so never overwrite.
   if (!(await host.fs.exists(QUICKSTART_DOC_PATH))) {
-    await host.fs.write(QUICKSTART_DOC_PATH, QUICKSTART_DOC_CONTENT);
+    await host.fs.write(QUICKSTART_DOC_PATH, managedFileContent(QUICKSTART_ASSET));
     // Recorded so later plugin updates refresh the guide while it stays unedited.
     const record = await readInstallRecord(host);
     const newer = record.pluginVersion && compareVersions(record.pluginVersion, pluginVersion) > 0;

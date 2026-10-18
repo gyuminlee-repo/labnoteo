@@ -8,25 +8,31 @@
 import { App, Modal, Notice, Platform, Setting } from 'obsidian';
 import * as posix from '@labnoteo/core/posix';
 import type LabnotePlugin from './main';
+import { isSameSampleFolder, noteLabsamplesFolder } from '@labnoteo/core/lib/sampleStorage';
 import {
   editSampleInteractive,
   deleteSampleInteractive,
+  changeSampleTypeInteractive,
+  moveSampleInteractive,
   resolveSampleDefinition,
   type ResolvedSampleDefinition,
 } from './sampleActions';
 
-/** Resolve `(type, id)` then show the definition popup (or a Notice if absent). */
+/**
+ * Resolve `(type, id)` then show the definition popup (or a Notice if absent).
+ * `resolved` skips the lookup when the caller already knows the record.
+ */
 export async function openSampleDefinition(
   app: App,
   plugin: LabnotePlugin,
-  opts: { type: string; id: string; docPath: string }
+  opts: { type: string; id: string; docPath: string; resolved?: ResolvedSampleDefinition }
 ): Promise<void> {
-  const resolved = await resolveSampleDefinition(plugin, opts);
+  const resolved = opts.resolved ?? (await resolveSampleDefinition(plugin, opts));
   if (!resolved) {
     new Notice(plugin.t('No definition found for {0}', opts.id));
     return;
   }
-  new SampleDefinitionModal(app, plugin, opts.type, opts.id, resolved).open();
+  new SampleDefinitionModal(app, plugin, opts.type, opts.id, opts.docPath, resolved).open();
 }
 
 class SampleDefinitionModal extends Modal {
@@ -35,9 +41,20 @@ class SampleDefinitionModal extends Modal {
     private readonly plugin: LabnotePlugin,
     private readonly type: string,
     private readonly id: string,
+    private readonly docPath: string,
     private readonly resolved: ResolvedSampleDefinition
   ) {
     super(app);
+  }
+
+  /** The other scope's folder, or undefined when the note has no Local one. */
+  private moveTarget(): { toFolder: string; label: string } | undefined {
+    const { scope, folder } = this.resolved;
+    const globalFolder = this.plugin.settings.globalSampleFolder;
+    if (scope === 'local') return { toFolder: globalFolder, label: this.plugin.t('Move to Global') };
+    const local = this.docPath ? noteLabsamplesFolder(this.docPath, globalFolder) : '';
+    if (!local || isSameSampleFolder(local, folder)) return undefined;
+    return { toFolder: local, label: this.plugin.t('Move to Local') };
   }
 
   onOpen(): void {
@@ -91,6 +108,33 @@ class SampleDefinitionModal extends Modal {
       buttons.addButton(btn =>
         btn.setButtonText(t('Delete sample')).setWarning().onClick(async () => {
           const ok = await deleteSampleInteractive(this.app, this.plugin, {
+            folder,
+            type: this.type,
+            id: this.id,
+          });
+          if (ok) this.close();
+        })
+      );
+      // #121: reachable from the keyboard through "Open sample definition",
+      // unlike the Samples sidebar's context menu.
+      const move = this.moveTarget();
+      if (move) {
+        buttons.addButton(btn =>
+          btn.setButtonText(move.label).onClick(async () => {
+            const ok = await moveSampleInteractive(this.app, this.plugin, {
+              fromScope: scope === 'local' ? 'local' : 'global',
+              fromFolder: folder,
+              toFolder: move.toFolder,
+              type: this.type,
+              id: this.id,
+            });
+            if (ok) this.close();
+          })
+        );
+      }
+      buttons.addButton(btn =>
+        btn.setButtonText(t('Change type')).onClick(async () => {
+          const ok = await changeSampleTypeInteractive(this.app, this.plugin, {
             folder,
             type: this.type,
             id: this.id,

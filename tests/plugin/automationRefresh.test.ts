@@ -6,7 +6,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { LabnoteHost } from '@labnoteo/core';
 import { MemFileSystem } from '../../packages/labnoteo-core/src/fs/memFileSystem';
-import { refreshAutomationFiles, setupResearchAutomationCommand } from '../../src/scaffold/scaffold';
+import {
+  applyAsset,
+  managedFileContent,
+  refreshAutomationFiles,
+  setupResearchAutomationCommand,
+} from '../../src/scaffold/scaffold';
 import {
   INSTALL_RECORD_PATH,
   ISSUE_SYNC_WORKFLOW_PATH,
@@ -267,6 +272,97 @@ describe('setup command and refresh together', () => {
   });
 });
 
+// #127: the lab's own text in QUICKSTART.md survives updates.
+describe('QUICKSTART managed block', () => {
+  const GUIDE: ScaffoldAsset = {
+    vaultPath: 'GUIDE.md',
+    content: 'guide v2\n',
+    merge: 'managed-block',
+    migrateUnmarked: true,
+    trailer: 'Write below.',
+  };
+  const WF: ScaffoldAsset = { vaultPath: ISSUE_SYNC_WORKFLOW_PATH, content: 'wf\n' };
+  const legacy = { 'GUIDE.md': [contentHash('guide v0\n')] };
+  const marked = (inner: string, below: string) =>
+    `${MANAGED_BLOCK_BEGIN}\n${inner}\n${MANAGED_BLOCK_END}\n\n${below}\n`;
+
+  it('is written as the block, then the line inviting the lab text', () => {
+    expect(managedFileContent(GUIDE)).toBe(marked('guide v2', 'Write below.'));
+  });
+
+  it('refreshes only the block and keeps what is written below it', async () => {
+    const { fs, asHost } = makeHost({
+      [ISSUE_SYNC_WORKFLOW_PATH]: 'wf\n',
+      'GUIDE.md': marked('guide v1', 'Our lab: label tubes in pencil.'),
+    });
+
+    const result = await refreshAutomationFiles(asHost, '1.1.0', [WF, GUIDE], legacy);
+
+    expect(result.updated).toEqual(['GUIDE.md']);
+    expect(await fs.read('GUIDE.md')).toBe(marked('guide v2', 'Our lab: label tubes in pencil.'));
+  });
+
+  it.each([
+    ['recorded', { [INSTALL_RECORD_PATH]: record({ 'GUIDE.md': contentHash('guide v1\n') }) }, 'guide v1\n'],
+    ['earlier release', {}, 'guide v0\n'],
+    ['current template', {}, 'guide v2\n'],
+  ])('moves an unedited unmarked copy (%s) to the new form on load', async (_how, extra, text) => {
+    const { fs, asHost } = makeHost({ 'GUIDE.md': text, ...extra });
+
+    const result = await refreshAutomationFiles(asHost, '1.1.0', [WF, GUIDE], legacy);
+
+    expect(result.updated).toEqual(['GUIDE.md']);
+    expect(await fs.read('GUIDE.md')).toBe(managedFileContent(GUIDE));
+  });
+
+  it('leaves an edited unmarked copy for the setup command, once', async () => {
+    const { fs, host, asHost } = makeHost({
+      [ISSUE_SYNC_WORKFLOW_PATH]: 'wf\n',
+      'GUIDE.md': 'guide v1\nOur rule\n',
+      [INSTALL_RECORD_PATH]: record({ 'GUIDE.md': contentHash('guide v1\n') }),
+    });
+
+    const first = await refreshAutomationFiles(asHost, '1.1.0', [WF, GUIDE], legacy);
+    const second = await refreshAutomationFiles(asHost, '1.1.0', [WF, GUIDE], legacy);
+
+    expect(first.pending).toEqual(['GUIDE.md']);
+    expect(second.pending).toEqual([]);
+    expect(await fs.read('GUIDE.md')).toBe('guide v1\nOur rule\n');
+    expect(host.notify).toHaveBeenCalledTimes(1);
+  });
+
+  it('replaces an unedited unmarked copy in the setup command without appending a second guide', async () => {
+    const { fs, host, asHost } = makeHost({ 'GUIDE.md': 'guide v1\n' });
+
+    expect(await applyAsset(asHost, GUIDE, contentHash('guide v1\n'), legacy)).toBe('written');
+
+    expect(host.confirm).not.toHaveBeenCalled();
+    const text = await fs.read('GUIDE.md');
+    expect(text).toBe(managedFileContent(GUIDE));
+    expect(text.split(MANAGED_BLOCK_BEGIN)).toHaveLength(2);
+  });
+
+  it('asks before replacing an edited unmarked copy in the setup command', async () => {
+    const { fs, host, asHost } = makeHost({ 'GUIDE.md': 'guide v1\nOur rule\n' });
+
+    host.confirm.mockResolvedValueOnce(false);
+    expect(await applyAsset(asHost, GUIDE, contentHash('guide v1\n'), legacy)).toBe('skipped');
+    expect(await fs.read('GUIDE.md')).toBe('guide v1\nOur rule\n');
+    expect(host.confirm).toHaveBeenCalledWith(expect.stringContaining('updates change only the marked block'), expect.anything());
+
+    expect(await applyAsset(asHost, GUIDE, contentHash('guide v1\n'), legacy)).toBe('written');
+    expect(await fs.read('GUIDE.md')).toBe(managedFileContent(GUIDE));
+  });
+
+  it('does not put a block back into an unmarked file of an asset without migrateUnmarked', async () => {
+    const { fs, asHost } = makeHost({ [ISSUE_SYNC_WORKFLOW_PATH]: 'wf\n', 'AGENTS.md': 'our rules\n' });
+
+    await refreshAutomationFiles(asHost, '1.1.0', ASSETS);
+
+    expect(await fs.read('AGENTS.md')).toBe('our rules\n');
+  });
+});
+
 describe('compareVersions', () => {
   it('orders numerically, not as text', () => {
     expect(compareVersions('0.10.0', '0.9.0')).toBeGreaterThan(0);
@@ -280,6 +376,8 @@ describe('refresh strings are translated', () => {
     'Updated {0} automation file(s) to this plugin version: {1}',
     'These automation files changed after they were installed, or cannot be checked against an earlier version, so they were left as they are: {0}. Run "Setup research automation" to get the new version.',
     'These automation files are not in the vault: {0}. Run "Setup research automation" to install them if you need them.',
+    '{0} differs from the new version. Edits made after it was installed are lost if you replace it. Replace it with the new version?',
+    'From then on, updates change only the marked block and keep what you write below it.',
   ])('%s', key => {
     expect(obsidianKo[key]).toBeTruthy();
   });
@@ -293,7 +391,10 @@ describe('earlier template hashes (#93)', () => {
   it('cover installed files only, and every plain template file', () => {
     const paths = new Set(SCAFFOLD_ASSETS.map(a => a.vaultPath));
     for (const path of Object.keys(LEGACY_TEMPLATE_HASHES)) expect(paths).toContain(path);
-    const plain = SCAFFOLD_ASSETS.filter(a => !a.merge && !a.seed && !a.owned).map(a => a.vaultPath);
+    // A migrated managed block still needs them to tell an unedited unmarked copy.
+    const plain = SCAFFOLD_ASSETS.filter(a => (!a.merge || a.migrateUnmarked) && !a.seed && !a.owned).map(
+      a => a.vaultPath
+    );
     expect(Object.keys(LEGACY_TEMPLATE_HASHES).sort()).toEqual(plain.sort());
   });
 

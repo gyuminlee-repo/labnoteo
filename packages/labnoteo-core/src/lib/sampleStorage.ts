@@ -575,6 +575,49 @@ export function planAliasRewrite(
   return edits;
 }
 
+/**
+ * The id a sample of `oldType` gets as a `newType` one: the type prefix swapped,
+ * the numbers kept (`RNA-1792298689414-3` → `DNA-1792298689414-3`, #116).
+ * Undefined when `oldId` does not start with `oldType-`.
+ */
+export function sampleIdForType(oldType: string, oldId: string, newType: string): string | undefined {
+  if (oldId.slice(0, oldType.length).toLowerCase() !== oldType.toLowerCase()) return undefined;
+  const numbers = oldId.slice(oldType.length);
+  return /^(?:-\d+)+$/.test(numbers) ? `${newType}${numbers}` : undefined;
+}
+
+/**
+ * Plan renaming sample `oldId` (a `oldType` sample) to `newId` of `newType`
+ * throughout `text` (#116): every reference, and the `@type;` keyword of a
+ * definition, which keeps its case (`@rna;` → `@dna;`). Case is ignored, as in
+ * the sync, and the id must stand alone: `RNA-1` does not touch `RNA-12` or
+ * `RNA-1-3`. Code blocks are included, since the sync registers them too.
+ */
+export function planSampleIdRewrite(
+  text: string,
+  oldType: string,
+  oldId: string,
+  newType: string,
+  newId: string
+): AliasRewriteEdit[] {
+  const pattern = new RegExp(
+    `(?:(@${escapeRegExp(oldType)})([;:])|(?<![\\p{L}\\p{N}_]))${escapeRegExp(oldId)}(?![\\p{L}\\p{N}_]|-\\d)`,
+    'giu'
+  );
+  const edits: AliasRewriteEdit[] = [];
+  for (const m of text.matchAll(pattern)) {
+    const keyword = m[1];
+    if (keyword === undefined) {
+      edits.push({ start: m.index, end: m.index + m[0].length, text: newId, kind: 'reference' });
+      continue;
+    }
+    const typed = keyword.slice(1);
+    const type = typed === typed.toLowerCase() && typed !== typed.toUpperCase() ? newType.toLowerCase() : newType;
+    edits.push({ start: m.index, end: m.index + m[0].length, text: `@${type}${m[2]}${newId}`, kind: 'definition' });
+  }
+  return edits;
+}
+
 /** `text` with non-overlapping {@link AliasRewriteEdit}s applied. */
 export function applyAliasRewrite(text: string, edits: readonly AliasRewriteEdit[]): string {
   let out = text;
@@ -987,7 +1030,13 @@ export async function moveSampleFolder(
     await fs.remove(path.join(from, name));
     result.catalogsMoved++;
   }
-  await fs.rmdir(from);
+  // The samples have moved; a folder that will not go only leaves an empty
+  // directory behind, which must not turn the whole move into a failure.
+  try {
+    await fs.rmdir(from);
+  } catch {
+    // ignore
+  }
   return result;
 }
 

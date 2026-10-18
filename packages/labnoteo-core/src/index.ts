@@ -87,6 +87,7 @@ export {
   ISSUE_MARKER_ID_PREFIX,
   parseIssueMarkers,
   findIssueMarkerRanges,
+  fencedCodeRanges,
   generateIssueMarkerId,
   resetIssueMarkerIdCounter,
   renderIssueMarker,
@@ -111,6 +112,7 @@ export {
   type ToolPreview,
   type SectionEditPreview,
   type SampleCreatePreview,
+  type WorkflowCreatePreview,
   type JsonSchema,
 } from './tools';
 
@@ -167,11 +169,13 @@ export {
 
 // === Platform-neutral tree model (VS Code providers + Obsidian ItemViews) ===
 export {
+  buildExperimentTree,
   buildWorkflowTree,
   buildSampleTree,
   filterSampleTree,
   type TreeNode,
   type TreeNodeKind,
+  type ExperimentEntry,
   type WorkflowTreeData,
   type SampleScope,
   type SampleTreeRoots,

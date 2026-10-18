@@ -141,8 +141,9 @@ export interface IssueMarkerRange {
  *
  * Unlike {@link parseIssueMarkers} this does not track code fences — the editor
  * hands over arbitrary slices of the document, where a fence may have opened
- * outside the slice. Reading mode filters code by DOM instead, and a stray
- * highlight inside a code block is cosmetic.
+ * outside the slice. The editor drops the markers inside
+ * {@link fencedCodeRanges} of the whole document instead (#120), and reading
+ * mode filters code by DOM.
  */
 export function findIssueMarkerRanges(text: string): IssueMarkerRange[] {
   const ranges: IssueMarkerRange[] = [];
@@ -157,6 +158,32 @@ export function findIssueMarkerRanges(text: string): IssueMarkerRange[] {
     }
     offset += line.length + 1; // + the newline consumed by split
   }
+  return ranges;
+}
+
+/**
+ * Character ranges of the fenced code blocks in `md`, fence lines included,
+ * fenced exactly as {@link parseIssueMarkers} fences them: a marker the editor
+ * styles must be one `issue-sync` and `validate` read (#120). A fence left
+ * open runs to the end of the text.
+ */
+export function fencedCodeRanges(md: string): IssueMarkerRange[] {
+  const ranges: IssueMarkerRange[] = [];
+  let offset = 0;
+  let start = -1;
+  for (const line of md.split('\n')) {
+    const end = offset + line.length;
+    if (FENCE_RE.test(line)) {
+      if (start === -1) {
+        start = offset;
+      } else {
+        ranges.push({ start, end });
+        start = -1;
+      }
+    }
+    offset = end + 1;
+  }
+  if (start !== -1) ranges.push({ start, end: md.length });
   return ranges;
 }
 
@@ -234,7 +261,7 @@ export function renderIssueMarker(marker: { id: string; title: string }): string
  */
 export type IssueMarkerInsertion =
   | { edit: { from: number; to: number; insert: string }; cursor: number }
-  | { reason: 'conflict' | 'table' | 'frontMatter' };
+  | { reason: 'conflict' | 'table' | 'frontMatter' | 'codeBlock' };
 
 const isHeadingLine = (line: string): boolean => /^ {0,3}#{1,6}(?:\s|$)/.test(line);
 const isTableRow = (line: string): boolean => /^\s*\|/.test(line);
@@ -258,6 +285,8 @@ const isTableRow = (line: string): boolean => /^\s*\|/.test(line);
  *   the first is read, so the second would merge into its title.
  * - A selection starting in the front matter, its `---` lines included, is
  *   refused (`frontMatter`): a marker there is broken YAML, not an issue (#87).
+ * - A line in a fenced code block, fences included, is refused (`codeBlock`):
+ *   the automation skips code, so the marker would open no issue (#120).
  *
  * `topic`, when given, is the topic instead of the selected text (#100: typed
  * for a bare caret). Where the marker goes is decided the same way.
@@ -291,6 +320,9 @@ export function planIssueMarkerInsertion(
   const lineEnd = lineEndOf(anchor);
   const line = doc.slice(lineStart, lineEnd);
 
+  if (fencedCodeRanges(doc).some(r => lineStart >= r.start && lineStart <= r.end)) {
+    return { reason: 'codeBlock' };
+  }
   if (isTableRow(line)) return { reason: 'table' };
 
   let edit: { from: number; to: number; insert: string };

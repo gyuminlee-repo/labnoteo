@@ -4,7 +4,8 @@
  *
  * Thin Obsidian wiring over the {@link SCAFFOLD_ASSETS} registry: for each asset
  * it appends missing lines (merge `append-missing`, e.g. `.gitignore`), upserts
- * the labnoteo marker block (merge `managed-block`, e.g. `AGENTS.md`), or
+ * the labnoteo marker block (merge `managed-block`, e.g. `AGENTS.md`,
+ * `QUICKSTART.md`), or
  * writes the file, asking `host.confirm` before overwriting an existing file.
  * After writing it points researchers to `QUICKSTART.md` and admins to
  * `.labnoteo/SETUP.md` (with the one-time hook-enable step). The scaffold never
@@ -109,15 +110,53 @@ function sameContent(a: string, b: string): boolean {
   return a.replace(/\r\n/g, '\n') === b.replace(/\r\n/g, '\n');
 }
 
-/** Apply a single asset, returning which tally to bump. */
+/** A `managed-block` file as first written: the block, then the asset's trailer. */
+export function managedFileContent(asset: ScaffoldAsset): string {
+  const block = upsertManagedBlock('', asset.content);
+  return asset.trailer ? `${block}\n${asset.trailer}\n` : block;
+}
+
+/**
+ * Whether an unmarked copy of a `migrateUnmarked` asset is one a release wrote
+ * whole and nobody edited: the current template, the template it was last
+ * reconciled with, or one an earlier release shipped.
+ */
+function isUnedited(
+  current: string,
+  asset: ScaffoldAsset,
+  recorded: string | undefined,
+  legacy: Readonly<Record<string, readonly string[]>>
+): boolean {
+  if (sameContent(current, asset.content)) return true;
+  const hash = contentHash(current);
+  return hash === recorded || (legacy[asset.vaultPath]?.includes(hash) ?? false);
+}
+
+/**
+ * Apply a single asset, returning which tally to bump. `recorded` is the
+ * install record's hash for the file, used to tell an unedited unmarked copy.
+ */
 export async function applyAsset(
   host: LabnoteHost,
-  asset: ScaffoldAsset
+  asset: ScaffoldAsset,
+  recorded?: string,
+  legacy: Readonly<Record<string, readonly string[]>> = LEGACY_TEMPLATE_HASHES
 ): Promise<keyof ScaffoldResult | undefined> {
   const exists = await host.fs.exists(asset.vaultPath);
 
   if (asset.merge === 'managed-block') {
     const current = exists ? await host.fs.read(asset.vaultPath) : '';
+    if (!current.includes(MANAGED_BLOCK_BEGIN) && (!exists || asset.migrateUnmarked)) {
+      if (exists && !isUnedited(current, asset, recorded, legacy)) {
+        const ok = await host.confirm(
+          `${host.t('{0} differs from the new version. Edits made after it was installed are lost if you replace it. Replace it with the new version?', asset.vaultPath)} ${host.t('From then on, updates change only the marked block and keep what you write below it.')}`,
+          { confirmLabel: host.t('Overwrite') }
+        );
+        if (!ok) return 'skipped';
+      }
+      await host.fs.write(asset.vaultPath, managedFileContent(asset));
+      return 'written';
+    }
     const updated = upsertManagedBlock(current, asset.content);
     if (updated === current) return undefined; // block already up to date
     await host.fs.write(asset.vaultPath, updated);
@@ -136,9 +175,13 @@ export async function applyAsset(
     // Already up to date (e.g. QUICKSTART.md written by "Open user guide"):
     // nothing to overwrite, so do not ask.
     if (sameContent(await host.fs.read(asset.vaultPath), asset.content)) return undefined;
-    const ok = await host.confirm(host.t('Overwrite {0}?', asset.vaultPath), {
-      confirmLabel: host.t('Overwrite'),
-    });
+    const ok = await host.confirm(
+      host.t(
+        '{0} differs from the new version. Edits made after it was installed are lost if you replace it. Replace it with the new version?',
+        asset.vaultPath
+      ),
+      { confirmLabel: host.t('Overwrite') }
+    );
     if (!ok) return 'skipped';
   }
 
@@ -195,15 +238,15 @@ export async function setupResearchAutomationCommand(
   pluginVersion: string
 ): Promise<void> {
   const result: ScaffoldResult = { written: 0, merged: 0, skipped: 0, removed: 0 };
+  const record = await readInstallRecord(host);
 
   for (const asset of SCAFFOLD_ASSETS) {
-    const tally = await applyAsset(host, asset);
+    const tally = await applyAsset(host, asset, record.files[asset.vaultPath]);
     if (tally) result[tally] += 1;
   }
 
   // A declined overwrite is recorded too: the file then counts as edited, and
   // plugin load only mentions it again once the template changes.
-  const record = await readInstallRecord(host);
   const files = { ...record.files };
   for (const asset of SCAFFOLD_ASSETS) {
     if (!asset.seed) files[asset.vaultPath] = contentHash(asset.content);
@@ -278,7 +321,9 @@ function shortList(host: LabnoteHost, paths: string[]): string {
  * version, so an update needs no "Setup research automation" re-run:
  *  - a file still matching the template it was last reconciled with (per
  *    `.labnoteo/installed.json`) was not edited, so it is replaced;
- *  - the AGENTS.md managed block is refreshed whenever it is present;
+ *  - a managed block (AGENTS.md, QUICKSTART.md) is refreshed whenever it is
+ *    present; an unedited QUICKSTART.md from before the markers is moved to
+ *    the marked form, an edited one is reported like an edited file;
  *  - `.gitignore`/`CLAUDE.md` get missing lines once per template change, so
  *    a line the user deleted is not re-added on every load;
  *  - without a record (vaults set up before 0.95.0), a file is untouched when
@@ -312,8 +357,19 @@ export async function refreshAutomationFiles(
     if (asset.merge === 'managed-block') {
       if (!exists) continue;
       const current = await host.fs.read(path);
-      // Without the markers the user took the block out; do not put it back.
-      if (!current.includes(MANAGED_BLOCK_BEGIN)) continue;
+      if (!current.includes(MANAGED_BLOCK_BEGIN)) {
+        // Without the markers the user took the block out; do not put it back.
+        if (!asset.migrateUnmarked) continue;
+        if (isUnedited(current, asset, files[path], legacy)) {
+          await host.fs.write(path, managedFileContent(asset));
+          result.updated.push(path);
+          files[path] = template;
+        } else if (setUp && files[path] !== template) {
+          result.pending.push(path);
+          files[path] = template;
+        }
+        continue;
+      }
       const next = upsertManagedBlock(current, asset.content);
       if (next !== current) {
         await host.fs.write(path, next);

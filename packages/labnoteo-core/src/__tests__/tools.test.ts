@@ -655,6 +655,40 @@ describe('create_workflow', () => {
     });
     expect(res.error).toContain('documentPath is outside the vault');
   });
+
+  // #124: the approval prompt has to tell two calls on one experiment apart.
+  describe('describe', () => {
+    const describe = (c: ToolContext, a: Record<string, unknown>) => tool('create_workflow').describe!(c, a);
+
+    it('names the workflow, the file it creates and the README, writing nothing', async () => {
+      const before = fs.snapshot();
+      const preview = await describe(ctx, { documentPath: `${NOTE_DIR}/README.labnote.md`, workflowId: 'WT110' });
+      expect(preview).toMatchObject({
+        kind: 'workflowCreate',
+        workflowId: 'WT110',
+        fileName: expect.stringMatching(/^002_WT110_.+\.labnote\.md$/),
+        readmePath: `${NOTE_DIR}/README.labnote.md`,
+      });
+      // The catalog files are not there yet: the bundled catalog answers, and
+      // seeding them is left to the handler, after the user allows it.
+      expect(fs.snapshot()).toEqual(before);
+
+      const res = await tool('create_workflow').handler(ctx, {
+        documentPath: `${NOTE_DIR}/README.labnote.md`,
+        workflowId: 'WT110',
+      });
+      expect((res.data as { fileName: string }).fileName).toBe((preview as { fileName: string }).fileName);
+    });
+
+    it('rejects the calls the handler would reject', async () => {
+      expect(await describe(ctx, { documentPath: `${NOTE_DIR}/README.labnote.md`, workflowId: 'NOPE999' })).toEqual({
+        error: 'Workflow not found: NOPE999',
+      });
+      expect(
+        await describe(ctx, { documentPath: 'labnote/031_없는실험/README.labnote.md', workflowId: 'WT110' })
+      ).toHaveProperty('error');
+    });
+  });
 });
 
 // `mutates` drives the host's "allow this write?" prompt, so a tool marked

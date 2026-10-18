@@ -14,6 +14,7 @@ const ICON_MAP: Record<string, string> = {
   file: 'file-text',
   'symbol-method': 'wrench',
   'symbol-function': 'square-function',
+  beaker: 'flask-conical',
 };
 
 export interface TreeRenderCtx {

@@ -28,6 +28,7 @@ import {
 } from '@labnoteo/core/lib/sampleUtils';
 import type LabnotePlugin from '../main';
 import { createLlmProvider, type ChatMessage } from './provider';
+import { describeLlmError } from './llmError';
 import { runAgent } from './agent';
 import { buildApprovalMessage } from './approvalMessage';
 import { getObsidianLanguage } from '../i18n';
@@ -68,7 +69,8 @@ async function complete(
       notice.hide();
     }
   } catch (err) {
-    new Notice(plugin.t('AI request failed: {0}', err instanceof Error ? err.message : String(err)));
+    console.error('[labnoteo] AI request failed:', err);
+    new Notice(describeLlmError(err, plugin.settings, plugin.t), 10000);
     return undefined;
   }
 }
@@ -458,7 +460,8 @@ export async function askAgentCommand(plugin: LabnotePlugin): Promise<void> {
     }
     new Notice(plugin.t('AI ran {0} tool call(s).', String(run.executed.length)));
   } catch (err) {
-    new Notice(plugin.t('AI request failed: {0}', err instanceof Error ? err.message : String(err)));
+    console.error('[labnoteo] AI request failed:', err);
+    new Notice(describeLlmError(err, plugin.settings, plugin.t), 10000);
   } finally {
     notice.hide();
   }

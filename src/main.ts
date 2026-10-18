@@ -7,7 +7,7 @@
  * highlighting, sidebar views, the settings tab and the LLM/MCP layer are added
  * by subsequent modules that all consume the same `LabnoteHost` built here.
  */
-import { Plugin, Notice, TFile, TFolder, editorInfoField } from 'obsidian';
+import { MarkdownView, Plugin, Notice, TFile, TFolder, editorInfoField } from 'obsidian';
 import type { LabnoteHost, Translator } from '@labnoteo/core';
 import {
   findSampleReferenceAt,
@@ -77,7 +77,12 @@ import {
 import { SampleEditorSuggest } from './sampleSuggest';
 import { openSampleDefinition } from './sampleDefinitionModal';
 import { confirmModal, pickModal, workflowAliasModal } from './modals';
-import { createSampleInteractive, pickCatalogReference, insertSampleReference } from './sampleActions';
+import {
+  createSampleInteractive,
+  pickCatalogReference,
+  insertSampleReference,
+  listSampleDefinitions,
+} from './sampleActions';
 import {
   offerSamplesAfterMove,
   offerSamplesLeftBehind,
@@ -92,6 +97,7 @@ import {
 import { createMetaDatePickerExtension } from './dateFieldPicker';
 import { createUnitOpReorderFilter } from './unitOpReorderFilter';
 import { LastUpdatedTracker } from './lastUpdatedTracker';
+import { IssueMarkerIndex } from './issueMarkerIndex';
 import { isLabNotePath, stampNoteAndReadme, writeNoteStamped } from './lastUpdatedStamp';
 import { createOutlineDropTidy, type OutlineDropSnapshot } from './outlineDropTidy';
 import { WorkflowTreeView, WORKFLOW_VIEW_TYPE } from './views/workflowView';
@@ -349,6 +355,12 @@ export default class LabnotePlugin extends Plugin {
     });
 
     this.addCommand({
+      id: 'open-sample-definition',
+      name: this.t('Open sample definition'),
+      callback: () => this.run(() => this.openSampleDefinitionCommand()),
+    });
+
+    this.addCommand({
       id: 'export-tables-csv',
       name: this.t('Export tables to CSV'),
       callback: () => this.run(() => exportActiveNoteTablesToCsv(this)),
@@ -530,6 +542,42 @@ export default class LabnotePlugin extends Plugin {
         }
       })
     );
+  }
+
+  /**
+   * The definition window from the command palette (#121), which the editor's
+   * context menu and the Samples sidebar only offered to the mouse: the
+   * reference under the cursor, else a sample picked from the Local and Global
+   * ones.
+   */
+  private async openSampleDefinitionCommand(): Promise<void> {
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    const path = view?.file?.path ?? this.app.workspace.getActiveFile()?.path;
+    if (!this.sampleTrackingFor(path)) {
+      new Notice(this.t('Sample tracking is off for this note.'));
+      return;
+    }
+    const types = getSampleDisplayMeta(this.settings.customSampleTypes).types;
+    if (view?.file) {
+      const cur = view.editor.getCursor();
+      const hit = findSampleReferenceAt(view.editor.getLine(cur.line), cur.ch, types);
+      if (hit) {
+        await openSampleDefinition(this.app, this, { type: hit.type, id: hit.id, docPath: view.file.path });
+        return;
+      }
+    }
+
+    const items = await listSampleDefinitions(this, path);
+    if (items.length === 0) {
+      new Notice(this.t('No samples are registered yet.'));
+      return;
+    }
+    const chosen = await pickModal(this.app, items, {
+      title: this.t('Open sample definition'),
+      placeholder: this.t('Search by ID or alias'),
+    });
+    if (!chosen) return;
+    await openSampleDefinition(this.app, this, { ...chosen, docPath: path ?? '' });
   }
 
   /**
@@ -1429,10 +1477,21 @@ export default class LabnotePlugin extends Plugin {
    * Handing the scanner an empty type list is what disables the sample half.
    */
   private registerInlineHighlighting(): void {
-    const getState = (path: string | undefined): HighlightState =>
-      this.sampleTrackingFor(path)
+    const markers = new IssueMarkerIndex(this.fs, () => this.app.workspace.updateOptions());
+    const duplicateTitle = (owner: string | undefined): string =>
+      owner === undefined
+        ? this.t('This marker ID appears more than once in this note.')
+        : this.t('This marker ID is already used in {0}.', owner);
+    const getState = (path: string | undefined): HighlightState => {
+      const base = this.sampleTrackingFor(path)
         ? getSampleDisplayMeta(this.settings.customSampleTypes)
         : { types: [], colors: {} };
+      const others = markers.othersFor(path);
+      return others
+        ? { ...base, otherMarkerIds: others.ids, markerVersion: others.version, duplicateTitle }
+        : base;
+    };
+    this.registerIssueMarkerIndex(markers);
     this.registerEditorExtension(createSampleHighlightPlugin(getState));
     this.registerMarkdownPostProcessor(createSampleReadingHighlighter(getState));
     // An experiment's `sample_tracking` lives in its README (#105); editors
@@ -1442,6 +1501,55 @@ export default class LabnotePlugin extends Plugin {
         if (file.name === 'README.labnote.md') this.app.workspace.updateOptions();
       })
     );
+  }
+
+  /**
+   * Keep the marker ID index current, and say once, after a save, when a note
+   * now shares a marker ID: `issue-sync` would merge the two questions (#119).
+   */
+  private registerIssueMarkerIndex(markers: IssueMarkerIndex): void {
+    const timers = new Map<string, number>();
+    const schedule = (file: TFile): void => {
+      if (!markers.tracks(file.path)) return;
+      const prev = timers.get(file.path);
+      if (prev !== undefined) window.clearTimeout(prev);
+      timers.set(
+        file.path,
+        window.setTimeout(() => {
+          timers.delete(file.path);
+          this.run(async () => {
+            const fresh = markers.update(file.path, await this.app.vault.cachedRead(file));
+            for (const { id, owner } of fresh) {
+              new Notice(
+                owner === undefined
+                  ? this.t(
+                      'Marker ID {0} appears twice in this note, so the two questions merge into one issue. Delete one of these markers and insert it again with "Insert issue marker".',
+                      id
+                    )
+                  : this.t(
+                      'Marker ID {0} is also used in {1}, so the two questions merge into one issue. Delete the marker in this note (underlined) and insert it again with "Insert issue marker".',
+                      id,
+                      owner
+                    ),
+                12000
+              );
+            }
+          });
+        }, 800)
+      );
+    };
+    this.registerEvent(
+      this.app.vault.on('modify', file => {
+        if (file instanceof TFile) schedule(file);
+      })
+    );
+    this.registerEvent(
+      this.app.vault.on('rename', (file, oldPath) => {
+        markers.remove(oldPath);
+        if (file instanceof TFile) schedule(file);
+      })
+    );
+    this.registerEvent(this.app.vault.on('delete', file => markers.remove(file.path)));
   }
 
   /** Debounced write-through of a lab note's sample definitions. */

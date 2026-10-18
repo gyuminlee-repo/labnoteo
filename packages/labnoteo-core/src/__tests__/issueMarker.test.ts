@@ -8,6 +8,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   ISSUE_MARKER_ID_PREFIX,
+  fencedCodeRanges,
   findEnclosingHeading,
   findIssueMarkerRanges,
   generateIssueMarkerId,
@@ -175,6 +176,47 @@ describe('findIssueMarkerRanges', () => {
   });
 });
 
+// #120: the editor drops markers inside these, so they must fence as issue-sync does.
+describe('fencedCodeRanges', () => {
+  const lineAt = (md: string, offset: number): number => md.slice(0, offset).split('\n').length;
+  /** Lines of the markers the editor would still style. */
+  const styledLines = (md: string): number[] => {
+    const fenced = fencedCodeRanges(md);
+    return findIssueMarkerRanges(md)
+      .filter(r => !fenced.some(f => r.start < f.end && r.end > f.start))
+      .map(r => lineAt(md, r.start));
+  };
+
+  it('spans each block from its opening to its closing fence', () => {
+    const md = 'a\n```js\nx\n```\nb';
+    expect(fencedCodeRanges(md)).toEqual([{ start: 2, end: md.indexOf('\nb') }]);
+  });
+
+  it('runs a fence left open to the end', () => {
+    const md = 'a\n~~~\nx';
+    expect(fencedCodeRanges(md)).toEqual([{ start: 2, end: md.length }]);
+  });
+
+  it('agrees with parseIssueMarkers on backtick, tilde and unclosed fences', () => {
+    const md = [
+      '@issue;ISS-a;밖',
+      '```markdown',
+      '@issue;ISS-b;예시',
+      '```',
+      '  ~~~',
+      '@issue;ISS-c;물결 펜스 안',
+      '~~~',
+      '본문 @issue;ISS-d;밖 2',
+      '    ```',
+      '@issue;ISS-e;들여쓴 코드는 펜스가 아님',
+      '```',
+      '@issue;ISS-f;닫히지 않은 펜스 안',
+    ].join('\n');
+    expect(styledLines(md)).toEqual(parseIssueMarkers(md).markers.map(m => m.line));
+    expect(parseIssueMarkers(md).markers.map(m => m.id)).toEqual(['ISS-a', 'ISS-d', 'ISS-e']);
+  });
+});
+
 describe('generateIssueMarkerId', () => {
   beforeEach(() => resetIssueMarkerIdCounter());
 
@@ -305,6 +347,16 @@ describe('planIssueMarkerInsertion', () => {
     expect(planIssueMarkerInsertion(doc, doc.indexOf('status'), doc.indexOf(' 문장'), ID)).toEqual({
       reason: 'frontMatter',
     });
+  });
+
+  // #120: issue-sync skips fenced code, so the marker would open nothing.
+  it('refuses in a fenced code block, its fences included', () => {
+    const doc = '앞 문장\n```\ncode line\n```\n뒤 문장\n~~~\n열린 펜스';
+    for (const text of ['```', 'code line', '~~~', '열린 펜스']) {
+      expect(planIssueMarkerInsertion(doc, ...select(doc, text), ID)).toEqual({ reason: 'codeBlock' });
+    }
+    expect(insert(doc, ...select(doc, '뒤 문장')).out).toContain('\n@issue;ISS-t;뒤 문장\n');
+    expect(insert(doc, ...select(doc, '앞 문장')).out.startsWith('@issue;ISS-t;앞 문장\n')).toBe(true);
   });
 
   it('still inserts in the body above the title', () => {

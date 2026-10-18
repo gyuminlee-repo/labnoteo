@@ -22,6 +22,11 @@ export interface InsertUnitOperationInput {
   equipment?: string;
   software?: string;
   /**
+   * Per-instance alias after `[id name]` in the heading, like a workflow's
+   * (#118): `### [UHW180 Incubation] 1차 37도`. The TOC entry follows it.
+   */
+  alias?: string;
+  /**
    * Where the block goes, when the caller already worked it out (it needs the
    * offset to find the new heading afterwards). Defaults to
    * {@link findUnitOpInsertPointAt} at the cursor.
@@ -71,7 +76,8 @@ export async function insertUnitOperation(
   }
 
   const dateTime = getSeoulDateTimeString();
-  const info = { opId, opName, opDescription: opDescription ?? '' };
+  const alias = input.alias?.trim();
+  const info = { opId, opName, opDescription: opDescription ?? '', descriptionExtra: alias ? ` ${alias}` : undefined };
   const template =
     opType === 'sw'
       ? buildSwUnitOpMarkdown(info, { experimenter, dateTime, software })

@@ -200,4 +200,16 @@ describe('run --notes-only', () => {
     expect(run([])).toBe(1);
     expect(run(['--notes-only'])).toBe(0);
   });
+
+  // The tests run from this repo's root, which has no `labnote/` (#129).
+  it('warns instead of passing when there is no note to check', () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      expect(run(['--notes-only'])).toBe(0);
+      expect(log).toHaveBeenCalledWith(expect.stringContaining('검증할 실험 노트가 없습니다'));
+      expect(log).not.toHaveBeenCalledWith(expect.stringContaining('✅'));
+    } finally {
+      log.mockRestore();
+    }
+  });
 });

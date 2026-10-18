@@ -117,12 +117,13 @@ export class VaultFileSystem implements LabnoteFs {
   async rmdir(path: string): Promise<void> {
     const p = normalize(path);
     if (!(await this.adapter.exists(p))) return;
-    // Check emptiness rather than passing `recursive: true` and relying on the
-    // adapter to refuse: the contract's "no-op if not empty" must not depend on
-    // which error a given host throws.
+    // Check emptiness rather than relying on the adapter to refuse: the
+    // contract's "no-op if not empty" must not depend on which error a given
+    // host throws. `recursive` stays true because the desktop adapter removes
+    // with `fs.rm`, which throws EISDIR for any folder without it.
     const listed = await this.adapter.list(p);
     if (listed.files.length > 0 || listed.folders.length > 0) return;
-    await this.adapter.rmdir(p, false);
+    await this.adapter.rmdir(p, true);
   }
 
   /**
