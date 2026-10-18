@@ -21,6 +21,7 @@ import {
   type ViewUpdate,
 } from '@codemirror/view';
 import { RangeSetBuilder } from '@codemirror/state';
+import { editorInfoField } from 'obsidian';
 import { findIssueMarkerRanges, findSampleIdRanges } from '@labnoteo/core';
 
 export interface HighlightState {
@@ -74,25 +75,51 @@ function sampleColorVar(color: string): string | undefined {
   return color ? `--labnote-sample-color: ${color}` : undefined;
 }
 
-/** CM6 ViewPlugin factory. `getState` is read on every rebuild so settings
- *  changes (custom types) take effect without re-registering the extension. */
-export function createSampleHighlightPlugin(getState: () => HighlightState) {
+/** What a set of decorations was drawn for; a different key means redraw. */
+export function highlightStateKey(state: HighlightState): string {
+  return state.types.map(t => `${t}=${state.colors[t] ?? ''}`).join('\u0000');
+}
+
+/**
+ * Whether the editor's decorations are stale: the text or the visible ranges
+ * moved, or the note's state changed under it — its experiment README turned
+ * `sample_tracking` off or on (#105) — which changes neither.
+ */
+export function needsHighlightRebuild(
+  u: { docChanged: boolean; viewportChanged: boolean },
+  drawnKey: string,
+  currentKey: string
+): boolean {
+  return u.docChanged || u.viewportChanged || drawnKey !== currentKey;
+}
+
+/** The note an editor shows, for {@link createSampleHighlightPlugin}'s `getState`. */
+function editorPath(view: EditorView): string | undefined {
+  return view.state.field(editorInfoField, false)?.file?.path;
+}
+
+/** CM6 ViewPlugin factory. `getState` is read for the editor's note on every
+ *  update so settings and README changes take effect without re-registering. */
+export function createSampleHighlightPlugin(getState: (path: string | undefined) => HighlightState) {
   return ViewPlugin.fromClass(
     class {
       decorations: DecorationSet;
+      drawnKey = '';
 
       constructor(view: EditorView) {
         this.decorations = this.build(view);
       }
 
       update(u: ViewUpdate): void {
-        if (u.docChanged || u.viewportChanged) {
+        if (needsHighlightRebuild(u, this.drawnKey, highlightStateKey(getState(editorPath(u.view))))) {
           this.decorations = this.build(u.view);
         }
       }
 
       build(view: EditorView): DecorationSet {
-        const { types, colors } = getState();
+        const state = getState(editorPath(view));
+        this.drawnKey = highlightStateKey(state);
+        const { types, colors } = state;
         const builder = new RangeSetBuilder<Decoration>();
         for (const { from, to } of view.visibleRanges) {
           const text = view.state.doc.sliceString(from, to);
@@ -114,10 +141,10 @@ export function createSampleHighlightPlugin(getState: () => HighlightState) {
 
 /** Reading-mode Markdown post-processor factory. */
 export function createSampleReadingHighlighter(
-  getState: () => HighlightState
-): (el: HTMLElement) => void {
-  return (el: HTMLElement) => {
-    const { types, colors } = getState();
+  getState: (path: string | undefined) => HighlightState
+): (el: HTMLElement, ctx: { sourcePath: string }) => void {
+  return (el: HTMLElement, ctx: { sourcePath: string }) => {
+    const { types, colors } = getState(ctx.sourcePath);
     highlightTextNodes(el, types, colors);
   };
 }

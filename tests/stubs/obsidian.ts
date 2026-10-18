@@ -109,6 +109,9 @@ export function __setGetLanguage(fn: (() => string) | undefined): void {
 
 export class App {}
 
+/** CM6 state field Obsidian puts the editor's file in; only its identity is used. */
+export const editorInfoField = {};
+
 /** Only what `instanceof` checks and the open-editor branches read. */
 export class MarkdownView {
   file: TFile | null = null;

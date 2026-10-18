@@ -345,8 +345,10 @@ export function generateWorkflowChecklist(items: WorkflowChecklistItem[]): strin
     .map(item => {
       const checkbox = item.done ? '[x]' : '[ ]';
       // Standard Markdown task-list item (`- [ ]`) so Obsidian renders an
-      // interactive checkbox instead of literal `[ ]` text.
-      return `- ${checkbox} [${escapeChecklistLabel(item.title)}](./${item.fileName})`;
+      // interactive checkbox instead of literal `[ ]` text. A link with a
+      // folder part is not made relative: `./labnote/001_A/…` would double the folder (#102).
+      const link = item.fileName.includes('/') ? item.fileName : `./${item.fileName}`;
+      return `- ${checkbox} [${escapeChecklistLabel(item.title)}](${link})`;
     })
     .join('\n');
 }
@@ -616,6 +618,11 @@ export interface ReconcileChecklistOptions {
    * never change.
    */
   labelFor?: (fileName: string) => string;
+  /**
+   * The README's folder. A link Obsidian wrote vault-absolute because another
+   * folder has a file of the same name goes back to `./<file name>` (#102).
+   */
+  dir?: string;
 }
 
 /**
@@ -645,7 +652,10 @@ export function reconcileWorkflowChecklist(
   renames: WorkflowRename[],
   opts: ReconcileChecklistOptions = {}
 ): ReconcileChecklistResult {
-  const items = parseWorkflowChecklistFromReadme(opts.baseline ?? readmeContent);
+  const dir = opts.dir;
+  const items = parseWorkflowChecklistFromReadme(opts.baseline ?? readmeContent).map(item =>
+    dir === undefined ? item : { ...item, fileName: normalizeChecklistLink(item.fileName, dir) }
+  );
   if (items.length === 0) {
     return { changed: false, content: readmeContent };
   }
@@ -767,12 +777,55 @@ export interface WorkflowChecklistSyncPlan {
 }
 
 /**
+ * A checklist link (as parsed, without a leading `./`) that points at a file
+ * directly in `dir`, reduced to its file name. Obsidian writes a vault-absolute
+ * link (`labnote/001_A/001_X.labnote.md`) when another folder has a file of the
+ * same name, and older versions prefixed that with `./` (#102). Any other link
+ * is returned as is.
+ */
+export function normalizeChecklistLink(link: string, dir: string): string {
+  let decoded = link;
+  try {
+    decoded = decodeURI(link);
+  } catch {
+    // Compared as written.
+  }
+  const normalized = path.normalize(decoded).replace(/^\/+/, '');
+  if (!normalized.includes('/')) return link;
+  const folder = path.normalize(dir).replace(/^\/+/, '').replace(/\/+$/, '');
+  if (path.dirname(normalized) !== folder) return link;
+  return link.slice(link.lastIndexOf('/') + 1);
+}
+
+/**
+ * Rewrite the checklist entries whose link reaches a file of `dir` by a longer
+ * path (see {@link normalizeChecklistLink}) to `./<file name>`, keeping
+ * checkbox and label. Returns how many entries changed.
+ */
+export function normalizeWorkflowChecklistLinks(
+  readmeContent: string,
+  dir: string
+): { content: string; count: number } {
+  const lines = readmeContent.split('\n');
+  let count = 0;
+  for (const { index, link } of checklistEntries(readmeContent)) {
+    const short = normalizeChecklistLink(link, dir);
+    if (short === link) continue;
+    const written = lines[index].includes(`](./${link})`) ? `](./${link})` : `](${link})`;
+    lines[index] = lines[index].replace(written, () => `](./${short})`);
+    count++;
+  }
+  return count === 0 ? { content: readmeContent, count } : { content: lines.join('\n'), count };
+}
+
+/**
  * Where a checklist link points, relative to the README's folder: the file
  * name when it stays in the folder, or null when it leaves it. Obsidian
  * rewrites a moved workflow's link to `../002_B/001_X.labnote.md`, which must
  * not be taken for this folder's `001_X.labnote.md`.
  */
-function linkTargetInFolder(link: string): string | null {
+function linkTargetInFolder(link: string, dir?: string): string | null {
+  if (dir !== undefined) link = normalizeChecklistLink(link, dir);
   let decoded = link;
   try {
     decoded = decodeURI(link);
@@ -966,13 +1019,15 @@ export function rewriteWorkflowTitle(
  * `titles` (the note's front-matter title) or {@link defaultWorkflowTitle}.
  * Stale entries are only reported: the caller asks before removing them with
  * {@link removeWorkflowChecklistEntries}. Links are compared by where they
- * point, not by base name.
+ * point, not by base name. `dir`, the README's folder, lets a vault-absolute
+ * link into it count as this folder's file (#102); it defaults to `subfolders.dir`.
  */
 export function planWorkflowChecklistSync(
   readmeContent: string,
   existingNames: readonly string[],
   titles: ReadonlyMap<string, string> = new Map(),
-  subfolders?: WorkflowSubfolderNotes
+  subfolders?: WorkflowSubfolderNotes,
+  dir: string | undefined = subfolders?.dir
 ): WorkflowChecklistSyncPlan {
   const hasSection = findWorkflowSection(readmeContent.split('\n')).header !== -1;
   const items = parseWorkflowChecklistFromReadme(readmeContent);
@@ -982,7 +1037,7 @@ export function planWorkflowChecklistSync(
   const stale: StaleWorkflowEntry[] = [];
   const relabel: WorkflowRelabel[] = [];
   for (const item of items) {
-    const target = linkTargetInFolder(item.fileName);
+    const target = linkTargetInFolder(item.fileName, dir);
     if (target === null) {
       const found = subfolderMatches(item.fileName, subfolders);
       stale.push(
@@ -1015,7 +1070,7 @@ export function planWorkflowChecklistSync(
   const duplicates: string[] = [];
   const unescaped: string[] = [];
   const seen = new Set<string>();
-  for (const { raw, target } of checklistEntries(readmeContent)) {
+  for (const { raw, target } of checklistEntries(readmeContent, dir)) {
     if (target !== null && present.has(target)) {
       if (seen.has(target)) duplicates.push(target);
       seen.add(target);
@@ -1035,9 +1090,11 @@ export function planWorkflowChecklistSync(
       content: readmeContent,
     };
   }
+  const kept =
+    dir === undefined ? items : items.map(item => ({ ...item, fileName: normalizeChecklistLink(item.fileName, dir) }));
   const content = updateReadmeWorkflowSection(
     readmeContent,
-    generateWorkflowChecklist(sortWorkflowChecklistItems([...items, ...added]))
+    generateWorkflowChecklist(sortWorkflowChecklistItems([...kept, ...added]))
   );
   return { hasSection, added, stale, relabel, duplicates, unescaped, content };
 }
@@ -1084,7 +1141,8 @@ export function relinkWorkflowChecklistEntries(
 
 /** Each checklist entry of the "Related Workflows" section: line index, raw label, in-folder target. */
 function checklistEntries(
-  readmeContent: string
+  readmeContent: string,
+  dir?: string
 ): { index: number; done: boolean; raw: string; link: string; target: string | null }[] {
   const lines = readmeContent.split('\n');
   const { header, end } = findWorkflowSection(lines);
@@ -1093,7 +1151,13 @@ function checklistEntries(
   for (let i = header + 1; i < end; i++) {
     const m = lines[i].trim().match(CHECKLIST_ENTRY_RE);
     if (m) {
-      entries.push({ index: i, done: m[1].toLowerCase() === 'x', raw: m[2], link: m[3], target: linkTargetInFolder(m[3]) });
+      entries.push({
+        index: i,
+        done: m[1].toLowerCase() === 'x',
+        raw: m[2],
+        link: m[3],
+        target: linkTargetInFolder(m[3], dir),
+      });
     }
   }
   return entries;
@@ -1104,13 +1168,17 @@ function checklistEntries(
  * each of `fileNames` and drop the later ones, checking the kept one when any
  * of them was checked.
  */
-export function dedupeWorkflowChecklistEntries(readmeContent: string, fileNames: readonly string[]): string {
+export function dedupeWorkflowChecklistEntries(
+  readmeContent: string,
+  fileNames: readonly string[],
+  dir?: string
+): string {
   if (fileNames.length === 0) return readmeContent;
   const wanted = new Set(fileNames);
   const lines = readmeContent.split('\n');
   const first = new Map<string, number>();
   const drop = new Set<number>();
-  for (const { index, done, target } of checklistEntries(readmeContent)) {
+  for (const { index, done, target } of checklistEntries(readmeContent, dir)) {
     if (target === null || !wanted.has(target)) continue;
     const kept = first.get(target);
     if (kept === undefined) {
@@ -1143,7 +1211,8 @@ export function normalizeWorkflowChecklistLabels(readmeContent: string): string 
  */
 export function relabelWorkflowChecklistEntries(
   readmeContent: string,
-  relabel: readonly WorkflowRelabel[]
+  relabel: readonly WorkflowRelabel[],
+  dir?: string
 ): string {
   if (relabel.length === 0) return readmeContent;
   const lines = readmeContent.split('\n');
@@ -1152,7 +1221,7 @@ export function relabelWorkflowChecklistEntries(
   for (let i = header + 1; i < end; i++) {
     const m = lines[i].trim().match(CHECKLIST_ENTRY_RE);
     if (!m) continue;
-    const target = linkTargetInFolder(m[3]);
+    const target = linkTargetInFolder(m[3], dir);
     const r = relabel.find(x => x.fileName === target && x.from === unescapeChecklistLabel(m[2]));
     if (r) lines[i] = lines[i].replace(`[${m[2]}](`, () => `[${escapeChecklistLabel(r.to)}](`);
   }

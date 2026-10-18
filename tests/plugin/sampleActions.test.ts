@@ -25,6 +25,7 @@ vi.mock('../../src/modals', () => ({
 
 const FOLDER = 'labnote/001_Test/resources/labsamples';
 const REGISTRY = `${FOLDER}/RNA.json`;
+const GLOBAL = 'resources/labsamples';
 
 let fs: MemFileSystem;
 let plugin: LabnotePlugin;
@@ -34,8 +35,9 @@ beforeEach(() => {
   fs = new MemFileSystem();
   plugin = {
     fs,
-    t: (key: string) => key,
+    t: (key: string, ...args: string[]) => args.reduce((acc, a, i) => acc.replace(`{${i}}`, a), key),
     refreshSampleViews: vi.fn(),
+    settings: { globalSampleFolder: GLOBAL },
   } as unknown as LabnotePlugin;
 });
 
@@ -81,6 +83,36 @@ describe('createSampleInteractive', () => {
       location: 'Freezer-2 / Box-3 / A1',
     });
     expect(plugin.refreshSampleViews).toHaveBeenCalledOnce();
+  });
+
+  // #109: a Local sample named like a Global one looks the same in autocomplete.
+  it('warns, without refusing, when a Global sample has the same alias', async () => {
+    await fs.write(
+      `${GLOBAL}/RNA.json`,
+      JSON.stringify({ 'RNA-7': { type: 'RNA', alias: 'siKIF', descriptions: [], sources: [] } })
+    );
+    Notice.reset();
+    answer(' sikif ', '', '');
+
+    const created = await add();
+
+    expect(Notice.shown[0]).toBe(
+      'Global samples already have the alias sikif (RNA-7). Autocomplete will show both, marked Local and Global.'
+    );
+    expect(JSON.parse(await fs.read(REGISTRY))[created!.id].alias).toBe('sikif');
+  });
+
+  it('does not warn when adding to the Global folder itself', async () => {
+    await fs.write(
+      `${GLOBAL}/RNA.json`,
+      JSON.stringify({ 'RNA-7': { type: 'RNA', alias: 'siKIF', descriptions: [], sources: [] } })
+    );
+    Notice.reset();
+    answer('siKIF', '', '');
+
+    await createSampleInteractive(new App(), plugin, { type: 'RNA', folder: GLOBAL, mode: 'generate' });
+
+    expect(Notice.shown.some(m => m.startsWith('Global samples already have'))).toBe(false);
   });
 });
 

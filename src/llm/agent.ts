@@ -13,8 +13,8 @@
 import {
   createLabnoteTools,
   runTool,
-  type SectionEditPreview,
   type ToolContext,
+  type ToolPreview,
   type ToolDef,
 } from '@labnoteo/core';
 import type { ChatMessage, ChatResult, LlmProvider, ToolCall } from './provider';
@@ -37,7 +37,7 @@ export interface AgentDeps {
    * outcome, not an error: the denial is reported to the model, which can adapt.
    * `preview` is the tool's {@link ToolDef.describe} result, when it has one.
    */
-  confirm(call: ToolCall, tool: ToolDef, preview?: SectionEditPreview): Promise<boolean>;
+  confirm(call: ToolCall, tool: ToolDef, preview?: Exclude<ToolPreview, { error: string }>): Promise<boolean>;
   /** Tools to offer. Defaults to the full core registry. */
   tools?: ToolDef[];
   temperature?: number;

@@ -38,8 +38,10 @@ import {
 import {
   saveSamplesFromDocument,
   resolveLocalSampleFolder,
-  getLabsamplesFolder,
+  noteLabsamplesFolder,
   hasReferenceCatalog,
+  inventorySampleFolder,
+  moveSampleFolder,
 } from '@labnoteo/core/lib/sampleStorage';
 import { VaultFileSystem } from './vaultFileSystem';
 import { createObsidianTranslator } from './i18n';
@@ -48,6 +50,7 @@ import {
   createExperimentCommand,
   changeExperimentStatusCommand,
   insertIssueMarkerCommand,
+  insertDateCommand,
   issueAutomationState,
   toggleDiscussionFlagCommand,
   createWorkflowCommand,
@@ -68,12 +71,12 @@ import * as posix from '@labnoteo/core/posix';
 import {
   diagnoseExperimentPath,
   getExperimentDir,
-  getExperimentLabsamplesFolder,
+  isSampleTrackingOn,
   suggestExperimentFolderName,
 } from '@labnoteo/core/lib/labnoteStructure';
 import { SampleEditorSuggest } from './sampleSuggest';
 import { openSampleDefinition } from './sampleDefinitionModal';
-import { pickModal, workflowAliasModal } from './modals';
+import { confirmModal, pickModal, workflowAliasModal } from './modals';
 import { createSampleInteractive, pickCatalogReference, insertSampleReference } from './sampleActions';
 import {
   offerSamplesAfterMove,
@@ -261,7 +264,7 @@ export default class LabnotePlugin extends Plugin {
       id: 'insert-date',
       name: this.t('Insert date'),
       editorCallback: editor => {
-        editor.replaceSelection(getSeoulDateString());
+        insertDateCommand(editor, this.host, getSeoulDateString());
       },
     });
 
@@ -269,7 +272,7 @@ export default class LabnotePlugin extends Plugin {
       id: 'insert-datetime',
       name: this.t('Insert date and time'),
       editorCallback: editor => {
-        editor.replaceSelection(getSeoulDateTimeString());
+        insertDateCommand(editor, this.host, getSeoulDateTimeString());
       },
     });
 
@@ -445,8 +448,10 @@ export default class LabnotePlugin extends Plugin {
 
   private syncWorkflowChecklist(dir?: string): Promise<void> {
     const adoptSamples = this.settings.sampleTracking
-      ? (experimentDir: string, names: string[]) =>
-          offerSamplesLeftBehind(this.sampleRelocationDeps(), experimentDir, names)
+      ? async (experimentDir: string, names: string[]) =>
+          this.sampleTrackingFor(posix.join(experimentDir, 'README.labnote.md'))
+            ? offerSamplesLeftBehind(this.sampleRelocationDeps(), experimentDir, names)
+            : 0
       : undefined;
     return syncWorkflowChecklistCommand(this.app, this.host, this.readmeSyncControl(), dir, adoptSamples);
   }
@@ -464,7 +469,7 @@ export default class LabnotePlugin extends Plugin {
 
         // Go to definition works in ANY markdown note (references may appear
         // outside `.labnote.md`), so add it before the workflow-file gate below.
-        if (this.settings.sampleTracking) {
+        if (this.sampleTrackingFor(file.path)) {
           const cur = editor.getCursor();
           const types = getSampleDisplayMeta(this.settings.customSampleTypes).types;
           const hit = findSampleReferenceAt(editor.getLine(cur.line), cur.ch, types);
@@ -555,7 +560,7 @@ export default class LabnotePlugin extends Plugin {
     // Catalog types (Reagent/Labware/Equip) are curated: search the read-only
     // product catalog first; without one, a generated id is registered instead.
     let referenceText: string | undefined;
-    const localFolder = getExperimentLabsamplesFolder(target.path) ?? getLabsamplesFolder(target.path);
+    const localFolder = noteLabsamplesFolder(target.path, this.settings.globalSampleFolder);
     if (
       isCatalogSampleType(type) &&
       ((await hasReferenceCatalog(this.fs, localFolder, type)) ||
@@ -989,7 +994,13 @@ export default class LabnotePlugin extends Plugin {
         this.run(async () => {
           const readmePath = posix.join(dir, 'README.labnote.md');
           if (this.unloaded || !(await this.fs.exists(readmePath))) return;
-          const plan = planWorkflowChecklistSync(await this.fs.read(readmePath), await this.fs.list(dir));
+          const plan = planWorkflowChecklistSync(
+            await this.fs.read(readmePath),
+            await this.fs.list(dir),
+            undefined,
+            undefined,
+            dir
+          );
           if (plan.added.length === 0) return;
           this.host.notify(
             'warn',
@@ -1011,7 +1022,7 @@ export default class LabnotePlugin extends Plugin {
    * once per (old, new) experiment pair for a batch of moves.
    */
   private offerLocalSamplesMoved(oldPath: string, newPath: string): void {
-    if (!this.settings.sampleTracking || !/\.md$/i.test(newPath)) return;
+    if (!this.sampleTrackingFor(newPath) || !/\.md$/i.test(newPath)) return;
     if (posix.basename(newPath) === 'README.labnote.md') return;
     const fromDir = getExperimentDir(oldPath);
     const toDir = getExperimentDir(newPath);
@@ -1418,17 +1429,24 @@ export default class LabnotePlugin extends Plugin {
    * Handing the scanner an empty type list is what disables the sample half.
    */
   private registerInlineHighlighting(): void {
-    const getState = (): HighlightState =>
-      this.settings.sampleTracking
+    const getState = (path: string | undefined): HighlightState =>
+      this.sampleTrackingFor(path)
         ? getSampleDisplayMeta(this.settings.customSampleTypes)
         : { types: [], colors: {} };
     this.registerEditorExtension(createSampleHighlightPlugin(getState));
     this.registerMarkdownPostProcessor(createSampleReadingHighlighter(getState));
+    // An experiment's `sample_tracking` lives in its README (#105); editors
+    // re-check their state on the update this sends.
+    this.registerEvent(
+      this.app.metadataCache.on('changed', file => {
+        if (file.name === 'README.labnote.md') this.app.workspace.updateOptions();
+      })
+    );
   }
 
   /** Debounced write-through of a lab note's sample definitions. */
   private scheduleSampleSync(file: TFile): void {
-    if (!file.path.endsWith('.labnote.md')) return;
+    if (!file.path.endsWith('.labnote.md') || !this.sampleTrackingFor(file.path)) return;
     const prev = this.sampleSyncTimers.get(file.path);
     if (prev !== undefined) window.clearTimeout(prev);
     const handle = window.setTimeout(() => {
@@ -1469,6 +1487,47 @@ export default class LabnotePlugin extends Plugin {
   }
 
   /**
+   * The Global sample folder setting went from `from` to `to`: offer to bring
+   * the samples and catalogs left in `from` along, which no longer show (#101).
+   */
+  offerGlobalSampleFolderMove(from: string, to: string): void {
+    this.run(async () => {
+      const types = getSampleDisplayMeta(this.settings.customSampleTypes).types;
+      const left = await inventorySampleFolder(this.fs, from, types);
+      if (left.records === 0 && left.catalogs.length === 0) return;
+      const message = [
+        this.t(
+          'The old Global sample folder {0} still has {1} sample(s). Move them to the new folder {2}?',
+          from,
+          String(left.records),
+          to
+        ),
+      ];
+      if (left.catalogs.length > 0) {
+        message.push(this.t('Product catalog files move too: {0}', left.catalogs.join(', ')));
+      }
+      if (!(await confirmModal(this.app, message.join('\n\n'), this.t('Move samples')))) {
+        new Notice(this.t('Samples in the old folder are not shown. Set the folder back to see them again.'), 8000);
+        return;
+      }
+      const moved = await moveSampleFolder(this.fs, from, to, types);
+      const parts = [this.t('Moved {0} sample(s) to {1}.', String(moved.moved), to)];
+      if (moved.catalogsMoved > 0) parts.push(this.t('{0} catalog file(s) moved.', String(moved.catalogsMoved)));
+      if (moved.skipped.length > 0) {
+        parts.push(this.t('Not moved, {0} already has the same ID: {1}', to, moved.skipped.join(', ')));
+      }
+      if (moved.catalogsSkipped.length > 0) {
+        parts.push(
+          this.t('Catalog files not moved, {0} already has them: {1}', to, moved.catalogsSkipped.join(', '))
+        );
+      }
+      new Notice(parts.join(' '), 10000);
+      this.sampleSuggest?.clearCache();
+      this.refreshSampleViews();
+    });
+  }
+
+  /**
    * The path of the most recently active file, if any (vault-relative).
    *
    * Uses `getActiveFile()` rather than `getActiveViewOfType(MarkdownView)` so it
@@ -1505,6 +1564,19 @@ export default class LabnotePlugin extends Plugin {
   /** Whether a Local sample scope can be resolved (an experiment is known). */
   hasLocalScope(): boolean {
     return this.activeNotePath() !== undefined || this.lastExperimentDir !== undefined;
+  }
+
+  /**
+   * Whether sample autocomplete, highlighting and registry sync run for `path`:
+   * the global setting, narrowed by the experiment README's `sample_tracking`
+   * (#105). Notes outside an experiment follow the setting alone, and so does
+   * an experiment whose README Obsidian has not indexed yet.
+   */
+  sampleTrackingFor(path: string | undefined): boolean {
+    return isSampleTrackingOn(this.settings.sampleTracking, path, readmePath => {
+      const readme = this.app.vault.getFileByPath(readmePath);
+      return readme ? this.app.metadataCache.getFileCache(readme)?.frontmatter : undefined;
+    });
   }
 
   notify(message: string): void {

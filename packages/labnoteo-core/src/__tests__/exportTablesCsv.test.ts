@@ -1,5 +1,29 @@
 // Globals convention (no `import ... from 'vitest'`) — see sampleDefinition.test.ts.
-import { classifyCsvOverwrites, extractMarkdownTables, tableToCsv, UTF8_BOM } from '../lib/exportTablesCsv';
+import {
+  classifyCsvOverwrites,
+  csvRowCount,
+  extractMarkdownTables,
+  firstDifferingRow,
+  tableToCsv,
+  UTF8_BOM,
+} from '../lib/exportTablesCsv';
+
+// #110
+describe('csvRowCount / firstDifferingRow', () => {
+  it('counts data rows, keeping quoted line breaks in one row', () => {
+    expect(csvRowCount('\uFEFFa\n1\n2\n')).toBe(2);
+    expect(csvRowCount('a\r\n"x\ny"\r\n')).toBe(1);
+    expect(csvRowCount('a\n')).toBe(0);
+    expect(csvRowCount('')).toBe(0);
+  });
+
+  it('finds the first data row that differs', () => {
+    expect(firstDifferingRow('a\n1\n2\n', 'a\n1\n3\n')).toEqual({ row: 2, from: '2', to: '3' });
+    expect(firstDifferingRow('a\n1\n', 'a\n1\n2\n')).toEqual({ row: 2, from: '', to: '2' });
+    expect(firstDifferingRow('a\n"x\ny"\n', 'a\n"x\nz"\n')).toEqual({ row: 1, from: '"x\ny"', to: '"x\nz"' });
+    expect(firstDifferingRow('a\n1\n', 'b\n1\n')).toBeUndefined();
+  });
+});
 
 // #80, #92
 describe('classifyCsvOverwrites', () => {

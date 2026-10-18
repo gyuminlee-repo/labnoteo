@@ -110,6 +110,24 @@ describe('syncWorkflowChecklistCommand', () => {
     expect(accepted.calls.at(-1)).toBe('notify Workflow checklist updated: 0 added, 2 removed.');
   });
 
+  it('shortens a vault-absolute link to this folder, keeping its checkbox and label (#102)', async () => {
+    const h = harness(
+      {
+        [README]: readme([`- [x] [WD030 Design](./${DIR}/${REGISTERED})`]),
+        [`${DIR}/${REGISTERED}`]: '---\ntitle: WD030 Design\n---\n',
+      },
+      true
+    );
+    await syncWorkflowChecklistCommand(h.app, h.host, h.sync, DIR);
+    const md = await h.fs.read(README);
+    expect(md).toContain(`- [x] [WD030 Design](./${REGISTERED})`);
+    expect(links(md)).toEqual([`WD030 Design -> ${REGISTERED}`]);
+    expect(h.prompts).toEqual([]);
+    expect(h.calls.at(-1)).toBe(
+      'notify Workflow checklist updated: 0 added, 0 removed. 1 checklist link(s) fixed.'
+    );
+  });
+
   it('says so when the checklist already matches, without writing', async () => {
     const h = harness(
       { [README]: readme([`- [ ] [WD030 Design](./${REGISTERED})`]), [`${DIR}/${REGISTERED}`]: 'x' },

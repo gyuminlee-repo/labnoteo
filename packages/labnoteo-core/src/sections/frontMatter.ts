@@ -1,4 +1,5 @@
 import * as yaml from 'js-yaml';
+import { isInFrontMatter } from './documentHead';
 
 /** Result of {@link parseFrontMatterYaml}. */
 export interface FrontMatterParse {
@@ -91,4 +92,31 @@ export function serializeFrontMatterEntry(key: string, val: unknown): string {
     noRefs: true,
   });
   return dumped.replace(/\n+$/, '');
+}
+
+/** Where {@link planDateInsertion} puts the text: `[from, to)` becomes `text`. */
+export type DateInsertion = { from: number; to: number; text: string } | { reason: 'frontMatter' };
+
+/**
+ * Plan inserting a date `text` over the selection `[from, to)` (#106).
+ *
+ * In the body the selection is replaced as before. In the front matter only a
+ * top-level key with an empty value (`key:`, `key: ''`, `key: ""`) takes it,
+ * written the way the other entries are ({@link serializeFrontMatterEntry}),
+ * so an empty `end_date` can be filled. Anywhere else in the front matter —
+ * a line with a value, a `---` line, a list item — typing the date would break
+ * the YAML, so it is refused.
+ */
+export function planDateInsertion(doc: string, from: number, to: number, text: string): DateInsertion {
+  if (from > to) [from, to] = [to, from];
+  if (!isInFrontMatter(doc, from) && !isInFrontMatter(doc, to)) return { from, to, text };
+
+  const lineStart = doc.lastIndexOf('\n', from - 1) + 1;
+  const nl = doc.indexOf('\n', from);
+  let lineEnd = nl === -1 ? doc.length : nl;
+  if (to > lineEnd) return { reason: 'frontMatter' };
+  if (doc[lineEnd - 1] === '\r') lineEnd--;
+  const m = /^([A-Za-z_][\w-]*):[ \t]*(?:''|"")?[ \t]*$/.exec(doc.slice(lineStart, lineEnd));
+  if (!m) return { reason: 'frontMatter' };
+  return { from: lineStart, to: lineEnd, text: serializeFrontMatterEntry(m[1], text) };
 }

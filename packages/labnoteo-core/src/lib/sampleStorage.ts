@@ -598,15 +598,28 @@ export function getLabsamplesFolder(documentPath: string): string {
 }
 
 /**
+ * The Local labsamples folder of a note: its experiment's folder inside
+ * `labnote/###_*`, the Global folder for a note at the vault root (#101), and
+ * the note's own folder anywhere else. Without `globalFolder` a vault-root
+ * note uses its own folder, the default Global one.
+ */
+export function noteLabsamplesFolder(documentPath: string, globalFolder?: string): string {
+  const experiment = getExperimentDir(documentPath);
+  if (experiment) return path.join(experiment, 'resources', 'labsamples');
+  if (globalFolder && !path.normalize(documentPath).replace(/^\/+/, '').includes('/')) return globalFolder;
+  return getLabsamplesFolder(documentPath);
+}
+
+/**
  * The Local-scope labsamples folder for the sample tree, autocomplete and
  * sample creation, given the active file and the last experiment seen (#4, #70).
  *
  * A file inside an experiment (`labnote/###_*`) maps to that experiment's
  * folder, which becomes the remembered one. A markdown note outside any
- * experiment uses its own folder, the one its references resolve against and
- * its definitions sync to — a vault-root note's is the default global folder.
- * Only a non-note file (image, PDF, canvas) keeps the remembered experiment, so
- * opening an attachment does not collapse the tree.
+ * experiment uses {@link noteLabsamplesFolder}, the folder its references
+ * resolve against and its definitions sync to — a vault-root note's is the
+ * Global folder. Only a non-note file (image, PDF, canvas) keeps the remembered
+ * experiment, so opening an attachment does not collapse the tree.
  */
 export function resolveLocalSampleFolder(
   activePath: string | undefined,
@@ -616,12 +629,12 @@ export function resolveLocalSampleFolder(
   const dir = activePath ? getExperimentDir(activePath) : undefined;
   if (dir) return { folder: path.join(dir, 'resources', 'labsamples'), lastExperimentDir: dir };
   if (activePath && /\.md$/i.test(activePath)) {
-    return { folder: getLabsamplesFolder(activePath), lastExperimentDir };
+    return { folder: noteLabsamplesFolder(activePath, globalFolder), lastExperimentDir };
   }
   if (lastExperimentDir) {
     return { folder: path.join(lastExperimentDir, 'resources', 'labsamples'), lastExperimentDir };
   }
-  return { folder: activePath ? getLabsamplesFolder(activePath) : globalFolder };
+  return { folder: activePath ? noteLabsamplesFolder(activePath, globalFolder) : globalFolder };
 }
 
 /**
@@ -886,6 +899,98 @@ export async function putSampleRecord(
   });
 }
 
+/** What a labsamples folder holds of the given types, see {@link inventorySampleFolder}. */
+export interface SampleFolderInventory {
+  /** Sample records over all `{Type}.json` files. */
+  records: number;
+  /** `{Type}_*.json` product catalog file names. */
+  catalogs: string[];
+}
+
+/** The `{Type}.json` record files and `{Type}_*.json` catalogs of `types` in `folder`. */
+async function sampleFolderFiles(
+  fs: LabnoteFs,
+  folder: string,
+  types: readonly string[]
+): Promise<{ recordTypes: string[]; catalogs: string[] }> {
+  if (!folder || !(await fs.exists(folder))) return { recordTypes: [], catalogs: [] };
+  const names = await fs.list(folder);
+  const recordNames = new Set(types.map((t) => `${t}.json`));
+  return {
+    recordTypes: types.filter((t) => names.includes(`${t}.json`)),
+    catalogs: names.filter((n) => !recordNames.has(n) && types.some((t) => isReferenceCatalogFile(n, t))),
+  };
+}
+
+/**
+ * Count the samples and catalog files of `types` in `folder`: what the Global
+ * folder leaves behind when the setting points somewhere else (#101).
+ */
+export async function inventorySampleFolder(
+  fs: LabnoteFs,
+  folder: string,
+  types: readonly string[]
+): Promise<SampleFolderInventory> {
+  const { recordTypes, catalogs } = await sampleFolderFiles(fs, folder, types);
+  let records = 0;
+  for (const type of recordTypes) records += Object.keys(await loadSamplesByType(fs, folder, type)).length;
+  return { records, catalogs };
+}
+
+/** Result of {@link moveSampleFolder}. */
+export interface SampleFolderMove {
+  moved: number;
+  /** `Type ID` of records left behind because `to` has the same ID. */
+  skipped: string[];
+  catalogsMoved: number;
+  /** Catalog files left behind because `to` has a file of that name. */
+  catalogsSkipped: string[];
+}
+
+/**
+ * Move the samples of `types` from `from` to `to` record by record, never
+ * overwriting: a record whose ID `to` already has (case ignored) and a catalog
+ * file `to` already has stay where they are. Emptied record files and an
+ * emptied `from` are removed.
+ */
+export async function moveSampleFolder(
+  fs: LabnoteFs,
+  from: string,
+  to: string,
+  types: readonly string[]
+): Promise<SampleFolderMove> {
+  const result: SampleFolderMove = { moved: 0, skipped: [], catalogsMoved: 0, catalogsSkipped: [] };
+  if (isSameSampleFolder(from, to)) return result;
+  const { recordTypes, catalogs } = await sampleFolderFiles(fs, from, types);
+  for (const type of recordTypes) {
+    const source = await loadSamplesByType(fs, from, type);
+    const taken = new Set(Object.keys(await loadSamplesByType(fs, to, type)).map((id) => id.toLowerCase()));
+    let left = 0;
+    for (const [id, record] of Object.entries(source)) {
+      if (taken.has(id.toLowerCase())) {
+        result.skipped.push(`${type} ${id}`);
+        left++;
+        continue;
+      }
+      await putSampleRecord(fs, to, type, id, record);
+      await deleteSampleRecord(fs, from, type, id);
+      result.moved++;
+    }
+    if (left === 0) await fs.remove(path.join(from, `${type}.json`));
+  }
+  for (const name of catalogs) {
+    if (await fs.exists(path.join(to, name))) {
+      result.catalogsSkipped.push(name);
+      continue;
+    }
+    await fs.write(path.join(to, name), await fs.read(path.join(from, name)));
+    await fs.remove(path.join(from, name));
+    result.catalogsMoved++;
+  }
+  await fs.rmdir(from);
+  return result;
+}
+
 /**
  * Save samples extracted from a document to JSON files
  * Merges with existing data. Samples that exist in Global are not re-added to Local
@@ -898,7 +1003,7 @@ export async function saveSamplesFromDocument(
   globalLabsamplesFolder?: string,
   additionalTypes?: string[]
 ): Promise<void> {
-  const labsamplesFolder = getLabsamplesFolder(documentPath);
+  const labsamplesFolder = noteLabsamplesFolder(documentPath, globalLabsamplesFolder);
   const sourceFile = path.basename(documentPath);
 
   // Extract samples from document
@@ -1011,7 +1116,7 @@ export async function removeSourcesForDocument(
   globalLabsamplesFolder?: string,
   additionalTypes?: string[]
 ): Promise<void> {
-  const localFolder = getLabsamplesFolder(documentPath);
+  const localFolder = noteLabsamplesFolder(documentPath, globalLabsamplesFolder);
   const documentBasename = path.basename(documentPath);
 
   // Set of "type|id" pairs still defined in the document. Anything *not*

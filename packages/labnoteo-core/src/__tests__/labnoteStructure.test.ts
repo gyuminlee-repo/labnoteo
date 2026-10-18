@@ -13,7 +13,45 @@ import {
 } from '../lib/labnoteStructure';
 import { parseFrontMatterYaml } from '../sections/frontMatter';
 import { isValidStatus } from '../lib/experimentStatus';
-import { diagnoseExperimentPath, suggestExperimentFolderName } from '../lib/labnoteStructure';
+import {
+  diagnoseExperimentPath,
+  isSampleTrackingOff,
+  isSampleTrackingOn,
+  suggestExperimentFolderName,
+} from '../lib/labnoteStructure';
+
+// #105: an experiment README can turn sample tracking off for that experiment.
+describe('isSampleTrackingOff', () => {
+  it('reads no/false/off in any case, and a YAML false', () => {
+    for (const v of ['no', 'No', ' off ', 'FALSE', false]) expect(isSampleTrackingOff(v)).toBe(true);
+  });
+
+  it('keeps tracking on for yes, a missing value, or anything else', () => {
+    for (const v of ['yes', true, undefined, null, '', 'maybe', 0]) expect(isSampleTrackingOff(v)).toBe(false);
+  });
+
+  it('decides per experiment, under the global setting', () => {
+    const readmes: Record<string, Record<string, unknown>> = {
+      'labnote/001_A/README.labnote.md': { sample_tracking: 'no' },
+      'labnote/002_B/README.labnote.md': { sample_tracking: 'yes' },
+    };
+    const read = (p: string) => readmes[p];
+    expect(isSampleTrackingOn(true, 'labnote/001_A/001_WD010_X.labnote.md', read)).toBe(false);
+    expect(isSampleTrackingOn(true, 'labnote/001_A/README.labnote.md', read)).toBe(false);
+    expect(isSampleTrackingOn(true, 'labnote/002_B/001_WD010_X.labnote.md', read)).toBe(true);
+    // Not indexed yet, or outside any experiment: the setting decides.
+    expect(isSampleTrackingOn(true, 'labnote/003_C/001_WD010_X.labnote.md', read)).toBe(true);
+    expect(isSampleTrackingOn(true, 'Inbox.md', read)).toBe(true);
+    expect(isSampleTrackingOn(true, undefined, read)).toBe(true);
+    expect(isSampleTrackingOn(false, 'labnote/002_B/001_WD010_X.labnote.md', read)).toBe(false);
+  });
+
+  it('is on in a new README', () => {
+    const fm = parseFrontMatterYaml(generateReadmeContent('T')).frontMatter;
+    expect(fm.sample_tracking).toBe('yes');
+    expect(isSampleTrackingOff(fm.sample_tracking)).toBe(false);
+  });
+});
 
 // #67: an experiment folder renamed without its number left every command
 // saying only "Open a lab note first."

@@ -26,6 +26,8 @@ function makeHost(opts: {
   targetPath?: string;
   fs?: MemFileSystem;
   doc?: string;
+  /** Cursor offset in the current document; without it the target has no cursor. */
+  cursor?: (doc: string) => number;
 }): {
   host: LabnoteHost;
   notes: Array<{ kind: NotifyKind; message: string }>;
@@ -51,6 +53,7 @@ function makeHost(opts: {
           inserted.push(text);
           doc = doc.slice(0, start) + text + doc.slice(end);
         },
+        ...(opts.cursor ? { getCursorOffset: async () => opts.cursor!(doc) } : {}),
       }
     : undefined;
 
@@ -130,8 +133,8 @@ describe('insertUnitOperation', () => {
     );
   });
 
-  it('appends after an existing block instead of at the cursor', async () => {
-    const { host, doc } = makeHost({ targetPath: VALID_WORKFLOW, doc: EMPTY_WORKFLOW });
+  it('appends after the last block without a cursor', async () => {
+    const { host, doc, notes } = makeHost({ targetPath: VALID_WORKFLOW, doc: EMPTY_WORKFLOW });
 
     await insertUnitOperation(host, { opId: 'UHW010', opName: 'First', opType: 'hw' });
     await insertUnitOperation(host, { opId: 'UHW020', opName: 'Second', opType: 'hw' });
@@ -141,6 +144,48 @@ describe('insertUnitOperation', () => {
     expect(text.indexOf('### [UHW020 Second]')).toBeLessThan(
       text.indexOf('## Conclusions and Discussion')
     );
+    expect(notes.at(-1)?.message).toBe('Unit operation inserted: UHW020 Second (after the last unit operation)');
+  });
+
+  // #103: the block follows the cursor.
+  describe('following the cursor', () => {
+    const order = (text: string) => [...text.matchAll(/^### \[(\S+)/gm)].map(m => m[1]);
+    async function twoBlocks(cursor: (doc: string) => number) {
+      let pos: ((doc: string) => number) | undefined;
+      const h = makeHost({ targetPath: VALID_WORKFLOW, doc: EMPTY_WORKFLOW, cursor: d => (pos ? pos(d) : d.length) });
+      await insertUnitOperation(h.host, { opId: 'UHW010', opName: 'First', opType: 'hw' });
+      await insertUnitOperation(h.host, { opId: 'UHW030', opName: 'Third', opType: 'hw' });
+      pos = cursor;
+      await insertUnitOperation(h.host, { opId: 'UHW020', opName: 'Second', opType: 'hw' });
+      return h;
+    }
+
+    it('goes right after the block the cursor is in, between the separators', async () => {
+      const { doc, notes } = await twoBlocks(d => d.indexOf('#### Method'));
+      expect(order(doc())).toEqual(['UHW010', 'UHW020', 'UHW030']);
+      expect(doc()).not.toMatch(/---\s*\n\s*---/);
+      expect(doc().match(/^---$/gm)).toHaveLength(3);
+      expect(notes.at(-1)?.message).toBe('Unit operation inserted: UHW020 Second (after [UHW010 First])');
+    });
+
+    it('goes before the first block when the cursor is in the TOC area', async () => {
+      const { doc, notes } = await twoBlocks(d => d.indexOf('> Unit operations'));
+      expect(order(doc())).toEqual(['UHW020', 'UHW010', 'UHW030']);
+      expect(notes.at(-1)?.message).toBe('Unit operation inserted: UHW020 Second (before the first unit operation)');
+    });
+
+    it('goes after the last block when the cursor is outside the section', async () => {
+      for (const at of [(d: string) => d.indexOf('## [WD010'), (d: string) => d.length]) {
+        const { doc } = await twoBlocks(at);
+        expect(order(doc())).toEqual(['UHW010', 'UHW030', 'UHW020']);
+      }
+    });
+
+    it('goes after the last block when the cursor is in it', async () => {
+      const { doc } = await twoBlocks(d => d.lastIndexOf('#### Output'));
+      expect(order(doc())).toEqual(['UHW010', 'UHW030', 'UHW020']);
+      expect(doc().indexOf('### [UHW020')).toBeLessThan(doc().indexOf('## Conclusions and Discussion'));
+    });
   });
 
   it('falls back to the end of the document when the section is absent', async () => {

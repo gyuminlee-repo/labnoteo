@@ -162,9 +162,7 @@ export class LabnoteMcpServer {
     //
     // Compared in constant time so a network-local attacker can't recover the
     // token byte-by-byte via response-timing on early mismatch.
-    const auth = headerValue(req.headers['authorization']);
-    const token = this.plugin.settings.mcpToken;
-    if (!token || !timingSafeEqual(auth, `Bearer ${token}`)) {
+    if (!isAuthorized(headerValue(req.headers['authorization']), this.plugin.settings.mcpToken)) {
       return sendJson(res, 401, { error: 'unauthorized' });
     }
     if (req.method !== 'POST') {
@@ -435,6 +433,16 @@ export function timingSafeEqual(a: string, b: string): boolean {
     diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
   }
   return diff === 0;
+}
+
+/** Whether an `Authorization` header carries the current token. No token set means no access. */
+export function isAuthorized(header: string, token: string): boolean {
+  return Boolean(token) && timingSafeEqual(header, `Bearer ${token}`);
+}
+
+/** The token's last characters, shown in settings so a regenerated token is visibly different. */
+export function tokenFingerprint(token: string): string {
+  return token ? `…${token.slice(-6)}` : '';
 }
 
 function sendJson(res: NodeRes, status: number, payload: unknown): void {

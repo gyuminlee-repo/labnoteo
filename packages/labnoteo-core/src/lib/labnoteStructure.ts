@@ -136,6 +136,36 @@ export function commandName(en: string, ko: string, locale?: string): string {
   return isKoreanLocale(locale) ? `\`${en}\` (\`${ko}\`)` : `\`${en}\``;
 }
 
+/** `sample_tracking` value a new experiment README starts with. */
+const SAMPLE_TRACKING_DEFAULT = 'yes';
+
+/**
+ * Whether an experiment README's `sample_tracking` value turns sample tracking
+ * off for that experiment (#105): `no`, `false` or `off` in any case, or a YAML
+ * boolean `false` (an unquoted `no` may parse as one). A missing value is on.
+ */
+export function isSampleTrackingOff(value: unknown): boolean {
+  if (value === false) return true;
+  return typeof value === 'string' && /^(no|false|off)$/i.test(value.trim());
+}
+
+/**
+ * Whether sample tracking runs for the note at `notePath`: the global setting
+ * `enabled`, narrowed by its experiment README's `sample_tracking`, read through
+ * `readmeFrontMatter` (undefined when not available yet). A note outside an
+ * experiment follows the setting alone.
+ */
+export function isSampleTrackingOn(
+  enabled: boolean,
+  notePath: string | undefined,
+  readmeFrontMatter: (readmePath: string) => Record<string, unknown> | undefined
+): boolean {
+  if (!enabled) return false;
+  const dir = notePath ? getExperimentDir(notePath) : undefined;
+  if (!dir) return true;
+  return !isSampleTrackingOff(readmeFrontMatter(path.join(dir, 'README.labnote.md'))?.sample_tracking);
+}
+
 /**
  * Generate README.md content for a new labnote
  * Follows labnote-lite template format
@@ -162,7 +192,7 @@ export function generateReadmeContent(
     serializeFrontMatterEntry('title', title),
     serializeFrontMatterEntry('author', authorValue),
     serializeFrontMatterEntry('experiment_type', 'labnote'),
-    serializeFrontMatterEntry('sample_tracking', 'yes'),
+    serializeFrontMatterEntry('sample_tracking', SAMPLE_TRACKING_DEFAULT),
     serializeFrontMatterEntry('status', 'planned'),
     serializeFrontMatterEntry('project', null),
     serializeFrontMatterEntry('created_date', today),

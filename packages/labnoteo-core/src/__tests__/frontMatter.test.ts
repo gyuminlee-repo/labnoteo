@@ -10,7 +10,55 @@
 // bugs are pinned with `it.fails(...)`: they pass now *because* the assertion
 // throws against current behaviour, and Phase 1-2 (yaml.dump for scalars +
 // line-anchored closing fence) will flip them to normal `it(...)`.
-import { parseFrontMatterYaml, serializeFrontMatterEntry } from '../sections/frontMatter';
+import { parseFrontMatterYaml, planDateInsertion, serializeFrontMatterEntry } from '../sections/frontMatter';
+import { isInFrontMatter } from '../sections/documentHead';
+
+// #106: the date commands typed straight into the YAML.
+describe('date insertion and the front matter', () => {
+  const DOC = ['---', "title: 'X'", "end_date: ''", 'start_date:', 'tags:', '  - a', '---', '', '# X', 'body'].join(
+    '\n'
+  );
+  const at = (line: number, col = 0): number =>
+    DOC.split('\n')
+      .slice(0, line)
+      .reduce((n, l) => n + l.length + 1, 0) + col;
+  const apply = (plan: ReturnType<typeof planDateInsertion>): string =>
+    'reason' in plan ? 'refused' : DOC.slice(0, plan.from) + plan.text + DOC.slice(plan.to);
+
+  it('tells front matter from body, --- lines included', () => {
+    expect(isInFrontMatter(DOC, at(0))).toBe(true);
+    expect(isInFrontMatter(DOC, at(6, 3))).toBe(true);
+    expect(isInFrontMatter(DOC, at(7))).toBe(false);
+    expect(isInFrontMatter('---\ntitle: x\n\n# Body', 5)).toBe(false);
+  });
+
+  it('replaces the selection in the body', () => {
+    expect(planDateInsertion(DOC, at(9, 4), at(9, 4), '2026-10-18')).toEqual({
+      from: at(9, 4),
+      to: at(9, 4),
+      text: '2026-10-18',
+    });
+  });
+
+  it("fills a key whose value is '' or missing", () => {
+    expect(apply(planDateInsertion(DOC, at(2, 5), at(2, 5), '2026-10-18'))).toContain('\nend_date: 2026-10-18\n');
+    expect(apply(planDateInsertion(DOC, at(3, 11), at(3, 11), '2026-10-18'))).toContain('\nstart_date: 2026-10-18\n');
+    expect(parseFrontMatterYaml(apply(planDateInsertion(DOC, at(2), at(2), '2026-10-18'))).frontMatter.end_date).toBe(
+      '2026-10-18'
+    );
+  });
+
+  it('refuses a line with a value, a --- line and a list item', () => {
+    for (const line of [1, 0, 6, 5]) {
+      expect(planDateInsertion(DOC, at(line, 1), at(line, 1), '2026-10-18')).toEqual({ reason: 'frontMatter' });
+    }
+  });
+
+  it('treats an unclosed --- block as body', () => {
+    const doc = '---\ntitle: x\n';
+    expect(planDateInsertion(doc, 8, 8, 'D')).toEqual({ from: 8, to: 8, text: 'D' });
+  });
+});
 
 describe('parseFrontMatterYaml', () => {
   it('parses a simple block and strips it from the body', () => {

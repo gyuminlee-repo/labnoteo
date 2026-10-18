@@ -43,6 +43,8 @@ const obsidianKo: Record<string, string> = {
   'Could not copy: {0}': '복사하지 못했습니다: {0}',
   'That note is no longer open. Copy the answer instead.':
     '그 노트가 더 이상 열려 있지 않습니다. 답변을 복사해서 쓰세요.',
+  'Inserted the summary into {0}.': '요약을 {0}에 넣었습니다.',
+  'Inserted the Method draft into {0}.': 'Method 초안을 {0}에 넣었습니다.',
 
   // View titles / ribbon
   'Workflows': '워크플로',
@@ -126,6 +128,7 @@ const obsidianKo: Record<string, string> = {
   'Flagged for discussion. To open it as an issue, run "Setup research automation" first.':
     "논의 표시를 설정했습니다. 이슈로 올리려면 먼저 '연구노트 자동화 설정'을 실행하세요.",
   'Discussion flag cleared.': '논의 표시를 해제했습니다.',
+  "Changed {0}'s README, not this note.": '이 노트가 아니라 {0}의 README를 바꿨습니다.',
   'Issue marker inserted. To open it as an issue, run "Setup research automation" first.':
     "이슈 마커를 넣었습니다. 이슈로 올리려면 먼저 '연구노트 자동화 설정'을 실행하세요.",
   'Issue topic sentence': '이슈 주제 문장',
@@ -142,6 +145,8 @@ const obsidianKo: Record<string, string> = {
     '표 안에서는 이슈 마커를 넣을 수 없습니다. 표 아래 줄에서 실행하세요.',
   'Issue markers cannot go in the front matter. Run this in the note body.':
     '머리말(front matter)에는 이슈 마커를 넣을 수 없습니다. 본문에서 실행하세요.',
+  'A date cannot go on a front matter line that has a value. Run this in the body or on an empty value.':
+    '머리말(front matter)의 값이 있는 줄에는 날짜를 넣을 수 없습니다. 본문이나 빈 값 칸에서 실행하세요.',
   'This line already has an issue marker. A line can hold only one.':
     '이 줄에는 이미 이슈 마커가 있습니다. 한 줄에 하나만 둘 수 있습니다.',
   'Front matter of this note could not be read, so it was left unchanged. Fix the YAML and try again: {0}':
@@ -171,12 +176,17 @@ const obsidianKo: Record<string, string> = {
     '다음 CSV 파일에 다른 표가 들어가게 됩니다(표가 추가·삭제되었거나 순서가 바뀌었습니다). 덮어쓸까요?\n\n{0}',
   'The header of these CSV files changed. Overwrite them?\n\n{0}':
     '다음 CSV 파일의 머리글이 바뀌었습니다. 덮어쓸까요?\n\n{0}',
+  '{0} rows → {1} rows': '{0}행 → {1}행',
+  'row {0}: {1} → {2}': '{0}번째 행: {1} → {2}',
   'Command failed: {0}': '명령 실행 실패: {0}',
   'Yes': '예',
   'Workflow created: {0}': '워크플로가 생성되었습니다: {0}',
   'This experiment has no README.labnote.md, so the workflow was not added to a checklist.':
     '이 실험에는 README.labnote.md가 없어 워크플로를 체크리스트에 등록하지 못했습니다.',
   'Unit operation inserted: {0} {1}': '유닛 오퍼레이션이 삽입되었습니다: {0} {1}',
+  '(after {0})': '({0} 다음)',
+  '(before the first unit operation)': '(첫 유닛 오퍼레이션 앞)',
+  '(after the last unit operation)': '(마지막 유닛 오퍼레이션 다음)',
   'Please open a workflow file.': '워크플로 파일을 열어주세요.',
   'Please run this command on a workflow file inside the labnote folder.':
     'labnote 폴더 내의 워크플로 파일에서 실행해주세요.',
@@ -195,6 +205,8 @@ const obsidianKo: Record<string, string> = {
   'Move to Local': '로컬로 이동',
   'Open a note to insert into.': '삽입할 노트를 여세요.',
   'Open a note first to add a local sample.': '로컬 샘플을 추가하려면 먼저 노트를 여세요.',
+  'Notes outside an experiment use the Global samples below. Open an experiment note to see its samples.':
+    '실험 밖 노트는 아래 Global 샘플을 씁니다. 실험 노트를 열면 그 실험의 시료가 보입니다.',
   'No samples found.': '샘플을 찾을 수 없습니다.',
 
   // Sample create / autocomplete actions
@@ -241,6 +253,10 @@ const obsidianKo: Record<string, string> = {
   'OK': '확인',
   'Cancel': '취소',
   'Sample added: {0}': '샘플이 추가되었습니다: {0}',
+  'Local {0} sample': '로컬 {0} 샘플',
+  'Global {0} sample': '전역 {0} 샘플',
+  'Global samples already have the alias {0} ({1}). Autocomplete will show both, marked Local and Global.':
+    '전역 샘플에 같은 별칭 {0}({1})이 이미 있습니다. 자동완성에는 로컬과 전역으로 구분되어 둘 다 보입니다.',
   '{0} was added to Global samples because this note is outside an experiment folder.':
     '이 노트는 실험 폴더 밖에 있어 {0}을(를) 전역 샘플에 추가했습니다.',
   'Sample updated: {0}': '샘플이 수정되었습니다: {0}',
@@ -298,6 +314,17 @@ const obsidianKo: Record<string, string> = {
   'Global sample folder': '전역 샘플 폴더',
   'Vault-relative folder for vault-global samples.':
     '볼트 전역 샘플을 저장할 볼트 기준 상대 폴더입니다.',
+  'The old Global sample folder {0} still has {1} sample(s). Move them to the new folder {2}?':
+    '옛 전역 샘플 폴더 {0}에 시료 {1}건이 남아 있습니다. 새 폴더 {2}(으)로 옮길까요?',
+  'Product catalog files move too: {0}': '제품 카탈로그 파일도 함께 옮깁니다: {0}',
+  'Move samples': '시료 옮기기',
+  'Samples in the old folder are not shown. Set the folder back to see them again.':
+    '옛 폴더의 시료는 보이지 않습니다. 설정을 되돌리면 다시 보입니다.',
+  'Moved {0} sample(s) to {1}.': '시료 {0}건을 {1}(으)로 옮겼습니다.',
+  '{0} catalog file(s) moved.': '카탈로그 파일 {0}개를 옮겼습니다.',
+  'Not moved, {0} already has the same ID: {1}': '{0}에 같은 ID가 있어 옮기지 않았습니다: {1}',
+  'Catalog files not moved, {0} already has them: {1}':
+    '{0}에 같은 이름이 있어 옮기지 않은 카탈로그 파일: {1}',
   'Auto-sync unit operation TOC': '유닛오퍼레이션 TOC 자동 정렬',
   "Reorder a workflow note's Related Unit Operations list to match heading order after edits, and tidy the --- separators immediately when a block is moved.":
     '편집 후 워크플로 노트의 Related Unit Operations 목록을 헤딩 순서에 맞게 정렬하고, 블록을 옮기면 `---` 구분선도 즉시 정리합니다.',
@@ -322,8 +349,12 @@ const obsidianKo: Record<string, string> = {
     '외부 MCP 클라이언트용 베어러 토큰입니다. Obsidian이나 서버를 다시 시작해도 유지됩니다. 유출됐다면 재발급하고, 새 토큰을 모든 클라이언트에 다시 붙여 넣으세요.',
   'Copy token': '토큰 복사',
   'Regenerate token': '토큰 재발급',
-  'Regenerate the MCP token? Clients using the current token stop working until you paste the new one into their settings.':
-    'MCP 토큰을 재발급할까요? 지금 토큰을 쓰는 클라이언트는 새 토큰을 설정에 붙여 넣기 전까지 연결되지 않습니다.',
+  'Click again to regenerate': '한 번 더 눌러 재발급',
+  'New MCP token issued. The old token no longer works.':
+    '새 MCP 토큰을 발급했습니다. 옛 토큰은 더 이상 쓸 수 없습니다.',
+  'The new token could not be copied. Use "Copy token".':
+    '새 토큰을 복사하지 못했습니다. `토큰 복사`를 누르세요.',
+  'Current token ends in {0}.': '현재 토큰 끝자리: {0}',
   'MCP token copied to clipboard.': 'MCP 토큰을 클립보드에 복사했습니다.',
   'New MCP token copied to clipboard.': '새 MCP 토큰을 클립보드에 복사했습니다.',
 
@@ -396,6 +427,15 @@ const obsidianKo: Record<string, string> = {
   'This empties section "{0}", which now has {1} line(s).':
     '절 "{0}"의 내용을 모두 지웁니다. 지금 {1}줄이 있습니다.',
   'Its {0} nested heading(s) are replaced too.': '그 안의 하위 제목 {0}개도 함께 바뀝니다.',
+  'It is occurrence {0} of {1}, with its heading on line {2}.':
+    '같은 절 {1}개 중 {0}번째로, 제목이 {2}번째 줄에 있습니다.',
+  'This creates a {0} sample with a new ID.': '{0} 샘플을 새 ID로 만듭니다.',
+  'This creates {0} sample {1}.': '{0} 샘플 {1}을(를) 만듭니다.',
+  'This adds to {0} sample {1}.': '이미 있는 {0} 샘플 {1}에 더합니다.',
+  'Alias: {0}': '별칭: {0}',
+  'Storage location: {0}': '보관 위치: {0}',
+  'Saved in the global samples folder {0}.': '전역 샘플 폴더 {0}에 저장합니다.',
+  'Saved in the local samples folder {0}.': '로컬 샘플 폴더 {0}에 저장합니다.',
   'MCP tool "{0}" was not run: no answer in time.':
     'MCP 도구 "{0}"을(를) 실행하지 않았습니다: 시간 안에 응답이 없었습니다.',
   'MCP tool "{0}" was not run: the client disconnected.':

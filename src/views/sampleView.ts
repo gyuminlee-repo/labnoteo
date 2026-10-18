@@ -156,9 +156,31 @@ export class SampleTreeView extends ItemView {
     this.lastRenderedLocal = local;
     const types = getSampleDisplayMeta(this.plugin.settings.customSampleTypes).types;
 
-    this.lastNodes = await buildSampleTree(this.plugin.fs, { local, global }, types);
+    this.lastNodes = (await buildSampleTree(this.plugin.fs, { local, global }, types)).map(root =>
+      (root.payload as { sameFolder?: boolean } | undefined)?.sameFolder ? this.sameFolderNotice(root) : root
+    );
     this.seedInitialExpansion(this.lastNodes);
     this.renderCurrent();
+  }
+
+  /**
+   * The Local root of a note outside any experiment, whose Local folder is the
+   * Global one: one line saying so instead of empty type nodes, whose "Add
+   * sample" would write to Global anyway (#111). No click or menu.
+   */
+  private sameFolderNotice(root: TreeNode): TreeNode {
+    return {
+      ...root,
+      children: [
+        {
+          id: `${root.id}:sameFolder`,
+          label: this.plugin.t(
+            'Notes outside an experiment use the Global samples below. Open an experiment note to see its samples.'
+          ),
+          kind: 'sampleDetail',
+        },
+      ],
+    };
   }
 
   /**

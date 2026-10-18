@@ -17,7 +17,7 @@ import type { LabnoteFs } from '../fs/labnoteFs';
 import {
   loadSamplesByType,
   mergeSampleRecord,
-  getLabsamplesFolder,
+  noteLabsamplesFolder,
   isSameSampleFolder,
   type SampleRecord,
 } from '../lib/sampleStorage';
@@ -130,7 +130,7 @@ export interface ToolDef {
 }
 
 /** {@link ToolDef.describe} result. */
-export type ToolPreview = { error: string } | SectionEditPreview;
+export type ToolPreview = { error: string } | SectionEditPreview | SampleCreatePreview;
 
 /** `update_section` preview: the section that will be replaced or cleared. */
 export interface SectionEditPreview {
@@ -139,12 +139,32 @@ export interface SectionEditPreview {
   heading: string;
   /** Enclosing heading of the target section, `''` at the top level. */
   parentHeading: string;
+  /** 1-based position among the `total` matching sections (#114). */
+  occurrence: number;
+  total: number;
+  /** 1-based line of the target heading. */
+  line: number;
   /** Non-blank lines the current body holds. */
   removedLines: number;
   /** Nested headings replaced along with the body. */
   removedSubheadings: number;
   /** True when the call empties the section (`clear: true`). */
   clearing: boolean;
+}
+
+/** `create_sample` preview: the sample that will be created or added to (#113). */
+export interface SampleCreatePreview {
+  kind: 'sampleCreate';
+  type: string;
+  /** Absent when the call leaves the id to be generated. */
+  id?: string;
+  /** True when `id` is already recorded, so the call adds to that record. */
+  existing: boolean;
+  alias?: string;
+  location?: string;
+  /** Samples folder the record goes to. */
+  folder: string;
+  scope: 'local' | 'global';
 }
 
 // --- small arg helpers -----------------------------------------------------
@@ -288,6 +308,69 @@ async function resolveSectionTarget(
   return { documentPath, heading, content, md, target: candidates[index], index, total: candidates.length };
 }
 
+interface ResolvedSampleCreate {
+  documentPath: string;
+  type: string;
+  /** Normalized id, or undefined when one is to be generated. */
+  id?: string;
+  alias?: string;
+  description?: string;
+  location?: string;
+  folder: string;
+  scope: 'local' | 'global';
+}
+
+/**
+ * Validate a `create_sample` call, so the handler and the approval preview
+ * (#113) agree on what it writes and where.
+ */
+async function resolveSampleCreate(
+  ctx: ToolContext,
+  args: Record<string, unknown>
+): Promise<ResolvedSampleCreate | { error: string }> {
+  const rawType = str(args, 'type');
+  const documentPath = safePath(ctx, args, 'documentPath');
+  if (!documentPath) {
+    const outside = outsideVaultError(args, 'documentPath');
+    if (outside) return { error: outside.error! };
+  }
+  if (!rawType || !documentPath) return { error: 'type and documentPath are required' };
+  // Unknown types are still accepted, as before; known ones take their
+  // canonical spelling so `equip` and `Equip` share one file and id prefix.
+  const type = canonicalSampleType(rawType, getSampleDisplayMeta(ctx.customTypes).types) ?? rawType;
+  const rawId = str(args, 'id');
+  const id = rawId === undefined ? undefined : normalizeSampleId(type, rawId);
+  if (rawId !== undefined && !id) {
+    return { error: `Invalid id "${rawId}": expected ${type}-<number>. Omit id to generate one.` };
+  }
+  const alias = str(args, 'alias');
+  if (alias !== undefined && hasSampleAliasSeparator(alias)) {
+    return {
+      error: `Invalid alias "${alias}": ";" and ":" separate the id, alias and description in a note. Replace them (e.g. with "-" or "/") and retry.`,
+    };
+  }
+  const description = str(args, 'description');
+  if (description !== undefined && hasSampleDescriptionSeparator(description)) {
+    return {
+      error: `Invalid description "${description}": ";" ends the description in a note. Replace it (e.g. with ",") and retry.`,
+    };
+  }
+  // The samples folder is derived from the note's directory and created on
+  // write, so a mistyped path would leave a stray folder no experiment
+  // owns. A folder path passes `exists` (it is true for folders too) but
+  // would put the samples in its parent, hence the `.md` check.
+  if (!/\.md$/i.test(documentPath) || !(await ctx.fs.exists(documentPath))) {
+    return {
+      error: `Note not found: ${documentPath} (documentPath must be an existing note; the sample is stored next to it)`,
+    };
+  }
+  const folder = noteLabsamplesFolder(documentPath, ctx.globalSampleFolder);
+  // A note outside any experiment (e.g. a vault-root note) resolves to the
+  // same folder as the global samples; say so instead of calling it local.
+  const scope = ctx.globalSampleFolder && isSameSampleFolder(folder, ctx.globalSampleFolder) ? 'global' : 'local';
+  return { documentPath, type, id: id ?? undefined, alias, description, location: str(args, 'location'), folder, scope };
+}
+
 const README_NAME = 'README.labnote.md';
 
 async function findUnitOp(
@@ -329,7 +412,7 @@ export function createLabnoteTools(): ToolDef[] {
 
         const documentPath = safePath(ctx, args, 'documentPath');
         const folders: string[] = [];
-        if (documentPath) folders.push(getLabsamplesFolder(documentPath));
+        if (documentPath) folders.push(noteLabsamplesFolder(documentPath, ctx.globalSampleFolder));
         if (ctx.globalSampleFolder) folders.push(ctx.globalSampleFolder);
 
         for (const folder of folders) {
@@ -362,7 +445,7 @@ export function createLabnoteTools(): ToolDef[] {
           Object.assign(merged, await loadSamplesByType(ctx.fs, ctx.globalSampleFolder, type));
         }
         if (documentPath) {
-          Object.assign(merged, await loadSamplesByType(ctx.fs, getLabsamplesFolder(documentPath), type));
+          Object.assign(merged, await loadSamplesByType(ctx.fs, noteLabsamplesFolder(documentPath, ctx.globalSampleFolder), type));
         }
         const data = Object.entries(merged).map(([id, rec]) => ({
           id,
@@ -411,51 +494,10 @@ export function createLabnoteTools(): ToolDef[] {
         required: ['type', 'documentPath'],
       },
       async handler(ctx, args) {
-        const rawType = str(args, 'type');
-        const documentPath = safePath(ctx, args, 'documentPath');
-        if (!documentPath) {
-          const outside = outsideVaultError(args, 'documentPath');
-          if (outside) return outside;
-        }
-        if (!rawType || !documentPath) return { ok: false, error: 'type and documentPath are required' };
-        // Unknown types are still accepted, as before; known ones take their
-        // canonical spelling so `equip` and `Equip` share one file and id prefix.
-        const type = canonicalSampleType(rawType, getSampleDisplayMeta(ctx.customTypes).types) ?? rawType;
-        const rawId = str(args, 'id');
-        const normalizedId = rawId === undefined ? undefined : normalizeSampleId(type, rawId);
-        if (rawId !== undefined && !normalizedId) {
-          return {
-            ok: false,
-            error: `Invalid id "${rawId}": expected ${type}-<number>. Omit id to generate one.`,
-          };
-        }
-        const alias = str(args, 'alias');
-        if (alias !== undefined && hasSampleAliasSeparator(alias)) {
-          return {
-            ok: false,
-            error: `Invalid alias "${alias}": ";" and ":" separate the id, alias and description in a note. Replace them (e.g. with "-" or "/") and retry.`,
-          };
-        }
-        const description = str(args, 'description');
-        if (description !== undefined && hasSampleDescriptionSeparator(description)) {
-          return {
-            ok: false,
-            error: `Invalid description "${description}": ";" ends the description in a note. Replace it (e.g. with ",") and retry.`,
-          };
-        }
-        // The samples folder is derived from the note's directory and created on
-        // write, so a mistyped path would leave a stray folder no experiment
-        // owns. A folder path passes `exists` (it is true for folders too) but
-        // would put the samples in its parent, hence the `.md` check.
-        if (!/\.md$/i.test(documentPath) || !(await ctx.fs.exists(documentPath))) {
-          return {
-            ok: false,
-            error: `Note not found: ${documentPath} (documentPath must be an existing note; the sample is stored next to it)`,
-          };
-        }
-
-        const folder = getLabsamplesFolder(documentPath);
-        const id = normalizedId ?? generateSampleId(type);
+        const resolved = await resolveSampleCreate(ctx, args);
+        if ('error' in resolved) return { ok: false, error: resolved.error };
+        const { documentPath, type, alias, description, location, folder, scope } = resolved;
+        const id = resolved.id ?? generateSampleId(type);
 
         // Atomic merge into an existing record (#73): calling again for a known
         // id adds this note as a source and the description in front, and an
@@ -464,12 +506,8 @@ export function createLabnoteTools(): ToolDef[] {
           alias,
           description,
           sources: [posix.basename(documentPath)],
-          location: str(args, 'location'),
+          location,
         });
-        // A note outside any experiment (e.g. a vault-root note) resolves to the
-        // same folder as the global samples; say so instead of calling it local.
-        const scope =
-          ctx.globalSampleFolder && isSameSampleFolder(folder, ctx.globalSampleFolder) ? 'global' : 'local';
         const result: ToolResult = { ok: true, data: { id, type, folder, scope } };
         if (scope === 'global') {
           result.warnings = [
@@ -477,6 +515,13 @@ export function createLabnoteTools(): ToolDef[] {
           ];
         }
         return result;
+      },
+      async describe(ctx, args) {
+        const resolved = await resolveSampleCreate(ctx, args);
+        if ('error' in resolved) return { error: resolved.error };
+        const { type, id, alias, location, folder, scope } = resolved;
+        const existing = id !== undefined && (await loadSamplesByType(ctx.fs, folder, type))[id] !== undefined;
+        return { kind: 'sampleCreate', type, id, existing, alias, location, folder, scope };
       },
     },
 
@@ -566,6 +611,9 @@ export function createLabnoteTools(): ToolDef[] {
           documentPath: resolved.documentPath,
           heading: resolved.heading,
           parentHeading: resolved.target.parentHeading,
+          occurrence: resolved.index + 1,
+          total: resolved.total,
+          line: resolved.target.line + 1,
           removedLines: body?.lines ?? 0,
           removedSubheadings: body?.subheadings ?? 0,
           clearing: resolved.content === '',

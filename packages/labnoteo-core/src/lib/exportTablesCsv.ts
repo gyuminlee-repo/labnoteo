@@ -138,6 +138,45 @@ function splitCsvHeader(csv: string): { header: string; data: string } {
   return { header: csv, data: '' };
 }
 
+/** A CSV's records, header first, honouring line breaks inside quotes; no trailing empty record. */
+function splitCsvRecords(csv: string): string[] {
+  const records: string[] = [];
+  let quoted = false;
+  let start = 0;
+  for (let i = 0; i < csv.length; i++) {
+    const ch = csv[i];
+    if (ch === '"') quoted = !quoted;
+    else if (ch === '\n' && !quoted) {
+      records.push(csv.slice(start, i));
+      start = i + 1;
+    }
+  }
+  if (start < csv.length) records.push(csv.slice(start));
+  return records;
+}
+
+/** Data rows of a CSV, the header not counted. */
+export function csvRowCount(csv: string): number {
+  return Math.max(0, splitCsvRecords(csv).length - 1);
+}
+
+/**
+ * The first data row (1-based, header not counted) where two CSVs differ, with
+ * both versions (`''` for a row one side lacks). Undefined when every row is equal.
+ * Tells two same-header CSVs apart in the overwrite prompt (#110).
+ */
+export function firstDifferingRow(
+  oldCsv: string,
+  newCsv: string
+): { row: number; from: string; to: string } | undefined {
+  const before = splitCsvRecords(oldCsv).slice(1);
+  const after = splitCsvRecords(newCsv).slice(1);
+  for (let i = 0; i < Math.max(before.length, after.length); i++) {
+    if (before[i] !== after[i]) return { row: i + 1, from: before[i] ?? '', to: after[i] ?? '' };
+  }
+  return undefined;
+}
+
 /**
  * Classify each table's re-export against the CSV already at its
  * `_tableN.csv` path (#80, #92). `existingCount` is the highest table number

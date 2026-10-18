@@ -58,6 +58,28 @@ describe('plugin operations stamp last_updated_date', () => {
     expect(await fs.read(README)).toContain(`last_updated_date: ${TODAY}`);
   });
 
+  // #108: the flag lives in the README, whichever experiment note it was run from.
+  it('says which README it changed when run from a workflow note', async () => {
+    const run = async (active: string): Promise<string> => {
+      const fs = new MemFileSystem();
+      await fs.write(README, note());
+      const shown: string[] = [];
+      const app = {
+        workspace: { getActiveFile: () => new TFile(active), getLeavesOfType: () => [] },
+        vault: { getFileByPath: () => null },
+      } as unknown as App;
+      const host = {
+        fs,
+        t: (s: string, ...args: string[]) => args.reduce((acc, a, i) => acc.replace(`{${i}}`, a), s),
+        notify: (_kind: string, message: string) => shown.push(message),
+      } as unknown as LabnoteHost;
+      await toggleDiscussionFlagCommand(app, host, stamp);
+      return shown.at(-1) ?? '';
+    };
+    expect(await run(WORKFLOW)).toMatch(/ Changed 001_Test's README, not this note\.$/);
+    expect(await run(README)).not.toContain("README, not this note");
+  });
+
   it('keeps the date with the default (setting off) stamp', async () => {
     const fs = new MemFileSystem();
     await fs.write(README, note());

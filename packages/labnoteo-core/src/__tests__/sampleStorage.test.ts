@@ -21,6 +21,9 @@ import {
   removeSourcesForDocument,
   findSampleUsages,
   resolveLocalSampleFolder,
+  noteLabsamplesFolder,
+  inventorySampleFolder,
+  moveSampleFolder,
   planAliasRewrite,
   applyAliasRewrite,
   planLocalSampleAdoption,
@@ -76,6 +79,78 @@ describe('resolveLocalSampleFolder (#70)', () => {
     );
     expect(resolveLocalSampleFolder(undefined, undefined, GLOBAL).folder).toBe(GLOBAL);
     expect(resolveLocalSampleFolder(undefined, EXP, GLOBAL).folder).toBe(EXP_FOLDER);
+  });
+
+  it('gives a vault-root note a changed Global folder too (#101)', () => {
+    expect(resolveLocalSampleFolder('Welcome.md', EXP, 'Samples').folder).toBe('Samples');
+  });
+});
+
+// #101: a vault-root note's registry is the Global folder, whatever it is set to.
+describe('noteLabsamplesFolder (#101)', () => {
+  it('maps experiment, vault-root and other notes', () => {
+    expect(noteLabsamplesFolder('labnote/001_GFP/001_WB030_X.labnote.md', 'Samples')).toBe(
+      'labnote/001_GFP/resources/labsamples'
+    );
+    expect(noteLabsamplesFolder('labnote/001_GFP/sub/x.labnote.md', 'Samples')).toBe(
+      'labnote/001_GFP/resources/labsamples'
+    );
+    expect(noteLabsamplesFolder('Welcome.md', 'Samples')).toBe('Samples');
+    expect(noteLabsamplesFolder('notes/memo.md', 'Samples')).toBe('notes/resources/labsamples');
+    expect(noteLabsamplesFolder('Welcome.md')).toBe('resources/labsamples');
+  });
+
+  it('saves a vault-root note to the new Global folder', async () => {
+    const fs = new MemFileSystem();
+    await saveSamplesFromDocument(fs, 'Welcome.md', '@DNA;DNA-1;pUC19', 'Samples');
+    expect(Object.keys(await loadSamplesByType(fs, 'Samples', 'DNA'))).toEqual(['DNA-1']);
+    expect(await fs.exists('resources/labsamples/DNA.json')).toBe(false);
+  });
+});
+
+describe('moving the Global sample folder (#101)', () => {
+  const TYPES = ['DNA', 'Reagent'];
+  const record = (alias: string): SampleRecord => ({ type: 'DNA', alias, descriptions: [], sources: [] });
+
+  async function seeded() {
+    const fs = new MemFileSystem();
+    await putSampleRecord(fs, 'old', 'DNA', 'DNA-1', record('a'));
+    await putSampleRecord(fs, 'old', 'DNA', 'DNA-2', record('b'));
+    await fs.write('old/Reagent_sigma.json', '{}');
+    await fs.write('old/notes.txt', 'keep');
+    return fs;
+  }
+
+  it('counts the records and catalog files left behind', async () => {
+    const fs = await seeded();
+    expect(await inventorySampleFolder(fs, 'old', TYPES)).toEqual({ records: 2, catalogs: ['Reagent_sigma.json'] });
+    expect(await inventorySampleFolder(fs, 'missing', TYPES)).toEqual({ records: 0, catalogs: [] });
+  });
+
+  it('moves records and catalogs, skipping IDs and file names the new folder has', async () => {
+    const fs = await seeded();
+    await putSampleRecord(fs, 'new', 'DNA', 'dna-2', record('kept'));
+    await fs.write('new/Reagent_sigma.json', '{"x":1}');
+
+    const result = await moveSampleFolder(fs, 'old', 'new', TYPES);
+
+    expect(result).toEqual({ moved: 1, skipped: ['DNA DNA-2'], catalogsMoved: 0, catalogsSkipped: ['Reagent_sigma.json'] });
+    expect(Object.keys(await loadSamplesByType(fs, 'new', 'DNA')).sort()).toEqual(['DNA-1', 'dna-2']);
+    expect((await loadSamplesByType(fs, 'new', 'DNA'))['dna-2'].alias).toBe('kept');
+    expect(Object.keys(await loadSamplesByType(fs, 'old', 'DNA'))).toEqual(['DNA-2']);
+    expect(await fs.read('new/Reagent_sigma.json')).toBe('{"x":1}');
+  });
+
+  it('empties and removes the old folder when everything moved', async () => {
+    const fs = new MemFileSystem();
+    await putSampleRecord(fs, 'old', 'DNA', 'DNA-1', record('a'));
+    await fs.write('old/Reagent_sigma.json', '{}');
+
+    const result = await moveSampleFolder(fs, 'old', 'new', TYPES);
+
+    expect(result).toMatchObject({ moved: 1, catalogsMoved: 1 });
+    expect(await fs.read('new/Reagent_sigma.json')).toBe('{}');
+    expect(await fs.exists('old')).toBe(false);
   });
 });
 

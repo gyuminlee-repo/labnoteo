@@ -252,6 +252,47 @@ describe('create_sample / get_sample / list_samples', () => {
     expect(root.data).toMatchObject({ folder: 'resources/labsamples', scope: 'global' });
     expect(root.warnings?.[0]).toContain('outside an experiment folder');
   });
+
+  // #113
+  describe('describe', () => {
+    it('previews the sample it would write, without writing', async () => {
+      const describe = tool('create_sample').describe!;
+      expect(
+        await describe(ctx, { type: 'reagent', alias: '배지성분-1', location: '선반-M', documentPath: NOTE_PATH })
+      ).toEqual({
+        kind: 'sampleCreate',
+        type: 'Reagent',
+        id: undefined,
+        existing: false,
+        alias: '배지성분-1',
+        location: '선반-M',
+        folder: `${NOTE_DIR}/resources/labsamples`,
+        scope: 'local',
+      });
+      expect(await fs.exists(`${NOTE_DIR}/resources/labsamples/Reagent.json`)).toBe(false);
+    });
+
+    it('says when the id is already recorded', async () => {
+      await tool('create_sample').handler(ctx, { type: 'DNA', id: 'DNA-1', documentPath: NOTE_PATH });
+      const describe = tool('create_sample').describe!;
+      expect(await describe(ctx, { type: 'DNA', id: 'DNA-1', documentPath: NOTE_PATH })).toMatchObject({
+        id: 'DNA-1',
+        existing: true,
+      });
+      expect(await describe(ctx, { type: 'DNA', id: 'DNA-2', documentPath: NOTE_PATH })).toMatchObject({
+        id: 'DNA-2',
+        existing: false,
+      });
+    });
+
+    it('returns the error the call would fail with', async () => {
+      const describe = tool('create_sample').describe!;
+      expect(await describe(ctx, { type: 'DNA', id: 'ND-11', documentPath: NOTE_PATH })).toEqual({
+        error: 'Invalid id "ND-11": expected DNA-<number>. Omit id to generate one.',
+      });
+      expect(await describe(ctx, { type: 'DNA', documentPath: `${NOTE_DIR}/missing.md` })).toHaveProperty('error');
+    });
+  });
 });
 
 describe('runTool — unsupported arguments', () => {
@@ -510,6 +551,9 @@ describe('update_section', () => {
         documentPath: NOTE_PATH,
         heading: 'Results',
         parentHeading: '[WD010 Design]',
+        occurrence: 1,
+        total: 1,
+        line: 3,
         removedLines: 2,
         removedSubheadings: 0,
         clearing: false,
@@ -518,6 +562,18 @@ describe('update_section', () => {
         await describe(ctx, { documentPath: NOTE_PATH, heading: 'Results', content: '', clear: true })
       ).toMatchObject({ clearing: true });
       expect(await fs.read(NOTE_PATH)).toBe(doc);
+    });
+
+    // #114
+    it('says which of the repeated sections it is, and on which line', async () => {
+      await fs.write(
+        NOTE_PATH,
+        '### [UHW015 Dispense]\n\n#### Method\n\na\n\n### [UHW015 Dispense]\n\n#### Method\n\nb\n'
+      );
+      const describe = tool('update_section').describe!;
+      expect(
+        await describe(ctx, { documentPath: NOTE_PATH, heading: 'Method', occurrence: 2, content: 'x' })
+      ).toMatchObject({ parentHeading: '[UHW015 Dispense]', occurrence: 2, total: 2, line: 9 });
     });
 
     it('returns the error the call would fail with', async () => {

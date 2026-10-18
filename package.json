@@ -1,7 +1,7 @@
 {
 	"name": "labnoteo",
 	"private": true,
-	"version": "0.97.0",
+	"version": "0.98.0",
 	"type": "module",
 	"description": "Markdown-based lab notebook with sample tracking, workflow checklists, and LLM assistance for biology and bioinformatics experiments.",
 	"license": "Apache-2.0",
@@ -22,8 +22,8 @@
 		"typecheck:plugin": "tsc --noEmit -p tsconfig.json",
 		"test": "vitest run",
 		"test:watch": "vitest",
-    "sync:versions": "node scripts/syncVersions.mjs",
-    "gen:legacy-hashes": "node scripts/legacyTemplateHashes.mjs",
+		"sync:versions": "node scripts/syncVersions.mjs",
+		"gen:legacy-hashes": "node scripts/legacyTemplateHashes.mjs",
 		"record:fixtures": "node scripts/recordLlmFixtures.mjs"
 	},
 	"dependencies": {

@@ -22,13 +22,14 @@ import {
   insertUnitOperation,
   rebuildUnitOpToc,
   locateInsertedUnitOpHeading,
-  findUnitOpInsertOffset,
+  unitOpInsertPointAtCursor,
   EXPERIMENT_STATUSES,
   generateIssueMarkerId,
   isDiscussFlagged,
   parseFrontMatterYaml,
   parseIssueMarkers,
   planIssueMarkerInsertion,
+  planDateInsertion,
   issueSentenceRange,
   serializeFrontMatterEntry,
   setDiscussFlag,
@@ -65,6 +66,8 @@ import {
   relabelWorkflowChecklistEntries,
   dedupeWorkflowChecklistEntries,
   normalizeWorkflowChecklistLabels,
+  normalizeWorkflowChecklistLinks,
+  normalizeChecklistLink,
   relinkWorkflowChecklistEntries,
   collapseWorkflowRenames,
   defaultWorkflowTitle,
@@ -199,6 +202,30 @@ export async function changeExperimentStatusCommand(
     }
   }
   host.notify('info', message);
+}
+
+/**
+ * Insert a date (or date and time) over the selection. In the front matter it
+ * only fills a key with an empty value; elsewhere there it is refused with a
+ * warning, since the text would break the YAML (#106).
+ */
+export function insertDateCommand(editor: Editor, host: LabnoteHost, text: string): boolean {
+  const plan = planDateInsertion(
+    editor.getValue(),
+    editor.posToOffset(editor.getCursor('from')),
+    editor.posToOffset(editor.getCursor('to')),
+    text
+  );
+  if ('reason' in plan) {
+    host.notify(
+      'warn',
+      host.t('A date cannot go on a front matter line that has a value. Run this in the body or on an empty value.')
+    );
+    return false;
+  }
+  editor.replaceRange(plan.text, editor.offsetToPos(plan.from), editor.offsetToPos(plan.to));
+  editor.setCursor(editor.offsetToPos(plan.from + plan.text.length));
+  return true;
 }
 
 /**
@@ -394,6 +421,10 @@ export async function toggleDiscussionFlagCommand(
       state === 'ready'
         ? host.t('Discussion flag cleared. Any issue already opened stays open.')
         : host.t('Discussion flag cleared.');
+  }
+  // The flag belongs to the experiment, so say so when run from another note (#108).
+  if (app.workspace.getActiveFile()?.path !== readmePath) {
+    message += ` ${host.t("Changed {0}'s README, not this note.", posix.basename(labnoteDir))}`;
   }
   host.notify('info', message);
 }
@@ -617,23 +648,24 @@ export async function insertWorkflowLinkCommand(
 }
 
 /**
- * Insert a unit-operation block at the end of the `## Related Unit Operations`
- * section, then rebuild that section's TOC so its entries follow the document
- * order of the actual `### [..]` headings. Finally, move the cursor/focus to
- * the just-inserted heading. Shared by the command and the workflow sidebar's
- * context menu.
+ * Insert a unit-operation block into the `## Related Unit Operations` section
+ * (after the block the cursor is in, see `insertUnitOperation`), then rebuild
+ * that section's TOC so its entries follow the document order of the actual
+ * `### [..]` headings. Finally, move the cursor/focus to the just-inserted
+ * heading. Shared by the command and the workflow sidebar's context menu, which
+ * uses the cursor of the editor last active.
  */
 export async function insertUnitOpAndUpdateToc(
   host: LabnoteHost,
   input: InsertUnitOperationInput
 ): Promise<boolean> {
-  // Resolve the insertion point BEFORE inserting: the block lands here, which
-  // lets us relocate the new heading after the whole-doc TOC rewrite. The same
-  // pure helper drives the insert itself, so both agree on the offset.
+  // Resolve the insertion point BEFORE inserting and hand it to the insert, so
+  // the new heading can be found again after the whole-doc TOC rewrite.
   const before = host.editTarget();
-  const insertOffset = before ? findUnitOpInsertOffset(await before.getText()) : -1;
+  const at = before ? await unitOpInsertPointAtCursor(before) : undefined;
+  const insertOffset = at?.offset ?? -1;
 
-  const ok = await insertUnitOperation(host, input);
+  const ok = await insertUnitOperation(host, { ...input, at });
   if (!ok) return false;
 
   const target = host.editTarget();
@@ -653,7 +685,7 @@ export async function insertUnitOpAndUpdateToc(
   return true;
 }
 
-/** Insert a unit-operation block at the cursor + update the workflow TOC. */
+/** Insert a unit-operation block after the one the cursor is in + update the workflow TOC. */
 export async function insertUnitOperationCommand(app: App, host: LabnoteHost): Promise<void> {
   await ensureWorkflowResources(host.fs, VAULT_ROOT);
   const hw = await loadUnitOperations(host.fs, VAULT_ROOT, 'hw');
@@ -735,7 +767,7 @@ export async function renumberWorkflowsCommand(
   // Files the checklist does not list are renumbered too, so register them in
   // the same run; otherwise one takes 001 and the overview starts at 002 (#56).
   const unlisted = (await host.fs.exists(readmePath))
-    ? planWorkflowChecklistSync(await host.fs.read(readmePath), existing).added.length
+    ? planWorkflowChecklistSync(await host.fs.read(readmePath), existing, undefined, undefined, labnoteDir).added.length
     : 0;
   if (renames.length === 0 && unlisted === 0) {
     host.notify('info', host.t('Workflow numbering is already sequential.'));
@@ -780,11 +812,11 @@ export async function renumberWorkflowsCommand(
       await readmeSync.settle();
       if (baseline !== undefined) {
         const relink = (content: string): string =>
-          moved.length > 0 ? reconcileWorkflowChecklist(content, moved, { baseline }).content : content;
+          moved.length > 0 ? reconcileWorkflowChecklist(content, moved, { baseline, dir: labnoteDir }).content : content;
         const { names, notes } = await readWorkflowFolder(host, labnoteDir);
         const titles = workflowLabels(notes);
         await processNoteThroughVault(app, host, readmePath, content => {
-          const plan = planWorkflowChecklistSync(relink(content), names, titles);
+          const plan = planWorkflowChecklistSync(relink(content), names, titles, undefined, labnoteDir);
           added = plan.added.length;
           return plan.content;
         });
@@ -1005,7 +1037,7 @@ export async function addWorkflowFileToChecklist(
     app,
     host,
     readmePath,
-    content => planWorkflowChecklistSync(content, [fileName], titles).content
+    content => planWorkflowChecklistSync(content, [fileName], titles, undefined, labnoteDir).content
   );
 }
 
@@ -1188,8 +1220,9 @@ export async function syncWorkflowChecklistCommand(
     );
     if (ok) duplicates = plan.duplicates;
   }
-  // Escaping a label changes only the link text, not what it reads.
-  const relinked = plan.unescaped.length;
+  // Escaping a label changes only the link text, not what it reads, and so does
+  // shortening a link Obsidian made vault-absolute (#102).
+  const relinked = plan.unescaped.length + normalizeWorkflowChecklistLinks(readme, labnoteDir).count;
 
   const samplesBrought = adoptSamples ? await adoptSamples(labnoteDir, names) : 0;
 
@@ -1218,17 +1251,25 @@ export async function syncWorkflowChecklistCommand(
     return;
   }
 
-  await processNoteThroughVault(app, host, readmePath, content =>
-    normalizeWorkflowChecklistLabels(
+  // Links are shortened first, so the entries to remove are matched in that form.
+  const removeLinks = remove.map(link => normalizeChecklistLink(link, labnoteDir));
+  await processNoteThroughVault(app, host, readmePath, content => {
+    const shortened = normalizeWorkflowChecklistLinks(content, labnoteDir).content;
+    return normalizeWorkflowChecklistLabels(
       dedupeWorkflowChecklistEntries(
         relabelWorkflowChecklistEntries(
-          removeWorkflowChecklistEntries(planWorkflowChecklistSync(content, names, titles).content, remove),
-          relabel
+          removeWorkflowChecklistEntries(
+            planWorkflowChecklistSync(shortened, names, titles, undefined, labnoteDir).content,
+            removeLinks
+          ),
+          relabel,
+          labnoteDir
         ),
-        [...new Set(duplicates)]
+        [...new Set(duplicates)],
+        labnoteDir
       )
-    )
-  );
+    );
+  });
   const parts = [
     host.t('Workflow checklist updated: {0} added, {1} removed.', String(plan.added.length), String(remove.length)),
   ];
@@ -1332,6 +1373,7 @@ export async function syncReadmeOrderOnRename(
     content =>
       reconcileWorkflowChecklist(content, renames, {
         labelFor: name => labels.get(name) ?? defaultWorkflowTitle(name),
+        dir: labnoteDir,
       }).content
   );
 }

@@ -10,7 +10,9 @@ import {
   buildInitializeResult,
   buildToolCallResult,
   isAllowedOrigin,
+  isAuthorized,
   timingSafeEqual,
+  tokenFingerprint,
 } from '../../src/llm/mcpServer';
 import { buildApprovalMessage } from '../../src/llm/approvalMessage';
 import { createObsidianTranslator } from '../../src/i18n';
@@ -173,6 +175,24 @@ describe('timingSafeEqual', () => {
   });
 });
 
+// #107: a regenerated token must lock out the old one.
+describe('isAuthorized', () => {
+  it('accepts only the current token', () => {
+    expect(isAuthorized('Bearer new-token', 'new-token')).toBe(true);
+    expect(isAuthorized('Bearer old-token', 'new-token')).toBe(false);
+  });
+
+  it('rejects every request while no token is set', () => {
+    expect(isAuthorized('Bearer ', '')).toBe(false);
+    expect(isAuthorized('', '')).toBe(false);
+  });
+
+  it('shows a fingerprint that changes with the token', () => {
+    expect(tokenFingerprint('abcdef123456')).toBe('…123456');
+    expect(tokenFingerprint('')).toBe('');
+  });
+});
+
 describe('buildToolCallResult', () => {
   it('carries the data as a single text item', () => {
     expect(buildToolCallResult({ ok: true, data: { id: 'RNA-1' } })).toEqual({
@@ -209,6 +229,9 @@ describe('buildApprovalMessage', () => {
     documentPath: 'n.md',
     heading: 'Results',
     parentHeading: '[UHW100 PCR]',
+    occurrence: 1,
+    total: 1,
+    line: 8,
     removedLines: 12,
     removedSubheadings: 0,
     clearing: false,
@@ -230,5 +253,40 @@ describe('buildApprovalMessage', () => {
 
   it('is just the prompt and target without a preview', () => {
     expect(buildApprovalMessage(t, 'Allow?', 'n.md')).toBe('Allow?\n\nTarget: n.md');
+  });
+
+  // #114
+  it('says which repeated section it is', () => {
+    expect(buildApprovalMessage(t, 'Allow?', null, { ...preview, occurrence: 2, total: 3, line: 83 })).toBe(
+      'Allow?\n\nThis replaces section "[UHW100 PCR] > Results", which now has 12 line(s). It is occurrence 2 of 3, with its heading on line 83.'
+    );
+  });
+
+  // #113
+  describe('create_sample', () => {
+    const sample = {
+      kind: 'sampleCreate' as const,
+      type: 'Reagent',
+      existing: false,
+      folder: 'labnote/049_M/resources/labsamples',
+      scope: 'local' as const,
+    };
+
+    it('names the type, alias, location and folder of a new sample', () => {
+      expect(
+        buildApprovalMessage(t, 'Allow?', 'n.md', { ...sample, alias: '배지성분-1', location: '선반-M / 칸-1' })
+      ).toBe(
+        'Allow?\n\nTarget: n.md\n\nThis creates a Reagent sample with a new ID.\nAlias: 배지성분-1\nStorage location: 선반-M / 칸-1\nSaved in the local samples folder labnote/049_M/resources/labsamples.'
+      );
+    });
+
+    it('tells a given id apart from adding to an existing one', () => {
+      expect(buildApprovalMessage(t, 'Allow?', null, { ...sample, id: 'Reagent-3' })).toContain(
+        'This creates Reagent sample Reagent-3.'
+      );
+      expect(
+        buildApprovalMessage(t, 'Allow?', null, { ...sample, id: 'Reagent-3', existing: true, scope: 'global', folder: 'g' })
+      ).toBe('Allow?\n\nThis adds to Reagent sample Reagent-3.\nSaved in the global samples folder g.');
+    });
   });
 });

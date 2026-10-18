@@ -55,6 +55,15 @@ export function scanDocumentHead(lines: readonly string[]): DocumentHead {
 }
 
 /**
+ * Whether `offset` falls inside the note's front matter, its `---` lines
+ * included. An unclosed `---` block is not front matter.
+ */
+export function isInFrontMatter(doc: string, offset: number): boolean {
+  const { fmEndLine } = scanDocumentHead(doc.split('\n'));
+  return fmEndLine !== -1 && doc.slice(0, offset).split('\n').length - 1 <= fmEndLine;
+}
+
+/**
  * Whether an insert at `pos` would land in the front matter or above the title:
  * the cursor is inside the front matter, or at/before the start of the first
  * heading line. Without any heading only the front matter counts.

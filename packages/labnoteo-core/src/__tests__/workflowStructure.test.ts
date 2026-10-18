@@ -29,6 +29,8 @@ import {
   relabelWorkflowChecklistEntries,
   dedupeWorkflowChecklistEntries,
   normalizeWorkflowChecklistLabels,
+  normalizeWorkflowChecklistLinks,
+  normalizeChecklistLink,
   relinkWorkflowChecklistEntries,
   classifyWorkflowMoveOut,
   workflowAliasFromFileName,
@@ -182,6 +184,60 @@ describe('reconcileWorkflowChecklist', () => {
     ]);
     expect(res.changed).toBe(false);
     expect(res.content).toBe(md);
+  });
+});
+
+// #102: Obsidian writes a vault-absolute link when another experiment has a
+// file of the same name; the checklist must keep pointing at `./<file name>`.
+describe('vault-absolute checklist links (#102)', () => {
+  const DIR = 'labnote/042_단백질';
+  const X = '001_WT030_Activity.labnote.md';
+
+  it('reduces a link into the folder to its file name and leaves others alone', () => {
+    expect(normalizeChecklistLink(`${DIR}/${X}`, DIR)).toBe(X);
+    expect(normalizeChecklistLink(`/${DIR}/${X}`, DIR)).toBe(X);
+    expect(normalizeChecklistLink(X, DIR)).toBe(X);
+    expect(normalizeChecklistLink(`../038_B/${X}`, DIR)).toBe(`../038_B/${X}`);
+    expect(normalizeChecklistLink(`labnote/038_B/${X}`, DIR)).toBe(`labnote/038_B/${X}`);
+    expect(normalizeChecklistLink(`images/${X}`, DIR)).toBe(`images/${X}`);
+  });
+
+  it('relinks a renamed entry Obsidian made vault-absolute, keeping its checkbox', () => {
+    const readme = readmeWith([
+      '- [ ] [WB090 Purification](./001_WB090_Purification.labnote.md)',
+      `- [x] [WT030 Activity](${DIR}/${X})`,
+    ]);
+    const res = reconcileWorkflowChecklist(readme, [{ from: '002_WT030_Activity.labnote.md', to: X }], { dir: DIR });
+    expect(res.content).toContain(`- [x] [WT030 Activity](./${X})`);
+    expect(res.content).not.toContain(`./${DIR}`);
+  });
+
+  it('repairs an entry an earlier version broke into ./labnote/…', () => {
+    const readme = readmeWith([`- [ ] [WT030 Activity](./${DIR}/${X})`]);
+    const res = reconcileWorkflowChecklist(readme, [], { dir: DIR });
+    expect(res.changed).toBe(true);
+    expect(res.content).toContain(`(./${X})`);
+  });
+
+  it('never writes ./ before a link with a folder part', () => {
+    expect(generateWorkflowChecklist([{ done: false, title: 'B', fileName: `../038_B/${X}` }])).toBe(
+      `- [ ] [B](../038_B/${X})`
+    );
+  });
+
+  it('counts the folder file as listed instead of adding it again', () => {
+    const readme = readmeWith([`- [ ] [WT030 Activity](${DIR}/${X})`]);
+    const plan = planWorkflowChecklistSync(readme, [X], new Map(), undefined, DIR);
+    expect(plan.added).toEqual([]);
+    expect(plan.stale).toEqual([]);
+  });
+
+  it('shortens such links in place', () => {
+    const readme = readmeWith([`- [x] [WT030 Activity](./${DIR}/${X})`, '- [ ] [B](./002_WB090_B.labnote.md)']);
+    const { content, count } = normalizeWorkflowChecklistLinks(readme, DIR);
+    expect(count).toBe(1);
+    expect(content).toContain(`- [x] [WT030 Activity](./${X})`);
+    expect(normalizeWorkflowChecklistLinks(content, DIR).count).toBe(0);
   });
 });
 

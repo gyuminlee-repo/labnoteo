@@ -25,6 +25,8 @@ export interface SampleCandidate {
   id: string;
   alias: string | null;
   description?: string;
+  /** Which registry the record came from, shown next to it (#109). */
+  scope?: 'local' | 'global';
 }
 
 /** A ready-to-render completion entry. */
@@ -33,6 +35,7 @@ export interface SampleCompletionEntry {
   id: string;
   label: string;
   insertText: string;
+  scope?: 'local' | 'global';
 }
 
 /**
@@ -110,6 +113,7 @@ export function buildSampleCompletionEntries(
         id: candidate.id,
         label,
         insertText: buildSampleInsertText(candidate),
+        ...(candidate.scope ? { scope: candidate.scope } : {}),
       });
     }
   }

@@ -148,6 +148,75 @@ export function findUnitOpInsertOffset(md: string): number {
 }
 
 /**
+ * Where {@link findUnitOpInsertPointAt} puts a new unit-op block. `place` says
+ * how it relates to the blocks already there: after the block headed `after`,
+ * before the first block, after the last one (`end`), or `empty` when the
+ * section has no block yet (or is missing).
+ */
+export interface UnitOpInsertPoint {
+  offset: number;
+  place: 'after' | 'first' | 'end' | 'empty';
+  /** Heading text of the block the new one follows, e.g. `[UHW010 Spin]`. */
+  after?: string;
+}
+
+/**
+ * Insertion point for a new unit-op block that follows the cursor (#103).
+ *
+ * Inside a block, the new one goes right after that block — before the next
+ * block's `---` separator, or at the end of the section for the last block.
+ * Between the TOC and the first block it goes before the first block. Anywhere
+ * else (front matter, above the section, below it) it goes after the last
+ * block, as {@link findUnitOpInsertOffset} does.
+ */
+export function findUnitOpInsertPointAt(md: string, cursor: number): UnitOpInsertPoint {
+  const lineStarts = [0];
+  for (let i = 0; i < md.length; i++) {
+    if (md[i] === '\n') lineStarts.push(i + 1);
+  }
+  const lineAt = (i: number): string => {
+    const end = i + 1 < lineStarts.length ? lineStarts[i + 1] : md.length;
+    return md.slice(lineStarts[i], end).replace(/\r?\n$/, '');
+  };
+
+  const headingIdx = lineStarts.findIndex((_, i) => lineAt(i).trim() === '## Related Unit Operations');
+  if (headingIdx === -1) return { offset: md.length, place: 'empty' };
+  let endIdx = lineStarts.length;
+  for (let i = headingIdx + 1; i < lineStarts.length; i++) {
+    if (/^##\s/.test(lineAt(i))) {
+      endIdx = i;
+      break;
+    }
+  }
+  const sectionEnd = endIdx < lineStarts.length ? lineStarts[endIdx] : md.length;
+
+  const blocks: { start: number; heading: string }[] = [];
+  for (let i = headingIdx + 1; i < endIdx; i++) {
+    const line = lineAt(i);
+    if (!/^###\s+\[/.test(line)) continue;
+    // A block begins at its `---` separator when it has one.
+    let start = i;
+    let j = i - 1;
+    while (j > headingIdx && lineAt(j).trim() === '') j--;
+    if (j > headingIdx && lineAt(j).trim() === '---') start = j;
+    blocks.push({ start, heading: line.replace(/^###\s+/, '').trim() });
+  }
+  if (blocks.length === 0) return { offset: sectionEnd, place: 'empty' };
+
+  const last = blocks[blocks.length - 1];
+  const atEnd: UnitOpInsertPoint = { offset: sectionEnd, place: 'end', after: last.heading };
+  let cursorLine = 0;
+  while (cursorLine + 1 < lineStarts.length && lineStarts[cursorLine + 1] <= cursor) cursorLine++;
+  if (cursorLine <= headingIdx || cursorLine >= endIdx) return atEnd;
+  if (cursorLine < blocks[0].start) return { offset: lineStarts[blocks[0].start], place: 'first' };
+
+  let k = 0;
+  while (k + 1 < blocks.length && blocks[k + 1].start <= cursorLine) k++;
+  if (k === blocks.length - 1) return atEnd;
+  return { offset: lineStarts[blocks[k + 1].start], place: 'after', after: blocks[k].heading };
+}
+
+/**
  * One replacement in a markdown string: `[from, to)` becomes `insert`.
  *
  * Offsets refer to the string the edits were computed from. A list returned by

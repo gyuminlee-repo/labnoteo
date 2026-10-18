@@ -80,6 +80,18 @@ describe('buildSampleCompletionEntries', () => {
     ]);
   });
 
+  // #109: Local and Global records are told apart in the list.
+  it('carries the registry scope through', () => {
+    const trigger = parseSampleTrigger('@dna:', TYPES)!;
+    const entries = buildSampleCompletionEntries(trigger, {
+      DNA: [
+        { id: 'DNA-1', alias: 'p', scope: 'local' },
+        { id: 'DNA-2', alias: 'p', scope: 'global' },
+      ],
+    });
+    expect(entries.map(e => `${e.id}:${e.scope}`)).toEqual(['DNA-1:local', 'DNA-2:global']);
+  });
+
   it('omits alias/description when absent', () => {
     const trigger = parseSampleTrigger('@dna:', TYPES)!;
     const entries = buildSampleCompletionEntries(trigger, {

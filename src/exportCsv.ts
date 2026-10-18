@@ -8,7 +8,9 @@ import { Notice, TFile } from 'obsidian';
 import * as posix from '@labnoteo/core/posix';
 import {
   classifyCsvOverwrites,
+  csvRowCount,
   extractMarkdownTables,
+  firstDifferingRow,
   tableToCsv,
   type CsvOverwriteKind,
 } from '@labnoteo/core/lib/exportTablesCsv';
@@ -63,6 +65,17 @@ export async function exportTablesToCsv(plugin: LabnotePlugin, file: TFile): Pro
       return { path, csv, fresh: normalizeCsv(csv), old };
     })
   );
+  // `a → a` says nothing when two tables share a header: show what differs (#110).
+  const sameHeaderHint = (old: string, fresh: string): string => {
+    if (firstLine(old) !== firstLine(fresh)) return '';
+    const before = csvRowCount(old);
+    const after = csvRowCount(fresh);
+    if (before !== after) return ` (${plugin.t('{0} rows → {1} rows', String(before), String(after))})`;
+    const diff = firstDifferingRow(old, fresh);
+    return diff
+      ? ` (${plugin.t('row {0}: {1} → {2}', String(diff.row), clip(diff.from), clip(diff.to))})`
+      : '';
+  };
   const existingCount = Math.max(
     0,
     ...siblingTableCsvs(file.name, await plugin.fs.list(dir)).map(f => Number(/_table(\d+)\.csv$/.exec(f)![1]))
@@ -72,7 +85,10 @@ export async function exportTablesToCsv(plugin: LabnotePlugin, file: TFile): Pro
   const listOf = (kind: CsvOverwriteKind) =>
     outputs
       .filter((_, k) => kinds[k] === kind)
-      .map(o => `- ${posix.basename(o.path)}: ${firstLine(o.old!)} → ${firstLine(o.fresh)}`)
+      .map(
+        o =>
+          `- ${posix.basename(o.path)}: ${firstLine(o.old!)} → ${firstLine(o.fresh)}${sameHeaderHint(o.old!, o.fresh)}`
+      )
       .join('\n');
   const sections: string[] = [];
   const moved = listOf('moved');
@@ -121,7 +137,11 @@ function normalizeCsv(text: string): string {
 
 /** The header row of a CSV as shown in the overwrite prompt, cut when long. */
 function firstLine(csv: string): string {
-  const line = csv.split('\n', 1)[0];
+  return clip(csv.split('\n', 1)[0]);
+}
+
+/** A CSV line as shown in the overwrite prompt, cut when long. */
+function clip(line: string): string {
   return line.length > 60 ? `${line.slice(0, 59)}…` : line;
 }
 

@@ -90,6 +90,67 @@ async function insertBlock(plugin: LabnotePlugin, target: EditTarget, block: str
   plugin.markUserEdit(target.path);
 }
 
+/**
+ * Write a reply into the note the command started from (#112, the #77 rule).
+ * The tab's editor may show another note by the time the reply arrives, so it
+ * goes in directly only while that note is still the edit target; otherwise
+ * it opens in the answer dialog, whose "Insert into note" checks again.
+ */
+async function deliverToNote(
+  plugin: LabnotePlugin,
+  path: string,
+  content: string,
+  write: (target: EditTarget) => Promise<void>,
+  doneMessage: string
+): Promise<void> {
+  const writeIfOpen = async (): Promise<boolean> => {
+    const current = plugin.host.editTarget();
+    if (current?.path !== path) return false;
+    await write(current);
+    new Notice(plugin.t(doneMessage, path.split('/').pop() ?? path));
+    return true;
+  };
+  if (await writeIfOpen()) return;
+  aiAnswerModal(plugin.app, {
+    content,
+    sourcePath: path,
+    onInsert: async () => {
+      if (await writeIfOpen()) return true;
+      new Notice(plugin.t('That note is no longer open. Copy the answer instead.'));
+      return false;
+    },
+  });
+}
+
+/**
+ * Put a Method draft in: over the unit operation's `#### Method` body when
+ * the command started inside one (`loc`), else as a block after the cursor.
+ */
+async function writeMethodDraft(
+  plugin: LabnotePlugin,
+  target: EditTarget,
+  loc: UnitOpMethodLocation | null,
+  body: string
+): Promise<void> {
+  if (!loc) {
+    await insertBlock(plugin, target, body);
+    return;
+  }
+  const latest = await target.getText();
+  const again = findUnitOpMethodByIndex(latest, loc.unitOpIndex, loc.unitOpHeading);
+  if (!again) {
+    new Notice(plugin.t('The unit operation changed while the AI was writing, so the draft was inserted after the cursor line instead.'));
+    await insertBlock(plugin, target, body);
+    return;
+  }
+  const edit = minimalReplacement(latest, replaceSectionBodyAt(latest, again.methodLine, body).md);
+  if (edit) {
+    await target.replaceRange(edit.start, edit.end, edit.text);
+    await target.revealOffset?.(edit.start);
+  }
+  plugin.markUserEdit(target.path);
+}
+
 /** The model context for one unit operation: the note's head plus that block. */
 function unitOpContext(text: string, loc: UnitOpMethodLocation): string {
   const lines = text.split('\n');
@@ -135,7 +196,9 @@ export async function draftMethodCommand(plugin: LabnotePlugin): Promise<void> {
       },
       { role: 'user', content: `Draft a Method subsection for this note.\n\nContext:\n${text.slice(0, 6000)}` },
     ]);
-    if (out) await insertBlock(plugin, target, out);
+    if (out) {
+      await deliverToNote(plugin, target.path, out, t => writeMethodDraft(plugin, t, null, out), 'Inserted the Method draft into {0}.');
+    }
     return;
   }
 
@@ -152,20 +215,7 @@ export async function draftMethodCommand(plugin: LabnotePlugin): Promise<void> {
   ]);
   if (!out) return;
   const body = extractMethodBody(out) || out.trim();
-
-  const latest = await target.getText();
-  const again = findUnitOpMethodByIndex(latest, loc.unitOpIndex, loc.unitOpHeading);
-  if (!again) {
-    new Notice(plugin.t('The unit operation changed while the AI was writing, so the draft was inserted after the cursor line instead.'));
-    await insertBlock(plugin, target, body);
-    return;
-  }
-  const edit = minimalReplacement(latest, replaceSectionBodyAt(latest, again.methodLine, body).md);
-  if (edit) {
-    await target.replaceRange(edit.start, edit.end, edit.text);
-    await target.revealOffset?.(edit.start);
-  }
-  plugin.markUserEdit(target.path);
+  await deliverToNote(plugin, target.path, body, t => writeMethodDraft(plugin, t, loc, body), 'Inserted the Method draft into {0}.');
 }
 
 /** Summarize the whole note as a block after the cursor's line. */
@@ -192,7 +242,7 @@ export async function summarizeResultsCommand(plugin: LabnotePlugin): Promise<vo
     { role: 'user', content: `Summarize these results:\n\n${text.slice(0, 6000)}` },
   ]);
   if (!out) return;
-  await insertBlock(plugin, target, out);
+  await deliverToNote(plugin, target.path, out, t => insertBlock(plugin, t, out), 'Inserted the summary into {0}.');
 }
 
 interface ExtractedSample {

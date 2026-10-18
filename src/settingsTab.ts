@@ -7,12 +7,26 @@
 import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
 import type LabnotePlugin from './main';
 import { suggestSampleTypeName } from '@labnoteo/core/lib/sampleUtils';
+import { isSameSampleFolder } from '@labnoteo/core/lib/sampleStorage';
 import { DEFAULT_SETTINGS, partitionCustomSampleTypes, type LlmProviderKind } from './settings';
 import { openUserGuide } from './userGuide';
+import { tokenFingerprint } from './llm/mcpServer';
+
+/** How long the regenerate button waits for its confirming second click. */
+const REGENERATE_CONFIRM_MS = 5000;
 
 export class LabnoteSettingTab extends PluginSettingTab {
   /** Debounce handle for refreshing sample views after a Global folder edit. */
   private globalFolderRefreshTimer?: number;
+  /** Set between the first and the confirming second click on "Regenerate token". */
+  private regenerateArm?: { timer: number; reset: () => void };
+  /**
+   * The Global sample folder when the tab was first shown; kept until the move
+   * question for a change has been asked, so a redraw does not lose it (#101).
+   */
+  private globalFolderBaseline?: string;
+  /** Polls for the settings modal to close before asking about a folder change. */
+  private globalFolderPromptTimer?: number;
 
   constructor(app: App, private readonly plugin: LabnotePlugin) {
     super(app, plugin);
@@ -36,6 +50,11 @@ export class LabnoteSettingTab extends PluginSettingTab {
 
   display(): void {
     const { containerEl } = this;
+    this.disarmRegenerate();
+    // Back on the tab before the question was asked: ask on the next hide.
+    window.clearTimeout(this.globalFolderPromptTimer);
+    this.globalFolderPromptTimer = undefined;
+    this.globalFolderBaseline ??= this.plugin.settings.globalSampleFolder;
     containerEl.empty();
 
     const s = this.plugin.settings;
@@ -239,7 +258,7 @@ export class LabnoteSettingTab extends PluginSettingTab {
         })
       );
 
-    new Setting(containerEl)
+    const tokenSetting = new Setting(containerEl)
       .setName(this.plugin.t('MCP token'))
       .setDesc(
         this.plugin.t(
@@ -252,18 +271,77 @@ export class LabnoteSettingTab extends PluginSettingTab {
           new Notice(this.plugin.t('MCP token copied to clipboard.'));
         })
       )
-      .addButton(b =>
+      .addButton(b => {
+        // Confirmed by a second click rather than a dialog: a modal opened over
+        // the settings modal is what left the token unchanged (#107).
+        const reset = (): void => {
+          b.setButtonText(this.plugin.t('Regenerate token'));
+          b.buttonEl.classList.remove('mod-warning');
+        };
         b.setButtonText(this.plugin.t('Regenerate token')).onClick(async () => {
-          const ok = await this.plugin.host.confirm(
-            this.plugin.t(
-              'Regenerate the MCP token? Clients using the current token stop working until you paste the new one into their settings.'
-            ),
-            { confirmLabel: this.plugin.t('Regenerate token') }
-          );
-          if (!ok) return;
-          await navigator.clipboard.writeText(await this.plugin.mcpServer.regenerateToken());
-          new Notice(this.plugin.t('New MCP token copied to clipboard.'));
-        })
-      );
+          if (!this.regenerateArm) {
+            b.setButtonText(this.plugin.t('Click again to regenerate')).setWarning();
+            this.regenerateArm = {
+              timer: window.setTimeout(() => this.disarmRegenerate(), REGENERATE_CONFIRM_MS),
+              reset,
+            };
+            return;
+          }
+          this.disarmRegenerate();
+          const token = await this.plugin.mcpServer.regenerateToken();
+          showFingerprint();
+          new Notice(this.plugin.t('New MCP token issued. The old token no longer works.'));
+          try {
+            await navigator.clipboard.writeText(token);
+            new Notice(this.plugin.t('New MCP token copied to clipboard.'));
+          } catch {
+            new Notice(this.plugin.t('The new token could not be copied. Use "Copy token".'));
+          }
+        });
+      });
+    const fingerprintEl = tokenSetting.descEl.createDiv();
+    const showFingerprint = (): void => {
+      const token = this.plugin.settings.mcpToken;
+      fingerprintEl.setText(token ? this.plugin.t('Current token ends in {0}.', tokenFingerprint(token)) : '');
+    };
+    showFingerprint();
+  }
+
+  hide(): void {
+    this.disarmRegenerate();
+    this.askAboutGlobalFolderChange();
+  }
+
+  /**
+   * When the Global sample folder changed while the tab was open, offer to move
+   * the samples left in the old one — once settings has closed, so the question
+   * is not a modal over the settings modal (#107), and only for the final value.
+   */
+  private askAboutGlobalFolderChange(): void {
+    const from = this.globalFolderBaseline;
+    const to = this.plugin.settings.globalSampleFolder;
+    if (from === undefined || !to || isSameSampleFolder(from, to)) {
+      this.globalFolderBaseline = undefined;
+      return;
+    }
+    const check = (): void => {
+      if (document.querySelector('.modal-container')) {
+        this.globalFolderPromptTimer = window.setTimeout(check, 250);
+        return;
+      }
+      this.globalFolderPromptTimer = undefined;
+      this.globalFolderBaseline = undefined;
+      this.plugin.offerGlobalSampleFolderMove(from, to);
+    };
+    window.clearTimeout(this.globalFolderPromptTimer);
+    this.globalFolderPromptTimer = window.setTimeout(check, 250);
+  }
+
+  /** Put the regenerate button back to its first-click state. */
+  private disarmRegenerate(): void {
+    if (!this.regenerateArm) return;
+    window.clearTimeout(this.regenerateArm.timer);
+    this.regenerateArm.reset();
+    this.regenerateArm = undefined;
   }
 }

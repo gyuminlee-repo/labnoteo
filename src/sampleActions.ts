@@ -26,7 +26,7 @@ import {
   mergeSampleRecord,
   deleteSampleRecord,
   putSampleRecord,
-  getLabsamplesFolder,
+  noteLabsamplesFolder,
   findSampleDefinitionMatch,
   findSampleUsages,
   isSameSampleFolder,
@@ -35,10 +35,7 @@ import {
   type AliasRewriteEdit,
   type SampleRecord,
 } from '@labnoteo/core/lib/sampleStorage';
-import {
-  getExperimentDir,
-  getExperimentLabsamplesFolder,
-} from '@labnoteo/core/lib/labnoteStructure';
+import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
 import type LabnotePlugin from './main';
 import { processNoteThroughVault } from './commands';
 import { promptModal, confirmModal, pickModal } from './modals';
@@ -205,6 +202,18 @@ export async function createSampleInteractive(
     };
   }
 
+  const twin = alias ? await globalSampleWithAlias(plugin, type, folder, alias) : undefined;
+  if (twin) {
+    new Notice(
+      plugin.t(
+        'Global samples already have the alias {0} ({1}). Autocomplete will show both, marked Local and Global.',
+        alias!,
+        twin
+      ),
+      8000
+    );
+  }
+
   // `sources` is omitted so the record keeps whatever documents already
   // reference it; a tree-created sample legitimately starts with none.
   await upsertSampleRecord(plugin.fs, folder, type, id, { alias, description, location });
@@ -225,6 +234,24 @@ export async function createSampleInteractive(
     definitionText: buildSampleDefinitionText(type, id, alias, description),
     referenceText: buildSampleReferenceText(id, alias),
   };
+}
+
+/**
+ * The ID of a Global `type` sample with `alias` (trimmed, case ignored) when a
+ * sample is being added to the Local `folder`: the two would look alike in
+ * autocomplete (#109). Undefined for a Global folder or no such sample.
+ */
+async function globalSampleWithAlias(
+  plugin: LabnotePlugin,
+  type: string,
+  folder: string,
+  alias: string
+): Promise<string | undefined> {
+  const globalFolder = plugin.settings.globalSampleFolder;
+  if (!globalFolder || isSameSampleFolder(folder, globalFolder)) return undefined;
+  const wanted = alias.trim().toLowerCase();
+  const records = await loadSamplesByType(plugin.fs, globalFolder, type);
+  return Object.keys(records).find(id => records[id].alias?.trim().toLowerCase() === wanted);
 }
 
 /**
@@ -262,7 +289,7 @@ export async function pickCatalogReference(
   opts: { type: string; docPath: string }
 ): Promise<string | undefined> {
   const { type, docPath } = opts;
-  const localFolder = getExperimentLabsamplesFolder(docPath) ?? getLabsamplesFolder(docPath);
+  const localFolder = noteLabsamplesFolder(docPath, plugin.settings.globalSampleFolder);
   const globalFolder = plugin.settings.globalSampleFolder;
 
   const local = await loadReferenceSamplesByType(plugin.fs, localFolder, type);
@@ -386,7 +413,7 @@ export async function resolveSampleDefinition(
   opts: { type: string; id: string; docPath: string }
 ): Promise<ResolvedSampleDefinition | undefined> {
   const { type, id, docPath } = opts;
-  const localFolder = getExperimentLabsamplesFolder(docPath) ?? getLabsamplesFolder(docPath);
+  const localFolder = noteLabsamplesFolder(docPath, plugin.settings.globalSampleFolder);
   const globalFolder = plugin.settings.globalSampleFolder;
 
   const localDb = await loadSamplesByType(plugin.fs, localFolder, type);
@@ -481,7 +508,7 @@ async function rewriteStaleAliases(
     const edits = planAliasRewrite(note.text, type, id, oldAlias, newAlias);
     if (edits.length === 0) continue;
     if (isGlobal) {
-      const local = getExperimentLabsamplesFolder(note.path) ?? getLabsamplesFolder(note.path);
+      const local = noteLabsamplesFolder(note.path, plugin.settings.globalSampleFolder);
       if (!isSameSampleFolder(local, folder)) {
         if (!shadowed.has(local)) {
           shadowed.set(local, Boolean((await loadSamplesByType(plugin.fs, local, type))[id]));
@@ -630,7 +657,7 @@ export async function moveSampleInteractive(
   // from another folder lose it once it is Local to one experiment (#78).
   if (fromScope === 'global') {
     const outside = (await notesReferencingSample(app, plugin, src, type, id)).filter(
-      p => !isSameSampleFolder(getExperimentLabsamplesFolder(p) ?? getLabsamplesFolder(p), tgt)
+      p => !isSameSampleFolder(noteLabsamplesFolder(p, plugin.settings.globalSampleFolder), tgt)
     );
     if (outside.length > 0) {
       const shown = outside.slice(0, 3).join(', ');

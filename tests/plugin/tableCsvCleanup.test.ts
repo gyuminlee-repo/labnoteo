@@ -134,6 +134,19 @@ describe('re-exporting after the tables changed (#80)', () => {
     await exportTablesToCsv(plugin(), noteFile());
 
     expect(confirmModal).toHaveBeenCalledOnce();
+    // #110: the header alone (`a → a`) does not tell the tables apart.
+    expect(vi.mocked(confirmModal).mock.calls[0][1]).toContain('_table1.csv: a → a (row 1: 1 → 0)');
+  });
+
+  it('shows the row counts when a same-header table took the place of another (#110)', async () => {
+    // A one-row table was added above the two-row one, which moves down.
+    await fs.write(csv(1), '\uFEFFa\n1\n2\n');
+    await fs.write(`${DIR}/${NOTE}`, '| a |\n|---|\n| 9 |\n\n| a |\n|---|\n| 1 |\n| 2 |\n');
+    vi.mocked(confirmModal).mockResolvedValue(false);
+
+    await exportTablesToCsv(plugin(), noteFile());
+
+    expect(vi.mocked(confirmModal).mock.calls[0][1]).toContain('_table1.csv: a → a (2 rows → 1 rows)');
   });
 
   it('overwrites without asking when only the values of the same table changed', async () => {

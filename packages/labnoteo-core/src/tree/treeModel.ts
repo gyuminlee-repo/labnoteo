@@ -209,7 +209,8 @@ async function buildScopeNode(
     id: `sampleRoot:${scope}`,
     label: scope === 'local' ? 'Samples (Local)' : 'Samples (Global)',
     kind: 'sampleRoot',
-    payload: { scope },
+    // `sameFolder`: the Local root is the Global folder again, listed under Global (#111).
+    payload: skipRead ? { scope, sameFolder: true } : { scope },
     children: typeNodes,
   };
 }

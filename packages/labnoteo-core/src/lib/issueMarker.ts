@@ -20,7 +20,7 @@
  * grammar — the plugin command that writes markers, `issue-sync` that promotes
  * them, and `validate` that reports broken ones.
  */
-import { scanDocumentHead } from '../sections/documentHead';
+import { isInFrontMatter } from '../sections/documentHead';
 
 /** Marker keyword, without the delimiter. */
 export const ISSUE_MARKER_KEYWORD = '@issue';
@@ -270,10 +270,7 @@ export function planIssueMarkerInsertion(
   topic?: string
 ): IssueMarkerInsertion {
   if (from > to) [from, to] = [to, from];
-  const { fmEndLine } = scanDocumentHead(doc.split('\n'));
-  if (fmEndLine !== -1 && doc.slice(0, from).split('\n').length - 1 <= fmEndLine) {
-    return { reason: 'frontMatter' };
-  }
+  if (isInFrontMatter(doc, from)) return { reason: 'frontMatter' };
   // A selection that swallowed its line break (triple-click) ends on that line.
   while (to > from && doc[to - 1] === '\n') to--;
 

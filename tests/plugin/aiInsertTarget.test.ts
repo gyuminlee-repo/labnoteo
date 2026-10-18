@@ -1,0 +1,164 @@
+/**
+ * #112: "AI: Summarize results" and "AI: Draft Method section" wrote the reply
+ * into whatever note the tab showed when it arrived. The reply now goes in
+ * only while the starting note is still open; otherwise it opens in the answer
+ * dialog, which checks again on "Insert into note".
+ */
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { EditTarget } from '@labnoteo/core';
+import { Notice } from '../stubs/obsidian';
+import { draftMethodCommand, summarizeResultsCommand } from '../../src/llm/commands';
+import { aiAnswerModal, type AiAnswerOpts } from '../../src/modals';
+import type LabnotePlugin from '../../src/main';
+
+const chat = vi.fn();
+vi.mock('../../src/llm/provider', () => ({
+  createLlmProvider: vi.fn(() => ({ name: 'Fake', chat })),
+}));
+vi.mock('../../src/modals', () => ({ aiAnswerModal: vi.fn() }));
+
+const NOTE = 'labnote/001_Test/001_WD010_A.labnote.md';
+const OTHER = 'labnote/001_Test/002_WB030_B.labnote.md';
+const BODY = [
+  '## [WD010 A]',
+  '',
+  '---',
+  '',
+  '### [UHW010 Spin]',
+  '',
+  '#### Method',
+  '',
+  '',
+  '#### Output',
+  '',
+  '## 결과',
+  '',
+  '결과 문단',
+  '',
+].join('\n');
+
+type Target = EditTarget & { text: string };
+
+function makeTarget(path: string, cursor: number): Target {
+  const target: Target = {
+    path,
+    text: BODY,
+    getText: async () => target.text,
+    insertAtCursor: vi.fn(async () => {}),
+    replaceRange: vi.fn(async (from: number, to: number, text: string) => {
+      target.text = target.text.slice(0, from) + text + target.text.slice(to);
+    }),
+    getCursorOffset: async () => cursor,
+    revealOffset: vi.fn(async () => {}),
+  };
+  return target;
+}
+
+let open: Target | undefined;
+let plugin: LabnotePlugin;
+
+beforeEach(() => {
+  chat.mockReset();
+  vi.mocked(aiAnswerModal).mockReset();
+  Notice.reset();
+  open = makeTarget(NOTE, BODY.indexOf('결과 문단'));
+  plugin = {
+    app: {},
+    settings: { globalSampleFolder: 'resources/labsamples', customSampleTypes: [] },
+    t: (key: string, ...args: string[]) => args.reduce<string>((s, a, i) => s.replace(`{${i}}`, a), key),
+    host: {
+      editTarget: () => open,
+      confirm: vi.fn(async () => true),
+    },
+    markUserEdit: vi.fn(),
+  } as unknown as LabnotePlugin;
+});
+
+/** Reply with `content`, after switching the open note to `next` (if given). */
+function replyAfterSwitch(content: string, next?: Target): void {
+  chat.mockImplementation(async () => {
+    if (next) open = next;
+    return { content };
+  });
+}
+
+function dialog(): AiAnswerOpts {
+  expect(aiAnswerModal).toHaveBeenCalledTimes(1);
+  return vi.mocked(aiAnswerModal).mock.calls[0][1];
+}
+
+describe('summarizeResultsCommand (#112)', () => {
+  it('inserts into the note it started from while that note is open', async () => {
+    const start = open!;
+    replyAfterSwitch('- 요약');
+    await summarizeResultsCommand(plugin);
+
+    expect(start.text).toContain('- 요약');
+    expect(aiAnswerModal).not.toHaveBeenCalled();
+    expect(plugin.markUserEdit).toHaveBeenCalledWith(NOTE);
+    expect(Notice.shown).toContain('Inserted the summary into 001_WD010_A.labnote.md.');
+  });
+
+  it('leaves another note alone and opens the dialog instead', async () => {
+    const other = makeTarget(OTHER, 0);
+    replyAfterSwitch('- 요약', other);
+    await summarizeResultsCommand(plugin);
+
+    expect(other.replaceRange).not.toHaveBeenCalled();
+    expect(plugin.markUserEdit).not.toHaveBeenCalled();
+    const opts = dialog();
+    expect(opts.content).toBe('- 요약');
+    expect(opts.sourcePath).toBe(NOTE);
+
+    expect(await opts.onInsert()).toBe(false);
+    expect(other.replaceRange).not.toHaveBeenCalled();
+    expect(Notice.shown).toContain('That note is no longer open. Copy the answer instead.');
+  });
+
+  it('inserts from the dialog once the user is back in that note', async () => {
+    replyAfterSwitch('- 요약', makeTarget(OTHER, 0));
+    await summarizeResultsCommand(plugin);
+    const back = makeTarget(NOTE, BODY.indexOf('결과 문단'));
+    open = back;
+
+    expect(await dialog().onInsert()).toBe(true);
+    expect(back.text).toContain('- 요약');
+    expect(plugin.markUserEdit).toHaveBeenCalledWith(NOTE);
+  });
+});
+
+describe('draftMethodCommand (#112)', () => {
+  const inMethod = BODY.indexOf('#### Method') + 2;
+
+  it("fills the unit operation's Method in the note it started from", async () => {
+    const start = makeTarget(NOTE, inMethod);
+    open = start;
+    replyAfterSwitch('1. 원심분리');
+    await draftMethodCommand(plugin);
+
+    expect(start.text).toContain('#### Method\n\n1. 원심분리');
+    expect(Notice.shown).toContain('Inserted the Method draft into 001_WD010_A.labnote.md.');
+  });
+
+  it("does not overwrite a same-named unit operation's Method in another note", async () => {
+    open = makeTarget(NOTE, inMethod);
+    const other = makeTarget(OTHER, inMethod);
+    replyAfterSwitch('1. 원심분리', other);
+    await draftMethodCommand(plugin);
+
+    expect(other.replaceRange).not.toHaveBeenCalled();
+    expect(dialog().content).toBe('1. 원심분리');
+  });
+
+  it("writes into the Method from the dialog after returning", async () => {
+    open = makeTarget(NOTE, inMethod);
+    replyAfterSwitch('1. 원심분리', makeTarget(OTHER, 0));
+    await draftMethodCommand(plugin);
+    const back = makeTarget(NOTE, 0);
+    open = back;
+
+    expect(await dialog().onInsert()).toBe(true);
+    expect(back.text).toContain('#### Method\n\n1. 원심분리');
+    expect(plugin.markUserEdit).toHaveBeenCalledWith(NOTE);
+  });
+});

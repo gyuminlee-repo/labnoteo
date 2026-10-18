@@ -123,6 +123,9 @@ describe('buildSampleTree', () => {
     expect(local.children!.map(c => c.label)).toEqual(['DNA [0]']);
     expect(local.children![0].payload).toEqual({ scope: 'local', type: 'DNA' });
     expect(global.children!.map(c => c.label)).toEqual(['DNA [1]']);
+    // #111: the view replaces the empty Local section with a note.
+    expect(local.payload).toEqual({ scope: 'local', sameFolder: true });
+    expect(global.payload).toEqual({ scope: 'global' });
   });
 });
 
