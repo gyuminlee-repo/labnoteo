@@ -69,10 +69,15 @@
 
 /* --- @issue markers (editor + reading mode) ------------------------------
    Only well-formed markers get this class, so the styling is also the signal
-   that a marker will actually open an issue. Themed colours keep it readable
-   in both light and dark mode. */
+   that a marker will actually open an issue. The opaque error background hides
+   body text, so a light red tint carries red text mixed toward the body colour,
+   which keeps contrast in light and dark mode. The rgba/--text-error lines are
+   fallbacks for installs whose Chromium predates color-mix(). */
 .labnote-issue-marker {
-  background-color: var(--background-modifier-error-hover);
+  background-color: rgba(var(--color-red-rgb), 0.15);
+  background-color: color-mix(in oklch, var(--color-red) 15%, transparent);
+  color: var(--text-error);
+  color: color-mix(in oklch, var(--color-red) 70%, var(--text-normal));
   border-radius: 3px;
   padding: 0 3px;
   font-weight: var(--font-medium);
