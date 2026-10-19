@@ -33,6 +33,10 @@ import {
   hasReferenceCatalog,
   removeSampleSource,
   sampleTypesInText,
+  renameSampleSources,
+  renameSampleSourcesInFolder,
+  setSampleDiscarded,
+  listExperimentSampleFolders,
   type SampleDatabase,
   type SampleRecord,
 } from '../lib/sampleStorage';
@@ -650,6 +654,7 @@ describe('saveSamplesFromDocument + loadSamplesByType (MemFileSystem round-trip)
       descriptions: ['my plasmid'],
       sources: ['note.labnote.md'],
       location: null,
+      descriptionSources: { 'note.labnote.md': 'my plasmid' },
     });
   });
 
@@ -1086,5 +1091,121 @@ describe('removeSampleSource (#97)', () => {
     expect(await removeSampleSource(fs, FOLDER, 'RNA', 'RNA-1', 'x.labnote.md')).toBe(false);
     expect(await removeSampleSource(fs, FOLDER, 'RNA', 'RNA-9', 'y.labnote.md')).toBe(false);
     expect(fs.snapshot()).toEqual(before);
+  });
+});
+
+describe('descriptionSources (#172)', () => {
+  const DOC = 'labnote/001_Exp/note.labnote.md';
+  const OTHER = 'labnote/001_Exp/other.labnote.md';
+  const FOLDER = 'labnote/001_Exp/resources/labsamples';
+
+  it('replaces the description a note put in when its definition changes', async () => {
+    const fs = new MemFileSystem();
+    await saveSamplesFromDocument(fs, DOC, '@DNA;DNA-1;pUC19;old text');
+    await saveSamplesFromDocument(fs, DOC, '@DNA;DNA-1;pUC19;new text');
+    const rec = (await loadSamplesByType(fs, FOLDER, 'DNA'))['DNA-1'];
+    expect(rec.descriptions).toEqual(['new text']);
+    expect(rec.descriptionSources).toEqual({ 'note.labnote.md': 'new text' });
+  });
+
+  it('keeps descriptions from other notes and from before tracking', async () => {
+    const fs = new MemFileSystem();
+    await fs.write(
+      `${FOLDER}/DNA.json`,
+      JSON.stringify({ 'DNA-1': { type: 'DNA', alias: null, descriptions: ['edited'], sources: [], location: null } })
+    );
+    await saveSamplesFromDocument(fs, OTHER, '@DNA;DNA-1;pUC19;from other');
+    await saveSamplesFromDocument(fs, DOC, '@DNA;DNA-1;pUC19;first');
+    await saveSamplesFromDocument(fs, DOC, '@DNA;DNA-1;pUC19;second');
+    const rec = (await loadSamplesByType(fs, FOLDER, 'DNA'))['DNA-1'];
+    expect(rec.descriptions).toEqual(['second', 'from other', 'edited']);
+  });
+
+  it('keeps a description another note still writes', async () => {
+    const fs = new MemFileSystem();
+    await saveSamplesFromDocument(fs, OTHER, '@DNA;DNA-1;pUC19;shared');
+    await saveSamplesFromDocument(fs, DOC, '@DNA;DNA-1;pUC19;shared');
+    await saveSamplesFromDocument(fs, DOC, '@DNA;DNA-1;pUC19;changed');
+    const rec = (await loadSamplesByType(fs, FOLDER, 'DNA'))['DNA-1'];
+    expect(rec.descriptions).toEqual(['changed', 'shared']);
+  });
+
+  it('a blank description keeps the stored one', async () => {
+    const fs = new MemFileSystem();
+    await saveSamplesFromDocument(fs, DOC, '@DNA;DNA-1;pUC19;kept');
+    await saveSamplesFromDocument(fs, DOC, '@DNA;DNA-1;pUC19');
+    const rec = (await loadSamplesByType(fs, FOLDER, 'DNA'))['DNA-1'];
+    expect(rec.descriptions).toEqual(['kept']);
+  });
+});
+
+describe('renameSampleSources (#149)', () => {
+  const rec = (sources: string[], descriptionSources?: Record<string, string>): SampleRecord => ({
+    type: 'DNA',
+    alias: null,
+    descriptions: [],
+    sources,
+    location: null,
+    ...(descriptionSources ? { descriptionSources } : {}),
+  });
+
+  it('renames sources and descriptionSources keys without touching the input', () => {
+    const input = { 'DNA-1': rec(['a.md', 'b.md'], { 'a.md': 'x' }), 'DNA-2': rec(['c.md']) };
+    const { records, changed } = renameSampleSources(input, new Map([['a.md', 'z.md']]));
+    expect(changed).toBe(true);
+    expect(records['DNA-1'].sources).toEqual(['z.md', 'b.md']);
+    expect(records['DNA-1'].descriptionSources).toEqual({ 'z.md': 'x' });
+    expect(records['DNA-2'].sources).toEqual(['c.md']);
+    expect(input['DNA-1'].sources).toEqual(['a.md', 'b.md']);
+  });
+
+  it('applies swaps at once and merges a rename onto a listed name', () => {
+    const swap = renameSampleSources(
+      { 'DNA-1': rec(['a.md', 'b.md']) },
+      new Map([['a.md', 'b.md'], ['b.md', 'a.md']])
+    );
+    expect(swap.records['DNA-1'].sources).toEqual(['b.md', 'a.md']);
+    const onto = renameSampleSources({ 'DNA-1': rec(['a.md', 'b.md']) }, new Map([['a.md', 'b.md']]));
+    expect(onto.records['DNA-1'].sources).toEqual(['b.md']);
+  });
+
+  it('reports no change and leaves a file alone when no record mentions the names', async () => {
+    const fs = new MemFileSystem();
+    const raw = JSON.stringify({ 'DNA-1': rec(['a.md']) });
+    await fs.write('f/DNA.json', raw);
+    expect(await renameSampleSourcesInFolder(fs, 'f', new Map([['x.md', 'y.md']]), ['DNA', 'RNA'])).toBe(0);
+    expect(await fs.read('f/DNA.json')).toBe(raw);
+    expect(await renameSampleSourcesInFolder(fs, 'f', new Map([['a.md', 'y.md']]), ['DNA', 'RNA'])).toBe(1);
+    expect((await loadSamplesByType(fs, 'f', 'DNA'))['DNA-1'].sources).toEqual(['y.md']);
+  });
+});
+
+describe('setSampleDiscarded (#158)', () => {
+  it('marks and clears the discard date, and keeps it through a note save', async () => {
+    const fs = new MemFileSystem();
+    const DOC = 'labnote/001_Exp/note.labnote.md';
+    const FOLDER = 'labnote/001_Exp/resources/labsamples';
+    await saveSamplesFromDocument(fs, DOC, '@DNA;DNA-1;pUC19');
+    expect(await setSampleDiscarded(fs, FOLDER, 'DNA', 'DNA-1', '2026-10-19')).toBe(true);
+    await saveSamplesFromDocument(fs, DOC, '@DNA;DNA-1;pUC19;more');
+    expect((await loadSamplesByType(fs, FOLDER, 'DNA'))['DNA-1'].discarded).toBe('2026-10-19');
+    expect(await setSampleDiscarded(fs, FOLDER, 'DNA', 'DNA-1', null)).toBe(true);
+    expect((await loadSamplesByType(fs, FOLDER, 'DNA'))['DNA-1']).not.toHaveProperty('discarded');
+    expect(await setSampleDiscarded(fs, FOLDER, 'DNA', 'DNA-9', '2026-10-19')).toBe(false);
+  });
+});
+
+describe('listExperimentSampleFolders (#169)', () => {
+  it('lists the experiments that have a labsamples folder, in order', async () => {
+    const fs = new MemFileSystem();
+    await fs.write('labnote/002_B/resources/labsamples/DNA.json', '{}');
+    await fs.write('labnote/001_A/resources/labsamples/RNA.json', '{}');
+    await fs.write('labnote/003_C/README.labnote.md', '');
+    await fs.write('labnote/misc/resources/labsamples/DNA.json', '{}');
+    expect(await listExperimentSampleFolders(fs, '')).toEqual([
+      'labnote/001_A/resources/labsamples',
+      'labnote/002_B/resources/labsamples',
+    ]);
+    expect(await listExperimentSampleFolders(new MemFileSystem(), '')).toEqual([]);
   });
 });

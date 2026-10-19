@@ -159,6 +159,7 @@ export class SampleEditorSuggest extends EditorSuggest<SuggestEntry> {
         alias: rec.alias,
         description: rec.descriptions?.[0],
         scope,
+        discarded: rec.discarded,
       }));
     }
 
@@ -190,11 +191,13 @@ export class SampleEditorSuggest extends EditorSuggest<SuggestEntry> {
     const t = this.deps.plugin.t;
     if (item.kind === 'existing') {
       el.createEl('div', { text: item.entry.label });
-      const { type, scope } = item.entry;
+      const { type, scope, discarded } = item.entry;
+      const detail = scope ? t(scope === 'local' ? 'Local {0} sample' : 'Global {0} sample', type) : `${type} Sample`;
       el.createEl('small', {
-        text: scope ? t(scope === 'local' ? 'Local {0} sample' : 'Global {0} sample', type) : `${type} Sample`,
+        text: discarded ? `${detail} · ${t('Discarded')}` : detail,
         cls: 'labnote-suggest-detail',
       });
+      if (discarded) el.addClass('is-discarded');
       return;
     }
     if (item.kind === 'generate') {

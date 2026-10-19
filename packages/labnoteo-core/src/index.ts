@@ -179,6 +179,7 @@ export {
   type WorkflowTreeData,
   type SampleScope,
   type SampleTreeRoots,
+  type SampleTreeLabels,
 } from './tree/treeModel';
 
 // === File-system port (platform-neutral interface; implementations are per-host) ===

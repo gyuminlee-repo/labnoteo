@@ -40,6 +40,8 @@ export interface TreeNode {
   icon?: string;
   color?: string;
   tooltip?: string;
+  /** Shown faded, e.g. a discarded sample (#158). */
+  dimmed?: boolean;
   children?: TreeNode[];
   /** Kind-specific data the platform layer needs for actions. */
   payload?: unknown;
@@ -229,6 +231,13 @@ function sampleDetailNodes(idPrefix: string, rec: SampleRecord): TreeNode[] {
       kind: 'sampleDetail',
     });
   }
+  if (rec.discarded) {
+    details.push({
+      id: `${idPrefix}:discarded`,
+      label: `discarded: ${rec.discarded}`,
+      kind: 'sampleDetail',
+    });
+  }
   return details;
 }
 
@@ -237,7 +246,8 @@ async function buildScopeNode(
   scope: SampleScope,
   folder: string,
   types: readonly string[],
-  skipRead = false
+  skipRead = false,
+  labels: SampleTreeLabels = {}
 ): Promise<TreeNode> {
   const typeNodes: TreeNode[] = [];
   for (const type of types) {
@@ -245,13 +255,15 @@ async function buildScopeNode(
     const ids = Object.keys(records);
     const sampleNodes: TreeNode[] = ids.map(id => {
       const rec = records[id];
-      const label = rec.alias ? `${id} | ${rec.alias}` : id;
+      const name = rec.alias ? `${id} | ${rec.alias}` : id;
+      const label = rec.discarded ? `${name} ${labels.discarded ?? '(discarded)'}` : name;
       const nodeId = `sample:${scope}:${type}:${id}`;
       return {
         id: nodeId,
         label,
         kind: 'sample' as const,
         tooltip: rec.descriptions?.[0] || undefined,
+        ...(rec.discarded ? { dimmed: true } : {}),
         payload: { scope, type, id, record: rec },
         children: sampleDetailNodes(nodeId, rec),
       };
@@ -287,18 +299,25 @@ async function buildScopeNode(
   };
 }
 
+/** Words {@link buildSampleTree} puts in labels, in the host's language. */
+export interface SampleTreeLabels {
+  /** Tag after a discarded sample's label (#158). Default `(discarded)`. */
+  discarded?: string;
+}
+
 /** Build the 4-level sample tree for both scopes. */
 export async function buildSampleTree(
   fs: LabnoteFs,
   roots: SampleTreeRoots,
-  types: readonly string[]
+  types: readonly string[],
+  labels: SampleTreeLabels = {}
 ): Promise<TreeNode[]> {
   // With no experiment (or a vault-root note) the local folder is the global
   // one; list its samples once, under Global (#64).
   const sameFolder = isSameSampleFolder(roots.local, roots.global);
   return [
-    await buildScopeNode(fs, 'local', roots.local, types, sameFolder),
-    await buildScopeNode(fs, 'global', roots.global, types),
+    await buildScopeNode(fs, 'local', roots.local, types, sameFolder, labels),
+    await buildScopeNode(fs, 'global', roots.global, types, false, labels),
   ];
 }
 

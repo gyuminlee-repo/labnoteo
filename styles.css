@@ -56,6 +56,11 @@
   white-space: nowrap;
 }
 
+.labnote-tree-row.is-dimmed,
+.suggestion-item.is-discarded {
+  opacity: 0.55;
+}
+
 .labnote-tree-children.is-collapsed {
   display: none;
 }

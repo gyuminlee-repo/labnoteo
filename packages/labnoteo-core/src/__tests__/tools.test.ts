@@ -44,6 +44,7 @@ describe('labnote tools — registry', () => {
         'get_sample',
         'get_unit_operation',
         'list_samples',
+        'search_samples',
         'update_section',
       ].sort()
     );
@@ -157,7 +158,7 @@ describe('create_sample / get_sample / list_samples', () => {
     const got = await tool('get_sample').handler(ctx, { type: 'RNA', id: 'RNA-1', documentPath: NOTE_PATH });
     expect(got.data).toMatchObject({ location });
     const listed = await tool('list_samples').handler(ctx, { type: 'RNA', documentPath: NOTE_PATH });
-    expect(listed.data).toEqual([{ id: 'RNA-1', alias: null, description: null, location }]);
+    expect(listed.data).toEqual([{ id: 'RNA-1', alias: null, description: null, location, scope: 'local' }]);
   });
 
   it('keeps an existing location when a later call omits it or leaves it empty', async () => {
@@ -826,5 +827,61 @@ describe('ctx.writeNote hook', () => {
     );
     expect(res.ok).toBe(true);
     expect(hook.calls).toEqual([]);
+  });
+});
+
+describe('sample lookup across experiments (#169)', () => {
+  const OTHER_DIR = 'labnote/002_Other';
+  const OTHER_FOLDER = `${OTHER_DIR}/resources/labsamples`;
+
+  beforeEach(async () => {
+    await fs.write(
+      `${OTHER_FOLDER}/DNA.json`,
+      JSON.stringify({
+        'DNA-5': {
+          type: 'DNA',
+          alias: 'pET28',
+          descriptions: ['expression vector'],
+          sources: [],
+          location: 'Box-2',
+          discarded: '2026-10-01',
+        },
+      })
+    );
+    await fs.write(
+      'resources/labsamples/RNA.json',
+      JSON.stringify({ 'RNA-1': { type: 'RNA', alias: 'mRNA', descriptions: [], sources: [], location: 'Box-2' } })
+    );
+  });
+
+  it('get_sample without a note searches every experiment and says where it found it', async () => {
+    const got = await tool('get_sample').handler(ctx, { type: 'dna', id: 'DNA-5' });
+    expect(got.ok).toBe(true);
+    expect(got.data).toMatchObject({ id: 'DNA-5', scope: 'local', experiment: OTHER_DIR });
+    const global = await tool('get_sample').handler(ctx, { type: 'RNA', id: 'RNA-1' });
+    expect(global.data).toMatchObject({ scope: 'global', experiment: null });
+  });
+
+  it('get_sample and list_samples name the known types for an unknown one', async () => {
+    for (const name of ['get_sample', 'list_samples']) {
+      const res = await tool(name).handler(ctx, { type: 'Plasmidd', id: 'X-1' });
+      expect(res.ok).toBe(false);
+      expect(res.error).toMatch(/Known types: .*DNA/);
+    }
+  });
+
+  it('search_samples finds by alias or location over every scope', async () => {
+    const res = await tool('search_samples').handler(ctx, { query: 'box-2' });
+    expect(res.ok).toBe(true);
+    const data = res.data as { matches: Array<Record<string, unknown>>; truncated: boolean };
+    expect(data.truncated).toBe(false);
+    expect(data.matches).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'RNA', id: 'RNA-1', scope: 'global', discarded: null }),
+        expect.objectContaining({ type: 'DNA', id: 'DNA-5', scope: 'local', experiment: OTHER_DIR, discarded: '2026-10-01' }),
+      ])
+    );
+    const byType = await tool('search_samples').handler(ctx, { query: 'pet', type: 'DNA' });
+    expect((byType.data as { matches: unknown[] }).matches).toHaveLength(1);
   });
 });

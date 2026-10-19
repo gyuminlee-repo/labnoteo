@@ -14,7 +14,7 @@ import { TFile } from '../stubs/obsidian';
 import type { LabnoteHost } from '@labnoteo/core';
 import { MemFileSystem } from '../../packages/labnoteo-core/src/fs/memFileSystem';
 import { parseWorkflowChecklistFromReadme } from '../../packages/labnoteo-core/src/lib/workflowStructure';
-import { renumberWorkflowsCommand, type ReadmeSyncControl } from '../../src/commands';
+import { renumberWorkflowsCommand, netRenames, type ReadmeSyncControl } from '../../src/commands';
 
 const DIR = 'labnote/001_Test';
 const README = `${DIR}/README.labnote.md`;
@@ -257,5 +257,33 @@ describe('renumberWorkflowsCommand with table CSVs (#60)', () => {
     expect(await h.fs.exists(`${DIR}/${C_NEW}`)).toBe(true);
     expect(await h.fs.exists(`${DIR}/${csv(C_OLD, 1)}`)).toBe(true);
     expect(links(await h.fs.read(README))).toEqual([A, C_NEW]);
+  });
+});
+
+describe('sample sources after renumbering (#149)', () => {
+  it('hands the net renames to the registry once, after the README', async () => {
+    const h = harness({ relink: false });
+    const seen: Array<[string, Array<[string, string]>]> = [];
+    await renumberWorkflowsCommand(h.app, h.host, h.sync, async (dir, renames) => {
+      h.calls.push('samples');
+      seen.push([dir, [...renames]]);
+    });
+    expect(seen).toEqual([[DIR, [[C_OLD, C_NEW]]]]);
+    expect(h.calls.indexOf('samples')).toBeGreaterThan(h.calls.indexOf(`release ${DIR} drop=true`));
+  });
+
+  it('netRenames follows staging names to the final one and drops round trips', () => {
+    expect([
+      ...netRenames([
+        { from: 'a', to: 'tmp' },
+        { from: 'b', to: 'a' },
+        { from: 'tmp', to: 'b' },
+        { from: 'c', to: 'x' },
+        { from: 'x', to: 'c' },
+      ]),
+    ]).toEqual([
+      ['b', 'a'],
+      ['a', 'b'],
+    ]);
   });
 });

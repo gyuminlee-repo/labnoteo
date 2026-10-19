@@ -107,6 +107,26 @@ describe('buildSampleTree', () => {
     expect(rnaType.children![0].label).toBe('No samples');
   });
 
+  it('tags and dims a discarded sample (#158)', async () => {
+    const fs = new MemFileSystem();
+    await fs.write(
+      '/local/DNA.json',
+      JSON.stringify({
+        'DNA-1': { type: 'DNA', alias: null, descriptions: [], sources: [], discarded: '2026-10-19' },
+        'DNA-2': { type: 'DNA', alias: null, descriptions: [], sources: [] },
+      })
+    );
+    const [local] = await buildSampleTree(fs, { local: '/local', global: '/global' }, ['DNA'], {
+      discarded: '(폐기)',
+    });
+    const [gone, kept] = local.children![0].children!;
+    expect(gone.label).toBe('DNA-1 (폐기)');
+    expect(gone.dimmed).toBe(true);
+    expect(gone.children!.map(d => d.label)).toEqual(['discarded: 2026-10-19']);
+    expect(kept.label).toBe('DNA-2');
+    expect(kept.dimmed).toBeUndefined();
+  });
+
   // #64: a vault-root note's local folder is the global one.
   it('lists samples once, under Global, when both scopes are the same folder', async () => {
     const fs = new MemFileSystem();

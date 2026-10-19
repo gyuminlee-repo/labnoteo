@@ -24,6 +24,7 @@ const obsidianKo: Record<string, string> = {
   'Open workflow view': '워크플로 뷰 열기',
   'Open sample view': '샘플 뷰 열기',
   'Open sample definition': '샘플 정의 열기 (편집·이동·삭제)',
+  'Insert sample list of this experiment': '이 실험의 시료 목록 삽입',
   'Open user guide': '사용법 열기',
   'Toggle MCP server': 'MCP 서버 켜기/끄기',
   'AI: Draft Method section': 'AI: Method 섹션 초안 작성',
@@ -225,6 +226,12 @@ const obsidianKo: Record<string, string> = {
   'Select sample type': '샘플 타입 선택',
   'Edit sample': '샘플 편집',
   'Delete sample': '샘플 삭제',
+  'Mark as discarded': '폐기로 표시',
+  'Unmark discarded': '폐기 표시 해제',
+  'Marked {0} as discarded.': '{0}을(를) 폐기로 표시했습니다.',
+  '{0} is no longer marked discarded.': '{0}의 폐기 표시를 해제했습니다.',
+  '(discarded)': '(폐기)',
+  'Discarded': '폐기',
   'Move to Global': '전역으로 이동',
   'Move to Local': '로컬로 이동',
   'Change type': '타입 변경',
@@ -238,6 +245,11 @@ const obsidianKo: Record<string, string> = {
   'No samples are registered yet.': '아직 등록된 샘플이 없습니다.',
   'Search by ID or alias': 'ID나 별칭으로 검색',
   'Open a note to insert into.': '삽입할 노트를 여세요.',
+  'Open a note of an experiment to list its samples.': '시료 목록을 넣으려면 실험 안의 노트를 여세요.',
+  'This experiment has no samples yet.': '이 실험에는 아직 시료가 없습니다.',
+  'Inserted {0} sample(s).': '시료 {0}개를 표로 넣었습니다.',
+  'Local': '로컬',
+  'Global': '전역',
   'Open a note first to add a local sample.': '로컬 샘플을 추가하려면 먼저 노트를 여세요.',
   'Notes outside an experiment use the Global samples below. Open an experiment note to see its samples.':
     '실험 밖 노트는 아래 Global 샘플을 씁니다. 실험 노트를 열면 그 실험의 시료가 보입니다.',
@@ -298,6 +310,8 @@ const obsidianKo: Record<string, string> = {
   '{0} was added to Global samples because this note is outside an experiment folder.':
     '이 노트는 실험 폴더 밖에 있어 {0}을(를) 전역 샘플에 추가했습니다.',
   'Sample updated: {0}': '샘플이 수정되었습니다: {0}',
+  '{0} is also registered in other experiments ({1}); only this one changed.':
+    '{0}은(는) 다른 실험의 대장에도 있습니다({1}). 이번 편집은 이 실험의 기록만 바꿨습니다.',
   'Sample deleted: {0}': '샘플이 삭제되었습니다: {0}',
   "Replace the old alias '{1}' with '{2}' in {0} note(s)?\n\n{3}":
     "노트 {0}개에 남은 옛 별칭 '{1}'을(를) '{2}'(으)로 바꿀까요?\n\n{3}",
@@ -309,6 +323,8 @@ const obsidianKo: Record<string, string> = {
     '옛 별칭으로 정의한 노트를 저장하면 별칭이 되돌아갈 수 있습니다.',
   '{0} is still used in notes ({1}). Remove it from the note(s) first, then delete.':
     '{0}은(는) 본문에서 사용 중이라 삭제할 수 없습니다 ({1}). 본문에서 먼저 지운 뒤 다시 삭제하세요.',
+  'To keep it for those notes but show it as used up, mark it discarded instead.':
+    '그 노트를 위해 기록은 남기고 다 쓴 시료로 보이게 하려면 대신 폐기로 표시하세요.',
   '{0} (+{1} more)': '{0} 외 {1}개',
   '{0} is used in notes outside this experiment ({1}). Those notes will no longer find it after the move. Move anyway?':
     '{0}은(는) 이 실험 밖의 노트에서 쓰이고 있습니다({1}). 옮기면 그 노트에서는 이 시료를 찾지 못합니다. 그래도 옮길까요?',
@@ -323,6 +339,11 @@ const obsidianKo: Record<string, string> = {
   'move from {0}': '{0}에서 옮김',
   'copy from {0} (still used there)': '{0}에서 복사(그 실험의 다른 노트도 씀)',
   'Bring samples': '시료 가져오기',
+  'Bring samples (copies are edited separately from now on)': '시료 가져오기(복사한 시료는 앞으로 따로 고쳐집니다)',
+  'Move samples the other experiment still uses to Global, bring the rest':
+    '원래 실험에서도 쓰는 시료는 전역으로 옮기고 나머지는 가져오기',
+  'Moved to Global: {0}': '전역으로 옮겼습니다: {0}',
+  'Global already has {0}, so it was copied instead.': '전역에 {0}이(가) 이미 있어 대신 복사했습니다.',
   'Brought {0} local sample(s) into {1}.': '로컬 시료 {0}개를 {1}(으)로 가져왔습니다.',
   'The local samples stay in {0}. To bring them later, run "{1}" from a note in {2}.':
     '로컬 시료는 {0}에 그대로 두었습니다. 나중에 가져오려면 {2}의 노트에서 "{1}"을(를) 실행하세요.',
@@ -330,7 +351,8 @@ const obsidianKo: Record<string, string> = {
     '다음 시료는 다른 실험 여러 곳의 대장에 있어 어느 쪽을 가져올지 정할 수 없으므로 가져오지 않았습니다: {0}',
   'Sample not found: {0}': '샘플을 찾을 수 없습니다: {0}',
   'Open an experiment note first to move samples.': '샘플을 이동하려면 먼저 실험 노트를 여세요.',
-  'Local and Global folders are the same.': '로컬과 전역 폴더가 동일합니다.',
+  'The open note is outside an experiment. Open a note of the experiment to move it to, then try again.':
+    '지금 열린 노트가 실험 밖에 있습니다. 옮길 실험의 노트를 연 뒤 다시 실행하세요.',
   '{0} already exists in the destination. Overwrite it?':
     '{0}이(가) 대상에 이미 존재합니다. 덮어쓰시겠습니까?',
   'Overwrite': '덮어쓰기',
