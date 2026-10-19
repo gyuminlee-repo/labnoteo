@@ -12,6 +12,7 @@ import { ItemView, Menu, TFolder, WorkspaceLeaf, type TAbstractFile } from 'obsi
 import {
   buildExperimentTree,
   buildWorkflowTree,
+  isDiscussFlagged,
   type ExperimentEntry,
   type TreeNode,
   type UnitOperationItem,
@@ -30,6 +31,7 @@ import {
   createWorkflowForItem,
   unitOpAliasPrompt,
   changeExperimentStatusCommand,
+  toggleDiscussionFlagCommand,
 } from '../commands';
 import { renderTree } from './treeRender';
 
@@ -81,7 +83,7 @@ export class WorkflowTreeView extends ItemView {
     this.contentEl.createDiv({
       cls: 'labnote-view-hint',
       text: this.plugin.t(
-        'Click an experiment to open its README, or right-click it to change its status. Right-click a catalog item to create a workflow or insert a unit operation. No experiment yet? Run "{0}" first.',
+        'Click an experiment to open its README, or right-click it to change its status or toggle its discussion flag. Right-click a catalog item to create a workflow or insert a unit operation. No experiment yet? Run "{0}" first.',
         this.plugin.t('Create experiment')
       ),
     });
@@ -106,7 +108,7 @@ export class WorkflowTreeView extends ItemView {
     }, 300);
   }
 
-  /** Experiments whose README the metadata cache has read, with its `title` and `status`. */
+  /** Experiments whose README the metadata cache has read, with its `title`, `status` and `discuss` flag. */
   private experiments(): ExperimentEntry[] {
     return this.app.vault
       .getMarkdownFiles()
@@ -117,6 +119,7 @@ export class WorkflowTreeView extends ItemView {
           folder: posix.dirname(f.path),
           title: typeof fm?.title === 'string' ? fm.title : undefined,
           status: typeof fm?.status === 'string' ? fm.status : undefined,
+          discuss: fm ? isDiscussFlagged(fm) : false,
         };
       });
   }
@@ -146,6 +149,7 @@ export class WorkflowTreeView extends ItemView {
     const experiments = buildExperimentTree(this.experiments(), {
       root: this.plugin.t('Experiments'),
       noStatus: this.plugin.t('(none)'),
+      discuss: this.plugin.t('Flagged for discussion'),
     });
     for (const group of experiments.children ?? []) {
       if (this.seeded.has(group.id)) continue;
@@ -182,6 +186,15 @@ export class WorkflowTreeView extends ItemView {
           .onClick(() => {
             const { app, host, stampLastUpdated } = this.plugin;
             void changeExperimentStatusCommand(app, host, stampLastUpdated, folder);
+          })
+      );
+      menu.addItem(item =>
+        item
+          .setTitle(this.plugin.t('Toggle discussion flag'))
+          .setIcon('message-circle')
+          .onClick(() => {
+            const { app, host, stampLastUpdated } = this.plugin;
+            void toggleDiscussionFlagCommand(app, host, stampLastUpdated, folder);
           })
       );
       menu.showAtMouseEvent(evt);

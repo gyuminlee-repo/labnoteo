@@ -59,9 +59,10 @@ const obsidianKo: Record<string, string> = {
     "다음 자동화 파일은 설치 후 내용이 바뀌었거나 이전 버전 기록으로 확인할 수 없어 그대로 두었습니다: {0}. 새 버전을 받으려면 '연구노트 자동화 설정'을 실행하세요.",
   'These automation files are not in the vault: {0}. Run "Setup research automation" to install them if you need them.':
     "다음 자동화 파일이 보관함에 없습니다: {0}. 필요하면 '연구노트 자동화 설정'으로 설치하세요.",
-  'Click an experiment to open its README, or right-click it to change its status. Right-click a catalog item to create a workflow or insert a unit operation. No experiment yet? Run "{0}" first.':
-    '실험을 클릭하면 README가 열리고, 우클릭하면 상태를 바꿉니다. 카탈로그 항목을 우클릭해 워크플로를 만들거나 유닛 오퍼레이션을 넣습니다. 실험이 없다면 먼저 "{0}"을(를) 실행하세요.',
+  'Click an experiment to open its README, or right-click it to change its status or toggle its discussion flag. Right-click a catalog item to create a workflow or insert a unit operation. No experiment yet? Run "{0}" first.':
+    '실험을 클릭하면 README가 열리고, 우클릭하면 상태를 바꾸거나 논의 표시를 전환합니다. 카탈로그 항목을 우클릭해 워크플로를 만들거나 유닛 오퍼레이션을 넣습니다. 실험이 없다면 먼저 "{0}"을(를) 실행하세요.',
   'Experiments': '실험',
+  'Flagged for discussion': '논의 표시됨',
   'Type @dna (or another type) in a note, or right-click → "{0}" to register a sample.':
     '노트에서 @dna처럼 입력하거나 우클릭 → "{0}"(으)로 샘플을 등록합니다.',
 
