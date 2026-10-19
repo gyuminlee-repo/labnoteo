@@ -163,6 +163,13 @@ class OllamaProvider implements LlmProvider {
     if (res.status >= 400) {
       throw new LlmHttpError('Ollama', res.status, res.text);
     }
+    const message = res.json?.message;
+    // Thinking models can spend the whole reply on `thinking` and leave `content` empty (#161).
+    if (!message?.content?.trim() && typeof message?.thinking === 'string' && message.thinking.trim()) {
+      console.warn(
+        `[labnoteo] Ollama model "${this.settings.llmModel}" returned only "thinking" and no answer content.`
+      );
+    }
     return {
       content: res.json?.message?.content ?? '',
       toolCalls: normalizeToolCalls(res.json?.message?.tool_calls),

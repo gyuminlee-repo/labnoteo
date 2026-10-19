@@ -4,6 +4,8 @@ import {
   findUnitOpMethodAt,
   findUnitOpMethodByIndex,
   planBlockInsert,
+  listUnitOpMethods,
+  cleanMethodDraft,
 } from '../sections/blockInsert';
 import { SW_PLACEHOLDERS, HW_PLACEHOLDERS } from '../lib/unitOpTemplate';
 
@@ -189,5 +191,39 @@ describe('planBlockInsert', () => {
     it('separates the block from a last line with no newline', () => {
       expect(apply('---\na: 1\n---\n## H\ntext', 0)).toBe('---\na: 1\n---\n## H\ntext\n\n- a\n- b\n');
     });
+  });
+});
+
+// #164: outside a unit operation the draft went in after the cursor, front matter and all.
+describe('listUnitOpMethods', () => {
+  it('lists the unit operations that have a Method, in order', () => {
+    const md = [
+      '# Note',
+      '### [USW100 A]',
+      '#### Method',
+      '',
+      'done',
+      '### [USW200 B]',
+      '#### Results',
+      '### [UHW300 C]',
+      '#### Method',
+      '',
+    ].join('\n');
+    const methods = listUnitOpMethods(md);
+    expect(methods.map(m => [m.unitOpHeading, m.unitOpIndex, m.isPlaceholder])).toEqual([
+      ['### [USW100 A]', 0, false],
+      ['### [UHW300 C]', 2, true],
+    ]);
+    expect(findUnitOpMethodByIndex(md, 2, '### [UHW300 C]')).toEqual(methods[1]);
+  });
+});
+
+describe('cleanMethodDraft', () => {
+  it('drops front matter and headings, keeping the Method body', () => {
+    expect(cleanMethodDraft('---\ntitle: x\n---\n# Note\n\n## Method\n\n1. mix\n2. spin\n\n## Results\n\nr')).toBe(
+      '1. mix\n2. spin'
+    );
+    expect(cleanMethodDraft('---\ntitle: x\n---\n# Protocol\n\n1. mix')).toBe('1. mix');
+    expect(cleanMethodDraft('1. mix')).toBe('1. mix');
   });
 });

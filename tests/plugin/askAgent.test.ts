@@ -104,4 +104,21 @@ describe('askAgentCommand (#77)', () => {
     await askAgentCommand(plugin);
     expect(aiAnswerModal).not.toHaveBeenCalled();
   });
+
+  // #161: only "ran 0 tool call(s)" was shown when the model neither answered nor acted.
+  it('says the request may be outside its tools when there is no answer and no tool call', async () => {
+    vi.mocked(runAgent).mockResolvedValue({ content: '  ', executed: [], stoppedAtLimit: false });
+    await askAgentCommand(plugin);
+    expect(Notice.shown).toContain(
+      'The assistant gave no answer. What you asked may be outside the tools it can use.'
+    );
+    expect(Notice.shown.some(m => m.includes('tool call(s)'))).toBe(false);
+  });
+
+  it('lists its tools and asks the model to say what it cannot do', async () => {
+    await ask();
+    const system = vi.mocked(runAgent).mock.calls[0][0][0].content;
+    expect(system).toContain('update_section');
+    expect(system).toContain('experiment status');
+  });
 });
