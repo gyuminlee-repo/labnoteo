@@ -110,6 +110,39 @@ function sameContent(a: string, b: string): boolean {
   return a.replace(/\r\n/g, '\n') === b.replace(/\r\n/g, '\n');
 }
 
+/** The text between the managed-block markers (LF), or undefined without them. */
+function managedBlockInner(text: string): string | undefined {
+  const s = text.replace(/\r\n/g, '\n');
+  const begin = s.indexOf(MANAGED_BLOCK_BEGIN);
+  if (begin === -1) return undefined;
+  const from = begin + MANAGED_BLOCK_BEGIN.length;
+  const end = s.indexOf(MANAGED_BLOCK_END, from);
+  if (end === -1) return undefined;
+  return s.slice(from, end).replace(/^\n/, '').replace(/\n$/, '');
+}
+
+/**
+ * Whether a managed block's text is the template hashed as `hash`. The block
+ * holds the template trimmed while the record hashes it as shipped, with its
+ * final newline, so both forms are compared.
+ */
+function blockIsTemplate(inner: string, hash: string | undefined): boolean {
+  if (hash === undefined) return false;
+  return contentHash(inner) === hash || contentHash(`${inner}\n`) === hash;
+}
+
+/**
+ * Whether the block of a marked file was edited since it was last reconciled
+ * (#147): it is neither the current template nor the recorded one. Without a
+ * record nothing can be told, so the block counts as unedited.
+ */
+function blockEdited(current: string, asset: ScaffoldAsset, recorded: string | undefined): boolean {
+  const inner = managedBlockInner(current);
+  if (inner === undefined || recorded === undefined) return false;
+  if (inner === asset.content.replace(/\r\n/g, '\n').trim()) return false;
+  return !blockIsTemplate(inner, recorded) && !blockIsTemplate(inner, contentHash(asset.content));
+}
+
 /** A `managed-block` file as first written: the block, then the asset's trailer. */
 export function managedFileContent(asset: ScaffoldAsset): string {
   const block = upsertManagedBlock('', asset.content);
@@ -159,6 +192,16 @@ export async function applyAsset(
     }
     const updated = upsertManagedBlock(current, asset.content);
     if (updated === current) return undefined; // block already up to date
+    if (exists && blockEdited(current, asset, recorded)) {
+      const ok = await host.confirm(
+        host.t(
+          'The marked block of {0} was edited after it was installed. Replace the block with the new version? Text outside the block is kept.',
+          asset.vaultPath
+        ),
+        { confirmLabel: host.t('Overwrite') }
+      );
+      if (!ok) return 'skipped';
+    }
     await host.fs.write(asset.vaultPath, updated);
     return exists ? 'merged' : 'written';
   }
@@ -368,6 +411,15 @@ export async function refreshAutomationFiles(
           result.pending.push(path);
           files[path] = template;
         }
+        continue;
+      }
+      // The block is refreshed only when the template changed and the block
+      // still reads as the one it replaces, so edits in it survive (#147).
+      const recorded = files[path];
+      if (recorded === template) continue;
+      if (blockEdited(current, asset, recorded)) {
+        result.pending.push(path);
+        files[path] = template;
         continue;
       }
       const next = upsertManagedBlock(current, asset.content);

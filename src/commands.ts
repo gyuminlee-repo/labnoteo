@@ -25,6 +25,7 @@ import {
   unitOpInsertPointAtCursor,
   EXPERIMENT_STATUSES,
   isValidStatus,
+  CATALOG_KO,
   generateIssueMarkerId,
   isDiscussFlagged,
   parseFrontMatterYaml,
@@ -306,7 +307,9 @@ export function insertDateCommand(editor: Editor, host: LabnoteHost, text: strin
   if ('reason' in plan) {
     host.notify(
       'warn',
-      host.t('A date cannot go on a front matter line that has a value. Run this in the body or on an empty value.')
+      plan.reason === 'metaDate'
+        ? host.t('This Start_date/End_date already has a value. Use the 📅 picker next to it to change the date.')
+        : host.t('A date cannot go on a front matter line that has a value. Run this in the body or on an empty value.')
     );
     return false;
   }
@@ -643,6 +646,16 @@ export async function registerWorkflowInReadme(
   return true;
 }
 
+/**
+ * In the Korean UI, a bundled catalog item's Korean name for the picker's
+ * description line and its search words (#163); nothing for items a lab added.
+ */
+function catalogKoFields(id: string, description: string): { description: string; keywords?: readonly string[] } {
+  const ko = getObsidianLanguage().toLowerCase().startsWith('ko') ? CATALOG_KO[id] : undefined;
+  if (!ko) return { description };
+  return { description: `${ko.name} · ${description}`, keywords: [ko.name, ...(ko.keywords ?? [])] };
+}
+
 /** Present the workflow catalog picker (seeding catalog resources first). */
 async function pickWorkflow(host: LabnoteHost): Promise<WorkflowItem | undefined> {
   await ensureWorkflowResources(host.fs, VAULT_ROOT);
@@ -650,7 +663,7 @@ async function pickWorkflow(host: LabnoteHost): Promise<WorkflowItem | undefined
   return host.pick(
     catalog.workflows.map<PickItem<WorkflowItem>>(wf => ({
       label: `${wf.id}: ${wf.name}`,
-      description: wf.category,
+      ...catalogKoFields(wf.id, wf.category),
       detail: wf.description,
       value: wf,
     })),
@@ -795,13 +808,13 @@ export async function insertUnitOperationCommand(app: App, host: LabnoteHost): P
   const items: PickItem<{ op: UnitOperationItem; kind: 'hw' | 'sw' }>[] = [
     ...hw.unitOperations.map(op => ({
       label: `${op.id}: ${op.name}`,
-      description: 'HW',
+      ...catalogKoFields(op.id, 'HW'),
       detail: op.description,
       value: { op, kind: 'hw' as const },
     })),
     ...sw.unitOperations.map(op => ({
       label: `${op.id}: ${op.name}`,
-      description: 'SW',
+      ...catalogKoFields(op.id, 'SW'),
       detail: op.description,
       value: { op, kind: 'sw' as const },
     })),

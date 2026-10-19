@@ -127,6 +127,8 @@ const obsidianKo: Record<string, string> = {
   'Add "{0}" to the README checklist?': '"{0}"을(를) README 체크리스트에 등록할까요?',
   'Add to checklist': '체크리스트에 등록',
   'Added "{0}" to the README checklist.': '"{0}"을(를) README 체크리스트에 등록했습니다.',
+  "Reset the dates of the copy {0}: created today, with the end date and the unit operations' Start_date/End_date emptied.":
+    '복사본 {0}의 날짜를 초기화했습니다: 생성일은 오늘로, 종료일과 유닛 오퍼레이션의 Start_date/End_date는 비웠습니다.',
   'Workflow notes moved into {0} are not in its README checklist yet. Run "{1}" to add them.':
     '{0}(으)로 옮겨 온 워크플로 노트가 README 체크리스트에 없습니다. "{1}"을(를) 실행해 등록하세요.',
   'Experiment status changed ({0}): {1} → {2}': '실험 상태가 변경되었습니다({0}): {1} → {2}',
@@ -175,6 +177,8 @@ const obsidianKo: Record<string, string> = {
     '마커 ID {0}은(는) {1}에서도 쓰고 있어 두 질문이 한 이슈로 합쳐집니다. 이 노트의 그 마커(물결 밑줄)를 지우고 "논의 이슈 마커 삽입"으로 다시 넣으세요.',
   'A date cannot go on a front matter line that has a value. Run this in the body or on an empty value.':
     '머리말(front matter)의 값이 있는 줄에는 날짜를 넣을 수 없습니다. 본문이나 빈 값 칸에서 실행하세요.',
+  'This Start_date/End_date already has a value. Use the 📅 picker next to it to change the date.':
+    '이 Start_date/End_date에는 이미 값이 있습니다. 날짜를 바꾸려면 옆의 📅 피커를 쓰세요.',
   'This line already has an issue marker. A line can hold only one.':
     '이 줄에는 이미 이슈 마커가 있습니다. 한 줄에 하나만 둘 수 있습니다.',
   'Front matter of this note could not be read, so it was left unchanged. Fix the YAML and try again: {0}':
@@ -183,6 +187,13 @@ const obsidianKo: Record<string, string> = {
     '{0}이(가) 새 버전과 다릅니다. 설치 뒤에 직접 고친 내용이 있다면 바꿀 때 사라집니다. 새 버전으로 바꿀까요?',
   'From then on, updates change only the marked block and keep what you write below it.':
     '이번에 바꾸면 다음부터는 업데이트가 표시된 블록만 바꾸고, 그 아래 적은 내용은 그대로 둡니다.',
+  'Pasted images are saved at the top of the vault. Save them in an images folder next to the note instead (for a lab note, the experiment\'s images folder)? This changes Settings → Files and links → Default location for new attachments to "./images".':
+    '붙여넣은 이미지가 보관함 맨 위에 저장되고 있습니다. 노트 옆 images 폴더(랩노트라면 실험의 images 폴더)에 저장할까요? 설정 → 파일 및 링크 → 새 첨부 파일의 기본 위치를 "./images"로 바꿉니다.',
+  'Use ./images': './images 쓰기',
+  'New attachments now go to the images folder next to each note.':
+    '이제 새 첨부 파일은 각 노트 옆 images 폴더에 저장됩니다.',
+  'The marked block of {0} was edited after it was installed. Replace the block with the new version? Text outside the block is kept.':
+    '{0}의 표시된 블록이 설치 후 고쳐졌습니다. 블록을 새 버전으로 바꿀까요? 블록 밖의 내용은 그대로 둡니다.',
   'Research automation set up ({0} written, {1} merged, {2} skipped, {3} removed). Researchers: see {4}. Admin setup: {5} (run `git config core.hooksPath {6}`).':
     '연구노트 자동화를 설정했습니다 (생성 {0} · 병합 {1} · 건너뜀 {2} · 정리 {3}). 연구원 안내는 {4}, 관리자 설정은 {5} 문서를 확인하고 `git config core.hooksPath {6}`을 실행하세요.',
   'Remove {0} file(s) left by the previous layout ({1})? Afterwards run `git config core.hooksPath {2}` so the pre-commit hook keeps working.':
@@ -213,6 +224,8 @@ const obsidianKo: Record<string, string> = {
   '{0} rows → {1} rows': '{0}행 → {1}행',
   'row {0}: {1} → {2}': '{0}번째 행: {1} → {2}',
   'Command failed: {0}': '명령 실행 실패: {0}',
+  'Command failed: the name is too long for the file system. Shorten the title or alias to {0} characters or fewer.':
+    '명령 실행 실패: 이름이 너무 길어 파일을 만들 수 없습니다. 제목이나 별칭을 {0}자 이하로 줄이세요.',
   'Yes': '예',
   'Workflow created: {0}': '워크플로가 생성되었습니다: {0}',
   'This experiment has no README.labnote.md, so the workflow was not added to a checklist.':

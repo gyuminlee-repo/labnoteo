@@ -22,6 +22,7 @@ import {
   touchLastUpdatedDate,
 } from '@labnoteo/core/lib/dateUtils';
 import { getSampleDisplayMeta, isCatalogSampleType } from '@labnoteo/core/lib/sampleUtils';
+import { isPathTooLongError, PATH_SEGMENT_MAX } from '@labnoteo/core/lib/regexUtils';
 import {
   classifyWorkflowMoveOut,
   classifyWorkflowRename,
@@ -31,6 +32,7 @@ import {
   parseWorkflowFileName,
   parseWorkflowHeading,
   planWorkflowChecklistSync,
+  resetCopiedWorkflowDates,
   rewriteWorkflowTitle,
   suggestCopiedWorkflowFileName,
   type WorkflowHeading,
@@ -260,6 +262,16 @@ export default class LabnotePlugin extends Plugin {
   private run(fn: () => Promise<void>): void {
     fn().catch((err: unknown) => {
       console.error('[labnoteo] command failed:', err);
+      if (isPathTooLongError(err)) {
+        this.host.notify(
+          'error',
+          this.t(
+            'Command failed: the name is too long for the file system. Shorten the title or alias to {0} characters or fewer.',
+            String(PATH_SEGMENT_MAX)
+          )
+        );
+        return;
+      }
       const msg = err instanceof Error ? err.message : String(err);
       this.host.notify('error', this.t('Command failed: {0}', msg));
     });
@@ -326,7 +338,11 @@ export default class LabnotePlugin extends Plugin {
     this.addCommand({
       id: 'setup-research-automation',
       name: this.t('Setup research automation'),
-      callback: () => this.run(() => setupResearchAutomationCommand(this.host, this.manifest.version)),
+      callback: () =>
+        this.run(async () => {
+          await setupResearchAutomationCommand(this.host, this.manifest.version);
+          await this.offerAttachmentFolder();
+        }),
     });
 
     this.addCommand({
@@ -952,9 +968,58 @@ export default class LabnotePlugin extends Plugin {
     }
     // Dropped first so the rename below is not taken for a rename by hand.
     this.copiedWorkflows.delete(copyPath);
+    await this.resetCopyDates(file);
     await this.app.fileManager.renameFile(file, target);
     if (await addWorkflowFileToChecklist(this.app, this.host, dir, suggestion)) {
       this.host.notify('info', this.t('Added "{0}" to the README checklist.', suggestion));
+    }
+  }
+
+  /**
+   * With Obsidian's default attachment location (the vault root), images
+   * pasted into lab notes pile up outside the experiment folders (#154).
+   * Offer `./images`, the experiment's images folder for a lab note. The
+   * vault config API is not public, so nothing is asked without it.
+   */
+  private async offerAttachmentFolder(): Promise<void> {
+    const vault = this.app.vault as unknown as {
+      getConfig?: (key: string) => unknown;
+      setConfig?: (key: string, value: unknown) => void;
+    };
+    if (typeof vault.getConfig !== 'function' || typeof vault.setConfig !== 'function') return;
+    const current = vault.getConfig('attachmentFolderPath');
+    if (current !== undefined && current !== null && current !== '' && current !== '/') return;
+    const ok = await this.host.confirm(
+      this.t(
+        'Pasted images are saved at the top of the vault. Save them in an images folder next to the note instead (for a lab note, the experiment\'s images folder)? This changes Settings → Files and links → Default location for new attachments to "./images".'
+      ),
+      { confirmLabel: this.t('Use ./images') }
+    );
+    if (!ok) return;
+    vault.setConfig('attachmentFolderPath', './images');
+    this.host.notify('info', this.t('New attachments now go to the images folder next to each note.'));
+  }
+
+  /**
+   * Date a copy that is becoming a workflow of its own from today, with its
+   * end and unit-op dates emptied (#160), and say so.
+   */
+  private async resetCopyDates(file: TFile): Promise<void> {
+    const today = getSeoulDateString();
+    let changed = false;
+    await this.app.vault.process(file, data => {
+      const next = resetCopiedWorkflowDates(data, today);
+      changed = next !== data;
+      return next;
+    });
+    if (changed) {
+      this.host.notify(
+        'info',
+        this.t(
+          'Reset the dates of the copy {0}: created today, with the end date and the unit operations\' Start_date/End_date emptied.',
+          file.name
+        )
+      );
     }
   }
 
@@ -1007,6 +1072,7 @@ export default class LabnotePlugin extends Plugin {
     // Dropped first so the rename below is not taken for a rename by hand.
     this.copiedWorkflows.delete(copyPath);
     await this.app.vault.process(file, data => rewriteWorkflowTitle(data, heading.id, heading.name, alias));
+    await this.resetCopyDates(file);
     await this.app.fileManager.renameFile(file, target);
     if (await addWorkflowFileToChecklist(this.app, this.host, dir, fileName)) {
       this.host.notify('info', this.t('Added "{0}" to the README checklist.', fileName));
@@ -1023,6 +1089,7 @@ export default class LabnotePlugin extends Plugin {
       confirmLabel: this.t('Add to checklist'),
     });
     if (!ok || file.path !== path) return;
+    await this.resetCopyDates(file);
     if (await addWorkflowFileToChecklist(this.app, this.host, posix.dirname(path), file.name)) {
       this.host.notify('info', this.t('Added "{0}" to the README checklist.', file.name));
     }
