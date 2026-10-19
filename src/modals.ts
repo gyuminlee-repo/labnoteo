@@ -35,7 +35,8 @@ class PickModal<T> extends SuggestModal<PickItem<T>> {
       it =>
         it.label.toLowerCase().includes(q) ||
         (it.description?.toLowerCase().includes(q) ?? false) ||
-        (it.detail?.toLowerCase().includes(q) ?? false)
+        (it.detail?.toLowerCase().includes(q) ?? false) ||
+        (it.keywords?.some(k => k.toLowerCase().includes(q)) ?? false)
     );
   }
 

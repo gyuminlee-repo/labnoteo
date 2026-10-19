@@ -354,6 +354,57 @@ describe('QUICKSTART managed block', () => {
     expect(await fs.read('GUIDE.md')).toBe(managedFileContent(GUIDE));
   });
 
+  // #147
+  it('leaves an edited block alone on load and reports it once the template changes', async () => {
+    const edited = marked('guide v1\nOur note in the block', 'Below.');
+    const same = makeHost({
+      [ISSUE_SYNC_WORKFLOW_PATH]: 'wf\n',
+      'GUIDE.md': edited,
+      [INSTALL_RECORD_PATH]: record({ 'GUIDE.md': contentHash('guide v2\n') }),
+    });
+    expect(await refreshAutomationFiles(same.asHost, '1.1.0', [WF, GUIDE], legacy)).toEqual({
+      updated: [],
+      pending: [],
+      missing: [],
+    });
+    expect(await same.fs.read('GUIDE.md')).toBe(edited);
+
+    const changed = makeHost({
+      [ISSUE_SYNC_WORKFLOW_PATH]: 'wf\n',
+      'GUIDE.md': edited,
+      [INSTALL_RECORD_PATH]: record({ 'GUIDE.md': contentHash('guide v1\n') }),
+    });
+    const first = await refreshAutomationFiles(changed.asHost, '1.1.0', [WF, GUIDE], legacy);
+    const second = await refreshAutomationFiles(changed.asHost, '1.1.0', [WF, GUIDE], legacy);
+    expect(first.pending).toEqual(['GUIDE.md']);
+    expect(second.pending).toEqual([]);
+    expect(await changed.fs.read('GUIDE.md')).toBe(edited);
+  });
+
+  it('refreshes an unedited block when the template changed', async () => {
+    const { fs, asHost } = makeHost({
+      [ISSUE_SYNC_WORKFLOW_PATH]: 'wf\n',
+      'GUIDE.md': marked('guide v1', 'Below.'),
+      [INSTALL_RECORD_PATH]: record({ 'GUIDE.md': contentHash('guide v1\n') }),
+    });
+    expect((await refreshAutomationFiles(asHost, '1.1.0', [WF, GUIDE], legacy)).updated).toEqual(['GUIDE.md']);
+    expect(await fs.read('GUIDE.md')).toBe(marked('guide v2', 'Below.'));
+  });
+
+  it('asks before replacing an edited block in the setup command', async () => {
+    const edited = marked('guide v1\nOur note', 'Below.');
+    const { fs, host, asHost } = makeHost({ 'GUIDE.md': edited });
+    host.confirm.mockResolvedValueOnce(false);
+    expect(await applyAsset(asHost, GUIDE, contentHash('guide v1\n'), legacy)).toBe('skipped');
+    expect(await fs.read('GUIDE.md')).toBe(edited);
+    expect(await applyAsset(asHost, GUIDE, contentHash('guide v1\n'), legacy)).toBe('merged');
+    expect(await fs.read('GUIDE.md')).toBe(marked('guide v2', 'Below.'));
+
+    const plain = makeHost({ 'GUIDE.md': marked('guide v1', 'Below.') });
+    expect(await applyAsset(plain.asHost, GUIDE, contentHash('guide v1\n'), legacy)).toBe('merged');
+    expect(plain.host.confirm).not.toHaveBeenCalled();
+  });
+
   it('does not put a block back into an unmarked file of an asset without migrateUnmarked', async () => {
     const { fs, asHost } = makeHost({ [ISSUE_SYNC_WORKFLOW_PATH]: 'wf\n', 'AGENTS.md': 'our rules\n' });
 
@@ -378,6 +429,7 @@ describe('refresh strings are translated', () => {
     'These automation files are not in the vault: {0}. Run "Setup research automation" to install them if you need them.',
     '{0} differs from the new version. Edits made after it was installed are lost if you replace it. Replace it with the new version?',
     'From then on, updates change only the marked block and keep what you write below it.',
+    'The marked block of {0} was edited after it was installed. Replace the block with the new version? Text outside the block is kept.',
   ])('%s', key => {
     expect(obsidianKo[key]).toBeTruthy();
   });

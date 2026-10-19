@@ -23,6 +23,8 @@ export interface PickItem<T> {
   description?: string;
   /** Optional detail line (rendered smaller / on a second row). */
   detail?: string;
+  /** Extra words the filter matches, not shown (e.g. a Korean name or abbreviation). */
+  keywords?: readonly string[];
   /** The value returned when this item is chosen. */
   value: T;
 }

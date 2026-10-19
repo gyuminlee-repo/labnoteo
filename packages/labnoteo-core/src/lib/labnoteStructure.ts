@@ -4,7 +4,7 @@
 
 import * as path from '../util/posixPath';
 import { getSeoulDateString } from './dateUtils';
-import { sanitizePathSegment } from './regexUtils';
+import { sanitizePathSegment, capPathSegment } from './regexUtils';
 import { serializeFrontMatterEntry } from '../sections/frontMatter';
 
 /**
@@ -229,7 +229,8 @@ export function createLabnoteStructure(
   opts: TemplateHintOptions = {}
 ): LabnoteStructure {
   const number = getNextLabnoteNumber(existingFolders);
-  const sanitizedTitle = sanitizeTitle(title);
+  // The README keeps the whole title; only the folder name is capped (#148).
+  const sanitizedTitle = capPathSegment(sanitizeTitle(title));
   const folderName = `${number}_${sanitizedTitle}`;
   
   const labnoteFolder = path.join(workspaceRoot, 'labnote', folderName);
