@@ -33,6 +33,7 @@ import { runAgent } from './agent';
 import { buildApprovalMessage } from './approvalMessage';
 import { getObsidianLanguage } from '../i18n';
 import { aiAnswerModal } from '../modals';
+import { sampleUsages } from '../sampleActions';
 
 /**
  * Tool context for AI-driven edits.
@@ -49,6 +50,7 @@ function toolContext(plugin: LabnotePlugin): ToolContext {
     customTypes: plugin.settings.customSampleTypes,
     locale: getObsidianLanguage(),
     writeNote: (path, content) => plugin.writeNoteStamped(path, content),
+    findSampleUsages: (folder, type, id) => sampleUsages(plugin.app, plugin, folder, type, id),
   };
 }
 

@@ -512,6 +512,37 @@ async function notesReferencingSample(
   return findSampleUsages(docs, type, id, plugin.settings.customSampleTypes);
 }
 
+/**
+ * The notes that use the sample `(type, id)` of `folder`, as vault paths, for
+ * "View usages" and the MCP `get_sample` (#130, #131). Like
+ * {@link notesReferencingSample}, but a Global sample leaves out experiments
+ * with a Local record of the same id, since their notes use that one (as
+ * {@link rewriteStaleAliases} does). Deleting keeps the stricter check.
+ */
+export async function sampleUsages(
+  app: App,
+  plugin: LabnotePlugin,
+  folder: string,
+  type: string,
+  id: string
+): Promise<string[]> {
+  const paths = await notesReferencingSample(app, plugin, folder, type, id);
+  if (getExperimentDir(folder)) return paths;
+  const shadowed = new Map<string, boolean>();
+  const used: string[] = [];
+  for (const path of paths) {
+    const local = noteLabsamplesFolder(path, plugin.settings.globalSampleFolder);
+    if (!isSameSampleFolder(local, folder)) {
+      if (!shadowed.has(local)) {
+        shadowed.set(local, Boolean((await loadSamplesByType(plugin.fs, local, type))[id]));
+      }
+      if (shadowed.get(local)) continue;
+    }
+    used.push(path);
+  }
+  return used;
+}
+
 /** A note's text, from its open editor when it has one. */
 export interface ScopedNote {
   path: string;

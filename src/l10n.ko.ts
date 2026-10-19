@@ -213,6 +213,9 @@ const obsidianKo: Record<string, string> = {
   'Copy sample ID': '샘플 ID 복사',
   'Copied: {0}': '복사했습니다: {0}',
   'Insert reference': '참조 삽입',
+  'View usages': '사용처 보기',
+  '{0} is not used in any note.': '{0}을(를) 쓰는 노트가 없습니다.',
+  'Notes using {0} ({1})': '{0}을(를) 쓰는 노트({1}개)',
   'Add sample': '샘플 추가',
   'Search samples': '샘플 검색',
   'Select sample type': '샘플 타입 선택',
@@ -342,6 +345,11 @@ const obsidianKo: Record<string, string> = {
     '{0}: 공백이나 -가 들어간 타입은 자동완성되지 않아 저장하지 않았습니다. 대신 {1}처럼 쓰세요.',
   '{0} cannot be autocompleted in notes (a space or -). Rename it, e.g. {1}, if you have no samples of it yet.':
     '{0}은(는) 공백이나 -가 있어 노트에서 자동완성되지 않습니다. 아직 그 타입의 샘플이 없다면 {1}처럼 이름을 바꾸세요.',
+  '{0}: {1} sample(s)': '{0}: 샘플 {1}개',
+  'Samples of the removed sample type(s) will no longer show:\n\n{0}\n\nPut the type(s) back in the list?':
+    '빠진 타입의 샘플이 더 이상 보이지 않게 됩니다:\n\n{0}\n\n그 타입을 목록에 다시 넣을까요?',
+  'Put back': '다시 넣기',
+  'Put back: {0}': '다시 넣었습니다: {0}',
   'Global sample folder': '전역 샘플 폴더',
   'Vault-relative folder for vault-global samples.':
     '볼트 전역 샘플을 저장할 볼트 기준 상대 폴더입니다.',

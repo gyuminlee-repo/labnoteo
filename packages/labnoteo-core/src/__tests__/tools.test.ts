@@ -120,6 +120,27 @@ describe('create_sample / get_sample / list_samples', () => {
     expect((res.data as Array<{ id: string }>).map(s => s.id).sort()).toEqual(['DNA-1', 'DNA-2']);
   });
 
+  // #131: `sources` only says where it was defined; `usages` says which notes use it.
+  it('get_sample adds the notes that use the sample when the host can search them', async () => {
+    await tool('create_sample').handler(ctx, { type: 'DNA', id: 'DNA-1', documentPath: NOTE_PATH });
+    const findSampleUsages = vi.fn(async () => [NOTE_PATH, `${NOTE_DIR}/002_WB030_Other.labnote.md`]);
+
+    const got = await tool('get_sample').handler(
+      { ...ctx, findSampleUsages },
+      { type: 'DNA', id: 'DNA-1', documentPath: NOTE_PATH }
+    );
+
+    expect(got.ok).toBe(true);
+    expect(got.data).toMatchObject({ id: 'DNA-1', usages: [NOTE_PATH, `${NOTE_DIR}/002_WB030_Other.labnote.md`] });
+    expect(findSampleUsages).toHaveBeenCalledWith(`${NOTE_DIR}/resources/labsamples`, 'DNA', 'DNA-1');
+  });
+
+  it('get_sample leaves usages out on a host without the hook', async () => {
+    await tool('create_sample').handler(ctx, { type: 'DNA', id: 'DNA-1', documentPath: NOTE_PATH });
+    const got = await tool('get_sample').handler(ctx, { type: 'DNA', id: 'DNA-1', documentPath: NOTE_PATH });
+    expect(got.data).not.toHaveProperty('usages');
+  });
+
   it('get_sample fails for a missing sample', async () => {
     const res = await tool('get_sample').handler(ctx, {
       type: 'DNA',
