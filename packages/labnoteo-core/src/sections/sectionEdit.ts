@@ -74,15 +74,35 @@ export interface SectionMatch {
 const ANY_HEADING_RE = /^(#{1,6})\s+(.*?)\s*$/;
 
 /**
- * Every heading whose text is `heading` (at any level), outside code fences,
- * with its enclosing heading. A workflow note repeats `#### Method` under each
- * `### [USW230 …]` unit operation, so one heading text can name many sections.
+ * Heading text as {@link findSectionMatches} compares it when no heading
+ * matches exactly (#145): emoji, variation selectors and square brackets
+ * dropped, case and runs of spaces ignored. README headings carry emoji
+ * (`## 🧪 Related Workflows`) a caller rarely types.
  */
-export function findSectionMatches(md: string, heading: string): SectionMatch[] {
+export function normalizeHeadingText(text: string): string {
+  return text
+    .replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, '')
+    .replace(/[[\]]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+/** One heading of a note, outside code fences. */
+export interface NoteHeading {
+  /** 0-based line index. */
+  line: number;
+  level: number;
+  text: string;
+  /** Text of the nearest enclosing heading (fewer `#`s), or '' at top level. */
+  parentHeading: string;
+}
+
+/** Every heading of `md` outside code fences, in document order. */
+export function listHeadings(md: string): NoteHeading[] {
   const lines = md.split(/\r?\n/);
-  const headingRe = new RegExp(`^(#{1,6})\\s+${escapeRegExp(heading)}\\s*$`);
   const ancestors: { level: number; text: string }[] = [];
-  const matches: SectionMatch[] = [];
+  const out: NoteHeading[] = [];
   // A fenced code block can contain lines that look like ATX headings; those
   // must NOT be treated as real headings.
   let fence: OpenFence | null = null;
@@ -97,17 +117,46 @@ export function findSectionMatches(md: string, heading: string): SectionMatch[] 
     if (!h) continue;
     const level = h[1].length;
     while (ancestors.length > 0 && ancestors[ancestors.length - 1].level >= level) ancestors.pop();
-    if (headingRe.test(lines[i])) {
-      matches.push({
-        line: i,
-        level,
-        parentHeading: ancestors[ancestors.length - 1]?.text ?? '',
-        occurrence: matches.length + 1,
-      });
-    }
+    out.push({ line: i, level, text: h[2], parentHeading: ancestors[ancestors.length - 1]?.text ?? '' });
     ancestors.push({ level, text: h[2] });
   }
-  return matches;
+  return out;
+}
+
+/**
+ * Every heading whose text is `heading` (at any level), outside code fences,
+ * with its enclosing heading. A workflow note repeats `#### Method` under each
+ * `### [USW230 …]` unit operation, so one heading text can name many sections.
+ * Only when none matches exactly are headings compared by
+ * {@link normalizeHeadingText} (#145).
+ */
+export function findSectionMatches(md: string, heading: string): SectionMatch[] {
+  const lines = md.split(/\r?\n/);
+  const headingRe = new RegExp(`^(#{1,6})\\s+${escapeRegExp(heading)}\\s*$`);
+  const headings = listHeadings(md);
+  let found = headings.filter(h => headingRe.test(lines[h.line]));
+  if (found.length === 0) {
+    const wanted = normalizeHeadingText(heading);
+    found = wanted ? headings.filter(h => normalizeHeadingText(h.text) === wanted) : [];
+  }
+  return found.map((h, i) => ({ line: h.line, level: h.level, parentHeading: h.parentHeading, occurrence: i + 1 }));
+}
+
+/**
+ * `content` without a first line that repeats the target section's heading
+ * (#162): models often send the heading along with the body, which then
+ * appeared twice. `heading` is the target's text; the comparison is the same
+ * as {@link findSectionMatches}'s fallback. Blank lines it leaves at the top go too.
+ */
+export function stripRepeatedHeading(content: string, heading: string): string {
+  const lines = content.split(/\r?\n/);
+  const first = lines.findIndex(l => l.trim() !== '');
+  if (first === -1) return content;
+  const h = lines[first].trim().match(ANY_HEADING_RE);
+  if (!h || normalizeHeadingText(h[2]) !== normalizeHeadingText(heading)) return content;
+  const rest = lines.slice(first + 1);
+  while (rest.length > 0 && rest[0].trim() === '') rest.shift();
+  return rest.join('\n');
 }
 
 /**

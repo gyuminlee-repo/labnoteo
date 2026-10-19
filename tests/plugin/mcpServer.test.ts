@@ -6,6 +6,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   MCP_PROTOCOL_VERSION,
+  TaskQueue,
+  approveStable,
   awaitApproval,
   buildInitializeResult,
   buildToolCallResult,
@@ -305,5 +307,58 @@ describe('buildApprovalMessage', () => {
       `Allow?\n\nTarget: ${readmePath}\n\nThis creates catalog workflow WT110 Micro-scale Parallel Cell Fermentation. ` +
         `File: 002_WT110_Micro-scale_Parallel_Cell_Fermentation.labnote.md. It is also added to the checklist in ${readmePath}.`
     );
+  });
+});
+
+// #144: concurrent writes are asked about one by one, each previewed after the earlier ones.
+describe('TaskQueue', () => {
+  it('runs tasks one at a time in queue order, past a failing one', async () => {
+    const q = new TaskQueue();
+    const log: string[] = [];
+    let release!: () => void;
+    const first = q.run(async () => {
+      log.push('a start');
+      await new Promise<void>(r => (release = r));
+      log.push('a end');
+    });
+    const second = q.run(async () => {
+      log.push('b');
+      throw new Error('b failed');
+    });
+    const third = q.run(async () => void log.push('c'));
+    await Promise.resolve();
+    expect(log).toEqual(['a start']);
+    release();
+    await first;
+    await expect(second).rejects.toThrow('b failed');
+    await third;
+    expect(log).toEqual(['a start', 'a end', 'b', 'c']);
+  });
+});
+
+describe('approveStable', () => {
+  it('allows when the preview is unchanged after the answer', async () => {
+    const ask = vi.fn(async () => 'allowed' as const);
+    expect(await approveStable(async () => ({ message: 'm' }), ask)).toBe('allowed');
+    expect(ask).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks again about a preview that changed while the dialog was open', async () => {
+    const messages = ['old', 'new', 'new'];
+    const ask = vi.fn(async (_m: string) => 'allowed' as const);
+    expect(await approveStable(async () => ({ message: messages.shift()! }), ask)).toBe('allowed');
+    expect(ask.mock.calls.map(c => c[0])).toEqual(['old', 'new']);
+  });
+
+  it('passes a denial through and reports a call that became invalid', async () => {
+    expect(await approveStable(async () => ({ message: 'm' }), async () => 'denied')).toBe('denied');
+    const results: Array<{ message: string } | { error: string }> = [{ message: 'm' }, { error: 'gone' }];
+    expect(await approveStable(async () => results.shift()!, async () => 'allowed')).toEqual({ error: 'gone' });
+  });
+
+  it('gives up when the preview keeps changing', async () => {
+    let n = 0;
+    const result = await approveStable(async () => ({ message: String(n++) }), async () => 'allowed');
+    expect(result).toMatchObject({ error: expect.stringMatching(/kept changing/) });
   });
 });
