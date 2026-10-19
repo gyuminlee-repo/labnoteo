@@ -7,6 +7,7 @@
  * thin UI adapter around them.
  */
 import { buildSampleIdPattern, escapeSamplePipes } from '../lib/sampleUtils';
+import { findSampleReferenceSpans } from '../lib/sampleStorage';
 
 /** A resolved autocomplete trigger parsed from the text before the cursor. */
 export interface SampleTrigger {
@@ -154,9 +155,13 @@ export interface SampleReferenceAt {
 }
 
 /**
- * Find the sample id token that the cursor column `ch` sits inside on a single
+ * Find the sample reference that the cursor column `ch` sits in on a single
  * `line` (boundaries inclusive). Returns the type/id and its range, or null.
- * Used by the editor "Go to definition" context menu.
+ * Used by the editor "Go to definition" command and context menu.
+ *
+ * The id token is tried first and its range returned. Otherwise the whole
+ * reference counts, alias included (`DNA-1;sampleA`, #136), and its range is
+ * returned; where references overlap, the one starting nearest before `ch` wins.
  */
 export function findSampleReferenceAt(
   line: string,
@@ -173,5 +178,10 @@ export function findSampleReferenceAt(
       };
     }
   }
-  return null;
+  let hit: SampleReferenceAt | null = null;
+  for (const span of findSampleReferenceSpans(line, types)) {
+    if (span.start > ch) break;
+    if (ch <= span.end) hit = { type: span.type, id: span.id, start: span.start, end: span.end };
+  }
+  return hit;
 }

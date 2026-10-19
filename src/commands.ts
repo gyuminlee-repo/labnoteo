@@ -393,9 +393,11 @@ function renderNote(frontMatter: Record<string, unknown>, body: string): string 
 export async function toggleDiscussionFlagCommand(
   app: App,
   host: LabnoteHost,
-  stamp: (content: string) => string = c => c
+  stamp: (content: string) => string = c => c,
+  experimentDir?: string
 ): Promise<void> {
-  const labnoteDir = await resolveLabnoteDir(app, host);
+  // The workflow view names the experiment itself (#134), like the status change (#128).
+  const labnoteDir = experimentDir ?? (await resolveLabnoteDir(app, host));
   if (!labnoteDir) return;
 
   const readmePath = posix.join(labnoteDir, README);

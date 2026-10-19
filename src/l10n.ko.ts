@@ -59,9 +59,10 @@ const obsidianKo: Record<string, string> = {
     "다음 자동화 파일은 설치 후 내용이 바뀌었거나 이전 버전 기록으로 확인할 수 없어 그대로 두었습니다: {0}. 새 버전을 받으려면 '연구노트 자동화 설정'을 실행하세요.",
   'These automation files are not in the vault: {0}. Run "Setup research automation" to install them if you need them.':
     "다음 자동화 파일이 보관함에 없습니다: {0}. 필요하면 '연구노트 자동화 설정'으로 설치하세요.",
-  'Click an experiment to open its README, or right-click it to change its status. Right-click a catalog item to create a workflow or insert a unit operation. No experiment yet? Run "{0}" first.':
-    '실험을 클릭하면 README가 열리고, 우클릭하면 상태를 바꿉니다. 카탈로그 항목을 우클릭해 워크플로를 만들거나 유닛 오퍼레이션을 넣습니다. 실험이 없다면 먼저 "{0}"을(를) 실행하세요.',
+  'Click an experiment to open its README, or right-click it to change its status or toggle its discussion flag. Right-click a catalog item to create a workflow or insert a unit operation. No experiment yet? Run "{0}" first.':
+    '실험을 클릭하면 README가 열리고, 우클릭하면 상태를 바꾸거나 논의 표시를 전환합니다. 카탈로그 항목을 우클릭해 워크플로를 만들거나 유닛 오퍼레이션을 넣습니다. 실험이 없다면 먼저 "{0}"을(를) 실행하세요.',
   'Experiments': '실험',
+  'Flagged for discussion': '논의 표시됨',
   'Type @dna (or another type) in a note, or right-click → "{0}" to register a sample.':
     '노트에서 @dna처럼 입력하거나 우클릭 → "{0}"(으)로 샘플을 등록합니다.',
 
@@ -180,6 +181,9 @@ const obsidianKo: Record<string, string> = {
   'Exported {0} CSV file(s) ({1} unchanged file(s) left as they were).':
     'CSV 파일 {0}개를 내보냈습니다(내용이 같은 {1}개는 그대로 둠).',
   'The CSV files are already up to date ({0}).': 'CSV 파일이 이미 최신입니다({0}개).',
+  'Saved in {0}: {1}.': '저장 위치 {0}: {1}.',
+  'The file explorer shows CSV files only when Settings → Files and links → Show all file types is on.':
+    '파일 탐색기에는 설정 → 파일 및 링크 → 모든 파일 확장명 인식이 켜져 있을 때만 CSV 파일이 보입니다.',
   'No tables found in this note.': '이 노트에서 표를 찾을 수 없습니다.',
   'These table CSV files no longer match a table in the note. Move them to the trash?\n\n{0}':
     '다음 표 CSV 파일은 이 노트에 더 이상 해당하는 표가 없습니다. 휴지통으로 옮길까요?\n\n{0}',
@@ -213,6 +217,9 @@ const obsidianKo: Record<string, string> = {
   'Copy sample ID': '샘플 ID 복사',
   'Copied: {0}': '복사했습니다: {0}',
   'Insert reference': '참조 삽입',
+  'View usages': '사용처 보기',
+  '{0} is not used in any note.': '{0}을(를) 쓰는 노트가 없습니다.',
+  'Notes using {0} ({1})': '{0}을(를) 쓰는 노트({1}개)',
   'Add sample': '샘플 추가',
   'Search samples': '샘플 검색',
   'Select sample type': '샘플 타입 선택',
@@ -342,6 +349,11 @@ const obsidianKo: Record<string, string> = {
     '{0}: 공백이나 -가 들어간 타입은 자동완성되지 않아 저장하지 않았습니다. 대신 {1}처럼 쓰세요.',
   '{0} cannot be autocompleted in notes (a space or -). Rename it, e.g. {1}, if you have no samples of it yet.':
     '{0}은(는) 공백이나 -가 있어 노트에서 자동완성되지 않습니다. 아직 그 타입의 샘플이 없다면 {1}처럼 이름을 바꾸세요.',
+  '{0}: {1} sample(s)': '{0}: 샘플 {1}개',
+  'Samples of the removed sample type(s) will no longer show:\n\n{0}\n\nPut the type(s) back in the list?':
+    '빠진 타입의 샘플이 더 이상 보이지 않게 됩니다:\n\n{0}\n\n그 타입을 목록에 다시 넣을까요?',
+  'Put back': '다시 넣기',
+  'Put back: {0}': '다시 넣었습니다: {0}',
   'Global sample folder': '전역 샘플 폴더',
   'Vault-relative folder for vault-global samples.':
     '볼트 전역 샘플을 저장할 볼트 기준 상대 폴더입니다.',

@@ -6,8 +6,10 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
+  countSampleRecords,
   migrateSettings,
   partitionCustomSampleTypes,
+  removedCustomSampleTypes,
   DEFAULT_SETTINGS,
   CURRENT_SCHEMA_VERSION,
 } from '../../src/settings';
@@ -34,6 +36,24 @@ describe('partitionCustomSampleTypes', () => {
     expect(out.save).toEqual(['Cell Line']);
     expect(out.legacyInvalid).toEqual(['Cell Line']);
     expect(out.rejected.map(r => r.name)).toEqual(['Strain-A']);
+  });
+});
+
+// #137: samples of a type taken out of the list stop showing.
+describe('removedCustomSampleTypes / countSampleRecords', () => {
+  it('lists the types the new list dropped', () => {
+    expect(removedCustomSampleTypes(['CellLine', 'Strain', '배지'], ['Strain'])).toEqual(['CellLine', '배지']);
+    expect(removedCustomSampleTypes(['CellLine'], ['CellLine', 'Media'])).toEqual([]);
+  });
+
+  it('ignores a change of case and built-in names, which still show', () => {
+    expect(removedCustomSampleTypes(['CellLine', 'dna'], ['cellline'])).toEqual([]);
+  });
+
+  it('counts the samples in the type files, skipping empty and broken ones', () => {
+    const json = JSON.stringify({ 'CellLine-1': { alias: 'HeLa' }, 'CellLine-2': { alias: null } });
+    expect(countSampleRecords([json, JSON.stringify({ 'CellLine-3': {} }), '', '{broken', '[]'])).toBe(3);
+    expect(countSampleRecords([])).toBe(0);
   });
 });
 

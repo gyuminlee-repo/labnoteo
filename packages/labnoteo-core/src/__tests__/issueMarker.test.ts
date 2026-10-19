@@ -284,11 +284,30 @@ describe('planIssueMarkerInsertion', () => {
     expect(insert('', 0).out).toBe('@issue;ISS-t;');
   });
 
-  it('replaces a selection that runs to the line end, keeping the space before it', () => {
+  // #135: replacing the end of a sentence would delete it from the record.
+  it('keeps the line and appends when the selection runs to the line end from mid-text', () => {
     const doc = '결과: BS-3 형광';
     const { out } = insert(doc, ...select(doc, ' BS-3 형광'));
-    expect(out).toBe('결과: @issue;ISS-t;BS-3 형광');
+    expect(out).toBe('결과: BS-3 형광 @issue;ISS-t;BS-3 형광');
     expect(titleOf(out)).toBe('BS-3 형광');
+  });
+
+  it('appends for the end of a sentence or part of a word (#135)', () => {
+    const doc = '- 3차 시도에서 C1-05 누출 의심';
+    expect(insert(doc, ...select(doc, 'C1-05 누출 의심')).out).toBe(`${doc} @issue;ISS-t;C1-05 누출 의심`);
+    expect(insert(doc, ...select(doc, '출 의심')).out).toBe(`${doc} @issue;ISS-t;출 의심`);
+  });
+
+  it('still replaces the whole text of a list line, keeping its marker', () => {
+    const doc = '- [ ] C1-05 누출 의심';
+    const { out } = insert(doc, ...select(doc, 'C1-05 누출 의심'));
+    expect(out).toBe('- [ ] @issue;ISS-t;C1-05 누출 의심');
+    expect(titleOf(out)).toBe('C1-05 누출 의심');
+  });
+
+  it('still replaces a selection that starts before the text, keeping the space before it', () => {
+    const doc = '>  BS-3 형광';
+    expect(insert(doc, ...select(doc, ' BS-3 형광')).out).toBe('>  @issue;ISS-t;BS-3 형광');
   });
 
   it('treats a selection that took its line break as ending on that line', () => {
@@ -304,7 +323,8 @@ describe('planIssueMarkerInsertion', () => {
     expect(titleOf(out)).toBe('one line two');
 
     const toEnd = 'a first\nsecond';
-    expect(insert(toEnd, ...select(toEnd, 'first\nsecond')).out).toBe('a @issue;ISS-t;first second');
+    expect(insert(toEnd, ...select(toEnd, 'first\nsecond')).out).toBe('a first\nsecond @issue;ISS-t;first second');
+    expect(insert(toEnd, ...select(toEnd, 'a first\nsecond')).out).toBe('@issue;ISS-t;a first second');
   });
 
   it('accepts a backwards selection', () => {

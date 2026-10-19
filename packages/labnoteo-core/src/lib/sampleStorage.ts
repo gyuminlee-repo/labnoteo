@@ -208,6 +208,32 @@ function nextSampleMatch(pattern: RegExp, text: string, type: string): RegExpExe
   return trimmed;
 }
 
+/** A sample reference in a text with its `@type;` prefix, alias and description: `[start, end)`. */
+export interface SampleReferenceSpan {
+  type: string;
+  id: string;
+  start: number;
+  end: number;
+}
+
+/**
+ * Every sample reference in `text` for `types`, spanning what the definition
+ * matcher reads as the reference. Nothing marks where a plain reference's
+ * alias ends, so the span of `DNA-1;sampleA for the assembly` runs to the end
+ * of the sentence. Sorted by start offset.
+ */
+export function findSampleReferenceSpans(text: string, types: readonly string[]): SampleReferenceSpan[] {
+  const spans: SampleReferenceSpan[] = [];
+  for (const type of types) {
+    const pattern = buildSampleDefinitionPattern(type);
+    let match: RegExpExecArray | null;
+    while ((match = nextSampleMatch(pattern, text, type)) !== null) {
+      spans.push({ type, id: match[1], start: match.index, end: match.index + match[0].length });
+    }
+  }
+  return spans.sort((a, b) => a.start - b.start);
+}
+
 /**
  * Extract sample information from document text
  * Supports formats (new ; delimiter + legacy |/: for backward compatibility):

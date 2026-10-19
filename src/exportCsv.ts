@@ -133,7 +133,25 @@ export async function exportTablesToCsv(plugin: LabnotePlugin, file: TFile): Pro
         ? plugin.t('Exported {0} CSV file(s) ({1} unchanged file(s) left as they were).', String(written), String(unchanged))
         : plugin.t('Exported {0} CSV file(s).', String(written));
   const cleanup = await offerStaleCsvCleanup(plugin, file, tables.length);
-  new Notice([exported, cleanup].filter(Boolean).join(' '));
+  new Notice([exported, savedIn(plugin, dir, outputs.map(o => o.path)), cleanup, explorerHint(plugin)].filter(Boolean).join(' '));
+}
+
+/** Where the CSVs are, so they can be found outside Obsidian (#140): the folder and the first few names. */
+function savedIn(plugin: LabnotePlugin, dir: string, paths: readonly string[]): string {
+  const max = 3;
+  const shown = paths.slice(0, max).map(p => posix.basename(p)).join(', ');
+  const names = paths.length > max ? plugin.t('{0} (+{1} more)', shown, String(paths.length - max)) : shown;
+  return plugin.t('Saved in {0}: {1}.', dir === '.' ? '/' : `${dir}/`, names);
+}
+
+/**
+ * Obsidian's file explorer hides CSVs unless "Show all file types" is on
+ * (#140). `getConfig` is not in the public API; an unknown value gets the hint.
+ */
+function explorerHint(plugin: LabnotePlugin): string {
+  const vault = plugin.app.vault as unknown as { getConfig?: (key: string) => unknown };
+  if (vault.getConfig?.('showUnsupportedFiles') === true) return '';
+  return plugin.t('The file explorer shows CSV files only when Settings → Files and links → Show all file types is on.');
 }
 
 /** CSV text without the BOM and CRLF a re-save in Excel may add or drop. */

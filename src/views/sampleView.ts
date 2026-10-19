@@ -24,8 +24,10 @@ import {
   moveSampleInteractive,
   changeSampleTypeInteractive,
   insertSampleReference,
+  sampleUsages,
   type SampleScope,
 } from '../sampleActions';
+import { pickModal } from '../modals';
 
 export const SAMPLE_VIEW_TYPE = 'labnote-sample-view';
 
@@ -260,7 +262,22 @@ export class SampleTreeView extends ItemView {
     menu.showAtMouseEvent(evt);
   }
 
-  /** Sample node: copy / insert reference / edit / delete. */
+  /** The notes that use a sample, picked from a list to open (#130). */
+  private async showUsages(folder: string, sample: SamplePayload): Promise<void> {
+    const usages = await sampleUsages(this.app, this.plugin, folder, sample.type, sample.id);
+    if (usages.length === 0) {
+      new Notice(this.plugin.t('{0} is not used in any note.', sample.id));
+      return;
+    }
+    const path = await pickModal(
+      this.app,
+      usages.map(p => ({ label: p, value: p })),
+      { title: this.plugin.t('Notes using {0} ({1})', sample.id, String(usages.length)) }
+    );
+    if (path) await this.plugin.host.openFile(path);
+  }
+
+  /** Sample node: copy / insert reference / view usages / edit / delete. */
   private onSampleContext(sample: SamplePayload, evt: MouseEvent): void {
     const folder = this.scopeFolder(sample.scope);
     const menu = new Menu();
@@ -290,6 +307,12 @@ export class SampleTreeView extends ItemView {
             buildSampleReferenceText(sample.id, sample.record.alias)
           );
         })
+    );
+    menu.addItem(item =>
+      item
+        .setTitle(this.plugin.t('View usages'))
+        .setIcon('search')
+        .onClick(() => void this.showUsages(folder, sample))
     );
     menu.addItem(item =>
       item
