@@ -100,7 +100,24 @@ describe('planWorkflowExperimenterSync', () => {
         'experimenter: 이영희',
         '\n- Experimenter: 이영희\n- Experimenter: 이영희\n- Experimenter: 김철수\n- Experimenter: 이영희\n'
       ),
+      unitOpLines: 2,
+      skippedLines: 0,
     });
+  });
+
+  // #155
+  it('keeps the experimenter of a unit op that has an End_date', () => {
+    const op = (end: string) =>
+      `\n- Experimenter: 홍길동\n- Start_date: '2026-10-01 09:00'\n- End_date: '${end}'\n`;
+    const body = `### [UHW010 PCR]${op('2026-10-02 18:00')}### [UHW020 Gel]${op('')}`;
+    const out = planWorkflowExperimenterSync(note('experimenter: 홍길동', body), '이영희');
+    expect(out?.content).toBe(
+      note(
+        'experimenter: 이영희',
+        `### [UHW010 PCR]${op('2026-10-02 18:00')}### [UHW020 Gel]${op('').replace('홍길동', '이영희')}`
+      )
+    );
+    expect(out).toMatchObject({ unitOpLines: 1, skippedLines: 1 });
   });
 
   it('fills an empty experimenter and keeps CRLF', () => {

@@ -43,7 +43,12 @@ export type ExperimentPathDiagnosis =
   /** Not under a `labnote/` folder at all, or a file directly in `labnote/`. */
   | { kind: 'outside' }
   /** In (or is) a folder directly under `labnote/` whose name lacks the `###_` prefix (#67). */
-  | { kind: 'noPrefix'; folder: string };
+  | { kind: 'noPrefix'; folder: string }
+  /**
+   * In (or is) a `###_` folder deeper than directly under `labnote/`, e.g. an
+   * experiment moved into a grouping folder (#166); `folder` is that folder.
+   */
+  | { kind: 'nested'; folder: string };
 
 /**
  * Why `p` is or is not inside an experiment, using the same path rules as
@@ -61,6 +66,11 @@ export function diagnoseExperimentPath(p: string, opts: { isFolder?: boolean } =
   if (idx === -1) return { kind: 'outside' };
   const minLength = opts.isFolder ? idx + 2 : idx + 3;
   if (parts.length < minLength || parts[idx + 1] === '') return { kind: 'outside' };
+  // The last part of a file path is the file itself, not a folder.
+  const lastFolder = opts.isFolder ? parts.length - 1 : parts.length - 2;
+  for (let i = idx + 2; i <= lastFolder; i++) {
+    if (/^\d{3}_/.test(parts[i])) return { kind: 'nested', folder: parts.slice(0, i + 1).join('/') };
+  }
   return { kind: 'noPrefix', folder: parts.slice(0, idx + 2).join('/') };
 }
 

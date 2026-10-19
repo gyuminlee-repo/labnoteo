@@ -749,8 +749,36 @@ export default class LabnotePlugin extends Plugin {
     const before = diagnoseExperimentPath(oldPath, { isFolder: true });
     const after = diagnoseExperimentPath(newPath, { isFolder: true });
     if (before.kind !== 'ok' || before.folder !== oldPath) return;
+    if (after.kind === 'nested' && after.folder === newPath) {
+      this.run(() => this.offerExperimentFolderMoveBack(folder, posix.dirname(oldPath)));
+      return;
+    }
     if (after.kind !== 'noPrefix' || after.folder !== newPath) return;
     this.run(() => this.offerExperimentFolderNameFix(folder, posix.basename(oldPath)));
+  }
+
+  /**
+   * An experiment folder was moved into a grouping folder under `labnote/`,
+   * where nothing recognises it as an experiment (#166): offer it back.
+   */
+  private async offerExperimentFolderMoveBack(folder: TFolder, labnoteDir: string): Promise<void> {
+    const movedPath = folder.path;
+    const target = posix.join(labnoteDir, folder.name);
+    const warning = this.t(
+      '"{0}" is no longer recognized as an experiment: experiment folders must be directly under labnote/. Workflow commands, the experiment list and Local samples will not find it.',
+      folder.name
+    );
+    const settled = await this.waitForNoModal();
+    if (this.unloaded || folder.path !== movedPath) return;
+    if (!settled || this.app.vault.getAbstractFileByPath(target)) {
+      this.host.notify('warn', warning);
+      return;
+    }
+    const ok = await this.host.confirm(`${warning} ${this.t('Move it back to {0}?', `${labnoteDir}/`)}`, {
+      confirmLabel: this.t('Move back'),
+    });
+    if (!ok || folder.path !== movedPath || this.app.vault.getAbstractFileByPath(target)) return;
+    await this.app.fileManager.renameFile(folder, target);
   }
 
   private async offerExperimentFolderNameFix(folder: TFolder, oldName: string): Promise<void> {
