@@ -147,6 +147,23 @@ describe('tableToCsv', () => {
   it('still doubles quotes in a protected cell with a comma', () => {
     expect(tableToCsv([['=A1,"x"']])).toBe('"\t=A1,""x"""\n');
   });
+
+  // #138: Excel shows a lone sign next to `+/-` cells as an error or a blank.
+  it('protects a lone + or - in a column of growth scores', () => {
+    const csv = tableToCsv([['균주', '생장'], ['A', '+++'], ['B', '+/-'], ['C', '+'], ['D', '-']]);
+    expect(csv).toBe('균주,생장\nA,"\t+++"\nB,"\t+/-"\nC,"\t+"\nD,"\t-"\n');
+  });
+
+  it('leaves a lone - as it is in a number column', () => {
+    expect(tableToCsv([['시료', 'OD600'], ['A', '-0.2'], ['B', '-'], ['C', '+5']])).toBe(
+      '시료,OD600\nA,-0.2\nB,-\nC,+5\n'
+    );
+  });
+
+  it('judges the column by its data rows, not the header', () => {
+    expect(tableToCsv([['+/-', '-'], ['-', '1']])).toBe('"\t+/-",-\n-,1\n');
+    expect(tableToCsv([['-', '점수'], ['-', '++']])).toBe('-,점수\n-,"\t++"\n');
+  });
 });
 
 describe('extractMarkdownTables', () => {
@@ -189,5 +206,32 @@ describe('extractMarkdownTables', () => {
   it('keeps an escaped pipe as one cell', () => {
     const md = '| 시료 | 비고 |\n|---|---|\n| Equip-1;DNase \\| 등급 | ok |\n';
     expect(extractMarkdownTables(md)[0].rows[1]).toEqual(['Equip-1;DNase | 등급', 'ok']);
+  });
+
+  // #139: the reading view hides these marks, so the CSV does too.
+  it('strips bold, italic and code marks', () => {
+    const md = '| **조성** | 비고 |\n|---|---|\n| __M1__ | *재측정* `0.5 mM` _확인_ |\n| ***x*** | ` a ` |\n';
+    expect(extractMarkdownTables(md)[0].rows).toEqual([
+      ['조성', '비고'],
+      ['M1', '재측정 0.5 mM 확인'],
+      ['x', 'a'],
+    ]);
+  });
+
+  it('drops struck-through text with its marks', () => {
+    const md = '| 값 |\n|---|\n| ~~0.10~~ 0.12 |\n| 0.10 ~~x~~ 0.12 |\n| ~~취소~~ |\n';
+    expect(extractMarkdownTables(md)[0].rows.slice(1)).toEqual([['0.12'], ['0.10 0.12'], ['']]);
+  });
+
+  it('keeps marks inside a word, escaped marks and code contents', () => {
+    const md = '| a | b | c | d |\n|---|---|---|---|\n| 2*3 | sample_id_1 | \\*x\\* | `~~x~~ **y**` |\n';
+    expect(extractMarkdownTables(md)[0].rows[1]).toEqual(['2*3', 'sample_id_1', '\\*x\\*', '~~x~~ **y**']);
+  });
+
+  it('checks for a formula after stripping the marks', () => {
+    const md = '| 점수 |\n|---|\n| **+/-** |\n| ~~0~~ - |\n';
+    const rows = extractMarkdownTables(md)[0].rows;
+    expect(rows.slice(1)).toEqual([['+/-'], ['-']]);
+    expect(tableToCsv(rows)).toBe('점수\n"\t+/-"\n"\t-"\n');
   });
 });
