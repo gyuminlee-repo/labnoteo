@@ -90,7 +90,7 @@ describe('user guide strings are translated', () => {
     'User guide',
     'Created the user guide: {0}',
     'New here? Open the quick-start guide. Searching "Labnote" in the command palette lists every command.',
-    'Click an experiment to open its README, or right-click it to change its status. Right-click a catalog item to create a workflow or insert a unit operation. No experiment yet? Run "{0}" first.',
+    'Click an experiment to open its README, or right-click it to change its status or toggle its discussion flag. Right-click a catalog item to create a workflow or insert a unit operation. No experiment yet? Run "{0}" first.',
     'Type @dna (or another type) in a note, or right-click → "{0}" to register a sample.',
   ])('%s', key => {
     expect(obsidianKo[key]).toBeTruthy();

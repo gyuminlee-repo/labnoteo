@@ -157,6 +157,27 @@ describe('the status-change notice', () => {
   it('changes the experiment it is handed, whatever note is active (#128)', async () => {
     expect(await shownFrom('labnote/002_Other/README.labnote.md', DIR)).toContain("Changed 001_Test's README");
   });
+
+  it('toggles the flag of the experiment it is handed, whatever note is active (#134)', async () => {
+    const fs = new MemFileSystem({ [README]: note() });
+    const shown: string[] = [];
+    const app = {
+      workspace: { getActiveFile: () => new TFile('labnote/002_Other/README.labnote.md'), getLeavesOfType: () => [] },
+      vault: { getFileByPath: () => null },
+    } as unknown as App;
+    const host = {
+      fs,
+      t: (s: string, ...args: string[]) => args.reduce((acc, a, i) => acc.replace(`{${i}}`, a), s),
+      notify: (_kind: string, message: string) => shown.push(message),
+    } as unknown as LabnoteHost;
+
+    await toggleDiscussionFlagCommand(app, host, stamp, DIR);
+
+    const out = await fs.read(README);
+    expect(out).toContain('discuss: true');
+    expect(out).toContain(`last_updated_date: ${TODAY}`);
+    expect(shown.at(-1)).toContain("Changed 001_Test's README");
+  });
 });
 
 describe('writeNoteStamped (AI writes)', () => {

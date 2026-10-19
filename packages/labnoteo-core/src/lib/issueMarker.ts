@@ -273,8 +273,10 @@ const isTableRow = (line: string): boolean => /^\s*\|/.test(line);
  * A marker owns everything up to the end of its line, so replacing a selection
  * in place is only safe when nothing but whitespace follows it. Otherwise the
  * rest of the sentence would leak into the Issue title, so the line is left
- * intact and the marker goes at its end. The note is somebody's record; the
- * command must not reword it.
+ * intact and the marker goes at its end. A selection that starts after the
+ * line's text begins (see {@link issueSentenceRange}) is not replaced either:
+ * that would delete the end of a sentence (#135). The note is somebody's
+ * record; the command must not reword it.
  *
  * - Heading line: the marker goes on a new line below. Text appended to
  *   `### [UHW..]` would change the unit op's alias, and with it the TOC entry
@@ -314,7 +316,8 @@ export function planIssueMarkerInsertion(
     i > lineStart && !/\s/.test(doc[i - 1]) ? ' ' : '';
 
   const toLineEnd = lineEndOf(to);
-  const appendAtEnd = doc.slice(to, toLineEnd).trim() !== '';
+  const sentence = issueSentenceRange(doc, from);
+  const appendAtEnd = doc.slice(to, toLineEnd).trim() !== '' || (sentence !== undefined && from > sentence.from);
   const anchor = appendAtEnd ? to : from;
   const lineStart = lineStartOf(anchor);
   const lineEnd = lineEndOf(anchor);

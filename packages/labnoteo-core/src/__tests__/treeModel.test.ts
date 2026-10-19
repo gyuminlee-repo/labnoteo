@@ -220,4 +220,18 @@ describe('buildExperimentTree', () => {
     expect(empty.label).toBe('Experiments [0]');
     expect(empty.children).toEqual([]);
   });
+
+  // #134
+  it('marks an experiment flagged for discussion with its icon and tooltip', () => {
+    const flagged = buildExperimentTree(
+      [
+        { folder: 'labnote/001_A', status: 'in-progress', discuss: true },
+        { folder: 'labnote/002_B', status: 'in-progress' },
+      ],
+      { discuss: '논의 표시됨' }
+    );
+    const [a, b] = flagged.children![0].children!;
+    expect(a).toMatchObject({ icon: 'comment-discussion', tooltip: 'labnote/001_A\n논의 표시됨' });
+    expect(b).toMatchObject({ icon: 'file', tooltip: 'labnote/002_B' });
+  });
 });

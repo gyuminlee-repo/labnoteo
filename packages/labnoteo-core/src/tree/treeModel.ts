@@ -55,17 +55,20 @@ export interface ExperimentEntry {
   folder: string;
   title?: string;
   status?: string;
+  /** The README's `discuss` flag is on. */
+  discuss?: boolean;
 }
 
 /**
  * The vault's experiments grouped by `status`, in {@link EXPERIMENT_STATUSES}
  * order. Experiments without a status, and each value outside that list, get
  * groups of their own after those; empty groups are left out. Each experiment
- * shows as `001_GFP · title` and carries its folder and README path.
+ * shows as `001_GFP · title` and carries its folder and README path. One
+ * flagged for discussion gets a discussion icon and says so in its tooltip (#134).
  */
 export function buildExperimentTree(
   experiments: ExperimentEntry[],
-  labels: { root?: string; noStatus?: string } = {}
+  labels: { root?: string; noStatus?: string; discuss?: string } = {}
 ): TreeNode {
   const noStatus = labels.noStatus ?? '(none)';
   const groups = new Map<string, ExperimentEntry[]>();
@@ -99,8 +102,8 @@ export function buildExperimentTree(
             id: `experiment:${e.folder}`,
             label: title && title !== name ? `${name} · ${title}` : name,
             kind: 'experiment' as const,
-            icon: 'file',
-            tooltip: e.folder,
+            icon: e.discuss ? 'comment-discussion' : 'file',
+            tooltip: e.discuss ? `${e.folder}\n${labels.discuss ?? 'Flagged for discussion'}` : e.folder,
             payload: { folder: e.folder, readmePath: path.join(e.folder, 'README.labnote.md') },
           };
         }),
