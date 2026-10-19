@@ -13,6 +13,7 @@ const ICON_MAP: Record<string, string> = {
   folder: 'folder',
   file: 'file-text',
   'comment-discussion': 'message-circle',
+  warning: 'alert-triangle',
   'symbol-method': 'wrench',
   'symbol-function': 'square-function',
   beaker: 'flask-conical',

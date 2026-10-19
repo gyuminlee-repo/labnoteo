@@ -195,14 +195,23 @@ describe('buildExperimentTree', () => {
       'planned [2]',
       'in-progress [1]',
       'completed [1]',
-      'waiting [1]',
+      'waiting [1] (not an allowed status)',
       '(none) [1]',
     ]);
   });
 
-  it('sorts experiments by folder number and labels them with the title', () => {
+  // #143
+  it('marks a status outside the allowed list', () => {
+    const odd = tree.children!.find(g => g.label.startsWith('waiting'))!;
+    expect(odd.icon).toBe('warning');
+    expect(odd.tooltip).toContain('planned, in-progress');
+    expect(tree.children![0].icon).toBe('folder');
+    expect(tree.children![0].tooltip).toBeUndefined();
+  });
+
+  it('sorts experiments by folder number and labels them with number and title', () => {
     const planned = tree.children![0].children!;
-    expect(planned.map(e => e.label)).toEqual(['002_GFP · GFP expression', '010_Later · Later run']);
+    expect(planned.map(e => e.label)).toEqual(['002 · GFP expression', '010 · Later run']);
     expect(planned[0].payload).toEqual({
       folder: 'labnote/002_GFP',
       readmePath: 'labnote/002_GFP/README.labnote.md',
@@ -231,7 +240,27 @@ describe('buildExperimentTree', () => {
       { discuss: '논의 표시됨' }
     );
     const [a, b] = flagged.children![0].children!;
-    expect(a).toMatchObject({ icon: 'comment-discussion', tooltip: 'labnote/001_A\n논의 표시됨' });
-    expect(b).toMatchObject({ icon: 'file', tooltip: 'labnote/002_B' });
+    expect(a).toMatchObject({ icon: 'comment-discussion', tooltip: 'labnote/001_A\nStatus: in-progress\n논의 표시됨' });
+    expect(b).toMatchObject({ icon: 'file', tooltip: 'labnote/002_B\nStatus: in-progress' });
+  });
+
+  // #156, #157
+  it('shows checklist progress and puts the title, status and last update in the tooltip', () => {
+    const t = buildExperimentTree([
+      {
+        folder: 'labnote/067_나노자임_비색_센서',
+        title: '나노자임 비색 센서',
+        status: 'in-progress',
+        lastUpdated: '2026-10-19',
+        progress: { done: 1, total: 6 },
+      },
+      { folder: 'labnote/068_B', title: 'B', status: 'in-progress', progress: { done: 0, total: 0 } },
+    ]);
+    const [a, b] = t.children![0].children!;
+    expect(a.label).toBe('067 · 나노자임 비색 센서 (1/6)');
+    expect(a.tooltip).toBe(
+      '나노자임 비색 센서\nlabnote/067_나노자임_비색_센서\nStatus: in-progress\nWorkflows done: 1/6\nLast updated: 2026-10-19'
+    );
+    expect(b.label).toBe('068 · B');
   });
 });

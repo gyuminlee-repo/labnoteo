@@ -63,6 +63,12 @@ const obsidianKo: Record<string, string> = {
     '실험을 클릭하면 README가 열리고, 우클릭하면 상태를 바꾸거나 논의 표시를 전환합니다. 카탈로그 항목을 우클릭해 워크플로를 만들거나 유닛 오퍼레이션을 넣습니다. 실험이 없다면 먼저 "{0}"을(를) 실행하세요.',
   'Experiments': '실험',
   'Flagged for discussion': '논의 표시됨',
+  '(not an allowed status)': '(허용되지 않는 상태)',
+  'Validation fails on this status. Allowed statuses: {0}':
+    '이 상태는 검증에서 실패합니다. 허용되는 상태: {0}',
+  'Status': '상태',
+  'Workflows done': '완료한 워크플로',
+  'Last updated': '마지막 수정',
   'Type @dna (or another type) in a note, or right-click → "{0}" to register a sample.':
     '노트에서 @dna처럼 입력하거나 우클릭 → "{0}"(으)로 샘플을 등록합니다.',
 
@@ -77,6 +83,8 @@ const obsidianKo: Record<string, string> = {
   'Search unit operations': '유닛 오퍼레이션 검색',
   'Open a lab note first.': '먼저 랩노트 파일을 여세요.',
   'Select a status': '상태를 선택하세요',
+  'The current status "{0}" is not an allowed value. Select a status':
+    '현재 값 "{0}"은(는) 허용 목록에 없습니다. 상태를 선택하세요',
   'current': '현재',
   'Workflow name': '워크플로 이름',
   'Enter a name for this workflow': '이 워크플로의 상세 별칭을 입력하세요',
@@ -121,9 +129,14 @@ const obsidianKo: Record<string, string> = {
   'Added "{0}" to the README checklist.': '"{0}"을(를) README 체크리스트에 등록했습니다.',
   'Workflow notes moved into {0} are not in its README checklist yet. Run "{1}" to add them.':
     '{0}(으)로 옮겨 온 워크플로 노트가 README 체크리스트에 없습니다. "{1}"을(를) 실행해 등록하세요.',
-  'Experiment status changed: {0} → {1}': '실험 상태가 변경되었습니다: {0} → {1}',
+  'Experiment status changed ({0}): {1} → {2}': '실험 상태가 변경되었습니다({0}): {1} → {2}',
   '(none)': '(없음)',
   'To undo, run "{0}" again and pick {1}.': '되돌리려면 "{0}"을(를) 다시 실행해 {1}을(를) 고르세요.',
+  'To undo, right-click this experiment in the workflow view again and pick {0}.':
+    '되돌리려면 워크플로 뷰에서 이 실험을 다시 우클릭해 {0}을(를) 고르세요.',
+  '{0} workflow(s) in the checklist are not checked and {1} workflow note(s) have no end_date. Mark the experiment completed anyway?':
+    '체크리스트에서 체크하지 않은 워크플로가 {0}개, 종료일(end_date)이 빈 워크플로 노트가 {1}개 있습니다. 그래도 completed로 바꿀까요?',
+  'Mark completed': 'completed로 바꾸기',
   'This vault is not a git repository yet, so no review issue will open. Finish the repository setup in {0} first.':
     '이 보관함은 아직 git 저장소가 아니라 검토 이슈가 생성되지 않습니다. 먼저 {0}의 저장소 연결을 마치세요.',
   'To open a review issue, run "Setup research automation" first.':
@@ -424,6 +437,12 @@ const obsidianKo: Record<string, string> = {
   'Created {0} sample(s).': '샘플 {0}개를 생성했습니다.',
   '"{0}" is not an experiment folder: its name must start with ###_ (e.g. 001_Name).':
     '"{0}"은(는) 실험 폴더가 아닙니다. 폴더 이름은 ###_로 시작해야 합니다(예: 001_이름).',
+  '"{0}" is not recognized as an experiment: experiment folders must be directly under labnote/. Move it back to labnote/.':
+    '"{0}"은(는) 실험으로 인식되지 않습니다. 실험 폴더는 labnote/ 바로 아래에 있어야 합니다. labnote/ 아래로 다시 옮기세요.',
+  '"{0}" is no longer recognized as an experiment: experiment folders must be directly under labnote/. Workflow commands, the experiment list and Local samples will not find it.':
+    '"{0}"은(는) 더 이상 실험으로 인식되지 않습니다. 실험 폴더는 labnote/ 바로 아래에 있어야 합니다. 워크플로 명령, 실험 목록, 로컬 샘플이 이 폴더를 찾지 못합니다.',
+  'Move it back to {0}?': '{0} 아래로 다시 옮길까요?',
+  'Move back': '다시 옮기기',
   '"{0}" is no longer an experiment folder: its name must start with ###_ (e.g. 001_Name). Workflow commands and Local samples will not find it.':
     '"{0}"은(는) 더 이상 실험 폴더가 아닙니다. 폴더 이름은 ###_로 시작해야 합니다(예: 001_이름). 워크플로 명령과 로컬 샘플이 이 폴더를 찾지 못합니다.',
   '"{0}" is no longer an experiment folder: its name must start with ###_ (e.g. 001_Name). Workflow commands and Local samples will not find it. Rename it to "{1}"?':
@@ -452,6 +471,8 @@ const obsidianKo: Record<string, string> = {
   'Update notes': '노트 고치기',
   "These notes' experimenter differs from the README author. Update them?":
     '아래 노트의 실험자(experimenter)가 README의 author와 다릅니다. 노트를 고칠까요?',
+  '{0} unit operation line(s)': '유닛 오퍼레이션 {0}줄',
+  '{0} kept because the unit operation has an End_date': '{0}줄은 End_date가 있는 유닛 오퍼레이션이라 유지',
   '(empty)': '(비어 있음)',
   '{0} note(s) updated.': '노트 {0}개를 고쳤습니다.',
   'Name this copy of the workflow': '복제한 워크플로의 이름',

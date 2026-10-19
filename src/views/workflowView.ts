@@ -8,7 +8,7 @@
  * items create a workflow or insert a unit operation at the cursor (reusing the
  * shared command helpers, so behaviour matches the command palette exactly).
  */
-import { ItemView, Menu, TFolder, WorkspaceLeaf, type TAbstractFile } from 'obsidian';
+import { ItemView, Menu, TFile, TFolder, WorkspaceLeaf, type TAbstractFile } from 'obsidian';
 import {
   buildExperimentTree,
   buildWorkflowTree,
@@ -24,6 +24,7 @@ import {
   loadUnitOperations,
 } from '@labnoteo/core/lib/workflowDataLoader';
 import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
+import { parseWorkflowChecklistFromReadme } from '@labnoteo/core/lib/workflowStructure';
 import * as posix from '@labnoteo/core/posix';
 import type LabnotePlugin from '../main';
 import {
@@ -47,6 +48,9 @@ export class WorkflowTreeView extends ItemView {
   private treeEl: HTMLElement | null = null;
   private catalogNodes: TreeNode[] = [];
   private renderTimer: number | undefined;
+  /** README checklist progress by path, valid while the file's mtime is unchanged. */
+  private readonly progress = new Map<string, { mtime: number; done: number; total: number }>();
+  private readonly reading = new Set<string>();
 
   constructor(leaf: WorkspaceLeaf, private readonly plugin: LabnotePlugin) {
     super(leaf);
@@ -108,20 +112,54 @@ export class WorkflowTreeView extends ItemView {
     }, 300);
   }
 
-  /** Experiments whose README the metadata cache has read, with its `title`, `status` and `discuss` flag. */
+  /**
+   * Experiments whose README the metadata cache has read, with its `title`,
+   * `status`, `discuss` flag and `last_updated_date`, and the checklist
+   * progress read so far (#157).
+   */
   private experiments(): ExperimentEntry[] {
     return this.app.vault
       .getMarkdownFiles()
       .filter(f => f.name === README && getExperimentDir(f.path) === posix.dirname(f.path))
       .map(f => {
         const fm = this.app.metadataCache.getFileCache(f)?.frontmatter;
+        const updated: unknown = fm?.last_updated_date;
         return {
           folder: posix.dirname(f.path),
           title: typeof fm?.title === 'string' ? fm.title : undefined,
           status: typeof fm?.status === 'string' ? fm.status : undefined,
           discuss: fm ? isDiscussFlagged(fm) : false,
+          lastUpdated: typeof updated === 'string' && updated.trim() ? updated.trim() : undefined,
+          progress: this.checklistProgress(f),
         };
       });
+  }
+
+  /**
+   * The README's "Related Workflows" progress as last read. The metadata
+   * cache's list items would count every checkbox in the README, so the
+   * checklist parser reads the text; a stale entry is re-read in the
+   * background and the tree drawn again once it is in.
+   */
+  private checklistProgress(file: TFile): { done: number; total: number } | undefined {
+    const cached = this.progress.get(file.path);
+    if (cached?.mtime !== file.stat.mtime && !this.reading.has(file.path)) {
+      this.reading.add(file.path);
+      void this.app.vault
+        .cachedRead(file)
+        .then(text => {
+          const items = parseWorkflowChecklistFromReadme(text);
+          this.progress.set(file.path, {
+            mtime: file.stat.mtime,
+            done: items.filter(i => i.done).length,
+            total: items.length,
+          });
+          this.scheduleRender();
+        })
+        .catch(() => undefined)
+        .finally(() => this.reading.delete(file.path));
+    }
+    return cached ? { done: cached.done, total: cached.total } : undefined;
   }
 
   async refresh(): Promise<void> {
@@ -150,6 +188,11 @@ export class WorkflowTreeView extends ItemView {
       root: this.plugin.t('Experiments'),
       noStatus: this.plugin.t('(none)'),
       discuss: this.plugin.t('Flagged for discussion'),
+      invalidStatus: this.plugin.t('(not an allowed status)'),
+      invalidStatusTooltip: this.plugin.t('Validation fails on this status. Allowed statuses: {0}'),
+      status: this.plugin.t('Status'),
+      workflows: this.plugin.t('Workflows done'),
+      lastUpdated: this.plugin.t('Last updated'),
     });
     for (const group of experiments.children ?? []) {
       if (this.seeded.has(group.id)) continue;

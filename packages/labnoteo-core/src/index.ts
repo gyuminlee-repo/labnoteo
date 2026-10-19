@@ -176,6 +176,7 @@ export {
   type TreeNode,
   type TreeNodeKind,
   type ExperimentEntry,
+  type ExperimentTreeLabels,
   type WorkflowTreeData,
   type SampleScope,
   type SampleTreeRoots,

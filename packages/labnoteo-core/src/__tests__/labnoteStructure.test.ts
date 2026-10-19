@@ -73,6 +73,20 @@ describe('diagnoseExperimentPath', () => {
     expect(diagnoseExperimentPath('labnote/GFP', { isFolder: true })).toEqual({ kind: 'noPrefix', folder: 'labnote/GFP' });
   });
 
+  // #166
+  it('spots an experiment folder moved into a grouping folder', () => {
+    expect(diagnoseExperimentPath('labnote/과제A/068_x/README.labnote.md')).toEqual({
+      kind: 'nested',
+      folder: 'labnote/과제A/068_x',
+    });
+    expect(diagnoseExperimentPath('labnote/과제A/068_x', { isFolder: true })).toEqual({
+      kind: 'nested',
+      folder: 'labnote/과제A/068_x',
+    });
+    // A note named like a number is not a folder.
+    expect(diagnoseExperimentPath('labnote/과제A/001_note.md')).toEqual({ kind: 'noPrefix', folder: 'labnote/과제A' });
+  });
+
   it('keeps files directly in labnote/ and paths outside it as outside', () => {
     expect(diagnoseExperimentPath('labnote/README.md')).toEqual({ kind: 'outside' });
     expect(diagnoseExperimentPath('Welcome.md')).toEqual({ kind: 'outside' });

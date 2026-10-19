@@ -3,7 +3,7 @@
  */
 
 import * as path from '../util/posixPath';
-import { getSeoulDateString } from './dateUtils';
+import { getSeoulDateString, findMetaDateFieldInLine } from './dateUtils';
 import { sanitizePathSegment, escapeRegExp } from './regexUtils';
 import { parseFrontMatterYaml, serializeFrontMatterEntry } from '../sections/frontMatter';
 import { stepFence, type OpenFence } from '../sections/sectionEdit';
@@ -1285,6 +1285,10 @@ export interface WorkflowExperimenterSync {
   to: string;
   /** The note with the experimenter lines rewritten. */
   content: string;
+  /** Unit-op `- Experimenter:` lines rewritten. */
+  unitOpLines: number;
+  /** Unit-op `- Experimenter:` lines kept because their unit op has an `End_date` (#155). */
+  skippedLines: number;
 }
 
 /**
@@ -1293,8 +1297,10 @@ export interface WorkflowExperimenterSync {
  * and so is each `- Experimenter:` line of a unit operation outside code
  * blocks that still reads the old value or nothing: a unit op inserted after
  * the change already has the new name, and another person's name was written
- * on purpose. The label is the same in every locale. Undefined when `author`
- * is empty, the note has no `experimenter` key, or it already matches.
+ * on purpose. A unit op (from its `### [` heading to the next) whose
+ * `End_date` is filled in is finished work and keeps who did it (#155). The
+ * label is the same in every locale. Undefined when `author` is empty, the
+ * note has no `experimenter` key, or it already matches.
  */
 export function planWorkflowExperimenterSync(
   content: string,
@@ -1315,6 +1321,8 @@ export function planWorkflowExperimenterSync(
   for (let i = 1; i < fmEnd; i++) {
     if (/^experimenter\s*:/.test(lines[i])) lines[i] = serializeFrontMatterEntry('experimenter', to);
   }
+  // Experimenter lines to rewrite, grouped by unit op, and which unit ops ended.
+  const blocks: { lines: number[]; ended: boolean }[] = [{ lines: [], ended: false }];
   let fence: OpenFence | null = null;
   for (let i = fmEnd + 1; i < lines.length; i++) {
     const next = stepFence(lines[i], fence);
@@ -1322,11 +1330,30 @@ export function planWorkflowExperimenterSync(
       fence = next;
       continue;
     }
+    if (/^###\s+\[/.test(lines[i])) {
+      blocks.push({ lines: [], ended: false });
+      continue;
+    }
+    const block = blocks[blocks.length - 1];
+    const date = findMetaDateFieldInLine(lines[i]);
+    if (date?.field === 'End_date' && date.value.trim() !== '') block.ended = true;
     const m = /^(\s*-\s*Experimenter:)(.*)$/.exec(lines[i]);
-    if (m && (m[2].trim() === from || m[2].trim() === '')) lines[i] = `${m[1]} ${to}`;
+    if (m && (m[2].trim() === from || m[2].trim() === '')) block.lines.push(i);
+  }
+  let unitOpLines = 0;
+  let skippedLines = 0;
+  for (const block of blocks) {
+    if (block.ended) {
+      skippedLines += block.lines.length;
+      continue;
+    }
+    for (const i of block.lines) {
+      lines[i] = `${/^(\s*-\s*Experimenter:)/.exec(lines[i])![1]} ${to}`;
+      unitOpLines++;
+    }
   }
   const next = lines.join(newline);
-  return next === content ? undefined : { from, to, content: next };
+  return next === content ? undefined : { from, to, content: next, unitOpLines, skippedLines };
 }
 
 /**
