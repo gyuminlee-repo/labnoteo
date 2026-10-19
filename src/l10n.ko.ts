@@ -37,6 +37,8 @@ const obsidianKo: Record<string, string> = {
   'Allow AI tool "{0}" to modify the vault?': 'AI 툴 "{0}"이(가) 보관함을 수정하도록 허용할까요?',
   'AI stopped after too many steps.': 'AI가 너무 많은 단계를 거쳐 중단되었습니다.',
   'AI ran {0} tool call(s).': 'AI가 툴을 {0}회 호출했습니다.',
+  'The assistant gave no answer. What you asked may be outside the tools it can use.':
+    '어시스턴트가 답을 주지 않았습니다. 요청한 일이 쓸 수 있는 도구 밖일 수 있습니다.',
   'AI answer': 'AI 답변',
   'Insert into note': '노트에 넣기',
   'Copy': '복사',
@@ -45,6 +47,7 @@ const obsidianKo: Record<string, string> = {
   'That note is no longer open. Copy the answer instead.':
     '그 노트가 더 이상 열려 있지 않습니다. 답변을 복사해서 쓰세요.',
   'Inserted the summary into {0}.': '요약을 {0}에 넣었습니다.',
+  'AI summary ({0}, {1})': 'AI 요약 ({0}, {1})',
   'Inserted the Method draft into {0}.': 'Method 초안을 {0}에 넣었습니다.',
 
   // View titles / ribbon
@@ -412,6 +415,8 @@ const obsidianKo: Record<string, string> = {
   'Model {0} was not found. Check {1}.': '모델 {0}을(를) 찾을 수 없습니다. {1} 값을 확인하세요.',
   '{0} has no such address (404). Check {1}: enter only the server address, without a path such as /v1 or /api.':
     '{0}에서 요청 주소를 찾을 수 없습니다(404). {1} 값을 확인하세요. /v1이나 /api 같은 경로 없이 서버 주소만 적습니다.',
+  "Which unit operation's Method should the draft go in?": '초안을 어느 단위 공정의 Method에 넣을까요?',
+  'Has a Method already': 'Method 내용이 이미 있음',
   'This Method section already has content. Replace it with the AI draft?':
     '이 Method 절에는 이미 내용이 있습니다. AI 초안으로 바꿀까요?',
   'Replace': '바꾸기',
@@ -422,6 +427,8 @@ const obsidianKo: Record<string, string> = {
   'Nothing to summarize.': '요약할 내용이 없습니다.',
   'Nothing to extract.': '추출할 내용이 없습니다.',
   'Created {0} sample(s).': '샘플 {0}개를 생성했습니다.',
+  'Created {0} new sample(s); skipped {1} already registered or in the note.':
+    '새로 {0}개를 만들고, 이미 등록됐거나 노트에 있는 {1}개는 건너뛰었습니다.',
   '"{0}" is not an experiment folder: its name must start with ###_ (e.g. 001_Name).':
     '"{0}"은(는) 실험 폴더가 아닙니다. 폴더 이름은 ###_로 시작해야 합니다(예: 001_이름).',
   '"{0}" is no longer an experiment folder: its name must start with ###_ (e.g. 001_Name). Workflow commands and Local samples will not find it.':

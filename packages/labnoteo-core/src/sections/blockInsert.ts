@@ -106,6 +106,35 @@ export function findUnitOpMethodAt(md: string, cursor: number): UnitOpMethodLoca
 }
 
 /**
+ * The Method subsection of every unit operation that has one, in document
+ * order: what to choose from when the cursor is in none of them (#164).
+ */
+export function listUnitOpMethods(md: string): UnitOpMethodLocation[] {
+  const lines = md.split(/\r?\n/);
+  const headings = scanHeadings(lines);
+  const unitOps = headings.filter(h => isUnitOpHeading(lines, h));
+  return unitOps
+    .map((h, i) => methodInUnitOp(md, lines, headings, h, i))
+    .filter((loc): loc is UnitOpMethodLocation => loc !== null);
+}
+
+/**
+ * A Method draft for a note without unit operations (#164): the model's front
+ * matter and heading lines dropped, keeping the Method body when it wrote a
+ * whole section.
+ */
+export function cleanMethodDraft(output: string): string {
+  const noFront = output.trim().replace(/^---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/, '');
+  const body = extractMethodBody(noFront);
+  if (body) return body;
+  return noFront
+    .split(/\r?\n/)
+    .filter(l => !/^#{1,6}\s/.test(l))
+    .join('\n')
+    .trim();
+}
+
+/**
  * Find the same Method subsection again after the note may have changed (the
  * model takes a while to answer): the `unitOpIndex`-th unit operation, provided
  * its heading line is still `unitOpHeading`. Null when it moved or is gone.

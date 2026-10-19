@@ -48,6 +48,8 @@ export {
 export {
   findUnitOpMethodAt,
   findUnitOpMethodByIndex,
+  listUnitOpMethods,
+  cleanMethodDraft,
   extractMethodBody,
   planBlockInsert,
   type UnitOpMethodLocation,

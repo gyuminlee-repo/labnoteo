@@ -4,7 +4,7 @@
  * rules before `create_sample` sees them.
  */
 import { describe, it, expect } from 'vitest';
-import { prepareExtractedSamples } from '../../src/llm/commands';
+import { prepareExtractedSamples, skipKnownSamples, toNoteCallout } from '../../src/llm/commands';
 
 const TYPES = ['DNA', 'Plasmid', 'Equip', '배지'];
 
@@ -56,5 +56,50 @@ describe('prepareExtractedSamples', () => {
     expect(prepareExtractedSamples([{ type: 'DNA', alias: 'insert' }], TYPES).samples).toEqual([
       { type: 'DNA', id: undefined, alias: 'insert', description: undefined },
     ]);
+  });
+});
+
+// #153: running the command again re-created every sample.
+describe('skipKnownSamples', () => {
+  const rec = (alias: string | null) => ({ type: 'DNA', alias, descriptions: [], sources: [], location: null });
+
+  it('skips registered ids, same-type aliases and ids the note references', () => {
+    const out = skipKnownSamples(
+      [
+        { type: 'DNA', id: 'DNA-1' },
+        { type: 'DNA', alias: 'PUC19' },
+        { type: 'Plasmid', alias: 'pUC19' },
+        { type: 'DNA', id: 'DNA-9' },
+        { type: 'DNA', id: 'DNA-7', alias: 'new' },
+      ],
+      [{ DNA: { 'DNA-1': rec(null) } }, { DNA: { 'DNA-2': rec('pUC19') } }],
+      new Set(['dna|dna-9'])
+    );
+    expect(out.skipped).toBe(3);
+    expect(out.fresh).toEqual([
+      { type: 'Plasmid', alias: 'pUC19' },
+      { type: 'DNA', id: 'DNA-7', alias: 'new' },
+    ]);
+  });
+
+  it('keeps only the first of two extracted entries for one sample', () => {
+    const out = skipKnownSamples(
+      [
+        { type: 'DNA', alias: 'a' },
+        { type: 'DNA', alias: 'A' },
+      ],
+      [],
+      new Set()
+    );
+    expect(out).toEqual({ fresh: [{ type: 'DNA', alias: 'a' }], skipped: 1 });
+  });
+});
+
+// #150: the summary is marked as the model's.
+describe('toNoteCallout', () => {
+  it('quotes every line under a note callout header', () => {
+    expect(toNoteCallout('- a\n\n- b\n', 'AI summary (m, 2026-10-19)')).toBe(
+      '> [!note] AI summary (m, 2026-10-19)\n> - a\n>\n> - b'
+    );
   });
 });

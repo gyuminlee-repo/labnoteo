@@ -13,6 +13,8 @@ import {
   runTool,
   findUnitOpMethodAt,
   findUnitOpMethodByIndex,
+  listUnitOpMethods,
+  cleanMethodDraft,
   extractMethodBody,
   planBlockInsert,
   replaceSectionBodyAt,
@@ -26,12 +28,19 @@ import {
   getSampleDisplayMeta,
   normalizeSampleId,
 } from '@labnoteo/core/lib/sampleUtils';
+import {
+  findSampleReferenceSpans,
+  loadSamplesByType,
+  noteLabsamplesFolder,
+  type SampleRecord,
+} from '@labnoteo/core/lib/sampleStorage';
 import type LabnotePlugin from '../main';
 import { createLlmProvider, type ChatMessage } from './provider';
 import { describeLlmError } from './llmError';
 import { runAgent } from './agent';
 import { buildApprovalMessage } from './approvalMessage';
 import { getObsidianLanguage } from '../i18n';
+import { getSeoulDateString } from '@labnoteo/core/lib/dateUtils';
 import { aiAnswerModal } from '../modals';
 import { sampleUsages } from '../sampleActions';
 
@@ -176,7 +185,23 @@ export async function draftMethodCommand(plugin: LabnotePlugin): Promise<void> {
     return;
   }
   const text = await target.getText();
-  const loc = target.getCursorOffset ? findUnitOpMethodAt(text, await target.getCursorOffset()) : null;
+  let loc = target.getCursorOffset ? findUnitOpMethodAt(text, await target.getCursorOffset()) : null;
+  if (!loc) {
+    // Outside a unit operation of a note that has some: ask which Method (#164).
+    const methods = listUnitOpMethods(text);
+    if (methods.length > 0) {
+      const chosen = await plugin.host.pick(
+        methods.map(m => ({
+          label: m.unitOpHeading.replace(/^###\s+/, ''),
+          detail: m.isPlaceholder ? undefined : plugin.t('Has a Method already'),
+          value: m,
+        })),
+        { placeholder: plugin.t("Which unit operation's Method should the draft go in?") }
+      );
+      if (!chosen) return;
+      loc = chosen;
+    }
+  }
 
   if (loc && !loc.isPlaceholder) {
     // Ask before the request, not after: the reply can take minutes.
@@ -196,12 +221,13 @@ export async function draftMethodCommand(plugin: LabnotePlugin): Promise<void> {
       {
         role: 'system',
         content:
-          'You write concise, reproducible **Method** subsections for a scientific lab notebook. Output GitHub-flavored Markdown only, no preamble or code fences.',
+          'You write concise, reproducible **Method** subsections for a scientific lab notebook. Output only the Method body as GitHub-flavored Markdown: no front matter, no headings, no preamble or code fences.',
       },
       { role: 'user', content: `Draft a Method subsection for this note.\n\nContext:\n${text.slice(0, 6000)}` },
     ]);
-    if (out) {
-      await deliverToNote(plugin, target.path, out, t => writeMethodDraft(plugin, t, null, out), 'Inserted the Method draft into {0}.');
+    const draft = out ? cleanMethodDraft(out) : '';
+    if (draft) {
+      await deliverToNote(plugin, target.path, draft, t => writeMethodDraft(plugin, t, null, draft), 'Inserted the Method draft into {0}.');
     }
     return;
   }
@@ -246,7 +272,18 @@ export async function summarizeResultsCommand(plugin: LabnotePlugin): Promise<vo
     { role: 'user', content: `Summarize these results:\n\n${text.slice(0, 6000)}` },
   ]);
   if (!out) return;
-  await deliverToNote(plugin, target.path, out, t => insertBlock(plugin, t, out), 'Inserted the summary into {0}.');
+  const header = plugin.t('AI summary ({0}, {1})', plugin.settings.llmModel || plugin.settings.llmProvider, getSeoulDateString());
+  const block = toNoteCallout(out, header);
+  await deliverToNote(plugin, target.path, block, t => insertBlock(plugin, t, block), 'Inserted the summary into {0}.');
+}
+
+/**
+ * `body` as a `> [!note] header` callout (#150), so an AI summary reads as
+ * one block that is clearly the model's and not the researcher's.
+ */
+export function toNoteCallout(body: string, header: string): string {
+  const lines = body.trim().split(/\r?\n/).map(l => (l.trim() === '' ? '>' : `> ${l}`));
+  return [`> [!note] ${header}`, ...lines].join('\n');
 }
 
 interface ExtractedSample {
@@ -320,6 +357,45 @@ export function prepareExtractedSamples(
   return out;
 }
 
+/**
+ * Split extracted samples into new ones and ones already there (#153): an id
+ * a registry in `registries` (`type → id → record`) holds or the note already
+ * references (`referenced`, `type|id`), or the alias of a sample of the same
+ * type (case ignored). Running the command again then adds only what is new.
+ */
+export function skipKnownSamples(
+  samples: PreparedSamples['samples'],
+  registries: ReadonlyArray<Record<string, Record<string, SampleRecord>>>,
+  referenced: ReadonlySet<string>
+): { fresh: PreparedSamples['samples']; skipped: number } {
+  const ids = new Set(referenced);
+  const aliases = new Set<string>();
+  for (const registry of registries) {
+    for (const [type, records] of Object.entries(registry)) {
+      for (const [id, rec] of Object.entries(records)) {
+        ids.add(`${type}|${id}`.toLowerCase());
+        if (rec.alias?.trim()) aliases.add(`${type}|${rec.alias.trim()}`.toLowerCase());
+      }
+    }
+  }
+  const fresh: PreparedSamples['samples'] = [];
+  let skipped = 0;
+  for (const s of samples) {
+    const known =
+      (s.id !== undefined && ids.has(`${s.type}|${s.id}`.toLowerCase())) ||
+      (s.alias !== undefined && aliases.has(`${s.type}|${s.alias.trim()}`.toLowerCase()));
+    if (known) {
+      skipped++;
+      continue;
+    }
+    fresh.push(s);
+    // Two extracted entries for one sample count once.
+    if (s.id !== undefined) ids.add(`${s.type}|${s.id}`.toLowerCase());
+    if (s.alias?.trim()) aliases.add(`${s.type}|${s.alias.trim()}`.toLowerCase());
+  }
+  return { fresh, skipped };
+}
+
 /** Ask the model to extract sample definitions, then persist them via the tool. */
 export async function extractSamplesCommand(plugin: LabnotePlugin): Promise<void> {
   const target = plugin.host.editTarget();
@@ -353,19 +429,37 @@ export async function extractSamplesCommand(plugin: LabnotePlugin): Promise<void
     return;
   }
 
+  const globalFolder = plugin.settings.globalSampleFolder;
+  const folders = [noteLabsamplesFolder(target.path, globalFolder), globalFolder].filter(Boolean);
+  const sampleTypes = [...new Set(prepared.samples.map(s => s.type))];
+  const registries: Array<Record<string, Record<string, SampleRecord>>> = [];
+  for (const folder of folders) {
+    const registry: Record<string, Record<string, SampleRecord>> = {};
+    for (const type of sampleTypes) registry[type] = await loadSamplesByType(plugin.fs, folder, type);
+    registries.push(registry);
+  }
+  const referenced = new Set(
+    findSampleReferenceSpans(await target.getText(), types).map(r => `${r.type}|${r.id}`.toLowerCase())
+  );
+  const { fresh, skipped } = skipKnownSamples(prepared.samples, registries, referenced);
+
   const tools = createLabnoteTools();
   const ctx = toolContext(plugin);
 
   let created = 0;
   let inGlobal = false;
-  for (const s of prepared.samples) {
+  for (const s of fresh) {
     const res = await runTool(tools, 'create_sample', ctx, { ...s, documentPath: target.path });
     if (res.ok) {
       created++;
       if ((res.data as { scope?: string } | undefined)?.scope === 'global') inGlobal = true;
     }
   }
-  const parts = [plugin.t('Created {0} sample(s).', String(created))];
+  const parts = [
+    skipped > 0
+      ? plugin.t('Created {0} new sample(s); skipped {1} already registered or in the note.', String(created), String(skipped))
+      : plugin.t('Created {0} sample(s).', String(created)),
+  ];
   if (prepared.regenerated > 0) {
     parts.push(plugin.t('{0} got a new ID because theirs did not match <Type>-<number>.', String(prepared.regenerated)));
   }
@@ -418,7 +512,10 @@ export async function askAgentCommand(plugin: LabnotePlugin): Promise<void> {
             `The active note is "${target.path}"; pass it as documentPath. ` +
             'Prefer reading before writing, and answer briefly in Markdown when done. ' +
             'Your final answer is shown to the user in a dialog and is not written to the note; ' +
-            'to change the note, use the tools.',
+            'to change the note, use the tools. ' +
+            `Your tools are: ${createLabnoteTools().map(t => t.name).join(', ')}. ` +
+            'If the request needs something these tools cannot do (for example changing the experiment status), ' +
+            'do not pretend: answer that you cannot do it and which Labnote command the user can run instead.',
         },
         { role: 'user', content: `${goal}\n\nActive note:\n${noteText}` },
       ],
@@ -443,6 +540,16 @@ export async function askAgentCommand(plugin: LabnotePlugin): Promise<void> {
       return;
     }
     const answer = run.content;
+    if (!answer.trim() && run.executed.length === 0) {
+      // Nothing said and nothing done: the request may need a tool there is not (#161).
+      new Notice(
+        plugin.t(
+          'The assistant gave no answer. What you asked may be outside the tools it can use.'
+        ),
+        10000
+      );
+      return;
+    }
     if (answer) {
       // The answer only goes in on request (#77), possibly minutes later, so
       // the note must still be the one open.
