@@ -41,6 +41,7 @@ import { WORKFLOWS_CATALOG } from '../catalog';
 import {
   getNextWorkflowNumber,
   createWorkflowFileName,
+  sanitizeWorkflowName,
   createWorkflowContent,
   parseWorkflowChecklistFromReadme,
   generateWorkflowChecklist,
@@ -49,6 +50,8 @@ import {
 } from '../lib/workflowStructure';
 import {
   findSectionMatches,
+  listHeadings,
+  stripRepeatedHeading,
   replaceSectionBodyAt,
   sectionBodyAt,
   type SectionMatch,
@@ -299,7 +302,7 @@ async function resolveSectionTarget(
   }
   const md = await ctx.fs.read(documentPath);
   const all = findSectionMatches(md, heading);
-  if (all.length === 0) return { error: `Section not found: ${heading}` };
+  if (all.length === 0) return { error: sectionNotFound(md, heading) };
 
   const candidates = parentHeading
     ? all.filter(m => matchesParentHeading(m.parentHeading, parentHeading))
@@ -323,7 +326,27 @@ async function resolveSectionTarget(
         `Candidates: ${describeSections(candidates)}.`,
     };
   }
-  return { documentPath, heading, content, md, target: candidates[index], index, total: candidates.length };
+  const target = candidates[index];
+  if (content === '') return { documentPath, heading, content, md, target, index, total: candidates.length };
+  // Content that starts with the section's own heading would repeat it (#162).
+  const targetText = md.split(/\r?\n/)[target.line].replace(/^#{1,6}\s+/, '');
+  const body = stripRepeatedHeading(content, targetText);
+  if (body.trim() === '') {
+    return { error: 'content only repeats the section heading; nothing was written. Send the body without the heading.' };
+  }
+  return { documentPath, heading, content: body, md, target, index, total: candidates.length };
+}
+
+/** Most headings {@link sectionNotFound} lists. */
+const HEADING_LIST_LIMIT = 40;
+
+/** "Section not found", with the note's headings so the caller can pick the right one (#145). */
+function sectionNotFound(md: string, heading: string): string {
+  const headings = listHeadings(md).map(h => `${'#'.repeat(h.level)} ${h.text}`);
+  if (headings.length === 0) return `Section not found: ${heading}. The note has no headings.`;
+  const shown = headings.slice(0, HEADING_LIST_LIMIT).join(' | ');
+  const more = headings.length > HEADING_LIST_LIMIT ? ` (+${headings.length - HEADING_LIST_LIMIT} more)` : '';
+  return `Section not found: ${heading}. Headings in this note: ${shown}${more}`;
 }
 
 interface ResolvedSampleCreate {
@@ -395,6 +418,8 @@ interface ResolvedWorkflowCreate {
   labnoteDir: string;
   readmePath: string;
   info: { id: string; name: string; description: string };
+  /** Per-instance alias after the catalog name, as the app's "Workflow name" prompt adds it. */
+  alias?: string;
   fileName: string;
 }
 
@@ -415,6 +440,11 @@ async function resolveWorkflowCreate(
     if (outside) return { error: outside.error! };
   }
   if (!documentPath || !workflowId) return { error: 'documentPath and workflowId are required' };
+  if (args.alias !== undefined && typeof args.alias !== 'string') return { error: 'alias must be a string' };
+  const rawAlias = typeof args.alias === 'string' ? args.alias.trim() : '';
+  if (/[\r\n]/.test(rawAlias)) return { error: 'alias must be a single line' };
+  // As in the app, an alias of only symbols, which leaves no file name part, is dropped.
+  const alias = rawAlias && sanitizeWorkflowName(rawAlias) ? rawAlias : undefined;
   const labnoteDir = getExperimentDir(documentPath);
   if (!labnoteDir) return { error: 'documentPath is not inside a labnote/### experiment folder' };
   // An experiment is its README; without one the write would create a stray
@@ -431,7 +461,7 @@ async function resolveWorkflowCreate(
 
   const info = { id: wf.id, name: wf.name, description: wf.description };
   const sequence = getNextWorkflowNumber(await ctx.fs.list(labnoteDir));
-  return { labnoteDir, readmePath, info, fileName: createWorkflowFileName(sequence, info) };
+  return { labnoteDir, readmePath, info, alias, fileName: createWorkflowFileName(sequence, info, alias) };
 }
 
 async function findUnitOp(
@@ -614,6 +644,8 @@ export function createLabnoteTools(): ToolDef[] {
       mutates: true,
       description:
         'Replace the body of a section (matched by heading text at any level) in a note, without re-serializing the rest of the document. ' +
+        'README headings may carry emoji (e.g. "## 🧪 Related Workflows"); when no heading matches exactly, emoji, square brackets, case and extra spaces are ignored. ' +
+        'Send only the body: a first line repeating the section heading is dropped. ' +
         'Workflow notes repeat headings such as "Method" under every unit operation: when the heading occurs more than once, pass parentHeading and/or occurrence, ' +
         'otherwise nothing is written and the error lists the candidates. ' +
         'The whole body is replaced, nested headings included; the result reports what was removed (removedLines, removedSubheadings, previousBody).',
@@ -690,19 +722,24 @@ export function createLabnoteTools(): ToolDef[] {
       name: 'create_workflow',
       mutates: true,
       description:
-        'Create a new workflow file in an experiment folder from the catalog and register it in the README checklist.',
+        'Create a new workflow file in an experiment folder from the catalog and register it in the README checklist. ' +
+        'An optional alias names this instance (e.g. "pUC19 cloning"): it follows the catalog name in the file name, title and checklist entry.',
       inputSchema: {
         type: 'object',
         properties: {
           documentPath: { type: 'string', description: 'Any path inside the target labnote/### experiment folder.' },
           workflowId: { type: 'string', description: 'Catalog workflow id, e.g. WD010.' },
+          alias: {
+            type: 'string',
+            description: 'Optional name for this workflow instance, added after the catalog name.',
+          },
         },
         required: ['documentPath', 'workflowId'],
       },
       async handler(ctx, args) {
         const resolved = await resolveWorkflowCreate(ctx, args);
         if ('error' in resolved) return { ok: false, error: resolved.error };
-        const { labnoteDir, readmePath, info, fileName } = resolved;
+        const { labnoteDir, readmePath, info, alias, fileName } = resolved;
 
         await ensureWorkflowResources(ctx.fs, ctx.workspaceRoot);
         const experimenter = parseExperimenterFromReadme(await ctx.fs.read(readmePath));
@@ -712,12 +749,12 @@ export function createLabnoteTools(): ToolDef[] {
         await writeNote(
           ctx,
           workflowPath,
-          createWorkflowContent(info, experimenter, undefined, { locale: ctx.locale })
+          createWorkflowContent(info, experimenter, alias, { locale: ctx.locale })
         );
 
         const readme = await ctx.fs.read(readmePath);
         const items = parseWorkflowChecklistFromReadme(readme);
-        items.push({ done: false, title: `${info.id} ${info.name}`, fileName });
+        items.push({ done: false, title: [info.id, info.name, alias].filter(Boolean).join(' '), fileName });
         await writeNote(
           ctx,
           readmePath,

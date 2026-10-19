@@ -1,5 +1,11 @@
 // Globals convention (no `import ... from 'vitest'`) — see sampleDefinition.test.ts.
-import { findSectionMatches, replaceSectionBody, replaceSectionBodyAt } from '../sections/sectionEdit';
+import {
+  findSectionMatches,
+  replaceSectionBody,
+  replaceSectionBodyAt,
+  normalizeHeadingText,
+  stripRepeatedHeading,
+} from '../sections/sectionEdit';
 
 const doc = [
   '## [WD010 Design]',
@@ -245,5 +251,25 @@ describe('findSectionMatches / replaceSectionBodyAt', () => {
     const out = replaceSectionBody(repeated, 'Method', 'FIRST');
     expect(out.md).toContain('FIRST');
     expect(out.md).toContain('\nb\n');
+  });
+});
+
+describe('heading fallback (#145) and repeated heading (#162)', () => {
+  it('normalizes emoji, variation selectors, brackets, case and spaces', () => {
+    expect(normalizeHeadingText('🧪 Related  Workflows')).toBe('related workflows');
+    expect(normalizeHeadingText('⚠️ [Notes]')).toBe('notes');
+  });
+
+  it('prefers exact matches and falls back only when there are none', () => {
+    const md = '## Results\n\na\n\n## ✅ results\n\nb\n';
+    expect(findSectionMatches(md, 'Results').map(m => m.line)).toEqual([0]);
+    expect(findSectionMatches(md, 'RESULTS').map(m => m.line)).toEqual([0, 4]);
+    expect(findSectionMatches(md, 'Nothing')).toEqual([]);
+  });
+
+  it('drops a leading heading equal to the target and the blank lines after it', () => {
+    expect(stripRepeatedHeading('\n### 🧪 Results\n\nbody\n', 'Results')).toBe('body\n');
+    expect(stripRepeatedHeading('### Other\n\nbody', 'Results')).toBe('### Other\n\nbody');
+    expect(stripRepeatedHeading('body', 'Results')).toBe('body');
   });
 });

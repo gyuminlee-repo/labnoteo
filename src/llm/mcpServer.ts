@@ -80,6 +80,7 @@ export const APPROVAL_TIMEOUT_MS = 50_000;
 export class LabnoteMcpServer {
   private server: NodeServer | null = null;
   private readonly tools: ToolDef[] = createLabnoteTools();
+  private readonly writes = new TaskQueue();
 
   constructor(private readonly plugin: LabnotePlugin) {}
 
@@ -157,6 +158,71 @@ export class LabnoteMcpServer {
     };
   }
 
+  /**
+   * Preview, ask and run one mutating call. Skipped when the client went away
+   * while it waited its turn. If the preview changed while the dialog was open
+   * (the user edited the note), the new one is asked about again.
+   */
+  private async callMutating(
+    tool: ToolDef,
+    args: Record<string, unknown>,
+    id: unknown,
+    res: NodeRes,
+    signal: AbortSignal
+  ): Promise<void> {
+    if (signal.aborted) return;
+    const name = tool.name;
+    // Surface the write target so the user is not blind-approving by tool
+    // name alone (an LLM could target any note/sample path).
+    const target =
+      typeof args.documentPath === 'string' && args.documentPath.length > 0 ? args.documentPath : null;
+    const compose = async (): Promise<{ message: string } | { error: string }> => {
+      // A call the tool would reject anyway is not put to the user (#69).
+      const preview = tool.describe ? await tool.describe(this.context(), args) : undefined;
+      if (preview && 'error' in preview) return { error: preview.error };
+      return {
+        message: buildApprovalMessage(
+          this.plugin.t,
+          this.plugin.t('Allow MCP tool "{0}" to modify the vault?', name),
+          target,
+          preview
+        ),
+      };
+    };
+    const outcome = await approveStable(compose, message => {
+      notifyIfUnfocused(message);
+      return awaitApproval(
+        s => this.plugin.host.confirm(message, { confirmLabel: this.plugin.t('Allow'), signal: s }),
+        { timeoutMs: APPROVAL_TIMEOUT_MS, signal }
+      );
+    });
+    if (typeof outcome === 'object') {
+      return sendJson(res, 200, {
+        jsonrpc: '2.0',
+        id,
+        result: buildToolCallResult({ ok: false, error: outcome.error }),
+      });
+    }
+    switch (outcome) {
+      case 'allowed':
+        break;
+      case 'denied':
+        return sendJson(res, 200, jsonRpcError(id, -32001, 'User denied write'));
+      case 'timeout':
+        new Notice(this.plugin.t('MCP tool "{0}" was not run: no answer in time.', name));
+        return sendJson(
+          res,
+          200,
+          jsonRpcError(id, -32001, 'Approval timed out: the user did not answer in Obsidian')
+        );
+      case 'disconnected':
+        new Notice(this.plugin.t('MCP tool "{0}" was not run: the client disconnected.', name));
+        return;
+    }
+    const result = await runTool(this.tools, name, this.context(), args);
+    return sendJson(res, 200, { jsonrpc: '2.0', id, result: buildToolCallResult(result) });
+  }
+
   private async handle(req: NodeReq, res: NodeRes): Promise<void> {
     // Order matters: auth first. Origin validation exists to stop a token-less
     // malicious page, and such a request is rejected here anyway — checking auth
@@ -231,56 +297,15 @@ export class LabnoteMcpServer {
       // core cannot slip past this gate by being missing from a host allowlist.
       const tool = this.tools.find(t => t.name === name);
       if (tool?.mutates) {
-        // A call the tool would reject anyway is not put to the user (#69).
-        const preview = tool.describe ? await tool.describe(this.context(), args) : undefined;
-        if (preview && 'error' in preview) {
-          return sendJson(res, 200, {
-            jsonrpc: '2.0',
-            id,
-            result: buildToolCallResult({ ok: false, error: preview.error }),
-          });
-        }
-        // Surface the write target so the user is not blind-approving by tool
-        // name alone (an LLM could target any note/sample path).
-        const target =
-          typeof args.documentPath === 'string' && args.documentPath.length > 0
-            ? args.documentPath
-            : null;
-        const message = buildApprovalMessage(
-          this.plugin.t,
-          this.plugin.t('Allow MCP tool "{0}" to modify the vault?', name),
-          target,
-          preview
-        );
-
         // A client that gave up must not have its write applied by a late "Allow".
         // `res` (not `req`) closes early only when the connection drops.
         const disconnected = new AbortController();
         res.on('close', () => {
           if (!res.writableFinished) disconnected.abort();
         });
-        notifyIfUnfocused(message);
-        const outcome = await awaitApproval(
-          signal =>
-            this.plugin.host.confirm(message, { confirmLabel: this.plugin.t('Allow'), signal }),
-          { timeoutMs: APPROVAL_TIMEOUT_MS, signal: disconnected.signal }
-        );
-        switch (outcome) {
-          case 'allowed':
-            break;
-          case 'denied':
-            return sendJson(res, 200, jsonRpcError(id, -32001, 'User denied write'));
-          case 'timeout':
-            new Notice(this.plugin.t('MCP tool "{0}" was not run: no answer in time.', name));
-            return sendJson(
-              res,
-              200,
-              jsonRpcError(id, -32001, 'Approval timed out: the user did not answer in Obsidian')
-            );
-          case 'disconnected':
-            new Notice(this.plugin.t('MCP tool "{0}" was not run: the client disconnected.', name));
-            return;
-        }
+        // One write at a time, in arrival order: each is previewed and asked
+        // about with the earlier ones already applied (#144).
+        return this.writes.run(() => this.callMutating(tool, args, id, res, disconnected.signal));
       }
 
       const result = await runTool(this.tools, name, this.context(), args);
@@ -294,6 +319,43 @@ export class LabnoteMcpServer {
 // --- helpers ---------------------------------------------------------------
 
 export type ApprovalOutcome = 'allowed' | 'denied' | 'timeout' | 'disconnected';
+
+/** Runs tasks one at a time, in the order they were queued (#144). */
+export class TaskQueue {
+  private tail: Promise<unknown> = Promise.resolve();
+
+  run<T>(task: () => Promise<T>): Promise<T> {
+    const result = this.tail.then(task);
+    this.tail = result.catch(() => undefined);
+    return result;
+  }
+}
+
+/** How many times {@link approveStable} asks before giving up on a changing preview. */
+const MAX_APPROVAL_ROUNDS = 3;
+
+/**
+ * Ask about `compose()`'s message, then compose it again: an "Allow" counts
+ * only if the message is still the same, otherwise the new one is asked about
+ * (#144). Returns the error when the call became invalid meanwhile.
+ */
+export async function approveStable(
+  compose: () => Promise<{ message: string } | { error: string }>,
+  ask: (message: string) => Promise<ApprovalOutcome>
+): Promise<ApprovalOutcome | { error: string }> {
+  let current = await compose();
+  for (let round = 0; round < MAX_APPROVAL_ROUNDS; round++) {
+    if ('error' in current) return current;
+    const outcome = await ask(current.message);
+    if (outcome !== 'allowed') return outcome;
+    const now = await compose();
+    if ('message' in now && now.message === current.message) return 'allowed';
+    current = now;
+  }
+  return 'error' in current
+    ? current
+    : { error: 'The target kept changing while the user was asked; nothing was written. Try again.' };
+}
 
 /**
  * Ask for a write approval that gives up after `timeoutMs` or when `signal`

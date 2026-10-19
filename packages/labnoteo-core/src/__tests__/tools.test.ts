@@ -306,6 +306,41 @@ describe('create_sample / get_sample / list_samples', () => {
       });
     });
 
+    // #145: README headings carry emoji the caller does not type.
+    it('finds a heading ignoring emoji, brackets, case and spaces when none matches exactly', async () => {
+      await fs.write(NOTE_PATH, '# 001 Test\n\n## 🧪 Related  Workflows\n\nold\n\n## [Results]\n\nr\n');
+      const res = await tool('update_section').handler(ctx, {
+        documentPath: NOTE_PATH,
+        heading: 'related workflows',
+        content: 'new',
+      });
+      expect(res.ok).toBe(true);
+      expect(await fs.read(NOTE_PATH)).toContain('## 🧪 Related  Workflows\n\nnew\n\n## [Results]');
+      const bracket = await tool('update_section').describe!(ctx, {
+        documentPath: NOTE_PATH,
+        heading: 'results',
+        content: 'x',
+      });
+      expect(bracket).toMatchObject({ kind: 'sectionEdit', line: 7 });
+    });
+
+    // #162: the model sent the heading along with the body.
+    it('drops a first content line that repeats the section heading, in preview and write alike', async () => {
+      await fs.write(NOTE_PATH, '## [WD010 Design]\n\n#### Results\n\nr1\n\n#### Notes\n\nn\n');
+      const res = await tool('update_section').handler(ctx, {
+        documentPath: NOTE_PATH,
+        heading: 'Results',
+        content: '#### Results\n\nnew result',
+      });
+      expect(res.ok).toBe(true);
+      const md = await fs.read(NOTE_PATH);
+      expect(md.match(/#### Results/g)).toHaveLength(1);
+      expect(md).toContain('#### Results\n\nnew result\n\n#### Notes');
+      expect(
+        await tool('update_section').describe!(ctx, { documentPath: NOTE_PATH, heading: 'Results', content: '## Results' })
+      ).toHaveProperty('error');
+    });
+
     it('returns the error the call would fail with', async () => {
       const describe = tool('create_sample').describe!;
       expect(await describe(ctx, { type: 'DNA', id: 'ND-11', documentPath: NOTE_PATH })).toEqual({
@@ -601,7 +636,7 @@ describe('update_section', () => {
       await fs.write(NOTE_PATH, doc);
       const describe = tool('update_section').describe!;
       expect(await describe(ctx, { documentPath: NOTE_PATH, heading: 'Missing', content: 'x' })).toEqual({
-        error: 'Section not found: Missing',
+        error: 'Section not found: Missing. Headings in this note: ## [WD010 Design] | #### Results | #### Notes',
       });
       expect(await describe(ctx, { documentPath: NOTE_PATH, heading: 'Results', content: '' })).toHaveProperty(
         'error'
@@ -643,6 +678,42 @@ describe('create_workflow', () => {
     expect(res.ok).toBe(true);
     const { path } = res.data as { path: string };
     expect(await fs.read(path)).toContain('(`유닛 오퍼레이션 삽입`)');
+  });
+
+  // #146: the alias goes where the app's "Workflow name" prompt puts it.
+  it('puts an alias in the file name, title and checklist, and in the preview', async () => {
+    const { loadWorkflows, ensureWorkflowResources } = await import('../lib/workflowDataLoader');
+    await ensureWorkflowResources(fs, '.');
+    const wf = (await loadWorkflows(fs, '.')).workflows[0];
+    const args = { documentPath: `${NOTE_DIR}/README.labnote.md`, workflowId: wf.id, alias: ' pUC19 cloning ' };
+
+    const preview = await tool('create_workflow').describe!(ctx, args);
+    const res = await tool('create_workflow').handler(ctx, args);
+    expect(res.ok).toBe(true);
+    const { path, fileName } = res.data as { path: string; fileName: string };
+    expect(fileName).toMatch(/_pUC19_cloning\.labnote\.md$/);
+    expect(preview).toMatchObject({ fileName });
+    expect(await fs.read(path)).toContain(`${wf.id} ${wf.name} pUC19 cloning`);
+    expect(await fs.read(`${NOTE_DIR}/README.labnote.md`)).toContain(`${wf.id} ${wf.name} pUC19 cloning`);
+  });
+
+  it('drops an alias of only symbols and refuses a multi-line one', async () => {
+    const { loadWorkflows, ensureWorkflowResources } = await import('../lib/workflowDataLoader');
+    await ensureWorkflowResources(fs, '.');
+    const wf = (await loadWorkflows(fs, '.')).workflows[0];
+    const symbols = await tool('create_workflow').handler(ctx, {
+      documentPath: `${NOTE_DIR}/README.labnote.md`,
+      workflowId: wf.id,
+      alias: '***',
+    });
+    expect((symbols.data as { fileName: string }).fileName).not.toContain('*');
+    expect(await fs.read((symbols.data as { path: string }).path)).not.toContain('***');
+    const multi = await tool('create_workflow').handler(ctx, {
+      documentPath: `${NOTE_DIR}/README.labnote.md`,
+      workflowId: wf.id,
+      alias: 'a\nb',
+    });
+    expect(multi.ok).toBe(false);
   });
 
   it('fails for an unknown workflow id', async () => {
