@@ -36,6 +36,7 @@ import {
   workflowAliasFromFileName,
   planWorkflowRetitle,
   planWorkflowExperimenterSync,
+  resetCopiedWorkflowDates,
 } from '../lib/workflowStructure';
 import { sanitizeTitle } from '../lib/labnoteStructure';
 
@@ -87,6 +88,48 @@ describe('parseExperimenterFromReadme', () => {
   });
 });
 
+// #160: a copy must not claim the original's dates.
+describe('resetCopiedWorkflowDates', () => {
+  it('dates the copy today and empties end and unit-op dates', () => {
+    const src = [
+      '---',
+      'title: WD030 Design',
+      "created_date: '2026-09-01'",
+      'last_updated_date: 2026-09-30',
+      'end_date: 2026-09-30',
+      '---',
+      '',
+      '### [UHW010 PCR]',
+      "- Start_date: '2026-09-02 09:00'",
+      '- End_date: 2026-09-03 18:00',
+      '```',
+      "- Start_date: '2026-09-02 09:00'",
+      '```',
+    ].join('\r\n');
+    const out = resetCopiedWorkflowDates(src, '2026-10-19');
+    expect(out.split('\r\n')).toEqual([
+      '---',
+      'title: WD030 Design',
+      'created_date: 2026-10-19',
+      'last_updated_date: 2026-10-19',
+      "end_date: ''",
+      '---',
+      '',
+      '### [UHW010 PCR]',
+      "- Start_date: ''",
+      "- End_date: ''",
+      '```',
+      "- Start_date: '2026-09-02 09:00'",
+      '```',
+    ]);
+  });
+
+  it('leaves a note without those dates as it is', () => {
+    const src = '---\ntitle: X\n---\n\n- End_date: \'\'\n';
+    expect(resetCopiedWorkflowDates(src, '2026-10-19')).toBe(src);
+  });
+});
+
 // #83: the README author changed after the workflow notes were created.
 describe('planWorkflowExperimenterSync', () => {
   const note = (fm: string, body = '') => `---\ntitle: WD030 Design\n${fm}\n---\n\n## [WD030 Design]\n${body}`;
@@ -100,7 +143,24 @@ describe('planWorkflowExperimenterSync', () => {
         'experimenter: 이영희',
         '\n- Experimenter: 이영희\n- Experimenter: 이영희\n- Experimenter: 김철수\n- Experimenter: 이영희\n'
       ),
+      unitOpLines: 2,
+      skippedLines: 0,
     });
+  });
+
+  // #155
+  it('keeps the experimenter of a unit op that has an End_date', () => {
+    const op = (end: string) =>
+      `\n- Experimenter: 홍길동\n- Start_date: '2026-10-01 09:00'\n- End_date: '${end}'\n`;
+    const body = `### [UHW010 PCR]${op('2026-10-02 18:00')}### [UHW020 Gel]${op('')}`;
+    const out = planWorkflowExperimenterSync(note('experimenter: 홍길동', body), '이영희');
+    expect(out?.content).toBe(
+      note(
+        'experimenter: 이영희',
+        `### [UHW010 PCR]${op('2026-10-02 18:00')}### [UHW020 Gel]${op('').replace('홍길동', '이영희')}`
+      )
+    );
+    expect(out).toMatchObject({ unitOpLines: 1, skippedLines: 1 });
   });
 
   it('fills an empty experimenter and keeps CRLF', () => {
@@ -533,6 +593,17 @@ describe('labelMatchesFileName', () => {
     expect(labelMatchesFileName('My own label', '003_WD030_Design.labnote.md')).toBe(false);
     expect(labelMatchesFileName('WD030 Design', 'notes.md')).toBe(false);
   });
+
+  // #148, #165: files named under the earlier rules still match.
+  it('matches files named before and after the +/- and length rules', () => {
+    expect(labelMatchesFileName('WD030 Design IND+', '003_WD030_Design_IND_plus.labnote.md')).toBe(true);
+    expect(labelMatchesFileName('WD030 Design IND+', '003_WD030_Design_IND.labnote.md')).toBe(true);
+    expect(labelMatchesFileName('WD030 Design IND-', '003_WD030_Design_IND.labnote.md')).toBe(true);
+    expect(labelMatchesFileName('WD030 Design IND+', '003_WD030_Design_IND_minus.labnote.md')).toBe(false);
+    const long = `WD030 Design ${'가'.repeat(150)}`;
+    expect(labelMatchesFileName(long, createWorkflowFileName('003', { id: 'WD030', name: 'Design', description: '' }, '가'.repeat(150)))).toBe(true);
+    expect(labelMatchesFileName(long, `003_WD030_Design_${'가'.repeat(150)}.labnote.md`)).toBe(true);
+  });
 });
 
 describe('workflowLabelFor', () => {
@@ -652,6 +723,18 @@ describe('planWorkflowRetitle (#71)', () => {
 
   it('keeps a title edited by hand', () => {
     expect(planWorkflowRetitle(note('My own title', '열충격'), NEW, OLD)).toBeUndefined();
+  });
+
+  // #165: a file named before `IND+` became `IND_plus` keeps its title.
+  it('changes nothing for a file named under the earlier +/- rule', () => {
+    const typed = note('WB120 Biology-mediated DNA Transfers IND+', 'IND+');
+    expect(
+      planWorkflowRetitle(
+        typed,
+        '002_WB120_Biology-mediated_DNA_Transfers_IND.labnote.md',
+        '001_WB120_Biology-mediated_DNA_Transfers_IND.labnote.md'
+      )
+    ).toBeUndefined();
   });
 
   it('keeps a heading edited by hand while following the title', () => {
@@ -1258,6 +1341,19 @@ describe('shared path-segment sanitizer', () => {
     expect(sanitizeTitle('Note: 1')).toBe('Note_1');
   });
 
+  // #165: IND+ and IND- must not become the same name.
+  it('spells out a + or - ending a word', () => {
+    expect(sanitizeTitle('IND+')).toBe('IND_plus');
+    expect(sanitizeTitle('IND-')).toBe('IND_minus');
+    expect(sanitizeTitle('발현 IND+ 대조')).toBe('발현_IND_plus_대조');
+    expect(sanitizeTitle('IND+/IND-')).toBe('IND_plus_IND_minus');
+    expect(sanitizeTitle('(IND-)')).toBe('IND_minus');
+    expect(sanitizeTitle('C++ 코드')).toBe('C_plus_코드');
+    expect(sanitizeTitle('RNA-seq')).toBe('RNA-seq');
+    expect(sanitizeTitle('M1-M8')).toBe('M1-M8');
+    expect(sanitizeTitle('A+B')).toBe('AB');
+  });
+
   // #53: the experiment command rejects these titles instead of making `003_`.
   it('sanitizes a symbols- or emoji-only title to an empty string', () => {
     expect(sanitizeTitle('***')).toBe('');
@@ -1271,6 +1367,15 @@ describe('createWorkflowFileName', () => {
 
   it('appends a sanitized alias', () => {
     expect(createWorkflowFileName('002', wf, '1차 설계')).toBe('002_WD010_Design_1차_설계.labnote.md');
+  });
+
+  // #148
+  it('caps the ID_name_alias part at 100 code points', () => {
+    const name = createWorkflowFileName('002', wf, `${'가'.repeat(98)} 나다`);
+    expect(name).toBe(`002_WD010_Design_${'가'.repeat(87)}.labnote.md`);
+    expect(Array.from(name.slice(4, -'.labnote.md'.length))).toHaveLength(100);
+    // The cut lands right after a separator, which is dropped.
+    expect(createWorkflowFileName('002', wf, `${'가'.repeat(86)} 나`)).toBe(`002_WD010_Design_${'가'.repeat(86)}.labnote.md`);
   });
 
   // #53: an emoji-only alias used to leave `002_WD010_Design_.labnote.md`.

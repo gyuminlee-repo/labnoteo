@@ -42,6 +42,10 @@ export function escapeRegExp(input: string): string {
  *   `37±2` → `37_2`, `5%/10%` → `5_10`).
  * Not between digits, these symbols are dropped (`A/B` → `AB`).
  *
+ * A `+` or `-` ending a word right after a letter or digit is a sign that
+ * tells two things apart (`IND+` vs `IND-`), so it is spelled out as `_plus`
+ * / `_minus` instead of being dropped or trimmed into the same name (#165).
+ *
  * Uses the Unicode property escapes (`\p{L}\p{N}`) so non-ASCII names (Korean,
  * CJK, accented Latin, …) survive intact. This is the SINGLE rule shared by both
  * the experiment folder-name and the workflow file-name builders, which used to
@@ -49,13 +53,30 @@ export function escapeRegExp(input: string): string {
  * mismatched folder/file names for the same title in one vault.
  */
 export function sanitizePathSegment(input: string): string {
+  return sanitizeSegment(
+    input
+      .replace(/[\uE000\uE001]/g, '')
+      .replace(/([\p{L}\p{N}])[+\uFF0B](?![\p{L}\p{N}])/gu, '$1 plus ')
+      .replace(/([\p{L}\p{N}])[-\u2212](?![\p{L}\p{N}\-\u2212\u2013\uFF0D])/gu, '$1 minus ')
+  );
+}
+
+/**
+ * {@link sanitizePathSegment} as it was before word-ending `+`/`-` were
+ * spelled out (#165): names made then are compared with it so existing files
+ * still match their titles and checklist labels.
+ */
+export function legacySanitizePathSegment(input: string): string {
+  return sanitizeSegment(input.replace(/[\uE000\uE001]/g, ''));
+}
+
+function sanitizeSegment(input: string): string {
   // Private-use placeholders that shield the sign (and the decimal point) from
   // symbol stripping, separator merging and edge trimming. No lookbehind: the
   // plugin also runs on mobile WebViews.
   const SIGN = '\uE000';
   const DOT = '\uE001';
   return input
-    .replace(/[\uE000\uE001]/g, '')
     .replace(/(^|[^\p{L}\p{N}])[-\u2212\u2013\uFF0D](?=\d)/gu, `$1${SIGN}`)
     .replace(/(\d)\.(?=\d)/g, `$1${DOT}`)
     .replace(/(\d)\s*\u00D7\s*(?=[\d\uE000])/g, '$1x')
@@ -69,4 +90,32 @@ export function sanitizePathSegment(input: string): string {
     .replace(/^[_-]+|[_-]+$/g, '')
     .replace(/\uE000/g, '-')
     .replace(/\uE001/g, '.');
+}
+
+/** Code points a generated name part keeps; long titles otherwise exceed OS path limits (#148). */
+export const PATH_SEGMENT_MAX = 100;
+
+/**
+ * Cut a sanitized name part to `max` code points (never splitting a surrogate
+ * pair) and drop the separators the cut leaves at its end. Shorter input is
+ * returned unchanged.
+ */
+export function capPathSegment(segment: string, max: number = PATH_SEGMENT_MAX): string {
+  const chars = Array.from(segment);
+  if (chars.length <= max) return segment;
+  return chars.slice(0, max).join('').replace(/[_.-]+$/, '');
+}
+
+/**
+ * Whether a file-system error comes from a name or path that is too long
+ * (#148): `ENAMETOOLONG`, or — as Windows reports it — `ENOENT` for a path
+ * past its 260-character limit or with a part longer than {@link PATH_SEGMENT_MAX}.
+ */
+export function isPathTooLongError(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const { code, message, path } = err as { code?: unknown; message?: unknown; path?: unknown };
+  if (code === 'ENAMETOOLONG') return true;
+  if (code !== 'ENOENT') return false;
+  const p = typeof path === 'string' ? path : (/'([^']+)'/.exec(String(message ?? ''))?.[1] ?? '');
+  return p.length >= 260 || p.split(/[\\/]/).some(part => Array.from(part).length > PATH_SEGMENT_MAX);
 }

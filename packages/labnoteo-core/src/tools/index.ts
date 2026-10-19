@@ -19,6 +19,7 @@ import {
   mergeSampleRecord,
   noteLabsamplesFolder,
   isSameSampleFolder,
+  listExperimentSampleFolders,
   type SampleRecord,
 } from '../lib/sampleStorage';
 import {
@@ -26,7 +27,7 @@ import {
   normalizeSampleId,
   canonicalSampleType,
   getSampleDisplayMeta,
-  hasSampleAliasSeparator,
+  sampleAliasProblem,
   hasSampleDescriptionSeparator,
 } from '../lib/sampleUtils';
 import { getExperimentDir } from '../lib/labnoteStructure';
@@ -41,6 +42,7 @@ import { WORKFLOWS_CATALOG } from '../catalog';
 import {
   getNextWorkflowNumber,
   createWorkflowFileName,
+  sanitizeWorkflowName,
   createWorkflowContent,
   parseWorkflowChecklistFromReadme,
   generateWorkflowChecklist,
@@ -49,6 +51,8 @@ import {
 } from '../lib/workflowStructure';
 import {
   findSectionMatches,
+  listHeadings,
+  stripRepeatedHeading,
   replaceSectionBodyAt,
   sectionBodyAt,
   type SectionMatch,
@@ -299,7 +303,7 @@ async function resolveSectionTarget(
   }
   const md = await ctx.fs.read(documentPath);
   const all = findSectionMatches(md, heading);
-  if (all.length === 0) return { error: `Section not found: ${heading}` };
+  if (all.length === 0) return { error: sectionNotFound(md, heading) };
 
   const candidates = parentHeading
     ? all.filter(m => matchesParentHeading(m.parentHeading, parentHeading))
@@ -323,7 +327,27 @@ async function resolveSectionTarget(
         `Candidates: ${describeSections(candidates)}.`,
     };
   }
-  return { documentPath, heading, content, md, target: candidates[index], index, total: candidates.length };
+  const target = candidates[index];
+  if (content === '') return { documentPath, heading, content, md, target, index, total: candidates.length };
+  // Content that starts with the section's own heading would repeat it (#162).
+  const targetText = md.split(/\r?\n/)[target.line].replace(/^#{1,6}\s+/, '');
+  const body = stripRepeatedHeading(content, targetText);
+  if (body.trim() === '') {
+    return { error: 'content only repeats the section heading; nothing was written. Send the body without the heading.' };
+  }
+  return { documentPath, heading, content: body, md, target, index, total: candidates.length };
+}
+
+/** Most headings {@link sectionNotFound} lists. */
+const HEADING_LIST_LIMIT = 40;
+
+/** "Section not found", with the note's headings so the caller can pick the right one (#145). */
+function sectionNotFound(md: string, heading: string): string {
+  const headings = listHeadings(md).map(h => `${'#'.repeat(h.level)} ${h.text}`);
+  if (headings.length === 0) return `Section not found: ${heading}. The note has no headings.`;
+  const shown = headings.slice(0, HEADING_LIST_LIMIT).join(' | ');
+  const more = headings.length > HEADING_LIST_LIMIT ? ` (+${headings.length - HEADING_LIST_LIMIT} more)` : '';
+  return `Section not found: ${heading}. Headings in this note: ${shown}${more}`;
 }
 
 interface ResolvedSampleCreate {
@@ -362,9 +386,15 @@ async function resolveSampleCreate(
     return { error: `Invalid id "${rawId}": expected ${type}-<number>. Omit id to generate one.` };
   }
   const alias = str(args, 'alias');
-  if (alias !== undefined && hasSampleAliasSeparator(alias)) {
+  const aliasProblem = alias === undefined ? undefined : sampleAliasProblem(alias);
+  if (aliasProblem === 'separator') {
     return {
       error: `Invalid alias "${alias}": ";" and ":" separate the id, alias and description in a note. Replace them (e.g. with "-" or "/") and retry.`,
+    };
+  }
+  if (aliasProblem === 'markdown') {
+    return {
+      error: `Invalid alias "${alias}": #, [[, ]], * and \` are read by Markdown as a tag, link, emphasis or code. Replace them (e.g. with "-" or "/") and retry.`,
     };
   }
   const description = str(args, 'description');
@@ -395,6 +425,8 @@ interface ResolvedWorkflowCreate {
   labnoteDir: string;
   readmePath: string;
   info: { id: string; name: string; description: string };
+  /** Per-instance alias after the catalog name, as the app's "Workflow name" prompt adds it. */
+  alias?: string;
   fileName: string;
 }
 
@@ -415,6 +447,11 @@ async function resolveWorkflowCreate(
     if (outside) return { error: outside.error! };
   }
   if (!documentPath || !workflowId) return { error: 'documentPath and workflowId are required' };
+  if (args.alias !== undefined && typeof args.alias !== 'string') return { error: 'alias must be a string' };
+  const rawAlias = typeof args.alias === 'string' ? args.alias.trim() : '';
+  if (/[\r\n]/.test(rawAlias)) return { error: 'alias must be a single line' };
+  // As in the app, an alias of only symbols, which leaves no file name part, is dropped.
+  const alias = rawAlias && sanitizeWorkflowName(rawAlias) ? rawAlias : undefined;
   const labnoteDir = getExperimentDir(documentPath);
   if (!labnoteDir) return { error: 'documentPath is not inside a labnote/### experiment folder' };
   // An experiment is its README; without one the write would create a stray
@@ -431,7 +468,7 @@ async function resolveWorkflowCreate(
 
   const info = { id: wf.id, name: wf.name, description: wf.description };
   const sequence = getNextWorkflowNumber(await ctx.fs.list(labnoteDir));
-  return { labnoteDir, readmePath, info, fileName: createWorkflowFileName(sequence, info) };
+  return { labnoteDir, readmePath, info, alias, fileName: createWorkflowFileName(sequence, info, alias) };
 }
 
 async function findUnitOp(
@@ -448,6 +485,50 @@ async function findUnitOp(
   return undefined;
 }
 
+/** Most matches `search_samples` returns; the rest are reported as `truncated`. */
+const SEARCH_SAMPLES_LIMIT = 50;
+
+/**
+ * `type` as the registry spells it (`dna` → `DNA`), or an error listing the
+ * types there are, so a model can correct itself instead of being told an
+ * existing sample was not found.
+ */
+function resolveSampleType(
+  ctx: ToolContext,
+  type: string
+): { ok: true; type: string } | { ok: false; error: ToolResult } {
+  const types = getSampleDisplayMeta(ctx.customTypes).types;
+  const canonical = canonicalSampleType(type, types);
+  if (canonical) return { ok: true, type: canonical };
+  return { ok: false, error: { ok: false, error: `Unknown sample type "${type}". Known types: ${types.join(', ')}` } };
+}
+
+interface SampleScope {
+  folder: string;
+  scope: 'local' | 'global';
+  /** The experiment folder of a local scope, else `null`. */
+  experiment: string | null;
+}
+
+/** `local` (when given and not the global folder itself) then the global folder. */
+function sampleScopes(ctx: ToolContext, local?: string): SampleScope[] {
+  const out: SampleScope[] = [];
+  const global = ctx.globalSampleFolder;
+  if (local && !(global && isSameSampleFolder(local, global))) {
+    out.push({ folder: local, scope: 'local', experiment: getExperimentDir(local) ?? null });
+  }
+  if (global) out.push({ folder: global, scope: 'global', experiment: null });
+  return out;
+}
+
+/** Every experiment's local labsamples folder, see {@link listExperimentSampleFolders}. */
+async function experimentSampleScopes(ctx: ToolContext): Promise<SampleScope[]> {
+  const global = ctx.globalSampleFolder;
+  return (await listExperimentSampleFolders(ctx.fs, ctx.workspaceRoot))
+    .filter(folder => !(global && isSameSampleFolder(folder, global)))
+    .map(folder => ({ folder, scope: 'local' as const, experiment: posix.dirname(posix.dirname(folder)) }));
+}
+
 // --- tool definitions ------------------------------------------------------
 
 export function createLabnoteTools(): ToolDef[] {
@@ -456,7 +537,7 @@ export function createLabnoteTools(): ToolDef[] {
       name: 'get_sample',
       mutates: false,
       description:
-        'Look up a stored sample definition by type and id, searching the document-local labsamples folder then the vault-global one. When the host can search notes, `usages` lists the vault paths of the notes that use the sample found (`sources` is only where it was defined or recorded).',
+        'Look up a stored sample definition by type and id, searching the document-local labsamples folder then the vault-global one; without documentPath, every experiment\'s local labsamples folder is searched after the global one. The result says where it was found (`scope` local/global, `experiment` folder for a local sample). When the host can search notes, `usages` lists the vault paths of the notes that use the sample found (`sources` is only where it was defined or recorded).',
       inputSchema: {
         type: 'object',
         properties: {
@@ -467,31 +548,37 @@ export function createLabnoteTools(): ToolDef[] {
         required: ['type', 'id'],
       },
       async handler(ctx, args) {
-        const type = str(args, 'type');
+        const rawType = str(args, 'type');
         const id = str(args, 'id');
-        if (!type || !id) return { ok: false, error: 'type and id are required' };
+        if (!rawType || !id) return { ok: false, error: 'type and id are required' };
+        const type = resolveSampleType(ctx, rawType);
+        if (!type.ok) return type.error;
 
         const documentPath = safePath(ctx, args, 'documentPath');
-        const folders: string[] = [];
-        if (documentPath) folders.push(noteLabsamplesFolder(documentPath, ctx.globalSampleFolder));
-        if (ctx.globalSampleFolder) folders.push(ctx.globalSampleFolder);
+        const folders = documentPath
+          ? sampleScopes(ctx, noteLabsamplesFolder(documentPath, ctx.globalSampleFolder))
+          : [
+              ...sampleScopes(ctx),
+              ...(await experimentSampleScopes(ctx)),
+            ];
 
-        for (const folder of folders) {
-          const records = await loadSamplesByType(ctx.fs, folder, type);
+        for (const { folder, scope, experiment } of folders) {
+          const records = await loadSamplesByType(ctx.fs, folder, type.type);
           if (!records[id]) continue;
-          if (!ctx.findSampleUsages) return { ok: true, data: { ...records[id], id } };
-          const canonical = canonicalSampleType(type, getSampleDisplayMeta(ctx.customTypes).types) ?? type;
-          const usages = await ctx.findSampleUsages(folder, canonical, id);
-          return { ok: true, data: { ...records[id], id, usages } };
+          const data = { ...records[id], id, scope, experiment };
+          if (!ctx.findSampleUsages) return { ok: true, data };
+          const usages = await ctx.findSampleUsages(folder, type.type, id);
+          return { ok: true, data: { ...data, usages } };
         }
-        return { ok: false, error: `Sample not found: ${type}/${id}` };
+        return { ok: false, error: `Sample not found: ${type.type}/${id}` };
       },
     },
 
     {
       name: 'list_samples',
       mutates: false,
-      description: 'List all stored samples of a given type (local scope merged over global).',
+      description:
+        'List all stored samples of a given type (local scope merged over global). Each entry says whether it is `local` (the note\'s experiment) or `global`.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -501,24 +588,83 @@ export function createLabnoteTools(): ToolDef[] {
         required: ['type'],
       },
       async handler(ctx, args) {
-        const type = str(args, 'type');
-        if (!type) return { ok: false, error: 'type is required' };
+        const rawType = str(args, 'type');
+        if (!rawType) return { ok: false, error: 'type is required' };
+        const type = resolveSampleType(ctx, rawType);
+        if (!type.ok) return type.error;
         const documentPath = safePath(ctx, args, 'documentPath');
 
-        const merged: Record<string, SampleRecord> = {};
-        if (ctx.globalSampleFolder) {
-          Object.assign(merged, await loadSamplesByType(ctx.fs, ctx.globalSampleFolder, type));
+        const merged: Record<string, { rec: SampleRecord; scope: 'local' | 'global' }> = {};
+        const scopes = sampleScopes(
+          ctx,
+          documentPath ? noteLabsamplesFolder(documentPath, ctx.globalSampleFolder) : undefined
+        ).reverse();
+        for (const { folder, scope } of scopes) {
+          for (const [id, rec] of Object.entries(await loadSamplesByType(ctx.fs, folder, type.type))) {
+            merged[id] = { rec, scope };
+          }
         }
-        if (documentPath) {
-          Object.assign(merged, await loadSamplesByType(ctx.fs, noteLabsamplesFolder(documentPath, ctx.globalSampleFolder), type));
-        }
-        const data = Object.entries(merged).map(([id, rec]) => ({
+        const data = Object.entries(merged).map(([id, { rec, scope }]) => ({
           id,
           alias: rec.alias,
           description: rec.descriptions?.[0] ?? null,
           location: rec.location ?? null,
+          scope,
+          ...(rec.discarded ? { discarded: rec.discarded } : {}),
         }));
         return { ok: true, data };
+      },
+    },
+
+    {
+      name: 'search_samples',
+      mutates: false,
+      description:
+        'Search the samples of every type in the global labsamples folder and every experiment\'s local one for `query` in the id, alias, storage location or descriptions (case-insensitive). Each match gives its type, `scope` (local/global), `experiment` folder for a local sample and `discarded` date if it was marked discarded. Use it when you do not know the type or which experiment holds a sample.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Text to find, e.g. part of an id, alias or location.' },
+          type: { type: 'string', description: 'Only this sample type (optional).' },
+        },
+        required: ['query'],
+      },
+      async handler(ctx, args) {
+        const query = str(args, 'query')?.trim().toLowerCase();
+        if (!query) return { ok: false, error: 'query is required' };
+        const rawType = str(args, 'type');
+        let types = getSampleDisplayMeta(ctx.customTypes).types;
+        if (rawType) {
+          const type = resolveSampleType(ctx, rawType);
+          if (!type.ok) return type.error;
+          types = [type.type];
+        }
+
+        const matches: Array<Record<string, unknown>> = [];
+        let truncated = false;
+        for (const { folder, scope, experiment } of [...sampleScopes(ctx), ...(await experimentSampleScopes(ctx))]) {
+          for (const type of types) {
+            for (const [id, rec] of Object.entries(await loadSamplesByType(ctx.fs, folder, type))) {
+              const haystack = [id, rec.alias ?? '', rec.location ?? '', ...(rec.descriptions ?? [])];
+              if (!haystack.some(h => h.toLowerCase().includes(query))) continue;
+              if (matches.length >= SEARCH_SAMPLES_LIMIT) {
+                truncated = true;
+                continue;
+              }
+              matches.push({
+                type,
+                id,
+                alias: rec.alias,
+                description: rec.descriptions?.[0] ?? null,
+                location: rec.location ?? null,
+                scope,
+                experiment,
+                discarded: rec.discarded ?? null,
+              });
+            }
+          }
+        }
+        return { ok: true, data: { matches, truncated } };
       },
     },
 
@@ -614,6 +760,8 @@ export function createLabnoteTools(): ToolDef[] {
       mutates: true,
       description:
         'Replace the body of a section (matched by heading text at any level) in a note, without re-serializing the rest of the document. ' +
+        'README headings may carry emoji (e.g. "## 🧪 Related Workflows"); when no heading matches exactly, emoji, square brackets, case and extra spaces are ignored. ' +
+        'Send only the body: a first line repeating the section heading is dropped. ' +
         'Workflow notes repeat headings such as "Method" under every unit operation: when the heading occurs more than once, pass parentHeading and/or occurrence, ' +
         'otherwise nothing is written and the error lists the candidates. ' +
         'The whole body is replaced, nested headings included; the result reports what was removed (removedLines, removedSubheadings, previousBody).',
@@ -690,19 +838,24 @@ export function createLabnoteTools(): ToolDef[] {
       name: 'create_workflow',
       mutates: true,
       description:
-        'Create a new workflow file in an experiment folder from the catalog and register it in the README checklist.',
+        'Create a new workflow file in an experiment folder from the catalog and register it in the README checklist. ' +
+        'An optional alias names this instance (e.g. "pUC19 cloning"): it follows the catalog name in the file name, title and checklist entry.',
       inputSchema: {
         type: 'object',
         properties: {
           documentPath: { type: 'string', description: 'Any path inside the target labnote/### experiment folder.' },
           workflowId: { type: 'string', description: 'Catalog workflow id, e.g. WD010.' },
+          alias: {
+            type: 'string',
+            description: 'Optional name for this workflow instance, added after the catalog name.',
+          },
         },
         required: ['documentPath', 'workflowId'],
       },
       async handler(ctx, args) {
         const resolved = await resolveWorkflowCreate(ctx, args);
         if ('error' in resolved) return { ok: false, error: resolved.error };
-        const { labnoteDir, readmePath, info, fileName } = resolved;
+        const { labnoteDir, readmePath, info, alias, fileName } = resolved;
 
         await ensureWorkflowResources(ctx.fs, ctx.workspaceRoot);
         const experimenter = parseExperimenterFromReadme(await ctx.fs.read(readmePath));
@@ -712,12 +865,12 @@ export function createLabnoteTools(): ToolDef[] {
         await writeNote(
           ctx,
           workflowPath,
-          createWorkflowContent(info, experimenter, undefined, { locale: ctx.locale })
+          createWorkflowContent(info, experimenter, alias, { locale: ctx.locale })
         );
 
         const readme = await ctx.fs.read(readmePath);
         const items = parseWorkflowChecklistFromReadme(readme);
-        items.push({ done: false, title: `${info.id} ${info.name}`, fileName });
+        items.push({ done: false, title: [info.id, info.name, alias].filter(Boolean).join(' '), fileName });
         await writeNote(
           ctx,
           readmePath,

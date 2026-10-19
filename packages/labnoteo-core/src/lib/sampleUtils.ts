@@ -73,11 +73,37 @@ export function escapeSamplePipes(text: string): string {
 }
 
 /**
+ * A Markdown table of `rows` under `headers` (#152). A `|` in a cell is
+ * escaped and a line break becomes a space, so a cell cannot split the row.
+ */
+export function buildMarkdownTable(headers: readonly string[], rows: ReadonlyArray<readonly string[]>): string {
+  const cell = (text: string): string => escapeSamplePipes(text.replace(/\r?\n/g, ' ').trim());
+  const line = (cells: readonly string[]): string => `| ${cells.map(cell).join(' | ')} |`;
+  return [line(headers), `|${headers.map(() => ' --- ').join('|')}|`, ...rows.map(line)].join('\n');
+}
+
+/**
  * Whether an alias holds `;` or `:`, which end the alias in a note (`ID;alias;
  * description`), so the rest would be read back as a description (#98).
  */
 export function hasSampleAliasSeparator(alias: string): boolean {
   return /[;:]/.test(alias);
+}
+
+/**
+ * Why `alias` cannot be a sample alias, or undefined when it can:
+ * - `'separator'`: `;` or `:` ends the alias in a note (#98);
+ * - `'markdown'`: `#`, `[[`, `]]`, `*` or a backtick makes Markdown read the
+ *   reference as a tag, link, emphasis or code, so it is not highlighted or
+ *   read back (#168).
+ * Aliases registered before these rules are left as they are; only new ones
+ * are checked. {@link hasSampleAliasSeparator} stays narrow on purpose: it
+ * parses older definitions.
+ */
+export function sampleAliasProblem(alias: string): 'separator' | 'markdown' | undefined {
+  if (hasSampleAliasSeparator(alias)) return 'separator';
+  if (/#|\[\[|\]\]|\*|`/.test(alias)) return 'markdown';
+  return undefined;
 }
 
 /** Whether a description holds `;`, which ends it in a note (#98). */

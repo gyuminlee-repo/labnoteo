@@ -28,6 +28,8 @@ export interface SampleCandidate {
   description?: string;
   /** Which registry the record came from, shown next to it (#109). */
   scope?: 'local' | 'global';
+  /** Discard date, when the sample was marked used up (#158). */
+  discarded?: string | null;
 }
 
 /** A ready-to-render completion entry. */
@@ -37,6 +39,8 @@ export interface SampleCompletionEntry {
   label: string;
   insertText: string;
   scope?: 'local' | 'global';
+  /** The sample was marked discarded; such entries come last (#158). */
+  discarded?: boolean;
 }
 
 /**
@@ -60,6 +64,9 @@ export function parseSampleTrigger(
   if (!m || m.index === undefined) return undefined;
 
   const rawType = m[1].toLowerCase();
+  // A second `;` means a definition (`@dna;ID;alias;…`) is being typed, where
+  // a suggestion would only get in the way (#171).
+  if (m[2].includes(';')) return undefined;
   const searchTerm = m[2].toLowerCase();
   const startCol = m.index;
   const fullPrefix = `@${rawType};`;
@@ -96,6 +103,7 @@ export function buildSampleInsertText(candidate: SampleCandidate): string {
 /**
  * Build completion entries for a trigger from already-loaded records (keyed by
  * type). Filtering by the trigger's search term is applied against the label.
+ * Discarded samples keep their order but follow every sample still in use.
  */
 export function buildSampleCompletionEntries(
   trigger: SampleTrigger,
@@ -115,10 +123,11 @@ export function buildSampleCompletionEntries(
         label,
         insertText: buildSampleInsertText(candidate),
         ...(candidate.scope ? { scope: candidate.scope } : {}),
+        ...(candidate.discarded ? { discarded: true } : {}),
       });
     }
   }
-  return entries;
+  return [...entries.filter(e => !e.discarded), ...entries.filter(e => e.discarded)];
 }
 
 /** A highlighted sample-ID span (half-open `[start, end)` character offsets). */

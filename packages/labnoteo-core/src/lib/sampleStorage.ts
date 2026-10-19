@@ -48,6 +48,19 @@ export interface SampleRecord {
    * populated from partbank via a {@link SampleLocationProvider}.
    */
   location?: string | null;
+  /**
+   * The date (`YYYY-MM-DD`) the sample was marked used up or thrown away
+   * (#158). It stays in the registry, so references keep resolving, but sorts
+   * last in autocomplete. Absent or `null` for a sample still in use.
+   */
+  discarded?: string | null;
+  /**
+   * Which note (basename) put which description in, from its `@type;`
+   * definition (#172). When that note's definition changes, its old
+   * description is replaced rather than kept beside the new one. Descriptions
+   * from "Edit sample" or from before this field are not listed and stay.
+   */
+  descriptionSources?: Record<string, string>;
 }
 
 /**
@@ -90,6 +103,16 @@ function normalizeSampleRecord(rec: unknown, fallbackType: string): SampleRecord
       ? r.sources.filter((s): s is string => typeof s === 'string')
       : [],
     location: typeof r.location === 'string' ? r.location : null,
+    ...(typeof r.discarded === 'string' && r.discarded ? { discarded: r.discarded } : {}),
+    ...(r.descriptionSources && typeof r.descriptionSources === 'object' && !Array.isArray(r.descriptionSources)
+      ? {
+          descriptionSources: Object.fromEntries(
+            Object.entries(r.descriptionSources).filter(
+              (e): e is [string, string] => typeof e[1] === 'string'
+            )
+          ),
+        }
+      : {}),
   };
 }
 
@@ -393,10 +416,22 @@ export function mergeSampleDatabases(
 
           // Put current document's descriptions first so sidebar shows latest (descriptions[0])
           const fromNew = record.descriptions || [];
-          const fromExisting = (existingRecord.descriptions || []).filter(
-            (d) => !fromNew.includes(d)
-          );
+          let kept = existingRecord.descriptions || [];
+          // A description this note put in before and has since changed goes,
+          // unless another note still writes it (#172).
+          const source = record.sources[0];
+          const written = source ? existingRecord.descriptionSources?.[source] : undefined;
+          if (source && fromNew.length > 0 && written !== undefined && !fromNew.includes(written)) {
+            const sharedBy = Object.entries(existingRecord.descriptionSources ?? {}).some(
+              ([s, d]) => s !== source && d === written
+            );
+            if (!sharedBy) kept = kept.filter((d) => d !== written);
+          }
+          const fromExisting = kept.filter((d) => !fromNew.includes(d));
           existingRecord.descriptions = [...fromNew, ...fromExisting];
+          if (source && fromNew.length > 0) {
+            existingRecord.descriptionSources = { ...existingRecord.descriptionSources, [source]: fromNew[0] };
+          }
         }
 
         // Combine sources (unique)
@@ -410,7 +445,11 @@ export function mergeSampleDatabases(
         // the reference is explicitly seedable (a catalog pick). Plain prose
         // references to an unknown id never create registry entries.
         if (!referenceOnly || (opts.seedable?.has(sampleReferenceKey(type, id)) ?? false)) {
-          target[id] = { ...record };
+          const source = record.sources[0];
+          target[id] =
+            !referenceOnly && source && record.descriptions.length > 0
+              ? { ...record, descriptionSources: { [source]: record.descriptions[0] } }
+              : { ...record };
         }
       }
     }
@@ -518,6 +557,7 @@ export interface AliasRewriteEdit {
  *   leaving the bare id. Anything else is left as written.
  * - An `oldAlias` holding `;` or `:` (allowed before #98) is cut short by the
  *   pattern, so it is compared against the text after the id instead.
+ * - An empty `oldAlias` adds `;newAlias` to the bare-id references (#170).
  *
  * Edits are in document order and do not overlap.
  */
@@ -531,7 +571,8 @@ export function planAliasRewrite(
   const edits: AliasRewriteEdit[] = [];
   const oldEsc = escapeSamplePipes(oldAlias);
   const newEsc = escapeSamplePipes(newAlias);
-  if (!oldAlias || oldAlias === newAlias) return edits;
+  if (!oldAlias) return newAlias ? planAliasAddition(text, type, id, newEsc) : edits;
+  if (oldAlias === newAlias) return edits;
 
   const startsWithAlias = (s: string, alias: string): boolean =>
     s.startsWith(alias) && (s.length === alias.length || /\s/.test(s[alias.length]));
@@ -597,6 +638,25 @@ export function planAliasRewrite(
         ? { start: aliasStart, end: aliasStart + oldEsc.length, text: newEsc, kind: 'reference' }
         : { start: delimiter, end: aliasStart + oldEsc.length, text: '', kind: 'reference' }
     );
+  }
+  return edits;
+}
+
+/**
+ * A sample without an alias got one (#170): `;alias` after every plain
+ * reference that is the bare id, so the notes show the name too. Definitions
+ * are left alone; their blank alias keeps the stored one.
+ */
+function planAliasAddition(text: string, type: string, id: string, aliasEsc: string): AliasRewriteEdit[] {
+  const edits: AliasRewriteEdit[] = [];
+  const pattern = buildSampleDefinitionPattern(type);
+  let match: RegExpExecArray | null;
+  while ((match = nextSampleMatch(pattern, text, type)) !== null) {
+    if (match[0].startsWith('@') || match[1] !== id || match[2] !== undefined) continue;
+    const end = match.index + match[0].indexOf(match[1]) + match[1].length;
+    // `DNA-1;` with nothing after the `;` reads as no alias too.
+    const at = text[end] === ';' ? end + 1 : end;
+    edits.push({ start: end, end: at, text: `;${aliasEsc}`, kind: 'reference' });
   }
   return edits;
 }
@@ -1247,6 +1307,9 @@ export async function removeSourcesForDocument(
           // Drop only the usage record; keep the sample itself even when this
           // was its last source, so sample data survives a note deletion.
           record.sources = record.sources.filter((s) => s !== documentBasename);
+          if (record.descriptionSources && documentBasename in record.descriptionSources) {
+            delete record.descriptionSources[documentBasename];
+          }
           mutated = true;
         }
 
@@ -1388,4 +1451,108 @@ export async function removeSampleSource(
  */
 export function getGlobalLabsamplesFolder(workspaceRoot: string): string {
   return path.join(workspaceRoot, 'resources', 'labsamples');
+}
+
+/**
+ * `records` with the note names in `sources` and `descriptionSources` renamed
+ * by `renames` (old basename → new basename), after a note was renamed or the
+ * workflows renumbered (#149). Without this the registry keeps pointing at
+ * names that are gone, and the next save adds the new name beside them. A
+ * rename onto a name already listed merges into it. `changed` is false when
+ * no record mentions an old name.
+ */
+export function renameSampleSources(
+  records: Record<string, SampleRecord>,
+  renames: ReadonlyMap<string, string>
+): { records: Record<string, SampleRecord>; changed: boolean } {
+  const out: Record<string, SampleRecord> = JSON.parse(JSON.stringify(records));
+  let changed = false;
+  for (const record of Object.values(out)) {
+    if (record.sources.some((s) => renames.has(s))) {
+      const next: string[] = [];
+      for (const s of record.sources) {
+        const name = renames.get(s) ?? s;
+        if (!next.includes(name)) next.push(name);
+      }
+      record.sources = next;
+      changed = true;
+    }
+    if (record.descriptionSources && Object.keys(record.descriptionSources).some((s) => renames.has(s))) {
+      record.descriptionSources = Object.fromEntries(
+        Object.entries(record.descriptionSources).map(([s, d]) => [renames.get(s) ?? s, d])
+      );
+      changed = true;
+    }
+  }
+  return { records: out, changed };
+}
+
+/**
+ * Apply {@link renameSampleSources} to every `{Type}.json` of `types` in
+ * `folder`. Files that mention none of the old names are not rewritten.
+ * Returns how many files changed.
+ */
+export async function renameSampleSourcesInFolder(
+  fs: LabnoteFs,
+  folder: string,
+  renames: ReadonlyMap<string, string>,
+  types: readonly string[]
+): Promise<number> {
+  if (renames.size === 0) return 0;
+  const { recordTypes } = await sampleFolderFiles(fs, folder, types);
+  let files = 0;
+  for (const type of recordTypes) {
+    assertSafeSampleType(type);
+    await fs.modify(path.join(folder, `${type}.json`), (raw) => {
+      const { records, changed } = renameSampleSources(parseSampleRecords(raw), renames);
+      if (!changed) return raw;
+      files++;
+      return JSON.stringify(records, null, 2);
+    });
+  }
+  return files;
+}
+
+/**
+ * Mark sample `id` discarded on `date`, or in use again with `null` (#158).
+ * Returns false when the record is not in `folder`.
+ */
+export async function setSampleDiscarded(
+  fs: LabnoteFs,
+  folder: string,
+  type: string,
+  id: string,
+  date: string | null
+): Promise<boolean> {
+  assertSafeSampleType(type);
+  const filePath = path.join(folder, `${type}.json`);
+  if (!(await fs.exists(filePath))) return false;
+  let found = false;
+  await fs.modify(filePath, (raw) => {
+    const records = parseSampleRecords(raw);
+    const record = records[id];
+    if (!record) return raw;
+    found = true;
+    if (date) record.discarded = date;
+    else delete record.discarded;
+    return JSON.stringify(records, null, 2);
+  });
+  return found;
+}
+
+/**
+ * The `resources/labsamples` folders of every experiment (`labnote/###_*`)
+ * under `root` that have one, in folder order (#169, #173): where a sample
+ * that is no experiment's Local sample by the open note may still be.
+ */
+export async function listExperimentSampleFolders(fs: LabnoteFs, root: string): Promise<string[]> {
+  const labnote = path.join(root, 'labnote');
+  if (!(await fs.exists(labnote))) return [];
+  const out: string[] = [];
+  for (const name of [...(await fs.list(labnote))].sort()) {
+    if (!/^\d{3}_/.test(name)) continue;
+    const folder = path.join(labnote, name, 'resources', 'labsamples');
+    if (await fs.exists(folder)) out.push(folder);
+  }
+  return out;
 }

@@ -175,7 +175,7 @@ Copilot 설정의 *Custom vault instructions* 칸은 **보관함 루트 `AGENTS.
 
 ## (선택) Labnote 툴 연결 — MCP
 
-MCP 서버를 켜면 Labnote의 툴(`get_sample`, `list_samples`, `create_sample`,
+MCP 서버를 켜면 Labnote의 툴(`get_sample`, `list_samples`, `search_samples`, `create_sample`,
 `get_unit_operation`, `update_section`, `create_workflow`)을 Claude Desktop 같은 외부
 MCP 클라이언트나 로컬 `claude` CLI에 노출합니다. **데스크톱 전용**입니다.
 
@@ -200,6 +200,10 @@ MCP 클라이언트나 로컬 `claude` CLI에 노출합니다. **데스크톱 �
   예상값이라, 그 사이 다른 워크플로가 생기면 실제 번호가 하나 밀릴 수 있습니다). 대상 절이
   없거나 여러 개이거나, 카탈로그에 없는 워크플로이거나, 인자가 잘못되어 어차피 실패할 호출은
   확인 창 없이 바로 오류로 돌려줍니다.
+- **쓰기 요청은 한 줄로 처리합니다**: 쓰기 툴 호출이 동시에 여러 개 오면 받은 순서대로 하나씩
+  묻고 실행합니다. 그래서 확인 창의 미리보기(파일 번호, 지울 줄 수 등)는 앞 요청이 적용된 뒤의
+  상태입니다. 확인 창이 떠 있는 동안 노트를 고쳐 미리보기가 달라졌으면 바뀐 내용으로 한 번 더
+  묻습니다. 기다리는 동안 클라이언트가 연결을 끊은 요청은 건너뜁니다. 읽기 툴은 줄을 서지 않습니다.
 - **승인 시간 제한**: 확인 창에 **50초** 안에 답하지 않으면 창이 닫히고, 클라이언트는
   `Approval timed out` 오류(JSON-RPC `-32001`)를 받습니다. 클라이언트가 먼저 연결을
   끊었을 때도 창이 닫힙니다. 어느 경우든 그 요청은 **나중에 적용되지 않습니다.**
@@ -210,7 +214,11 @@ MCP 클라이언트나 로컬 `claude` CLI에 노출합니다. **데스크톱 �
   않고** 후보 목록(상위 헤딩·순번·줄 번호)을 오류로 돌려줍니다. `parentHeading`
   (상위 헤딩 전체, 대괄호를 뺀 `USW230 Sequence Embedding`, 또는 id `USW230`)이나
   `occurrence`(1부터, `parentHeading`으로 거른 뒤의 순번)를 넣어 다시 호출하면 됩니다.
-  같은 유닛 오퍼레이션을 두 번 넣은 노트는 둘을 함께 지정합니다. 성공하면 바꾼
+  같은 유닛 오퍼레이션을 두 번 넣은 노트는 둘을 함께 지정합니다.
+  `heading`이 글자 그대로 맞는 절이 없으면 이모지·대괄호·대소문자·연속 공백을 무시하고 다시
+  찾습니다(README의 `## 🧪 Related Workflows`는 `Related Workflows`로도 찾음). 그래도 없으면
+  오류에 그 노트의 헤딩 목록을 담아 돌려줍니다. `content`의 첫 줄이 대상 절과 같은 헤딩이면
+  떼어 내고 넣으므로 제목이 두 번 들어가지 않습니다(확인 창 미리보기도 같음). 성공하면 바꾼
   위치(`parentHeading`, `occurrence`, `total`)와 지운 내용(`removedLines` 비어 있지 않은 줄 수,
   `removedSubheadings` 하위 제목 수, `previousBody` 옛 본문 앞 500자)을 돌려줍니다.
 - **`update_section`으로 절 비우기**: `content`가 비어 있거나 공백뿐이면 **아무것도 쓰지 않고**
@@ -220,7 +228,12 @@ MCP 클라이언트나 로컬 `claude` CLI에 노출합니다. **데스크톱 �
   돌려줍니다(샘플 뷰의 `사용처 보기`와 같은 목록). 기록의 `sources`는 정의되거나 기록된 노트일 뿐이라
   사용처 전체가 아닙니다.
 - **샘플 보관 위치**: `create_sample`은 보관 위치(`location`)도 받습니다. 생략하거나 비워
-  두면 기존 위치를 유지합니다. `list_samples`는 각 샘플의 위치를 함께 돌려줍니다.
+  두면 기존 위치를 유지합니다. `list_samples`는 각 샘플의 위치와 범위(`local`/`global`)를 함께 돌려줍니다.
+- **모든 실험에서 샘플 찾기**: `get_sample`을 `documentPath` 없이 부르면 전역 샘플 폴더 다음에
+  모든 실험의 `resources/labsamples`를 찾고, 결과의 `scope`와 `experiment`(로컬이면 실험 폴더)로
+  어디서 찾았는지 알려 줍니다. `search_samples`(읽기 전용)는 타입을 몰라도 ID·별칭·보관 위치·설명에서
+  `query`를 찾아(대소문자 무시) 타입·범위·실험 폴더·폐기 날짜(`discarded`)와 함께 돌려줍니다.
+  `get_sample`·`list_samples`에 모르는 타입을 주면 쓸 수 있는 타입 목록과 함께 오류를 돌려줍니다.
 - **이미 있는 샘플에 다시 부르면 합칩니다**: 같은 `id`로 `create_sample`을 다시 부르면
   기록을 새로 만들지 않습니다. 설명은 기존 설명 앞에 더하고(같은 설명은 한 번만),
   `documentPath` 노트를 사용처에 더합니다. 별칭·위치는 줄 때만 바꾸고, 생략하면 그대로 둡니다.
@@ -232,8 +245,12 @@ MCP 클라이언트나 로컬 `claude` CLI에 노출합니다. **데스크톱 �
 - **별칭·설명의 금지 글자**: `create_sample`의 `alias`에 `;`·`:`가, `description`에 `;`가
   있으면 아무것도 쓰지 않고 `Invalid alias`/`Invalid description` 오류를 돌려줍니다. 노트에서
   ID·별칭·설명을 가르는 글자라 별칭이 잘려 읽히기 때문입니다. `1:10`은 `1-10`처럼 바꿔 다시
-  부르세요. `AI: Extract sample definitions`는 묻지 않고 별칭의 `;`·`:`를 `-`로, 설명의 `;`를
-  `,`로 바꿔 저장합니다.
+  부르세요. 별칭의 `#`·`[[`·`]]`·`*`·`` ` ``도 마크다운이 태그·링크·강조·코드로 읽으므로 같은
+  오류로 거부합니다. `AI: Extract sample definitions`는 묻지 않고 별칭의 `;`·`:`를 `-`로 바꾸고 나머지
+  글자는 빼며, 설명의 `;`를 `,`로 바꿔 저장합니다.
+- **워크플로 별칭**: `create_workflow`는 선택 인자 `alias`를 받습니다. 앱에서 `Create workflow`
+  뒤에 넣는 별칭과 같아, 파일 이름(`002_WB020_Cloning_형질전환.labnote.md`)·노트 제목·체크리스트
+  라벨에 들어가고 확인 창의 파일 이름에도 보입니다. 정리하면 빈 값이 되는 별칭은 무시합니다.
 - **없는 경로는 거부**: `create_sample`의 `documentPath`는 이미 있는 노트(`.md`)여야 하고,
   `create_workflow`의 `documentPath`는 `README.labnote.md`가 있는 실험 폴더 안이어야 합니다.
   아니면 아무것도 쓰지 않고 `Note not found`/`Experiment not found` 오류를 돌려줍니다.

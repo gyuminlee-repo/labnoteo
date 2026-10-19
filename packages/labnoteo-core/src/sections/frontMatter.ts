@@ -1,5 +1,6 @@
 import * as yaml from 'js-yaml';
 import { isInFrontMatter } from './documentHead';
+import { findMetaDateFieldInLine } from '../lib/dateUtils';
 
 /** Result of {@link parseFrontMatterYaml}. */
 export interface FrontMatterParse {
@@ -95,7 +96,11 @@ export function serializeFrontMatterEntry(key: string, val: unknown): string {
 }
 
 /** Where {@link planDateInsertion} puts the text: `[from, to)` becomes `text`. */
-export type DateInsertion = { from: number; to: number; text: string } | { reason: 'frontMatter' };
+export type DateInsertion =
+  | { from: number; to: number; text: string }
+  | { reason: 'frontMatter' }
+  /** On a unit op's `Start_date`/`End_date` line that already has a value (#167). */
+  | { reason: 'metaDate' };
 
 /**
  * Plan inserting a date `text` over the selection `[from, to)` (#106).
@@ -105,15 +110,28 @@ export type DateInsertion = { from: number; to: number; text: string } | { reaso
  * written the way the other entries are ({@link serializeFrontMatterEntry}),
  * so an empty `end_date` can be filled. Anywhere else in the front matter —
  * a line with a value, a `---` line, a list item — typing the date would break
- * the YAML, so it is refused.
+ * the YAML, so it is refused. A unit op's `- Start_date:`/`- End_date:` line
+ * follows the same rule (#167): an empty value is filled inside its quotes,
+ * and a line that has one is refused rather than given a second date.
  */
 export function planDateInsertion(doc: string, from: number, to: number, text: string): DateInsertion {
   if (from > to) [from, to] = [to, from];
-  if (!isInFrontMatter(doc, from) && !isInFrontMatter(doc, to)) return { from, to, text };
-
   const lineStart = doc.lastIndexOf('\n', from - 1) + 1;
   const nl = doc.indexOf('\n', from);
   let lineEnd = nl === -1 ? doc.length : nl;
+  if (!isInFrontMatter(doc, from) && !isInFrontMatter(doc, to)) {
+    if (to > lineEnd) return { from, to, text };
+    if (doc[lineEnd - 1] === '\r') lineEnd--;
+    const meta = findMetaDateFieldInLine(doc.slice(lineStart, lineEnd));
+    if (!meta) return { from, to, text };
+    if (meta.value.trim() !== '') return { reason: 'metaDate' };
+    const valueFrom = lineStart + meta.valueStart;
+    const valueTo = lineStart + meta.valueEnd;
+    if (meta.quote) return { from: valueFrom, to: valueTo, text };
+    const space = doc[valueFrom - 1] === ':' ? ' ' : '';
+    return { from: valueFrom, to: valueTo, text: `${space}'${text}'` };
+  }
+
   if (to > lineEnd) return { reason: 'frontMatter' };
   if (doc[lineEnd - 1] === '\r') lineEnd--;
   const m = /^([A-Za-z_][\w-]*):[ \t]*(?:''|"")?[ \t]*$/.exec(doc.slice(lineStart, lineEnd));

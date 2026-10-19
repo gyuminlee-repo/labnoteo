@@ -3,8 +3,8 @@
  */
 
 import * as path from '../util/posixPath';
-import { getSeoulDateString } from './dateUtils';
-import { sanitizePathSegment, escapeRegExp } from './regexUtils';
+import { getSeoulDateString, findMetaDateFieldInLine } from './dateUtils';
+import { sanitizePathSegment, legacySanitizePathSegment, capPathSegment, escapeRegExp } from './regexUtils';
 import { parseFrontMatterYaml, serializeFrontMatterEntry } from '../sections/frontMatter';
 import { stepFence, type OpenFence } from '../sections/sectionEdit';
 import {
@@ -240,7 +240,8 @@ export function createWorkflowFileName(
   const aliasSegment = alias && alias.trim() ? sanitizeWorkflowName(alias) : '';
   const safeAlias = aliasSegment ? `_${aliasSegment}` : '';
 
-  return `${sequence}_${workflow.id}_${safeName}${safeAlias}.labnote.md`;
+  // The title and alias stay whole in the note; only the file name is capped (#148).
+  return `${sequence}_${capPathSegment(`${workflow.id}_${safeName}${safeAlias}`)}.labnote.md`;
 }
 
 /**
@@ -847,12 +848,18 @@ export function defaultWorkflowTitle(fileName: string): string {
  * Whether a checklist label names the same workflow as `fileName`: the label
  * and the file's `{ID}_{name}` part are equal once both go through the path
  * sanitizer, so `WT020 Protein/Enzyme Expression` matches
- * `002_WT020_ProteinEnzyme_Expression.labnote.md`.
+ * `002_WT020_ProteinEnzyme_Expression.labnote.md`. A file named before the
+ * current rules (#148 length cap, #165 `_plus`/`_minus`) matches under the
+ * rules it was named with, so `IND+` still matches `..._IND.labnote.md`.
  */
 export function labelMatchesFileName(label: string, fileName: string): boolean {
   const parts = parseWorkflowFileName(fileName);
   if (!parts) return false;
-  return sanitizePathSegment(label) === sanitizePathSegment(`${parts.id}_${parts.safeName}`);
+  const file = `${parts.id}_${parts.safeName}`;
+  return (
+    capPathSegment(sanitizePathSegment(label)) === capPathSegment(sanitizePathSegment(file)) ||
+    legacySanitizePathSegment(label) === legacySanitizePathSegment(file)
+  );
 }
 
 /** The `## [ID name] alias` heading a workflow note starts with. */
@@ -919,10 +926,11 @@ function workflowTitleText(id: string, name: string, alias: string): string {
 export function workflowAliasFromFileName(fileName: string, heading: WorkflowHeading): string | undefined {
   const parts = parseWorkflowFileName(fileName);
   if (!parts || heading.id !== parts.id) return undefined;
-  const safe = sanitizePathSegment(heading.name);
-  if (parts.safeName === safe) return '';
-  if (safe && parts.safeName.startsWith(`${safe}_`)) {
-    return parts.safeName.slice(safe.length + 1).replace(/_/g, ' ');
+  for (const safe of new Set([sanitizePathSegment(heading.name), legacySanitizePathSegment(heading.name)])) {
+    if (parts.safeName === safe) return '';
+    if (safe && parts.safeName.startsWith(`${safe}_`)) {
+      return parts.safeName.slice(safe.length + 1).replace(/_/g, ' ');
+    }
   }
   return undefined;
 }
@@ -1285,6 +1293,10 @@ export interface WorkflowExperimenterSync {
   to: string;
   /** The note with the experimenter lines rewritten. */
   content: string;
+  /** Unit-op `- Experimenter:` lines rewritten. */
+  unitOpLines: number;
+  /** Unit-op `- Experimenter:` lines kept because their unit op has an `End_date` (#155). */
+  skippedLines: number;
 }
 
 /**
@@ -1293,8 +1305,10 @@ export interface WorkflowExperimenterSync {
  * and so is each `- Experimenter:` line of a unit operation outside code
  * blocks that still reads the old value or nothing: a unit op inserted after
  * the change already has the new name, and another person's name was written
- * on purpose. The label is the same in every locale. Undefined when `author`
- * is empty, the note has no `experimenter` key, or it already matches.
+ * on purpose. A unit op (from its `### [` heading to the next) whose
+ * `End_date` is filled in is finished work and keeps who did it (#155). The
+ * label is the same in every locale. Undefined when `author` is empty, the
+ * note has no `experimenter` key, or it already matches.
  */
 export function planWorkflowExperimenterSync(
   content: string,
@@ -1315,6 +1329,8 @@ export function planWorkflowExperimenterSync(
   for (let i = 1; i < fmEnd; i++) {
     if (/^experimenter\s*:/.test(lines[i])) lines[i] = serializeFrontMatterEntry('experimenter', to);
   }
+  // Experimenter lines to rewrite, grouped by unit op, and which unit ops ended.
+  const blocks: { lines: number[]; ended: boolean }[] = [{ lines: [], ended: false }];
   let fence: OpenFence | null = null;
   for (let i = fmEnd + 1; i < lines.length; i++) {
     const next = stepFence(lines[i], fence);
@@ -1322,11 +1338,63 @@ export function planWorkflowExperimenterSync(
       fence = next;
       continue;
     }
+    if (/^###\s+\[/.test(lines[i])) {
+      blocks.push({ lines: [], ended: false });
+      continue;
+    }
+    const block = blocks[blocks.length - 1];
+    const date = findMetaDateFieldInLine(lines[i]);
+    if (date?.field === 'End_date' && date.value.trim() !== '') block.ended = true;
     const m = /^(\s*-\s*Experimenter:)(.*)$/.exec(lines[i]);
-    if (m && (m[2].trim() === from || m[2].trim() === '')) lines[i] = `${m[1]} ${to}`;
+    if (m && (m[2].trim() === from || m[2].trim() === '')) block.lines.push(i);
+  }
+  let unitOpLines = 0;
+  let skippedLines = 0;
+  for (const block of blocks) {
+    if (block.ended) {
+      skippedLines += block.lines.length;
+      continue;
+    }
+    for (const i of block.lines) {
+      lines[i] = `${/^(\s*-\s*Experimenter:)/.exec(lines[i])![1]} ${to}`;
+      unitOpLines++;
+    }
   }
   const next = lines.join(newline);
-  return next === content ? undefined : { from, to, content: next };
+  return next === content ? undefined : { from, to, content: next, unitOpLines, skippedLines };
+}
+
+/**
+ * Start a copied workflow note's dates over (#160): the front-matter
+ * `created_date` and `last_updated_date` become `today`, `end_date` and every
+ * unit op's `- Start_date:`/`- End_date:` (outside code blocks) are emptied,
+ * so the copy does not claim the original's dates. Only keys the note has are
+ * touched. Returns the content unchanged when there is nothing to reset.
+ */
+export function resetCopiedWorkflowDates(content: string, today: string): string {
+  const newline = content.includes('\r\n') ? '\r\n' : '\n';
+  const lines = content.split(/\r?\n/);
+  const fmEnd = lines[0]?.trim() === '---' ? lines.findIndex((l, i) => i > 0 && l.trim() === '---') : -1;
+  for (let i = 1; i < fmEnd; i++) {
+    const key = /^(created_date|last_updated_date|end_date)\s*:/.exec(lines[i])?.[1];
+    if (key) lines[i] = serializeFrontMatterEntry(key, key === 'end_date' ? '' : today);
+  }
+  let fence: OpenFence | null = null;
+  for (let i = fmEnd + 1; i < lines.length; i++) {
+    const next = stepFence(lines[i], fence);
+    if (next !== fence || fence) {
+      fence = next;
+      continue;
+    }
+    const date = findMetaDateFieldInLine(lines[i]);
+    if (!date || date.value === '') continue;
+    const line = lines[i];
+    lines[i] = date.quote
+      ? line.slice(0, date.valueStart) + line.slice(date.valueEnd)
+      : `${line.slice(0, date.valueStart)}''${line.slice(date.valueEnd)}`;
+  }
+  const next = lines.join(newline);
+  return next === content ? content : next;
 }
 
 /**

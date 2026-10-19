@@ -24,6 +24,7 @@ const obsidianKo: Record<string, string> = {
   'Open workflow view': '워크플로 뷰 열기',
   'Open sample view': '샘플 뷰 열기',
   'Open sample definition': '샘플 정의 열기 (편집·이동·삭제)',
+  'Insert sample list of this experiment': '이 실험의 시료 목록 삽입',
   'Open user guide': '사용법 열기',
   'Toggle MCP server': 'MCP 서버 켜기/끄기',
   'AI: Draft Method section': 'AI: Method 섹션 초안 작성',
@@ -37,6 +38,8 @@ const obsidianKo: Record<string, string> = {
   'Allow AI tool "{0}" to modify the vault?': 'AI 툴 "{0}"이(가) 보관함을 수정하도록 허용할까요?',
   'AI stopped after too many steps.': 'AI가 너무 많은 단계를 거쳐 중단되었습니다.',
   'AI ran {0} tool call(s).': 'AI가 툴을 {0}회 호출했습니다.',
+  'The assistant gave no answer. What you asked may be outside the tools it can use.':
+    '어시스턴트가 답을 주지 않았습니다. 요청한 일이 쓸 수 있는 도구 밖일 수 있습니다.',
   'AI answer': 'AI 답변',
   'Insert into note': '노트에 넣기',
   'Copy': '복사',
@@ -45,6 +48,7 @@ const obsidianKo: Record<string, string> = {
   'That note is no longer open. Copy the answer instead.':
     '그 노트가 더 이상 열려 있지 않습니다. 답변을 복사해서 쓰세요.',
   'Inserted the summary into {0}.': '요약을 {0}에 넣었습니다.',
+  'AI summary ({0}, {1})': 'AI 요약 ({0}, {1})',
   'Inserted the Method draft into {0}.': 'Method 초안을 {0}에 넣었습니다.',
 
   // View titles / ribbon
@@ -63,6 +67,12 @@ const obsidianKo: Record<string, string> = {
     '실험을 클릭하면 README가 열리고, 우클릭하면 상태를 바꾸거나 논의 표시를 전환합니다. 카탈로그 항목을 우클릭해 워크플로를 만들거나 유닛 오퍼레이션을 넣습니다. 실험이 없다면 먼저 "{0}"을(를) 실행하세요.',
   'Experiments': '실험',
   'Flagged for discussion': '논의 표시됨',
+  '(not an allowed status)': '(허용되지 않는 상태)',
+  'Validation fails on this status. Allowed statuses: {0}':
+    '이 상태는 검증에서 실패합니다. 허용되는 상태: {0}',
+  'Status': '상태',
+  'Workflows done': '완료한 워크플로',
+  'Last updated': '마지막 수정',
   'Type @dna (or another type) in a note, or right-click → "{0}" to register a sample.':
     '노트에서 @dna처럼 입력하거나 우클릭 → "{0}"(으)로 샘플을 등록합니다.',
 
@@ -77,6 +87,8 @@ const obsidianKo: Record<string, string> = {
   'Search unit operations': '유닛 오퍼레이션 검색',
   'Open a lab note first.': '먼저 랩노트 파일을 여세요.',
   'Select a status': '상태를 선택하세요',
+  'The current status "{0}" is not an allowed value. Select a status':
+    '현재 값 "{0}"은(는) 허용 목록에 없습니다. 상태를 선택하세요',
   'current': '현재',
   'Workflow name': '워크플로 이름',
   'Enter a name for this workflow': '이 워크플로의 상세 별칭을 입력하세요',
@@ -119,11 +131,18 @@ const obsidianKo: Record<string, string> = {
   'Add "{0}" to the README checklist?': '"{0}"을(를) README 체크리스트에 등록할까요?',
   'Add to checklist': '체크리스트에 등록',
   'Added "{0}" to the README checklist.': '"{0}"을(를) README 체크리스트에 등록했습니다.',
+  "Reset the dates of the copy {0}: created today, with the end date and the unit operations' Start_date/End_date emptied.":
+    '복사본 {0}의 날짜를 초기화했습니다: 생성일은 오늘로, 종료일과 유닛 오퍼레이션의 Start_date/End_date는 비웠습니다.',
   'Workflow notes moved into {0} are not in its README checklist yet. Run "{1}" to add them.':
     '{0}(으)로 옮겨 온 워크플로 노트가 README 체크리스트에 없습니다. "{1}"을(를) 실행해 등록하세요.',
-  'Experiment status changed: {0} → {1}': '실험 상태가 변경되었습니다: {0} → {1}',
+  'Experiment status changed ({0}): {1} → {2}': '실험 상태가 변경되었습니다({0}): {1} → {2}',
   '(none)': '(없음)',
   'To undo, run "{0}" again and pick {1}.': '되돌리려면 "{0}"을(를) 다시 실행해 {1}을(를) 고르세요.',
+  'To undo, right-click this experiment in the workflow view again and pick {0}.':
+    '되돌리려면 워크플로 뷰에서 이 실험을 다시 우클릭해 {0}을(를) 고르세요.',
+  '{0} workflow(s) in the checklist are not checked and {1} workflow note(s) have no end_date. Mark the experiment completed anyway?':
+    '체크리스트에서 체크하지 않은 워크플로가 {0}개, 종료일(end_date)이 빈 워크플로 노트가 {1}개 있습니다. 그래도 completed로 바꿀까요?',
+  'Mark completed': 'completed로 바꾸기',
   'This vault is not a git repository yet, so no review issue will open. Finish the repository setup in {0} first.':
     '이 보관함은 아직 git 저장소가 아니라 검토 이슈가 생성되지 않습니다. 먼저 {0}의 저장소 연결을 마치세요.',
   'To open a review issue, run "Setup research automation" first.':
@@ -162,6 +181,8 @@ const obsidianKo: Record<string, string> = {
     '마커 ID {0}은(는) {1}에서도 쓰고 있어 두 질문이 한 이슈로 합쳐집니다. 이 노트의 그 마커(물결 밑줄)를 지우고 "논의 이슈 마커 삽입"으로 다시 넣으세요.',
   'A date cannot go on a front matter line that has a value. Run this in the body or on an empty value.':
     '머리말(front matter)의 값이 있는 줄에는 날짜를 넣을 수 없습니다. 본문이나 빈 값 칸에서 실행하세요.',
+  'This Start_date/End_date already has a value. Use the 📅 picker next to it to change the date.':
+    '이 Start_date/End_date에는 이미 값이 있습니다. 날짜를 바꾸려면 옆의 📅 피커를 쓰세요.',
   'This line already has an issue marker. A line can hold only one.':
     '이 줄에는 이미 이슈 마커가 있습니다. 한 줄에 하나만 둘 수 있습니다.',
   'Front matter of this note could not be read, so it was left unchanged. Fix the YAML and try again: {0}':
@@ -170,6 +191,13 @@ const obsidianKo: Record<string, string> = {
     '{0}이(가) 새 버전과 다릅니다. 설치 뒤에 직접 고친 내용이 있다면 바꿀 때 사라집니다. 새 버전으로 바꿀까요?',
   'From then on, updates change only the marked block and keep what you write below it.':
     '이번에 바꾸면 다음부터는 업데이트가 표시된 블록만 바꾸고, 그 아래 적은 내용은 그대로 둡니다.',
+  'Pasted images are saved at the top of the vault. Save them in an images folder next to the note instead (for a lab note, the experiment\'s images folder)? This changes Settings → Files and links → Default location for new attachments to "./images".':
+    '붙여넣은 이미지가 보관함 맨 위에 저장되고 있습니다. 노트 옆 images 폴더(랩노트라면 실험의 images 폴더)에 저장할까요? 설정 → 파일 및 링크 → 새 첨부 파일의 기본 위치를 "./images"로 바꿉니다.',
+  'Use ./images': './images 쓰기',
+  'New attachments now go to the images folder next to each note.':
+    '이제 새 첨부 파일은 각 노트 옆 images 폴더에 저장됩니다.',
+  'The marked block of {0} was edited after it was installed. Replace the block with the new version? Text outside the block is kept.':
+    '{0}의 표시된 블록이 설치 후 고쳐졌습니다. 블록을 새 버전으로 바꿀까요? 블록 밖의 내용은 그대로 둡니다.',
   'Research automation set up ({0} written, {1} merged, {2} skipped, {3} removed). Researchers: see {4}. Admin setup: {5} (run `git config core.hooksPath {6}`).':
     '연구노트 자동화를 설정했습니다 (생성 {0} · 병합 {1} · 건너뜀 {2} · 정리 {3}). 연구원 안내는 {4}, 관리자 설정은 {5} 문서를 확인하고 `git config core.hooksPath {6}`을 실행하세요.',
   'Remove {0} file(s) left by the previous layout ({1})? Afterwards run `git config core.hooksPath {2}` so the pre-commit hook keeps working.':
@@ -200,6 +228,8 @@ const obsidianKo: Record<string, string> = {
   '{0} rows → {1} rows': '{0}행 → {1}행',
   'row {0}: {1} → {2}': '{0}번째 행: {1} → {2}',
   'Command failed: {0}': '명령 실행 실패: {0}',
+  'Command failed: the name is too long for the file system. Shorten the title or alias to {0} characters or fewer.':
+    '명령 실행 실패: 이름이 너무 길어 파일을 만들 수 없습니다. 제목이나 별칭을 {0}자 이하로 줄이세요.',
   'Yes': '예',
   'Workflow created: {0}': '워크플로가 생성되었습니다: {0}',
   'This experiment has no README.labnote.md, so the workflow was not added to a checklist.':
@@ -225,6 +255,12 @@ const obsidianKo: Record<string, string> = {
   'Select sample type': '샘플 타입 선택',
   'Edit sample': '샘플 편집',
   'Delete sample': '샘플 삭제',
+  'Mark as discarded': '폐기로 표시',
+  'Unmark discarded': '폐기 표시 해제',
+  'Marked {0} as discarded.': '{0}을(를) 폐기로 표시했습니다.',
+  '{0} is no longer marked discarded.': '{0}의 폐기 표시를 해제했습니다.',
+  '(discarded)': '(폐기)',
+  'Discarded': '폐기',
   'Move to Global': '전역으로 이동',
   'Move to Local': '로컬로 이동',
   'Change type': '타입 변경',
@@ -234,10 +270,17 @@ const obsidianKo: Record<string, string> = {
     '{0}을(를) {1}(으)로 바꿀까요? 기록이 {2}.json에서 {3}.json으로 옮겨집니다.',
   'The notes that use it change too ({0}):': '이 샘플을 쓰는 노트도 함께 바뀝니다({0}):',
   'Changed {0} to {1}.': '{0}을(를) {1}(으)로 바꿨습니다.',
+  'Ctrl+Z only reverts the note, not the sample record. To undo, change the type again.':
+    'Ctrl+Z로는 노트만 되돌아가고 샘플 기록은 그대로입니다. 되돌리려면 타입 변경을 다시 하세요.',
   'Sample tracking is off for this note.': '이 노트는 샘플 추적이 꺼져 있습니다.',
   'No samples are registered yet.': '아직 등록된 샘플이 없습니다.',
   'Search by ID or alias': 'ID나 별칭으로 검색',
   'Open a note to insert into.': '삽입할 노트를 여세요.',
+  'Open a note of an experiment to list its samples.': '시료 목록을 넣으려면 실험 안의 노트를 여세요.',
+  'This experiment has no samples yet.': '이 실험에는 아직 시료가 없습니다.',
+  'Inserted {0} sample(s).': '시료 {0}개를 표로 넣었습니다.',
+  'Local': '로컬',
+  'Global': '전역',
   'Open a note first to add a local sample.': '로컬 샘플을 추가하려면 먼저 노트를 여세요.',
   'Notes outside an experiment use the Global samples below. Open an experiment note to see its samples.':
     '실험 밖 노트는 아래 Global 샘플을 씁니다. 실험 노트를 열면 그 실험의 시료가 보입니다.',
@@ -298,17 +341,23 @@ const obsidianKo: Record<string, string> = {
   '{0} was added to Global samples because this note is outside an experiment folder.':
     '이 노트는 실험 폴더 밖에 있어 {0}을(를) 전역 샘플에 추가했습니다.',
   'Sample updated: {0}': '샘플이 수정되었습니다: {0}',
+  '{0} is also registered in other experiments ({1}); only this one changed.':
+    '{0}은(는) 다른 실험의 대장에도 있습니다({1}). 이번 편집은 이 실험의 기록만 바꿨습니다.',
   'Sample deleted: {0}': '샘플이 삭제되었습니다: {0}',
   "Replace the old alias '{1}' with '{2}' in {0} note(s)?\n\n{3}":
     "노트 {0}개에 남은 옛 별칭 '{1}'을(를) '{2}'(으)로 바꿀까요?\n\n{3}",
   "Remove the old alias '{1}' from {0} note(s)?\n\n{2}":
     "노트 {0}개에 남은 옛 별칭 '{1}'을(를) 지울까요?\n\n{2}",
+  "Add the alias '{1}' to the references that show only the ID {2} in {0} note(s)?\n\n{3}":
+    "노트 {0}개에서 ID {2}만 적힌 참조에 별칭 '{1}'을(를) 붙일까요?\n\n{3}",
   '{0} definition(s), {1} reference(s)': '정의 {0}개, 참조 {1}개',
   '{0} note(s) still show the old alias.': '노트 {0}개에 옛 별칭이 남아 있습니다.',
   'Saving a note that defines it may bring the old alias back.':
     '옛 별칭으로 정의한 노트를 저장하면 별칭이 되돌아갈 수 있습니다.',
   '{0} is still used in notes ({1}). Remove it from the note(s) first, then delete.':
     '{0}은(는) 본문에서 사용 중이라 삭제할 수 없습니다 ({1}). 본문에서 먼저 지운 뒤 다시 삭제하세요.',
+  'To keep it for those notes but show it as used up, mark it discarded instead.':
+    '그 노트를 위해 기록은 남기고 다 쓴 시료로 보이게 하려면 대신 폐기로 표시하세요.',
   '{0} (+{1} more)': '{0} 외 {1}개',
   '{0} is used in notes outside this experiment ({1}). Those notes will no longer find it after the move. Move anyway?':
     '{0}은(는) 이 실험 밖의 노트에서 쓰이고 있습니다({1}). 옮기면 그 노트에서는 이 시료를 찾지 못합니다. 그래도 옮길까요?',
@@ -316,6 +365,8 @@ const obsidianKo: Record<string, string> = {
   'Sample moved: {0}': '샘플을 이동했습니다: {0}',
   'An alias cannot contain ";" or ":", which separate the ID, alias and description in a note. Use "-" or "/" instead (e.g. 1-10).':
     '별칭에는 ";"나 ":"를 쓸 수 없습니다. 노트에서 ID·별칭·설명을 가르는 글자입니다. 대신 "-"나 "/"를 쓰세요(예: 1-10).',
+  'An alias cannot contain #, [[, ]], * or `, which Markdown reads as a tag, link, emphasis or code. Use "-" or "/" instead.':
+    '별칭에는 #, [[, ]], *, `를 쓸 수 없습니다. 마크다운이 태그·링크·강조·코드로 읽는 글자입니다. 대신 "-"나 "/"를 쓰세요.',
   'A description cannot contain ";", which ends the description in a note. Use "," instead.':
     '설명에는 ";"를 쓸 수 없습니다. 노트에서 설명을 끝내는 글자입니다. 대신 ","를 쓰세요.',
   "Notes in {0} use {1} local sample(s) that are still in another experiment's registry, so the notes cannot find them. Bring them into {0}?":
@@ -323,6 +374,11 @@ const obsidianKo: Record<string, string> = {
   'move from {0}': '{0}에서 옮김',
   'copy from {0} (still used there)': '{0}에서 복사(그 실험의 다른 노트도 씀)',
   'Bring samples': '시료 가져오기',
+  'Bring samples (copies are edited separately from now on)': '시료 가져오기(복사한 시료는 앞으로 따로 고쳐집니다)',
+  'Move samples the other experiment still uses to Global, bring the rest':
+    '원래 실험에서도 쓰는 시료는 전역으로 옮기고 나머지는 가져오기',
+  'Moved to Global: {0}': '전역으로 옮겼습니다: {0}',
+  'Global already has {0}, so it was copied instead.': '전역에 {0}이(가) 이미 있어 대신 복사했습니다.',
   'Brought {0} local sample(s) into {1}.': '로컬 시료 {0}개를 {1}(으)로 가져왔습니다.',
   'The local samples stay in {0}. To bring them later, run "{1}" from a note in {2}.':
     '로컬 시료는 {0}에 그대로 두었습니다. 나중에 가져오려면 {2}의 노트에서 "{1}"을(를) 실행하세요.',
@@ -330,7 +386,8 @@ const obsidianKo: Record<string, string> = {
     '다음 시료는 다른 실험 여러 곳의 대장에 있어 어느 쪽을 가져올지 정할 수 없으므로 가져오지 않았습니다: {0}',
   'Sample not found: {0}': '샘플을 찾을 수 없습니다: {0}',
   'Open an experiment note first to move samples.': '샘플을 이동하려면 먼저 실험 노트를 여세요.',
-  'Local and Global folders are the same.': '로컬과 전역 폴더가 동일합니다.',
+  'The open note is outside an experiment. Open a note of the experiment to move it to, then try again.':
+    '지금 열린 노트가 실험 밖에 있습니다. 옮길 실험의 노트를 연 뒤 다시 실행하세요.',
   '{0} already exists in the destination. Overwrite it?':
     '{0}이(가) 대상에 이미 존재합니다. 덮어쓰시겠습니까?',
   'Overwrite': '덮어쓰기',
@@ -412,6 +469,8 @@ const obsidianKo: Record<string, string> = {
   'Model {0} was not found. Check {1}.': '모델 {0}을(를) 찾을 수 없습니다. {1} 값을 확인하세요.',
   '{0} has no such address (404). Check {1}: enter only the server address, without a path such as /v1 or /api.':
     '{0}에서 요청 주소를 찾을 수 없습니다(404). {1} 값을 확인하세요. /v1이나 /api 같은 경로 없이 서버 주소만 적습니다.',
+  "Which unit operation's Method should the draft go in?": '초안을 어느 단위 공정의 Method에 넣을까요?',
+  'Has a Method already': 'Method 내용이 이미 있음',
   'This Method section already has content. Replace it with the AI draft?':
     '이 Method 절에는 이미 내용이 있습니다. AI 초안으로 바꿀까요?',
   'Replace': '바꾸기',
@@ -422,8 +481,16 @@ const obsidianKo: Record<string, string> = {
   'Nothing to summarize.': '요약할 내용이 없습니다.',
   'Nothing to extract.': '추출할 내용이 없습니다.',
   'Created {0} sample(s).': '샘플 {0}개를 생성했습니다.',
+  'Created {0} new sample(s); skipped {1} already registered or in the note.':
+    '새로 {0}개를 만들고, 이미 등록됐거나 노트에 있는 {1}개는 건너뛰었습니다.',
   '"{0}" is not an experiment folder: its name must start with ###_ (e.g. 001_Name).':
     '"{0}"은(는) 실험 폴더가 아닙니다. 폴더 이름은 ###_로 시작해야 합니다(예: 001_이름).',
+  '"{0}" is not recognized as an experiment: experiment folders must be directly under labnote/. Move it back to labnote/.':
+    '"{0}"은(는) 실험으로 인식되지 않습니다. 실험 폴더는 labnote/ 바로 아래에 있어야 합니다. labnote/ 아래로 다시 옮기세요.',
+  '"{0}" is no longer recognized as an experiment: experiment folders must be directly under labnote/. Workflow commands, the experiment list and Local samples will not find it.':
+    '"{0}"은(는) 더 이상 실험으로 인식되지 않습니다. 실험 폴더는 labnote/ 바로 아래에 있어야 합니다. 워크플로 명령, 실험 목록, 로컬 샘플이 이 폴더를 찾지 못합니다.',
+  'Move it back to {0}?': '{0} 아래로 다시 옮길까요?',
+  'Move back': '다시 옮기기',
   '"{0}" is no longer an experiment folder: its name must start with ###_ (e.g. 001_Name). Workflow commands and Local samples will not find it.':
     '"{0}"은(는) 더 이상 실험 폴더가 아닙니다. 폴더 이름은 ###_로 시작해야 합니다(예: 001_이름). 워크플로 명령과 로컬 샘플이 이 폴더를 찾지 못합니다.',
   '"{0}" is no longer an experiment folder: its name must start with ###_ (e.g. 001_Name). Workflow commands and Local samples will not find it. Rename it to "{1}"?':
@@ -452,6 +519,8 @@ const obsidianKo: Record<string, string> = {
   'Update notes': '노트 고치기',
   "These notes' experimenter differs from the README author. Update them?":
     '아래 노트의 실험자(experimenter)가 README의 author와 다릅니다. 노트를 고칠까요?',
+  '{0} unit operation line(s)': '유닛 오퍼레이션 {0}줄',
+  '{0} kept because the unit operation has an End_date': '{0}줄은 End_date가 있는 유닛 오퍼레이션이라 유지',
   '(empty)': '(비어 있음)',
   '{0} note(s) updated.': '노트 {0}개를 고쳤습니다.',
   'Name this copy of the workflow': '복제한 워크플로의 이름',

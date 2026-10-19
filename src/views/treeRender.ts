@@ -13,6 +13,7 @@ const ICON_MAP: Record<string, string> = {
   folder: 'folder',
   file: 'file-text',
   'comment-discussion': 'message-circle',
+  warning: 'alert-triangle',
   'symbol-method': 'wrench',
   'symbol-function': 'square-function',
   beaker: 'flask-conical',
@@ -47,6 +48,7 @@ function renderNode(
   // Indentation is data-driven, so it is passed as a CSS variable the stylesheet
   // turns into padding — no styling is hardcoded in JS.
   row.style.setProperty('--labnote-tree-depth', String(depth));
+  if (node.dimmed) row.addClass('is-dimmed');
 
   const twistie = row.createSpan({ cls: 'labnote-tree-twistie' });
   const expanded = ctx.expanded.has(node.id);

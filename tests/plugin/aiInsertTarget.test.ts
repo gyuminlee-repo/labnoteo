@@ -64,7 +64,7 @@ beforeEach(() => {
   open = makeTarget(NOTE, BODY.indexOf('결과 문단'));
   plugin = {
     app: {},
-    settings: { globalSampleFolder: 'resources/labsamples', customSampleTypes: [] },
+    settings: { globalSampleFolder: 'resources/labsamples', customSampleTypes: [], llmModel: 'llama3.1' },
     t: (key: string, ...args: string[]) => args.reduce<string>((s, a, i) => s.replace(`{${i}}`, a), key),
     host: {
       editTarget: () => open,
@@ -107,7 +107,8 @@ describe('summarizeResultsCommand (#112)', () => {
     expect(other.replaceRange).not.toHaveBeenCalled();
     expect(plugin.markUserEdit).not.toHaveBeenCalled();
     const opts = dialog();
-    expect(opts.content).toBe('- 요약');
+    // #150: the summary is a callout naming the model and the date.
+    expect(opts.content).toMatch(/^> \[!note\] AI summary \(llama3\.1, \d{4}-\d{2}-\d{2}\)\n> - 요약$/);
     expect(opts.sourcePath).toBe(NOTE);
 
     expect(await opts.onInsert()).toBe(false);

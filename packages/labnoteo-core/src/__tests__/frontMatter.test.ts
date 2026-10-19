@@ -58,6 +58,21 @@ describe('date insertion and the front matter', () => {
     const doc = '---\ntitle: x\n';
     expect(planDateInsertion(doc, 8, 8, 'D')).toEqual({ from: 8, to: 8, text: 'D' });
   });
+
+  // #167: a unit op's Meta date lines follow the same rule.
+  it('fills an empty Start_date/End_date inside its quotes and refuses one with a value', () => {
+    const body = "\n- Experimenter: 홍길동\n- Start_date: '2026-10-01 09:00'\n- End_date: ''\n- End_date:\n";
+    const doc = `---\ntitle: x\n---\n${body}`;
+    const lineAt = (text: string, col: number) => doc.indexOf(text) + col;
+    const fill = (pos: number) => {
+      const plan = planDateInsertion(doc, pos, pos, '2026-10-19');
+      return 'reason' in plan ? plan.reason : doc.slice(0, plan.from) + plan.text + doc.slice(plan.to);
+    };
+    expect(fill(lineAt("- End_date: ''", 3))).toContain("\n- End_date: '2026-10-19'\n- End_date:\n");
+    expect(fill(lineAt('- End_date:\n', 2))).toContain("\n- End_date: '2026-10-19'\n");
+    expect(fill(lineAt('- Start_date', 5))).toBe('metaDate');
+    expect(fill(lineAt('- Experimenter', 5))).toContain('홍길동');
+  });
 });
 
 describe('parseFrontMatterYaml', () => {

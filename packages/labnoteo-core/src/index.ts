@@ -48,6 +48,8 @@ export {
 export {
   findUnitOpMethodAt,
   findUnitOpMethodByIndex,
+  listUnitOpMethods,
+  cleanMethodDraft,
   extractMethodBody,
   planBlockInsert,
   type UnitOpMethodLocation,
@@ -176,9 +178,11 @@ export {
   type TreeNode,
   type TreeNodeKind,
   type ExperimentEntry,
+  type ExperimentTreeLabels,
   type WorkflowTreeData,
   type SampleScope,
   type SampleTreeRoots,
+  type SampleTreeLabels,
 } from './tree/treeModel';
 
 // === File-system port (platform-neutral interface; implementations are per-host) ===
@@ -193,6 +197,7 @@ export {
   UNIT_OPERATIONS_SW_CATALOG,
   CATALOG_FILE_NAMES,
 } from './catalog';
+export { CATALOG_KO, type CatalogKoEntry } from './catalog/catalogKo';
 export type {
   WorkflowItem,
   WorkflowJson,

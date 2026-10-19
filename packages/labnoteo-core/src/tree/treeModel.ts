@@ -40,6 +40,8 @@ export interface TreeNode {
   icon?: string;
   color?: string;
   tooltip?: string;
+  /** Shown faded, e.g. a discarded sample (#158). */
+  dimmed?: boolean;
   children?: TreeNode[];
   /** Kind-specific data the platform layer needs for actions. */
   payload?: unknown;
@@ -57,18 +59,44 @@ export interface ExperimentEntry {
   status?: string;
   /** The README's `discuss` flag is on. */
   discuss?: boolean;
+  /** The README's `last_updated_date`. */
+  lastUpdated?: string;
+  /** Checked and total entries of the README "Related Workflows" checklist (#157). */
+  progress?: { done: number; total: number };
+}
+
+/** Labels {@link buildExperimentTree} puts into the tree; English defaults. */
+export interface ExperimentTreeLabels {
+  root?: string;
+  noStatus?: string;
+  discuss?: string;
+  /** Suffix of a group whose status is outside {@link EXPERIMENT_STATUSES} (#143). */
+  invalidStatus?: string;
+  /** Tooltip of that group; `{0}` is the allowed list. */
+  invalidStatusTooltip?: string;
+  status?: string;
+  workflows?: string;
+  lastUpdated?: string;
+}
+
+/** `001` of `001_GFP`, or the whole name when it has no number. */
+function experimentNumber(name: string): string {
+  return /^(\d{3})_/.exec(name)?.[1] ?? name;
 }
 
 /**
  * The vault's experiments grouped by `status`, in {@link EXPERIMENT_STATUSES}
  * order. Experiments without a status, and each value outside that list, get
- * groups of their own after those; empty groups are left out. Each experiment
- * shows as `001_GFP · title` and carries its folder and README path. One
- * flagged for discussion gets a discussion icon and says so in its tooltip (#134).
+ * groups of their own after those, marked as not allowed (#143); empty groups
+ * are left out. Each experiment shows as `001 · title (done/total)` so the
+ * title is not pushed out of a narrow sidebar by the folder name (#156), and
+ * carries its folder and README path. The tooltip names the title, folder,
+ * status, checklist progress and last update (#157). One flagged for
+ * discussion gets a discussion icon and says so in its tooltip (#134).
  */
 export function buildExperimentTree(
   experiments: ExperimentEntry[],
-  labels: { root?: string; noStatus?: string; discuss?: string } = {}
+  labels: ExperimentTreeLabels = {}
 ): TreeNode {
   const noStatus = labels.noStatus ?? '(none)';
   const groups = new Map<string, ExperimentEntry[]>();
@@ -89,21 +117,44 @@ export function buildExperimentTree(
       const members = [...groups.get(status)!].sort((a, b) =>
         path.basename(a.folder).localeCompare(path.basename(b.folder), undefined, { numeric: true })
       );
+      const invalid = status !== '' && !known.includes(status);
       return {
         id: `experimentStatus:${status}`,
-        label: `${status || noStatus} [${members.length}]`,
+        label: invalid
+          ? `${status} [${members.length}] ${labels.invalidStatus ?? '(not an allowed status)'}`
+          : `${status || noStatus} [${members.length}]`,
         kind: 'experimentStatus' as const,
-        icon: 'folder',
+        icon: invalid ? 'warning' : 'folder',
+        ...(invalid
+          ? {
+              tooltip: (labels.invalidStatusTooltip ?? 'Allowed statuses: {0}').replace(
+                '{0}',
+                EXPERIMENT_STATUSES.join(', ')
+              ),
+            }
+          : {}),
         payload: { status: status || undefined },
         children: members.map(e => {
           const name = path.basename(e.folder);
           const title = e.title?.trim();
+          const named = title && title !== name ? `${experimentNumber(name)} · ${title}` : name;
+          const progress = e.progress && e.progress.total > 0 ? ` (${e.progress.done}/${e.progress.total})` : '';
+          const tooltip = [
+            ...(title && title !== name ? [title] : []),
+            e.folder,
+            `${labels.status ?? 'Status'}: ${status || noStatus}`,
+            ...(e.progress && e.progress.total > 0
+              ? [`${labels.workflows ?? 'Workflows done'}: ${e.progress.done}/${e.progress.total}`]
+              : []),
+            ...(e.lastUpdated ? [`${labels.lastUpdated ?? 'Last updated'}: ${e.lastUpdated}`] : []),
+            ...(e.discuss ? [labels.discuss ?? 'Flagged for discussion'] : []),
+          ].join('\n');
           return {
             id: `experiment:${e.folder}`,
-            label: title && title !== name ? `${name} · ${title}` : name,
+            label: `${named}${progress}`,
             kind: 'experiment' as const,
             icon: e.discuss ? 'comment-discussion' : 'file',
-            tooltip: e.discuss ? `${e.folder}\n${labels.discuss ?? 'Flagged for discussion'}` : e.folder,
+            tooltip,
             payload: { folder: e.folder, readmePath: path.join(e.folder, 'README.labnote.md') },
           };
         }),
@@ -229,6 +280,13 @@ function sampleDetailNodes(idPrefix: string, rec: SampleRecord): TreeNode[] {
       kind: 'sampleDetail',
     });
   }
+  if (rec.discarded) {
+    details.push({
+      id: `${idPrefix}:discarded`,
+      label: `discarded: ${rec.discarded}`,
+      kind: 'sampleDetail',
+    });
+  }
   return details;
 }
 
@@ -237,7 +295,8 @@ async function buildScopeNode(
   scope: SampleScope,
   folder: string,
   types: readonly string[],
-  skipRead = false
+  skipRead = false,
+  labels: SampleTreeLabels = {}
 ): Promise<TreeNode> {
   const typeNodes: TreeNode[] = [];
   for (const type of types) {
@@ -245,13 +304,15 @@ async function buildScopeNode(
     const ids = Object.keys(records);
     const sampleNodes: TreeNode[] = ids.map(id => {
       const rec = records[id];
-      const label = rec.alias ? `${id} | ${rec.alias}` : id;
+      const name = rec.alias ? `${id} | ${rec.alias}` : id;
+      const label = rec.discarded ? `${name} ${labels.discarded ?? '(discarded)'}` : name;
       const nodeId = `sample:${scope}:${type}:${id}`;
       return {
         id: nodeId,
         label,
         kind: 'sample' as const,
         tooltip: rec.descriptions?.[0] || undefined,
+        ...(rec.discarded ? { dimmed: true } : {}),
         payload: { scope, type, id, record: rec },
         children: sampleDetailNodes(nodeId, rec),
       };
@@ -287,18 +348,25 @@ async function buildScopeNode(
   };
 }
 
+/** Words {@link buildSampleTree} puts in labels, in the host's language. */
+export interface SampleTreeLabels {
+  /** Tag after a discarded sample's label (#158). Default `(discarded)`. */
+  discarded?: string;
+}
+
 /** Build the 4-level sample tree for both scopes. */
 export async function buildSampleTree(
   fs: LabnoteFs,
   roots: SampleTreeRoots,
-  types: readonly string[]
+  types: readonly string[],
+  labels: SampleTreeLabels = {}
 ): Promise<TreeNode[]> {
   // With no experiment (or a vault-root note) the local folder is the global
   // one; list its samples once, under Global (#64).
   const sameFolder = isSameSampleFolder(roots.local, roots.global);
   return [
-    await buildScopeNode(fs, 'local', roots.local, types, sameFolder),
-    await buildScopeNode(fs, 'global', roots.global, types),
+    await buildScopeNode(fs, 'local', roots.local, types, sameFolder, labels),
+    await buildScopeNode(fs, 'global', roots.global, types, false, labels),
   ];
 }
 

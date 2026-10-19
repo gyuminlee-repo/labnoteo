@@ -44,6 +44,7 @@ describe('labnote tools — registry', () => {
         'get_sample',
         'get_unit_operation',
         'list_samples',
+        'search_samples',
         'update_section',
       ].sort()
     );
@@ -90,7 +91,16 @@ describe('create_sample / get_sample / list_samples', () => {
   });
 
   it('rejects an alias with ";" or ":" and a description with ";" without writing (#98)', async () => {
-    for (const args of [{ alias: 'EXT-01;여름' }, { alias: '1:10' }, { description: '여름; 추출' }]) {
+    for (const args of [
+      { alias: 'EXT-01;여름' },
+      { alias: '1:10' },
+      { description: '여름; 추출' },
+      // #168
+      { alias: '#1' },
+      { alias: '[[pUC19]]' },
+      { alias: '*v2*' },
+      { alias: '`x`' },
+    ]) {
       const res = await tool('create_sample').handler(ctx, {
         type: 'DNA',
         id: 'DNA-7',
@@ -157,7 +167,7 @@ describe('create_sample / get_sample / list_samples', () => {
     const got = await tool('get_sample').handler(ctx, { type: 'RNA', id: 'RNA-1', documentPath: NOTE_PATH });
     expect(got.data).toMatchObject({ location });
     const listed = await tool('list_samples').handler(ctx, { type: 'RNA', documentPath: NOTE_PATH });
-    expect(listed.data).toEqual([{ id: 'RNA-1', alias: null, description: null, location }]);
+    expect(listed.data).toEqual([{ id: 'RNA-1', alias: null, description: null, location, scope: 'local' }]);
   });
 
   it('keeps an existing location when a later call omits it or leaves it empty', async () => {
@@ -304,6 +314,41 @@ describe('create_sample / get_sample / list_samples', () => {
         id: 'DNA-2',
         existing: false,
       });
+    });
+
+    // #145: README headings carry emoji the caller does not type.
+    it('finds a heading ignoring emoji, brackets, case and spaces when none matches exactly', async () => {
+      await fs.write(NOTE_PATH, '# 001 Test\n\n## 🧪 Related  Workflows\n\nold\n\n## [Results]\n\nr\n');
+      const res = await tool('update_section').handler(ctx, {
+        documentPath: NOTE_PATH,
+        heading: 'related workflows',
+        content: 'new',
+      });
+      expect(res.ok).toBe(true);
+      expect(await fs.read(NOTE_PATH)).toContain('## 🧪 Related  Workflows\n\nnew\n\n## [Results]');
+      const bracket = await tool('update_section').describe!(ctx, {
+        documentPath: NOTE_PATH,
+        heading: 'results',
+        content: 'x',
+      });
+      expect(bracket).toMatchObject({ kind: 'sectionEdit', line: 7 });
+    });
+
+    // #162: the model sent the heading along with the body.
+    it('drops a first content line that repeats the section heading, in preview and write alike', async () => {
+      await fs.write(NOTE_PATH, '## [WD010 Design]\n\n#### Results\n\nr1\n\n#### Notes\n\nn\n');
+      const res = await tool('update_section').handler(ctx, {
+        documentPath: NOTE_PATH,
+        heading: 'Results',
+        content: '#### Results\n\nnew result',
+      });
+      expect(res.ok).toBe(true);
+      const md = await fs.read(NOTE_PATH);
+      expect(md.match(/#### Results/g)).toHaveLength(1);
+      expect(md).toContain('#### Results\n\nnew result\n\n#### Notes');
+      expect(
+        await tool('update_section').describe!(ctx, { documentPath: NOTE_PATH, heading: 'Results', content: '## Results' })
+      ).toHaveProperty('error');
     });
 
     it('returns the error the call would fail with', async () => {
@@ -601,7 +646,7 @@ describe('update_section', () => {
       await fs.write(NOTE_PATH, doc);
       const describe = tool('update_section').describe!;
       expect(await describe(ctx, { documentPath: NOTE_PATH, heading: 'Missing', content: 'x' })).toEqual({
-        error: 'Section not found: Missing',
+        error: 'Section not found: Missing. Headings in this note: ## [WD010 Design] | #### Results | #### Notes',
       });
       expect(await describe(ctx, { documentPath: NOTE_PATH, heading: 'Results', content: '' })).toHaveProperty(
         'error'
@@ -643,6 +688,42 @@ describe('create_workflow', () => {
     expect(res.ok).toBe(true);
     const { path } = res.data as { path: string };
     expect(await fs.read(path)).toContain('(`유닛 오퍼레이션 삽입`)');
+  });
+
+  // #146: the alias goes where the app's "Workflow name" prompt puts it.
+  it('puts an alias in the file name, title and checklist, and in the preview', async () => {
+    const { loadWorkflows, ensureWorkflowResources } = await import('../lib/workflowDataLoader');
+    await ensureWorkflowResources(fs, '.');
+    const wf = (await loadWorkflows(fs, '.')).workflows[0];
+    const args = { documentPath: `${NOTE_DIR}/README.labnote.md`, workflowId: wf.id, alias: ' pUC19 cloning ' };
+
+    const preview = await tool('create_workflow').describe!(ctx, args);
+    const res = await tool('create_workflow').handler(ctx, args);
+    expect(res.ok).toBe(true);
+    const { path, fileName } = res.data as { path: string; fileName: string };
+    expect(fileName).toMatch(/_pUC19_cloning\.labnote\.md$/);
+    expect(preview).toMatchObject({ fileName });
+    expect(await fs.read(path)).toContain(`${wf.id} ${wf.name} pUC19 cloning`);
+    expect(await fs.read(`${NOTE_DIR}/README.labnote.md`)).toContain(`${wf.id} ${wf.name} pUC19 cloning`);
+  });
+
+  it('drops an alias of only symbols and refuses a multi-line one', async () => {
+    const { loadWorkflows, ensureWorkflowResources } = await import('../lib/workflowDataLoader');
+    await ensureWorkflowResources(fs, '.');
+    const wf = (await loadWorkflows(fs, '.')).workflows[0];
+    const symbols = await tool('create_workflow').handler(ctx, {
+      documentPath: `${NOTE_DIR}/README.labnote.md`,
+      workflowId: wf.id,
+      alias: '***',
+    });
+    expect((symbols.data as { fileName: string }).fileName).not.toContain('*');
+    expect(await fs.read((symbols.data as { path: string }).path)).not.toContain('***');
+    const multi = await tool('create_workflow').handler(ctx, {
+      documentPath: `${NOTE_DIR}/README.labnote.md`,
+      workflowId: wf.id,
+      alias: 'a\nb',
+    });
+    expect(multi.ok).toBe(false);
   });
 
   it('fails for an unknown workflow id', async () => {
@@ -826,5 +907,61 @@ describe('ctx.writeNote hook', () => {
     );
     expect(res.ok).toBe(true);
     expect(hook.calls).toEqual([]);
+  });
+});
+
+describe('sample lookup across experiments (#169)', () => {
+  const OTHER_DIR = 'labnote/002_Other';
+  const OTHER_FOLDER = `${OTHER_DIR}/resources/labsamples`;
+
+  beforeEach(async () => {
+    await fs.write(
+      `${OTHER_FOLDER}/DNA.json`,
+      JSON.stringify({
+        'DNA-5': {
+          type: 'DNA',
+          alias: 'pET28',
+          descriptions: ['expression vector'],
+          sources: [],
+          location: 'Box-2',
+          discarded: '2026-10-01',
+        },
+      })
+    );
+    await fs.write(
+      'resources/labsamples/RNA.json',
+      JSON.stringify({ 'RNA-1': { type: 'RNA', alias: 'mRNA', descriptions: [], sources: [], location: 'Box-2' } })
+    );
+  });
+
+  it('get_sample without a note searches every experiment and says where it found it', async () => {
+    const got = await tool('get_sample').handler(ctx, { type: 'dna', id: 'DNA-5' });
+    expect(got.ok).toBe(true);
+    expect(got.data).toMatchObject({ id: 'DNA-5', scope: 'local', experiment: OTHER_DIR });
+    const global = await tool('get_sample').handler(ctx, { type: 'RNA', id: 'RNA-1' });
+    expect(global.data).toMatchObject({ scope: 'global', experiment: null });
+  });
+
+  it('get_sample and list_samples name the known types for an unknown one', async () => {
+    for (const name of ['get_sample', 'list_samples']) {
+      const res = await tool(name).handler(ctx, { type: 'Plasmidd', id: 'X-1' });
+      expect(res.ok).toBe(false);
+      expect(res.error).toMatch(/Known types: .*DNA/);
+    }
+  });
+
+  it('search_samples finds by alias or location over every scope', async () => {
+    const res = await tool('search_samples').handler(ctx, { query: 'box-2' });
+    expect(res.ok).toBe(true);
+    const data = res.data as { matches: Array<Record<string, unknown>>; truncated: boolean };
+    expect(data.truncated).toBe(false);
+    expect(data.matches).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'RNA', id: 'RNA-1', scope: 'global', discarded: null }),
+        expect.objectContaining({ type: 'DNA', id: 'DNA-5', scope: 'local', experiment: OTHER_DIR, discarded: '2026-10-01' }),
+      ])
+    );
+    const byType = await tool('search_samples').handler(ctx, { query: 'pet', type: 'DNA' });
+    expect((byType.data as { matches: unknown[] }).matches).toHaveLength(1);
   });
 });

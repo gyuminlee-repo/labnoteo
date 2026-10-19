@@ -16,8 +16,9 @@ import {
   buildSampleReferenceText,
   isCatalogSampleType,
   getSampleDisplayMeta,
-  hasSampleAliasSeparator,
   hasSampleDescriptionSeparator,
+  sampleAliasProblem,
+  buildMarkdownTable,
 } from '@labnoteo/core/lib/sampleUtils';
 import {
   loadSamplesByType,
@@ -34,10 +35,14 @@ import {
   applyAliasRewrite,
   planSampleIdRewrite,
   sampleIdForType,
+  setSampleDiscarded,
+  listExperimentSampleFolders,
+  extractSampleInfoFromText,
   type AliasRewriteEdit,
   type SampleRecord,
 } from '@labnoteo/core/lib/sampleStorage';
 import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
+import { getSeoulDateString } from '@labnoteo/core/lib/dateUtils';
 import type LabnotePlugin from './main';
 import { processNoteThroughVault } from './commands';
 import { promptModal, confirmModal, pickModal } from './modals';
@@ -59,14 +64,25 @@ function clean(value: string | undefined): string | null {
   return value && value.trim() ? value.trim() : null;
 }
 
-/** Block the characters that would split the alias in a note (#98). */
-function validateAlias(plugin: LabnotePlugin): (value: string) => string | null {
-  return v =>
-    hasSampleAliasSeparator(v)
-      ? plugin.t(
+/**
+ * Block the characters that would split the alias in a note (#98) or that
+ * Markdown reads as a tag, link, emphasis or code (#168).
+ */
+export function validateAlias(plugin: Pick<LabnotePlugin, 't'>): (value: string) => string | null {
+  return v => {
+    switch (sampleAliasProblem(v)) {
+      case 'separator':
+        return plugin.t(
           'An alias cannot contain ";" or ":", which separate the ID, alias and description in a note. Use "-" or "/" instead (e.g. 1-10).'
-        )
-      : null;
+        );
+      case 'markdown':
+        return plugin.t(
+          'An alias cannot contain #, [[, ]], * or `, which Markdown reads as a tag, link, emphasis or code. Use "-" or "/" instead.'
+        );
+      default:
+        return null;
+    }
+  };
 }
 
 /** Block the character that would end the description in a note (#98). */
@@ -105,6 +121,67 @@ export async function insertSampleReference(
   plugin.markUserEdit(target.path);
 }
 
+/**
+ * "Insert sample list of this experiment" (#152): a Markdown table of every
+ * Local sample of the open note's experiment and the Global ones its notes use,
+ * inserted at the cursor. Returns false when there is nothing to insert.
+ */
+export async function insertExperimentSamplesTable(app: App, plugin: LabnotePlugin): Promise<boolean> {
+  const target = plugin.host.editTarget();
+  if (!target) {
+    new Notice(plugin.t('Open a note to insert into.'));
+    return false;
+  }
+  const globalFolder = plugin.settings.globalSampleFolder;
+  const local = noteLabsamplesFolder(target.path, globalFolder);
+  if (!getExperimentDir(target.path) || isSameSampleFolder(local, globalFolder)) {
+    new Notice(plugin.t('Open a note of an experiment to list its samples.'));
+    return false;
+  }
+
+  const types = getSampleDisplayMeta(plugin.settings.customSampleTypes).types;
+  const used = new Set<string>();
+  for (const note of await notesInSampleScope(app, local)) {
+    for (const s of extractSampleInfoFromText(note.text, plugin.settings.customSampleTypes)) {
+      used.add(`${s.type}\u0000${s.id}`);
+    }
+  }
+  const rows: string[][] = [];
+  const row = (id: string, rec: SampleRecord, scope: string): string[] => [
+    id,
+    rec.alias ?? '',
+    rec.location ?? '',
+    scope,
+    rec.discarded ?? '',
+  ];
+  for (const type of types) {
+    const localDb = await loadSamplesByType(plugin.fs, local, type);
+    for (const [id, rec] of Object.entries(localDb)) rows.push(row(id, rec, plugin.t('Local')));
+    if (!globalFolder) continue;
+    for (const [id, rec] of Object.entries(await loadSamplesByType(plugin.fs, globalFolder, type))) {
+      if (!localDb[id] && used.has(`${type}\u0000${id}`)) rows.push(row(id, rec, plugin.t('Global')));
+    }
+  }
+  if (rows.length === 0) {
+    new Notice(plugin.t('This experiment has no samples yet.'));
+    return false;
+  }
+
+  const table = buildMarkdownTable(
+    [plugin.t('ID'), plugin.t('Alias'), plugin.t('Location'), plugin.t('Scope'), plugin.t('Discarded')],
+    rows
+  );
+  const text = await target.getText();
+  const at = target.getCursorOffset ? await target.getCursorOffset() : text.length;
+  const before = at === 0 || text[at - 1] === '\n' ? (at > 1 && text[at - 2] !== '\n' ? '\n' : '') : '\n\n';
+  const after = at >= text.length || text[at] === '\n' ? '\n' : '\n\n';
+  await target.replaceRange(at, at, `${before}${table}${after}`);
+  await target.revealOffset?.(at + before.length + table.length);
+  plugin.markUserEdit(target.path);
+  new Notice(plugin.t('Inserted {0} sample(s).', String(rows.length)));
+  return true;
+}
+
 export interface CreatedSample {
   id: string;
   alias: string | null;
@@ -125,9 +202,22 @@ export interface CreatedSample {
 export async function createSampleInteractive(
   app: App,
   plugin: LabnotePlugin,
-  opts: { type: string; folder: string; mode: 'generate' | 'manual'; scope?: SampleScope }
+  opts: {
+    type: string;
+    folder: string;
+    mode: 'generate' | 'manual';
+    scope?: SampleScope;
+    /**
+     * What was typed after `@type;` (#142): an ID of the type's form fills the
+     * ID prompt of manual entry, anything else the alias prompt.
+     */
+    initial?: string;
+  }
 ): Promise<CreatedSample | undefined> {
   const { type, folder, mode } = opts;
+  const initial = opts.initial?.trim() ?? '';
+  const initialId = initial && normalizeSampleId(type, initial) ? initial : undefined;
+  const initialAlias = initial && !initialId ? initial : '';
 
   let id: string;
   let existing: { folder: string; record: SampleRecord } | undefined;
@@ -136,7 +226,7 @@ export async function createSampleInteractive(
   } else {
     const entered = await promptModal(app, {
       title: plugin.t('Enter the {0} sample ID', type),
-      value: `${type}-`,
+      value: initialId ?? `${type}-`,
       placeholder: plugin.t('e.g. {0}-12345', type),
       validate: v =>
         normalizeSampleId(type, v) ? null : plugin.t('Invalid ID. Expected {0}-<number>.', type),
@@ -160,7 +250,7 @@ export async function createSampleInteractive(
     title: existing
       ? plugin.t('Enter a new alias')
       : plugin.t('Enter an alias for the new {0} sample (optional)', type),
-    value: existing?.record.alias ?? '',
+    value: existing?.record.alias ?? initialAlias,
     placeholder: plugin.t('e.g. Sample-A'),
     validate: validateAlias(plugin),
   });
@@ -375,7 +465,11 @@ export async function editSampleInteractive(
     title: plugin.t('Enter a new alias'),
     value: record.alias ?? '',
     placeholder: plugin.t('e.g. Sample-A'),
-    validate: validateAlias(plugin),
+    // An alias registered before #168 may keep its Markdown characters.
+    validate: v =>
+      v.trim() === (record.alias ?? '').trim() && sampleAliasProblem(v) === 'markdown'
+        ? null
+        : validateAlias(plugin)(v),
   });
   if (aliasRaw === undefined) return false;
   const descRaw = await promptModal(app, {
@@ -413,12 +507,58 @@ export async function editSampleInteractive(
     }
   }
 
-  const oldAlias = record.alias?.trim();
+  const oldAlias = record.alias?.trim() ?? '';
+  // From no alias to one, bare-id references can show it too (#170).
   const rewritten =
-    oldAlias && oldAlias !== (alias ?? '')
+    oldAlias !== (alias ?? '')
       ? await rewriteStaleAliases(app, plugin, { folder, type, id, oldAlias, newAlias: alias ?? '' })
       : undefined;
-  new Notice([plugin.t('Sample updated: {0}', id), rewritten].filter(Boolean).join(' '), rewritten ? 8000 : undefined);
+  const copies = await otherExperimentsWithSample(plugin, folder, type, id);
+  const elsewhere =
+    copies.length > 0
+      ? plugin.t('{0} is also registered in other experiments ({1}); only this one changed.', id, copies.join(', '))
+      : undefined;
+  new Notice(
+    [plugin.t('Sample updated: {0}', id), rewritten, elsewhere].filter(Boolean).join(' '),
+    rewritten || elsewhere ? 8000 : undefined
+  );
+  return true;
+}
+
+/**
+ * The experiments other than `folder`'s whose Local registry also has `(type,
+ * id)`: copies an import left behind, which an edit here does not reach (#173).
+ */
+export async function otherExperimentsWithSample(
+  plugin: LabnotePlugin,
+  folder: string,
+  type: string,
+  id: string
+): Promise<string[]> {
+  const out: string[] = [];
+  for (const other of await listExperimentSampleFolders(plugin.fs, '')) {
+    if (isSameSampleFolder(other, folder) || isSameSampleFolder(other, plugin.settings.globalSampleFolder)) continue;
+    if ((await loadSamplesByType(plugin.fs, other, type))[id]) out.push(getExperimentDir(other) ?? other);
+  }
+  return out;
+}
+
+/**
+ * Mark a sample discarded today, or in use again with `discarded: false`
+ * (#158). The record stays, so the notes that use it keep resolving it.
+ */
+export async function setSampleDiscardedInteractive(
+  plugin: LabnotePlugin,
+  opts: { folder: string; type: string; id: string; discarded: boolean }
+): Promise<boolean> {
+  const { folder, type, id, discarded } = opts;
+  const found = await setSampleDiscarded(plugin.fs, folder, type, id, discarded ? getSeoulDateString() : null);
+  if (!found) {
+    new Notice(plugin.t('Sample not found: {0}', id));
+    return false;
+  }
+  plugin.refreshSampleViews();
+  new Notice(discarded ? plugin.t('Marked {0} as discarded.', id) : plugin.t('{0} is no longer marked discarded.', id));
   return true;
 }
 
@@ -581,7 +721,8 @@ export async function notesInSampleScope(app: App, folder: string): Promise<Scop
 
 /**
  * After an alias edit, offer to replace `oldAlias` in the notes that still
- * show it (#86). A Global sample is skipped in experiments that have a Local
+ * show it (#86), or — when there was none — to add the new alias to the
+ * references that are the bare id (#170). A Global sample is skipped in experiments that have a Local
  * record with the same id, since their notes resolve to that one. Returns the
  * sentence to add to the "Sample updated" notice, if any.
  */
@@ -619,11 +760,14 @@ async function rewriteStaleAliases(
   const count = String(planned.length);
   const ok = await confirmModal(
     app,
-    newAlias
-      ? plugin.t("Replace the old alias '{1}' with '{2}' in {0} note(s)?\n\n{3}", count, oldAlias, newAlias, lines.join('\n'))
-      : plugin.t("Remove the old alias '{1}' from {0} note(s)?\n\n{2}", count, oldAlias, lines.join('\n')),
+    !oldAlias
+      ? plugin.t("Add the alias '{1}' to the references that show only the ID {2} in {0} note(s)?\n\n{3}", count, newAlias, id, lines.join('\n'))
+      : newAlias
+        ? plugin.t("Replace the old alias '{1}' with '{2}' in {0} note(s)?\n\n{3}", count, oldAlias, newAlias, lines.join('\n'))
+        : plugin.t("Remove the old alias '{1}' from {0} note(s)?\n\n{2}", count, oldAlias, lines.join('\n')),
     plugin.t('Replace')
   );
+  if (!oldAlias && !ok) return undefined;
   if (!ok) {
     const stale = plugin.t('{0} note(s) still show the old alias.', count);
     return planned.some(n => n.edits.some(e => e.kind === 'definition'))
@@ -677,14 +821,25 @@ export async function deleteSampleInteractive(
     const shown = usages.slice(0, 3).join(', ');
     const list =
       usages.length > 3 ? plugin.t('{0} (+{1} more)', shown, String(usages.length - 3)) : shown;
-    new Notice(
-      plugin.t(
-        '{0} is still used in notes ({1}). Remove it from the note(s) first, then delete.',
-        id,
-        list
-      ),
-      8000
+    const refused = plugin.t(
+      '{0} is still used in notes ({1}). Remove it from the note(s) first, then delete.',
+      id,
+      list
     );
+    const record = (await loadSamplesByType(plugin.fs, folder, type))[id];
+    if (!record || record.discarded) {
+      new Notice(refused, 8000);
+      return false;
+    }
+    // A used-up sample those notes still name is better kept and marked (#158).
+    const discard = await confirmModal(
+      app,
+      `${refused}
+
+${plugin.t('To keep it for those notes but show it as used up, mark it discarded instead.')}`,
+      plugin.t('Mark as discarded')
+    );
+    if (discard) await setSampleDiscardedInteractive(plugin, { folder, type, id, discarded: true });
     return false;
   }
 
@@ -802,7 +957,12 @@ export async function changeSampleTypeInteractive(
   }
   plugin.refreshSampleViews();
   const done = plugin.t('Changed {0} to {1}.', id, newId);
-  new Notice(planned.length > 0 ? `${done} ${plugin.t('{0} note(s) updated.', String(updated))}` : done);
+  // Ctrl+Z reverts a note but not the record, leaving the old id unregistered (#151).
+  const undo = plugin.t('Ctrl+Z only reverts the note, not the sample record. To undo, change the type again.');
+  new Notice(
+    planned.length > 0 ? `${done} ${plugin.t('{0} note(s) updated.', String(updated))} ${undo}` : done,
+    planned.length > 0 ? 10000 : undefined
+  );
   return true;
 }
 
@@ -837,7 +997,9 @@ export async function moveSampleInteractive(
   // Same-folder guard (e.g. no experiment open so Local === Global): moving
   // would delete then re-create in place, or worse, silently no-op.
   if (isSameSampleFolder(src, tgt)) {
-    new Notice(plugin.t('Local and Global folders are the same.'));
+    new Notice(
+      plugin.t('The open note is outside an experiment. Open a note of the experiment to move it to, then try again.')
+    );
     return false;
   }
 

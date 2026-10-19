@@ -24,6 +24,8 @@ import {
   locateInsertedUnitOpHeading,
   unitOpInsertPointAtCursor,
   EXPERIMENT_STATUSES,
+  isValidStatus,
+  CATALOG_KO,
   generateIssueMarkerId,
   isDiscussFlagged,
   parseFrontMatterYaml,
@@ -41,6 +43,7 @@ import { getObsidianLanguage } from './i18n';
 import {
   createLabnoteStructure,
   diagnoseExperimentPath,
+  getExperimentDir,
   sanitizeTitle,
 } from '@labnoteo/core/lib/labnoteStructure';
 import {
@@ -105,14 +108,38 @@ async function resolveLabnoteDir(app: App, host: LabnoteHost): Promise<string | 
   if (found.kind === 'ok') return found.folder;
   host.notify(
     'warn',
-    found.kind === 'noPrefix'
+    found.kind === 'nested'
       ? host.t(
-          '"{0}" is not an experiment folder: its name must start with ###_ (e.g. 001_Name).',
+          '"{0}" is not recognized as an experiment: experiment folders must be directly under labnote/. Move it back to labnote/.',
           posix.basename(found.folder)
         )
-      : host.t('Open a lab note first.')
+      : found.kind === 'noPrefix'
+        ? host.t(
+            '"{0}" is not an experiment folder: its name must start with ###_ (e.g. 001_Name).',
+            posix.basename(found.folder)
+          )
+        : host.t('Open a lab note first.')
   );
   return undefined;
+}
+
+/**
+ * Names under `labnote/`, plus the `###_` folders one level down in an
+ * unnumbered folder: an experiment moved into a grouping folder is no longer
+ * recognised, but its number must not be handed out again (#166).
+ */
+async function experimentFolderNames(host: LabnoteHost): Promise<string[]> {
+  const names = await host.fs.list('labnote');
+  const nested: string[] = [];
+  for (const name of names) {
+    if (/^\d{3}_/.test(name) || name.includes('.')) continue;
+    try {
+      nested.push(...(await host.fs.list(posix.join('labnote', name))).filter(n => /^\d{3}_/.test(n)));
+    } catch {
+      // Not a folder.
+    }
+  }
+  return [...names, ...nested];
 }
 
 /** Create a new experiment folder (labnote/###_Title) + README scaffold. */
@@ -130,7 +157,7 @@ export async function createExperimentCommand(app: App, host: LabnoteHost): Prom
   });
   if (!title) return;
 
-  const existing = await host.fs.list('labnote');
+  const existing = await experimentFolderNames(host);
   const structure = createLabnoteStructure(VAULT_ROOT, title.trim(), existing, undefined, {
     locale: getObsidianLanguage(),
   });
@@ -176,27 +203,44 @@ export async function changeExperimentStatusCommand(
   const { frontMatter, body } = parsed;
 
   const current = typeof frontMatter.status === 'string' ? frontMatter.status : undefined;
+  const folderName = posix.basename(labnoteDir);
+  // A value typed in the properties panel may be outside the list (#143);
+  // validate fails on it only after a push, so say so here.
+  const placeholder =
+    current && !isValidStatus(current)
+      ? host.t('The current status "{0}" is not an allowed value. Select a status', current)
+      : host.t('Select a status');
   const chosen = await host.pick(
     EXPERIMENT_STATUSES.map(status => ({
       label: status,
       description: status === current ? host.t('current') : undefined,
       value: status,
     })),
-    { title: host.t('Change experiment status'), placeholder: host.t('Select a status') }
+    { title: `${host.t('Change experiment status')}: ${folderName}`, placeholder }
   );
   if (!chosen || chosen === current) return;
+
+  if (chosen === 'completed' && !(await confirmCompleted(host, labnoteDir, body))) return;
 
   // Set (or insert, when absent) `status`. Spreading keeps the order of the
   // existing keys and appends `status` for notes that predate the field.
   const updated = renderNote({ ...frontMatter, status: chosen }, body);
 
   await writeNoteThroughVault(app, host, readmePath, stamp(updated));
-  let message = host.t('Experiment status changed: {0} → {1}', current ?? host.t('(none)'), chosen);
+  let message = host.t('Experiment status changed ({0}): {1} → {2}', folderName, current ?? host.t('(none)'), chosen);
   // Ctrl+Z only reaches the README when it is the open note (#126).
-  if (app.workspace.getActiveFile()?.path !== readmePath) {
-    message += ` ${host.t("Changed {0}'s README, not this note.", posix.basename(labnoteDir))}`;
+  const active = app.workspace.getActiveFile()?.path;
+  if (active !== readmePath) {
+    message += ` ${host.t("Changed {0}'s README, not this note.", folderName)}`;
     if (current) {
-      message += ` ${host.t('To undo, run "{0}" again and pick {1}.', host.t('Change experiment status'), current)}`;
+      // From the workflow view with another experiment open, the palette
+      // command would change the open experiment instead (#141).
+      const sameExperiment = active !== undefined && getExperimentDir(active) === labnoteDir;
+      message += ` ${
+        experimentDir !== undefined && !sameExperiment
+          ? host.t('To undo, right-click this experiment in the workflow view again and pick {0}.', current)
+          : host.t('To undo, run "{0}" again and pick {1}.', host.t('Change experiment status'), current)
+      }`;
     }
   }
   // `needs-review` only opens a review issue through the automation (#79).
@@ -215,6 +259,40 @@ export async function changeExperimentStatusCommand(
 }
 
 /**
+ * Before an experiment is marked completed — the state the automation drafts
+ * papers from — ask when its checklist still has unchecked workflows or
+ * workflow notes without an `end_date` (#174). True to go ahead.
+ */
+async function confirmCompleted(host: LabnoteHost, labnoteDir: string, readmeBody: string): Promise<boolean> {
+  const items = parseWorkflowChecklistFromReadme(readmeBody);
+  const unchecked = items.filter(i => !i.done).length;
+  let noEndDate = 0;
+  for (const item of items) {
+    let name = normalizeChecklistLink(item.fileName, labnoteDir);
+    try {
+      name = decodeURI(name);
+    } catch {
+      // Used as written.
+    }
+    if (name.includes('/')) continue;
+    const path = posix.join(labnoteDir, name);
+    if (!(await host.fs.exists(path))) continue;
+    const { frontMatter } = parseFrontMatterYaml((await host.fs.read(path)).replace(/\r\n/g, '\n'));
+    const end = frontMatter.end_date;
+    if ('end_date' in frontMatter && (end === null || end === undefined || String(end).trim() === '')) noEndDate++;
+  }
+  if (unchecked === 0 && noEndDate === 0) return true;
+  return host.confirm(
+    host.t(
+      '{0} workflow(s) in the checklist are not checked and {1} workflow note(s) have no end_date. Mark the experiment completed anyway?',
+      String(unchecked),
+      String(noEndDate)
+    ),
+    { confirmLabel: host.t('Mark completed') }
+  );
+}
+
+/**
  * Insert a date (or date and time) over the selection. In the front matter it
  * only fills a key with an empty value; elsewhere there it is refused with a
  * warning, since the text would break the YAML (#106).
@@ -229,7 +307,9 @@ export function insertDateCommand(editor: Editor, host: LabnoteHost, text: strin
   if ('reason' in plan) {
     host.notify(
       'warn',
-      host.t('A date cannot go on a front matter line that has a value. Run this in the body or on an empty value.')
+      plan.reason === 'metaDate'
+        ? host.t('This Start_date/End_date already has a value. Use the 📅 picker next to it to change the date.')
+        : host.t('A date cannot go on a front matter line that has a value. Run this in the body or on an empty value.')
     );
     return false;
   }
@@ -566,6 +646,16 @@ export async function registerWorkflowInReadme(
   return true;
 }
 
+/**
+ * In the Korean UI, a bundled catalog item's Korean name for the picker's
+ * description line and its search words (#163); nothing for items a lab added.
+ */
+function catalogKoFields(id: string, description: string): { description: string; keywords?: readonly string[] } {
+  const ko = getObsidianLanguage().toLowerCase().startsWith('ko') ? CATALOG_KO[id] : undefined;
+  if (!ko) return { description };
+  return { description: `${ko.name} · ${description}`, keywords: [ko.name, ...(ko.keywords ?? [])] };
+}
+
 /** Present the workflow catalog picker (seeding catalog resources first). */
 async function pickWorkflow(host: LabnoteHost): Promise<WorkflowItem | undefined> {
   await ensureWorkflowResources(host.fs, VAULT_ROOT);
@@ -573,7 +663,7 @@ async function pickWorkflow(host: LabnoteHost): Promise<WorkflowItem | undefined
   return host.pick(
     catalog.workflows.map<PickItem<WorkflowItem>>(wf => ({
       label: `${wf.id}: ${wf.name}`,
-      description: wf.category,
+      ...catalogKoFields(wf.id, wf.category),
       detail: wf.description,
       value: wf,
     })),
@@ -718,13 +808,13 @@ export async function insertUnitOperationCommand(app: App, host: LabnoteHost): P
   const items: PickItem<{ op: UnitOperationItem; kind: 'hw' | 'sw' }>[] = [
     ...hw.unitOperations.map(op => ({
       label: `${op.id}: ${op.name}`,
-      description: 'HW',
+      ...catalogKoFields(op.id, 'HW'),
       detail: op.description,
       value: { op, kind: 'hw' as const },
     })),
     ...sw.unitOperations.map(op => ({
       label: `${op.id}: ${op.name}`,
-      description: 'SW',
+      ...catalogKoFields(op.id, 'SW'),
       detail: op.description,
       value: { op, kind: 'sw' as const },
     })),
@@ -802,7 +892,8 @@ export interface ReadmeSyncControl {
 export async function renumberWorkflowsCommand(
   app: App,
   host: LabnoteHost,
-  readmeSync: ReadmeSyncControl
+  readmeSync: ReadmeSyncControl,
+  renameSampleSources?: (dir: string, renames: ReadonlyMap<string, string>) => Promise<void>
 ): Promise<void> {
   const labnoteDir = await resolveLabnoteDir(app, host);
   if (!labnoteDir) return;
@@ -871,6 +962,10 @@ export async function renumberWorkflowsCommand(
       await readmeSync.release(labnoteDir, { dropRenames: true });
     }
   }
+  // The rename listener skips the held folder; the Local registry follows the
+  // net renames here, staging names left out (#149).
+  const net = netRenames(moved);
+  if (renameSampleSources && net.size > 0) await renameSampleSources(labnoteDir, net);
 
   if (renames.length > 0) {
     const done = host.t('Renumbered {0} workflow file(s).', String(renames.length));
@@ -890,6 +985,17 @@ export async function renumberWorkflowsCommand(
       host.t('{0} table CSV file(s) kept their old name: the new name was taken or the rename failed.', String(csvSkipped))
     );
   }
+}
+
+/** Each original name of a chain of `moves` mapped to its final name, unchanged ones left out. */
+export function netRenames(moves: readonly WorkflowRename[]): Map<string, string> {
+  const origin = new Map<string, string>();
+  for (const { from, to } of moves) {
+    const first = origin.get(from) ?? from;
+    origin.delete(from);
+    origin.set(to, first);
+  }
+  return new Map([...origin].filter(([to, from]) => to !== from).map(([to, from]) => [from, to]));
 }
 
 /**
@@ -1225,7 +1331,15 @@ export async function syncWorkflowChecklistCommand(
   });
   if (experimenters.length > 0) {
     const list = experimenters
-      .map(e => `- ${e.name}: ${e.from || host.t('(empty)')} → ${e.to}`)
+      .map(e => {
+        const counts = [
+          host.t('{0} unit operation line(s)', String(e.unitOpLines)),
+          ...(e.skippedLines > 0
+            ? [host.t('{0} kept because the unit operation has an End_date', String(e.skippedLines))]
+            : []),
+        ].join(', ');
+        return `- ${e.name}: ${e.from || host.t('(empty)')} → ${e.to} (${counts})`;
+      })
       .join('\n');
     const ok = await host.confirm(
       `${host.t("These notes' experimenter differs from the README author. Update them?")}\n\n${list}`,

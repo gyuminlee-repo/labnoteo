@@ -28,6 +28,13 @@ describe('parseSampleTrigger', () => {
     expect(t!.searchTerm).toBe('my plasmid');
   });
 
+  // #171
+  it('closes once a definition is being typed', () => {
+    expect(parseSampleTrigger('@DNA;DNA-001;', TYPES)).toBeUndefined();
+    expect(parseSampleTrigger('@DNA;DNA-001;my plasmid', TYPES)).toBeUndefined();
+    expect(parseSampleTrigger('@DNA;DNA-001', TYPES)).toBeDefined();
+  });
+
   it('treats @sample as all types', () => {
     const t = parseSampleTrigger('@sample:', TYPES);
     expect(t!.typesToSearch).toEqual(TYPES);
@@ -147,5 +154,25 @@ describe('findSampleIdRanges', () => {
   it('still finds an ASCII-type id glued to Korean text', () => {
     expect(findSampleIdRanges('같게Plasmid-1', ['Plasmid'])).toEqual([{ start: 2, end: 11, type: 'Plasmid' }]);
     expect(findSampleIdRanges('xDNA-1', ['DNA'])).toEqual([]);
+  });
+});
+
+describe('discarded samples in completion (#158)', () => {
+  it('lists discarded samples after every sample in use, keeping their order', () => {
+    const trigger = parseSampleTrigger('@dna;', TYPES)!;
+    const entries = buildSampleCompletionEntries(trigger, {
+      DNA: [
+        { id: 'DNA-1', alias: null, discarded: '2026-10-01' },
+        { id: 'DNA-2', alias: null },
+        { id: 'DNA-3', alias: null, discarded: '2026-10-02' },
+        { id: 'DNA-4', alias: null, discarded: null },
+      ],
+    });
+    expect(entries.map(e => [e.id, e.discarded ?? false])).toEqual([
+      ['DNA-2', false],
+      ['DNA-4', false],
+      ['DNA-1', true],
+      ['DNA-3', true],
+    ]);
   });
 });

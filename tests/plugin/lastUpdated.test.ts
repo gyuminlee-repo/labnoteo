@@ -101,7 +101,7 @@ describe('changing the status to needs-review', () => {
 
   it('says to run the setup when the automation is not installed', async () => {
     expect(await notified({}, 'needs-review')).toEqual([
-      'Experiment status changed: {0} → {1} To open a review issue, run "Setup research automation" first.',
+      'Experiment status changed ({0}): {1} → {2} To open a review issue, run "Setup research automation" first.',
     ]);
   });
 
@@ -112,9 +112,9 @@ describe('changing the status to needs-review', () => {
 
   it('adds nothing when the automation is ready, or for another status', async () => {
     expect(await notified({ [WORKFLOW_YML]: '', '.git': '' }, 'needs-review')).toEqual([
-      'Experiment status changed: {0} → {1}',
+      'Experiment status changed ({0}): {1} → {2}',
     ]);
-    expect(await notified({}, 'in-progress')).toEqual(['Experiment status changed: {0} → {1}']);
+    expect(await notified({}, 'in-progress')).toEqual(['Experiment status changed ({0}): {1} → {2}']);
   });
 });
 
@@ -138,12 +138,12 @@ describe('the status-change notice', () => {
   }
 
   it('shows the old and new status', async () => {
-    expect(await shownFrom(README)).toBe('Experiment status changed: planned → discontinued');
+    expect(await shownFrom(README)).toBe('Experiment status changed (001_Test): planned → discontinued');
   });
 
   it('names the README and how to undo when run from another note', async () => {
     expect(await shownFrom(WORKFLOW)).toBe(
-      "Experiment status changed: planned → discontinued Changed 001_Test's README, not this note. " +
+      "Experiment status changed (001_Test): planned → discontinued Changed 001_Test's README, not this note. " +
         'To undo, run "Change experiment status" again and pick planned.'
     );
   });
@@ -156,6 +156,79 @@ describe('the status-change notice', () => {
 
   it('changes the experiment it is handed, whatever note is active (#128)', async () => {
     expect(await shownFrom('labnote/002_Other/README.labnote.md', DIR)).toContain("Changed 001_Test's README");
+  });
+
+  // #141: the palette command would change the open experiment, not this one.
+  it('points back to the workflow view when handed another experiment than the open one', async () => {
+    const shown = await shownFrom('labnote/002_Other/README.labnote.md', DIR);
+    expect(shown).toContain('To undo, right-click this experiment in the workflow view again and pick planned.');
+    expect(await shownFrom(WORKFLOW, DIR)).toContain('To undo, run "Change experiment status" again');
+  });
+
+  // #141, #143
+  it('names the experiment in the picker and flags a status outside the list', async () => {
+    const fs = new MemFileSystem({ [README]: note().replace('status: planned', 'status: Failed') });
+    let opts: { title?: string; placeholder?: string } = {};
+    const host = {
+      fs,
+      t: (s: string, ...args: string[]) => args.reduce((acc, a, i) => acc.replace(`{${i}}`, a), s),
+      notify: () => {},
+      pick: async (_items: unknown, o: typeof opts) => {
+        opts = o;
+        return undefined;
+      },
+    } as unknown as LabnoteHost;
+    await changeExperimentStatusCommand(makeApp(), host, undefined, DIR);
+    expect(opts.title).toBe('Change experiment status: 001_Test');
+    expect(opts.placeholder).toContain('"Failed" is not an allowed value');
+  });
+});
+
+// #174: completed is what the automation drafts papers from.
+describe('changing the status to completed', () => {
+  const readme = (checklist: string) =>
+    `${note()}\n## 🗂️ 관련 워크플로 (Related Workflows)\n\n${checklist}\n`;
+  async function run(files: Record<string, string>, confirmed: boolean) {
+    const fs = new MemFileSystem(files);
+    const asked: string[] = [];
+    const host = {
+      ...makeHost(fs, 'completed'),
+      t: (s: string, ...args: string[]) => args.reduce((acc, a, i) => acc.replace(`{${i}}`, a), s),
+      confirm: async (m: string) => {
+        asked.push(m);
+        return confirmed;
+      },
+    } as unknown as LabnoteHost;
+    await changeExperimentStatusCommand(makeApp(), host);
+    return { asked, out: await fs.read(README) };
+  }
+  const wf = (end: string) => `---\ntitle: X\nend_date: ${end}\n---\n`;
+
+  it('asks when workflows are unchecked or have no end_date, and stops on no', async () => {
+    const { asked, out } = await run(
+      {
+        [README]: readme('- [x] [WD010 A](./001_WD010_A.labnote.md)\n- [ ] [WD020 B](./002_WD020_B.labnote.md)'),
+        [`${DIR}/001_WD010_A.labnote.md`]: wf("''"),
+        [`${DIR}/002_WD020_B.labnote.md`]: wf('2026-10-10'),
+      },
+      false
+    );
+    expect(asked).toEqual([
+      '1 workflow(s) in the checklist are not checked and 1 workflow note(s) have no end_date. Mark the experiment completed anyway?',
+    ]);
+    expect(out).toContain('status: planned');
+  });
+
+  it('goes ahead without asking when everything is done', async () => {
+    const { asked, out } = await run(
+      {
+        [README]: readme('- [x] [WD010 A](./001_WD010_A.labnote.md)'),
+        [`${DIR}/001_WD010_A.labnote.md`]: wf('2026-10-10'),
+      },
+      false
+    );
+    expect(asked).toEqual([]);
+    expect(out).toContain('status: completed');
   });
 
   it('toggles the flag of the experiment it is handed, whatever note is active (#134)', async () => {

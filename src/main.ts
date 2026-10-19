@@ -22,6 +22,7 @@ import {
   touchLastUpdatedDate,
 } from '@labnoteo/core/lib/dateUtils';
 import { getSampleDisplayMeta, isCatalogSampleType } from '@labnoteo/core/lib/sampleUtils';
+import { isPathTooLongError, PATH_SEGMENT_MAX } from '@labnoteo/core/lib/regexUtils';
 import {
   classifyWorkflowMoveOut,
   classifyWorkflowRename,
@@ -31,6 +32,7 @@ import {
   parseWorkflowFileName,
   parseWorkflowHeading,
   planWorkflowChecklistSync,
+  resetCopiedWorkflowDates,
   rewriteWorkflowTitle,
   suggestCopiedWorkflowFileName,
   type WorkflowHeading,
@@ -42,6 +44,7 @@ import {
   hasReferenceCatalog,
   inventorySampleFolder,
   moveSampleFolder,
+  renameSampleSourcesInFolder,
 } from '@labnoteo/core/lib/sampleStorage';
 import { VaultFileSystem } from './vaultFileSystem';
 import { createObsidianTranslator } from './i18n';
@@ -82,6 +85,7 @@ import {
   pickCatalogReference,
   insertSampleReference,
   listSampleDefinitions,
+  insertExperimentSamplesTable,
 } from './sampleActions';
 import {
   offerSamplesAfterMove,
@@ -140,6 +144,8 @@ export default class LabnotePlugin extends Plugin {
   private readonly readmeSyncTimers = new Map<string, number>();
   // Folders whose README sync is paused (renumbering): events queue, no timer.
   private readonly readmeSyncHolds = new Set<string>();
+  // Per experiment: the last queued Local registry rename of note names (#149).
+  private readonly sampleSourceRenames = new Map<string, Promise<void>>();
   // The latest README flush per folder, so a new one runs after it, never beside it.
   private readonly readmeSyncInFlight = new Map<string, Promise<void>>();
   // Set on unload: a flush still waiting for a modal to close must not write.
@@ -260,6 +266,16 @@ export default class LabnotePlugin extends Plugin {
   private run(fn: () => Promise<void>): void {
     fn().catch((err: unknown) => {
       console.error('[labnoteo] command failed:', err);
+      if (isPathTooLongError(err)) {
+        this.host.notify(
+          'error',
+          this.t(
+            'Command failed: the name is too long for the file system. Shorten the title or alias to {0} characters or fewer.',
+            String(PATH_SEGMENT_MAX)
+          )
+        );
+        return;
+      }
       const msg = err instanceof Error ? err.message : String(err);
       this.host.notify('error', this.t('Command failed: {0}', msg));
     });
@@ -326,7 +342,11 @@ export default class LabnotePlugin extends Plugin {
     this.addCommand({
       id: 'setup-research-automation',
       name: this.t('Setup research automation'),
-      callback: () => this.run(() => setupResearchAutomationCommand(this.host, this.manifest.version)),
+      callback: () =>
+        this.run(async () => {
+          await setupResearchAutomationCommand(this.host, this.manifest.version);
+          await this.offerAttachmentFolder();
+        }),
     });
 
     this.addCommand({
@@ -339,7 +359,11 @@ export default class LabnotePlugin extends Plugin {
       id: 'renumber-workflows',
       name: this.t('Renumber workflows'),
       callback: () =>
-        this.run(() => renumberWorkflowsCommand(this.app, this.host, this.readmeSyncControl())),
+        this.run(() =>
+          renumberWorkflowsCommand(this.app, this.host, this.readmeSyncControl(), (dir, renames) =>
+            this.queueSampleSourceRenames(dir, renames)
+          )
+        ),
     });
 
     this.addCommand({
@@ -358,6 +382,15 @@ export default class LabnotePlugin extends Plugin {
       id: 'open-sample-definition',
       name: this.t('Open sample definition'),
       callback: () => this.run(() => this.openSampleDefinitionCommand()),
+    });
+
+    this.addCommand({
+      id: 'insert-experiment-samples-table',
+      name: this.t('Insert sample list of this experiment'),
+      callback: () =>
+        this.run(async () => {
+          await insertExperimentSamplesTable(this.app, this);
+        }),
     });
 
     this.addCommand({
@@ -661,6 +694,7 @@ export default class LabnotePlugin extends Plugin {
         }
         if (!(file instanceof TFile)) return;
         const newPath = file.path;
+        this.renameLocalSampleSources(oldPath, newPath);
         // Ahead of the copy branch, which returns early: a copy moved to
         // another experiment needs its samples too.
         this.offerLocalSamplesMoved(oldPath, newPath);
@@ -732,6 +766,39 @@ export default class LabnotePlugin extends Plugin {
   }
 
   /**
+   * A note was renamed within its folder in an experiment: the Local registry
+   * lists it under the new name (#149). Renumbering holds the folder and
+   * applies all its renames at once when it is done.
+   */
+  private renameLocalSampleSources(oldPath: string, newPath: string): void {
+    if (!newPath.endsWith('.md') || posix.dirname(newPath) !== posix.dirname(oldPath)) return;
+    const dir = getExperimentDir(newPath);
+    if (!dir || this.readmeSyncHolds.has(dir)) return;
+    const from = posix.basename(oldPath);
+    const to = posix.basename(newPath);
+    if (from !== to) void this.queueSampleSourceRenames(dir, new Map([[from, to]]));
+  }
+
+  /**
+   * Rename note names in `dir`'s Local registry, one write after another per
+   * experiment so quick successive renames apply in event order.
+   */
+  queueSampleSourceRenames(dir: string, renames: ReadonlyMap<string, string>): Promise<void> {
+    const folder = posix.join(dir, 'resources', 'labsamples');
+    const types = getSampleDisplayMeta(this.settings.customSampleTypes).types;
+    const next = (this.sampleSourceRenames.get(dir) ?? Promise.resolve())
+      .then(async () => {
+        if ((await renameSampleSourcesInFolder(this.fs, folder, renames, types)) > 0) this.refreshSampleViews();
+      })
+      .catch(err => console.error('Labnote: renaming sample sources failed', err));
+    this.sampleSourceRenames.set(dir, next);
+    void next.then(() => {
+      if (this.sampleSourceRenames.get(dir) === next) this.sampleSourceRenames.delete(dir);
+    });
+    return next;
+  }
+
+  /**
    * A folder was renamed. Keep the remembered experiment (Local samples) on
    * the new path, or forget it when the new path is no experiment; and when
    * an experiment folder lost its `###_` number, say what that breaks and
@@ -749,8 +816,36 @@ export default class LabnotePlugin extends Plugin {
     const before = diagnoseExperimentPath(oldPath, { isFolder: true });
     const after = diagnoseExperimentPath(newPath, { isFolder: true });
     if (before.kind !== 'ok' || before.folder !== oldPath) return;
+    if (after.kind === 'nested' && after.folder === newPath) {
+      this.run(() => this.offerExperimentFolderMoveBack(folder, posix.dirname(oldPath)));
+      return;
+    }
     if (after.kind !== 'noPrefix' || after.folder !== newPath) return;
     this.run(() => this.offerExperimentFolderNameFix(folder, posix.basename(oldPath)));
+  }
+
+  /**
+   * An experiment folder was moved into a grouping folder under `labnote/`,
+   * where nothing recognises it as an experiment (#166): offer it back.
+   */
+  private async offerExperimentFolderMoveBack(folder: TFolder, labnoteDir: string): Promise<void> {
+    const movedPath = folder.path;
+    const target = posix.join(labnoteDir, folder.name);
+    const warning = this.t(
+      '"{0}" is no longer recognized as an experiment: experiment folders must be directly under labnote/. Workflow commands, the experiment list and Local samples will not find it.',
+      folder.name
+    );
+    const settled = await this.waitForNoModal();
+    if (this.unloaded || folder.path !== movedPath) return;
+    if (!settled || this.app.vault.getAbstractFileByPath(target)) {
+      this.host.notify('warn', warning);
+      return;
+    }
+    const ok = await this.host.confirm(`${warning} ${this.t('Move it back to {0}?', `${labnoteDir}/`)}`, {
+      confirmLabel: this.t('Move back'),
+    });
+    if (!ok || folder.path !== movedPath || this.app.vault.getAbstractFileByPath(target)) return;
+    await this.app.fileManager.renameFile(folder, target);
   }
 
   private async offerExperimentFolderNameFix(folder: TFolder, oldName: string): Promise<void> {
@@ -924,9 +1019,58 @@ export default class LabnotePlugin extends Plugin {
     }
     // Dropped first so the rename below is not taken for a rename by hand.
     this.copiedWorkflows.delete(copyPath);
+    await this.resetCopyDates(file);
     await this.app.fileManager.renameFile(file, target);
     if (await addWorkflowFileToChecklist(this.app, this.host, dir, suggestion)) {
       this.host.notify('info', this.t('Added "{0}" to the README checklist.', suggestion));
+    }
+  }
+
+  /**
+   * With Obsidian's default attachment location (the vault root), images
+   * pasted into lab notes pile up outside the experiment folders (#154).
+   * Offer `./images`, the experiment's images folder for a lab note. The
+   * vault config API is not public, so nothing is asked without it.
+   */
+  private async offerAttachmentFolder(): Promise<void> {
+    const vault = this.app.vault as unknown as {
+      getConfig?: (key: string) => unknown;
+      setConfig?: (key: string, value: unknown) => void;
+    };
+    if (typeof vault.getConfig !== 'function' || typeof vault.setConfig !== 'function') return;
+    const current = vault.getConfig('attachmentFolderPath');
+    if (current !== undefined && current !== null && current !== '' && current !== '/') return;
+    const ok = await this.host.confirm(
+      this.t(
+        'Pasted images are saved at the top of the vault. Save them in an images folder next to the note instead (for a lab note, the experiment\'s images folder)? This changes Settings → Files and links → Default location for new attachments to "./images".'
+      ),
+      { confirmLabel: this.t('Use ./images') }
+    );
+    if (!ok) return;
+    vault.setConfig('attachmentFolderPath', './images');
+    this.host.notify('info', this.t('New attachments now go to the images folder next to each note.'));
+  }
+
+  /**
+   * Date a copy that is becoming a workflow of its own from today, with its
+   * end and unit-op dates emptied (#160), and say so.
+   */
+  private async resetCopyDates(file: TFile): Promise<void> {
+    const today = getSeoulDateString();
+    let changed = false;
+    await this.app.vault.process(file, data => {
+      const next = resetCopiedWorkflowDates(data, today);
+      changed = next !== data;
+      return next;
+    });
+    if (changed) {
+      this.host.notify(
+        'info',
+        this.t(
+          'Reset the dates of the copy {0}: created today, with the end date and the unit operations\' Start_date/End_date emptied.',
+          file.name
+        )
+      );
     }
   }
 
@@ -979,6 +1123,7 @@ export default class LabnotePlugin extends Plugin {
     // Dropped first so the rename below is not taken for a rename by hand.
     this.copiedWorkflows.delete(copyPath);
     await this.app.vault.process(file, data => rewriteWorkflowTitle(data, heading.id, heading.name, alias));
+    await this.resetCopyDates(file);
     await this.app.fileManager.renameFile(file, target);
     if (await addWorkflowFileToChecklist(this.app, this.host, dir, fileName)) {
       this.host.notify('info', this.t('Added "{0}" to the README checklist.', fileName));
@@ -995,6 +1140,7 @@ export default class LabnotePlugin extends Plugin {
       confirmLabel: this.t('Add to checklist'),
     });
     if (!ok || file.path !== path) return;
+    await this.resetCopyDates(file);
     if (await addWorkflowFileToChecklist(this.app, this.host, posix.dirname(path), file.name)) {
       this.host.notify('info', this.t('Added "{0}" to the README checklist.', file.name));
     }
