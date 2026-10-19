@@ -90,7 +90,16 @@ describe('create_sample / get_sample / list_samples', () => {
   });
 
   it('rejects an alias with ";" or ":" and a description with ";" without writing (#98)', async () => {
-    for (const args of [{ alias: 'EXT-01;여름' }, { alias: '1:10' }, { description: '여름; 추출' }]) {
+    for (const args of [
+      { alias: 'EXT-01;여름' },
+      { alias: '1:10' },
+      { description: '여름; 추출' },
+      // #168
+      { alias: '#1' },
+      { alias: '[[pUC19]]' },
+      { alias: '*v2*' },
+      { alias: '`x`' },
+    ]) {
       const res = await tool('create_sample').handler(ctx, {
         type: 'DNA',
         id: 'DNA-7',

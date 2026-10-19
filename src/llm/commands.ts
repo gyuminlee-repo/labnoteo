@@ -306,8 +306,14 @@ export function prepareExtractedSamples(
     const rawId = typeof s.id === 'string' && s.id.trim() ? s.id.trim() : undefined;
     const id = rawId === undefined ? undefined : normalizeSampleId(type, rawId);
     // `create_sample` rejects the characters that split a sample in a note
-    // (#98); nobody can be asked here, so replace them instead.
-    const toAlias = (v: string) => v.replace(/[;:]/g, '-');
+    // (#98) or that Markdown reads as a tag, link, emphasis or code (#168);
+    // nobody can be asked here, so replace them instead.
+    const toAlias = (v: string) =>
+      v
+        .replace(/[;:]/g, '-')
+        .replace(/\[\[|\]\]/g, '')
+        .replace(/[#*`]/g, '')
+        .trim() || undefined;
     const alias = typeof s.alias === 'string' && s.alias.trim() ? toAlias(s.alias) : undefined;
     const description = typeof s.description === 'string' ? s.description.replace(/;/g, ',') : undefined;
     if (rawId !== undefined && !id) {

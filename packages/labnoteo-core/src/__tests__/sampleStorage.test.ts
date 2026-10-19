@@ -536,6 +536,15 @@ describe('planAliasRewrite', () => {
     expect(rewrite(text, 'DNA-1', 'old name', 'new')).toBe('@dna;DNA-1;new;원본 플라스미드\n');
   });
 
+  // #170
+  it('adds a new alias to bare-id references when there was none', () => {
+    const text = 'DNA-1 을 썼다. DNA-12, DNA-1-3, DNA-1;\n@dna;DNA-1\n| DNA-1 |\n';
+    expect(rewrite(text, 'DNA-1', '', 'pUC19')).toBe(
+      'DNA-1;pUC19 을 썼다. DNA-12, DNA-1-3, DNA-1;pUC19\n@dna;DNA-1\n| DNA-1;pUC19 |\n'
+    );
+    expect(planAliasRewrite(text, 'DNA', 'DNA-1', '', '')).toEqual([]);
+  });
+
   it('rewrites every definition of the id in the note', () => {
     expect(rewrite('@dna;DNA-1;old\n본문\n@DNA;DNA-1;old\n', 'DNA-1', 'old', 'new')).toBe(
       '@dna;DNA-1;new\n본문\n@dna;DNA-1;new\n'

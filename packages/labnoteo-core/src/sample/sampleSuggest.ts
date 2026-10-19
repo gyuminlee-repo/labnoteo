@@ -60,6 +60,9 @@ export function parseSampleTrigger(
   if (!m || m.index === undefined) return undefined;
 
   const rawType = m[1].toLowerCase();
+  // A second `;` means a definition (`@dna;ID;alias;…`) is being typed, where
+  // a suggestion would only get in the way (#171).
+  if (m[2].includes(';')) return undefined;
   const searchTerm = m[2].toLowerCase();
   const startCol = m.index;
   const fullPrefix = `@${rawType};`;

@@ -46,6 +46,17 @@ describe('prepareExtractedSamples', () => {
     ]);
   });
 
+  it('drops the Markdown characters create_sample refuses (#168)', () => {
+    const out = prepareExtractedSamples(
+      [
+        { type: 'DNA', id: 'DNA-1', alias: '#1 [[pUC19]] *v2* `x`' },
+        { type: 'DNA', id: 'DNA-2', alias: '###' },
+      ],
+      TYPES
+    );
+    expect(out.samples.map(s => s.alias)).toEqual(['1 pUC19 v2 x', undefined]);
+  });
+
   it('skips unknown types and accepts custom ones', () => {
     const out = prepareExtractedSamples([{ type: 'Gizmo' }, { type: '배지', id: '배지-1' }], TYPES);
     expect(out.samples).toEqual([{ type: '배지', id: '배지-1', alias: undefined, description: undefined }]);

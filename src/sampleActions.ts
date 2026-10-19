@@ -16,8 +16,8 @@ import {
   buildSampleReferenceText,
   isCatalogSampleType,
   getSampleDisplayMeta,
-  hasSampleAliasSeparator,
   hasSampleDescriptionSeparator,
+  sampleAliasProblem,
 } from '@labnoteo/core/lib/sampleUtils';
 import {
   loadSamplesByType,
@@ -59,14 +59,25 @@ function clean(value: string | undefined): string | null {
   return value && value.trim() ? value.trim() : null;
 }
 
-/** Block the characters that would split the alias in a note (#98). */
-function validateAlias(plugin: LabnotePlugin): (value: string) => string | null {
-  return v =>
-    hasSampleAliasSeparator(v)
-      ? plugin.t(
+/**
+ * Block the characters that would split the alias in a note (#98) or that
+ * Markdown reads as a tag, link, emphasis or code (#168).
+ */
+export function validateAlias(plugin: Pick<LabnotePlugin, 't'>): (value: string) => string | null {
+  return v => {
+    switch (sampleAliasProblem(v)) {
+      case 'separator':
+        return plugin.t(
           'An alias cannot contain ";" or ":", which separate the ID, alias and description in a note. Use "-" or "/" instead (e.g. 1-10).'
-        )
-      : null;
+        );
+      case 'markdown':
+        return plugin.t(
+          'An alias cannot contain #, [[, ]], * or `, which Markdown reads as a tag, link, emphasis or code. Use "-" or "/" instead.'
+        );
+      default:
+        return null;
+    }
+  };
 }
 
 /** Block the character that would end the description in a note (#98). */
@@ -125,9 +136,22 @@ export interface CreatedSample {
 export async function createSampleInteractive(
   app: App,
   plugin: LabnotePlugin,
-  opts: { type: string; folder: string; mode: 'generate' | 'manual'; scope?: SampleScope }
+  opts: {
+    type: string;
+    folder: string;
+    mode: 'generate' | 'manual';
+    scope?: SampleScope;
+    /**
+     * What was typed after `@type;` (#142): an ID of the type's form fills the
+     * ID prompt of manual entry, anything else the alias prompt.
+     */
+    initial?: string;
+  }
 ): Promise<CreatedSample | undefined> {
   const { type, folder, mode } = opts;
+  const initial = opts.initial?.trim() ?? '';
+  const initialId = initial && normalizeSampleId(type, initial) ? initial : undefined;
+  const initialAlias = initial && !initialId ? initial : '';
 
   let id: string;
   let existing: { folder: string; record: SampleRecord } | undefined;
@@ -136,7 +160,7 @@ export async function createSampleInteractive(
   } else {
     const entered = await promptModal(app, {
       title: plugin.t('Enter the {0} sample ID', type),
-      value: `${type}-`,
+      value: initialId ?? `${type}-`,
       placeholder: plugin.t('e.g. {0}-12345', type),
       validate: v =>
         normalizeSampleId(type, v) ? null : plugin.t('Invalid ID. Expected {0}-<number>.', type),
@@ -160,7 +184,7 @@ export async function createSampleInteractive(
     title: existing
       ? plugin.t('Enter a new alias')
       : plugin.t('Enter an alias for the new {0} sample (optional)', type),
-    value: existing?.record.alias ?? '',
+    value: existing?.record.alias ?? initialAlias,
     placeholder: plugin.t('e.g. Sample-A'),
     validate: validateAlias(plugin),
   });
@@ -375,7 +399,11 @@ export async function editSampleInteractive(
     title: plugin.t('Enter a new alias'),
     value: record.alias ?? '',
     placeholder: plugin.t('e.g. Sample-A'),
-    validate: validateAlias(plugin),
+    // An alias registered before #168 may keep its Markdown characters.
+    validate: v =>
+      v.trim() === (record.alias ?? '').trim() && sampleAliasProblem(v) === 'markdown'
+        ? null
+        : validateAlias(plugin)(v),
   });
   if (aliasRaw === undefined) return false;
   const descRaw = await promptModal(app, {
@@ -413,9 +441,10 @@ export async function editSampleInteractive(
     }
   }
 
-  const oldAlias = record.alias?.trim();
+  const oldAlias = record.alias?.trim() ?? '';
+  // From no alias to one, bare-id references can show it too (#170).
   const rewritten =
-    oldAlias && oldAlias !== (alias ?? '')
+    oldAlias !== (alias ?? '')
       ? await rewriteStaleAliases(app, plugin, { folder, type, id, oldAlias, newAlias: alias ?? '' })
       : undefined;
   new Notice([plugin.t('Sample updated: {0}', id), rewritten].filter(Boolean).join(' '), rewritten ? 8000 : undefined);
@@ -581,7 +610,8 @@ export async function notesInSampleScope(app: App, folder: string): Promise<Scop
 
 /**
  * After an alias edit, offer to replace `oldAlias` in the notes that still
- * show it (#86). A Global sample is skipped in experiments that have a Local
+ * show it (#86), or — when there was none — to add the new alias to the
+ * references that are the bare id (#170). A Global sample is skipped in experiments that have a Local
  * record with the same id, since their notes resolve to that one. Returns the
  * sentence to add to the "Sample updated" notice, if any.
  */
@@ -619,11 +649,14 @@ async function rewriteStaleAliases(
   const count = String(planned.length);
   const ok = await confirmModal(
     app,
-    newAlias
-      ? plugin.t("Replace the old alias '{1}' with '{2}' in {0} note(s)?\n\n{3}", count, oldAlias, newAlias, lines.join('\n'))
-      : plugin.t("Remove the old alias '{1}' from {0} note(s)?\n\n{2}", count, oldAlias, lines.join('\n')),
+    !oldAlias
+      ? plugin.t("Add the alias '{1}' to the references that show only the ID {2} in {0} note(s)?\n\n{3}", count, newAlias, id, lines.join('\n'))
+      : newAlias
+        ? plugin.t("Replace the old alias '{1}' with '{2}' in {0} note(s)?\n\n{3}", count, oldAlias, newAlias, lines.join('\n'))
+        : plugin.t("Remove the old alias '{1}' from {0} note(s)?\n\n{2}", count, oldAlias, lines.join('\n')),
     plugin.t('Replace')
   );
+  if (!oldAlias && !ok) return undefined;
   if (!ok) {
     const stale = plugin.t('{0} note(s) still show the old alias.', count);
     return planned.some(n => n.edits.some(e => e.kind === 'definition'))
@@ -802,7 +835,12 @@ export async function changeSampleTypeInteractive(
   }
   plugin.refreshSampleViews();
   const done = plugin.t('Changed {0} to {1}.', id, newId);
-  new Notice(planned.length > 0 ? `${done} ${plugin.t('{0} note(s) updated.', String(updated))}` : done);
+  // Ctrl+Z reverts a note but not the record, leaving the old id unregistered (#151).
+  const undo = plugin.t('Ctrl+Z only reverts the note, not the sample record. To undo, change the type again.');
+  new Notice(
+    planned.length > 0 ? `${done} ${plugin.t('{0} note(s) updated.', String(updated))} ${undo}` : done,
+    planned.length > 0 ? 10000 : undefined
+  );
   return true;
 }
 

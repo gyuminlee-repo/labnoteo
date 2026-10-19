@@ -26,7 +26,7 @@ import {
   normalizeSampleId,
   canonicalSampleType,
   getSampleDisplayMeta,
-  hasSampleAliasSeparator,
+  sampleAliasProblem,
   hasSampleDescriptionSeparator,
 } from '../lib/sampleUtils';
 import { getExperimentDir } from '../lib/labnoteStructure';
@@ -362,9 +362,15 @@ async function resolveSampleCreate(
     return { error: `Invalid id "${rawId}": expected ${type}-<number>. Omit id to generate one.` };
   }
   const alias = str(args, 'alias');
-  if (alias !== undefined && hasSampleAliasSeparator(alias)) {
+  const aliasProblem = alias === undefined ? undefined : sampleAliasProblem(alias);
+  if (aliasProblem === 'separator') {
     return {
       error: `Invalid alias "${alias}": ";" and ":" separate the id, alias and description in a note. Replace them (e.g. with "-" or "/") and retry.`,
+    };
+  }
+  if (aliasProblem === 'markdown') {
+    return {
+      error: `Invalid alias "${alias}": #, [[, ]], * and \` are read by Markdown as a tag, link, emphasis or code. Replace them (e.g. with "-" or "/") and retry.`,
     };
   }
   const description = str(args, 'description');
