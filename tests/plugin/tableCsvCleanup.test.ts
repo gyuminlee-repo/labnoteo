@@ -25,6 +25,14 @@ const TABLE = '| a |\n|---|\n| 1 |\n';
 const CSV_A = '\uFEFFa\n1\n';
 const noteFile = () => new TFile(`${DIR}/${NOTE}`) as unknown as VaultFile;
 
+/** The export notice (#140): the summary, where the CSVs are, the cleanup result, then the explorer hint. */
+const HINT = 'The file explorer shows CSV files only when Settings → Files and links → Show all file types is on.';
+const done = (summary: string, tables: number, cleanup = '') => {
+  const names = Array.from({ length: Math.min(tables, 3) }, (_, k) => `001_WT020_A.labnote_table${k + 1}.csv`).join(', ');
+  const more = tables > 3 ? ` (+${tables - 3} more)` : '';
+  return [summary, `Saved in ${DIR}/: ${names}${more}.`, cleanup, HINT].filter(Boolean).join(' ');
+};
+
 const t = (key: string, ...args: unknown[]) =>
   args.reduce<string>((s, a, i) => s.replace(`{${i}}`, String(a)), key);
 
@@ -63,7 +71,7 @@ describe('re-exporting tables (#74)', () => {
     expect(vi.mocked(confirmModal).mock.calls[0][1]).toContain('001_WT020_A.labnote_table2.csv\n001_WT020_A.labnote_table3.csv');
     expect(trashed).toEqual([csv(2), csv(3)]);
     expect(await fs.exists(csv(1))).toBe(true);
-    expect(Notice.shown.at(-1)).toBe('The CSV files are already up to date (1). 2 CSV file(s) moved to the trash.');
+    expect(Notice.shown.at(-1)).toBe(done('The CSV files are already up to date (1).', 1, '2 CSV file(s) moved to the trash.'));
   });
 
   it('keeps them when the user declines', async () => {
@@ -74,7 +82,7 @@ describe('re-exporting tables (#74)', () => {
 
     expect(trashed).toEqual([]);
     expect(await fs.exists(csv(3))).toBe(true);
-    expect(Notice.shown.at(-1)).toBe('The CSV files are already up to date (1). 2 old CSV file(s) kept.');
+    expect(Notice.shown.at(-1)).toBe(done('The CSV files are already up to date (1).', 1, '2 old CSV file(s) kept.'));
   });
 
   it('offers every CSV when the note has no table left', async () => {
@@ -124,7 +132,7 @@ describe('re-exporting after the tables changed (#80)', () => {
 
     expect(await fs.read(csv(1))).toBe(CSV_NEW);
     expect(await fs.read(csv(2))).toBe(CSV_A);
-    expect(Notice.shown.at(-1)).toBe('Exported 2 CSV file(s).');
+    expect(Notice.shown.at(-1)).toBe(done('Exported 2 CSV file(s).', 2));
   });
 
   it('catches a shift between tables with the same header', async () => {
@@ -166,7 +174,7 @@ describe('re-exporting after the tables changed (#80)', () => {
     await exportTablesToCsv(plugin(), noteFile());
 
     expect(write).not.toHaveBeenCalled();
-    expect(Notice.shown.at(-1)).toBe('The CSV files are already up to date (1).');
+    expect(Notice.shown.at(-1)).toBe(done('The CSV files are already up to date (1).', 1));
   });
 });
 
@@ -186,7 +194,7 @@ describe('re-exporting after a header was renamed (#92)', () => {
 
     expect(confirmModal).not.toHaveBeenCalled();
     expect(await fs.read(csv(1))).toBe('\uFEFFa (mg)\n1\n');
-    expect(Notice.shown.at(-1)).toBe('Exported 1 CSV file(s).');
+    expect(Notice.shown.at(-1)).toBe(done('Exported 1 CSV file(s).', 1));
   });
 
   it('asks with the header wording when the header and the values changed', async () => {
@@ -211,7 +219,7 @@ describe('re-exporting after a header was renamed (#92)', () => {
 
     expect(overwritePrompts()).toEqual([]);
     expect(await fs.read(csv(1))).toBe('\uFEFFa (mg)\n1\n');
-    expect(Notice.shown.at(-1)).toBe('Exported 1 CSV file(s). 1 old CSV file(s) kept.');
+    expect(Notice.shown.at(-1)).toBe(done('Exported 1 CSV file(s).', 1, '1 old CSV file(s) kept.'));
   });
 
   it('counts only the files it wrote', async () => {
@@ -220,7 +228,33 @@ describe('re-exporting after a header was renamed (#92)', () => {
 
     await exportTablesToCsv(plugin(), noteFile());
 
-    expect(Notice.shown.at(-1)).toBe('Exported 1 CSV file(s) (1 unchanged file(s) left as they were).');
+    expect(Notice.shown.at(-1)).toBe(done('Exported 1 CSV file(s) (1 unchanged file(s) left as they were).', 2));
+  });
+});
+
+describe('the export notice (#140)', () => {
+  const plugin = () => ({ app, fs, t }) as unknown as LabnotePlugin;
+
+  it('names the first three files and counts the rest', async () => {
+    fs = new MemFileSystem();
+    await fs.write(`${DIR}/${NOTE}`, Array(5).fill(TABLE).join('\n'));
+
+    await exportTablesToCsv(plugin(), noteFile());
+
+    expect(Notice.shown.at(-1)).toBe(done('Exported 5 CSV file(s).', 5));
+    expect(Notice.shown.at(-1)).toContain('_table3.csv (+2 more).');
+  });
+
+  it('leaves out the explorer hint when Show all file types is on', async () => {
+    fs = new MemFileSystem();
+    await fs.write(`${DIR}/${NOTE}`, TABLE);
+    const getConfig = vi.fn((key: string) => key === 'showUnsupportedFiles');
+    Object.assign(app.vault, { getConfig });
+
+    await exportTablesToCsv(plugin(), noteFile());
+
+    expect(getConfig).toHaveBeenCalledWith('showUnsupportedFiles');
+    expect(Notice.shown.at(-1)).toBe(`Exported 1 CSV file(s). Saved in ${DIR}/: 001_WT020_A.labnote_table1.csv.`);
   });
 });
 

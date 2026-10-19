@@ -40,7 +40,41 @@ function splitTableRow(line: string): string[] {
     current += ch;
   }
   cells.push(current.trim());
-  return cells.map(cell => cell.replace(/<br\s*\/?>/gi, '\n'));
+  return cells.map(cell => stripInlineFormatting(cell.replace(/<br\s*\/?>/gi, '\n')));
+}
+
+/** A character that is part of a word for `_` emphasis, which may not open or close inside one. */
+const WORD = '[\\p{L}\\p{N}_]';
+const CODE_SPAN_RE = /(`+)(?!`)([\s\S]*?[^`])\1(?!`)/g;
+const STRIKE_RE = /([ \t]*)~~(?=\S)[\s\S]*?\S~~([ \t]*)/g;
+const STRONG_STAR_RE = /\*\*(?=[^\s*])([\s\S]*?[^\s\\])\*\*/g;
+const STRONG_UNDERSCORE_RE = new RegExp(`(^|[^\\p{L}\\p{N}_\\\\])__(?=\\S)([\\s\\S]*?\\S)__(?!${WORD})`, 'gu');
+const EM_STAR_RE = /(^|[^*\\])\*(?=[^\s*])([^*]*?[^\s*\\])\*(?!\*)/g;
+const EM_UNDERSCORE_RE = new RegExp(`(^|[^\\p{L}\\p{N}_\\\\])_(?=[^\\s_])([^_]*?[^\\s_\\\\])_(?!${WORD})`, 'gu');
+
+/**
+ * A cell's text without the inline Markdown the reading view hides (#139):
+ * bold and italic marks and code backticks go, struck-through text goes with
+ * its marks (`~~0.10~~ 0.12` → `0.12`). Code contents, marks inside a word
+ * (`2*3`, `sample_id_1`) and escaped marks (`\*`) are left as they are.
+ * Links are not rewritten.
+ */
+function stripInlineFormatting(cell: string): string {
+  if (!/[*_`~]/.test(cell)) return cell;
+  const codes: string[] = [];
+  const hold = (text: string) => `\u0000${codes.push(text) - 1}\u0000`;
+  let s = cell.replace(CODE_SPAN_RE, (_m, _ticks: string, body: string) =>
+    hold(/^ [\s\S]*[^ ][\s\S]* $/.test(body) ? body.slice(1, -1) : body)
+  );
+  s = s.replace(/\\[*_`~]/g, hold);
+  const struck = s.replace(STRIKE_RE, (_m, before: string, after: string) => (before || after ? ' ' : ''));
+  if (struck !== s) s = struck.trim();
+  s = s
+    .replace(STRONG_STAR_RE, '$1')
+    .replace(STRONG_UNDERSCORE_RE, '$1$2')
+    .replace(EM_STAR_RE, '$1$2')
+    .replace(EM_UNDERSCORE_RE, '$1$2');
+  return s.replace(/\u0000(\d+)\u0000/g, (_m, i: string) => codes[Number(i)]);
 }
 
 /** Fits a data row to the header width the way GFM renders it: extra cells are dropped, missing ones are empty. */
@@ -52,7 +86,9 @@ function fitRow(cells: string[], width: number): string[] {
 /**
  * Finds every GFM pipe table in `markdown` (header row + `---` separator +
  * zero or more data rows). Tables are matched in document order. Data rows
- * are fitted to the header width and `<br>` becomes a newline inside a cell.
+ * are fitted to the header width, `<br>` becomes a newline inside a cell, and
+ * bold, italic, code and strikethrough marks are handled as the reading view
+ * shows them (see {@link stripInlineFormatting}).
  * Pipe rows inside fenced code blocks are not tables in the rendered note, so
  * they are neither exported nor counted (#90).
  */
@@ -105,10 +141,28 @@ function readsAsFormula(cell: string): boolean {
   return ascii.length > 1 && !SIGNED_NUMBER_RE.test(ascii);
 }
 
-function escapeCsvCell(cell: string): string {
+const LONE_SIGN_RE = /^[+\-＋－]$/;
+
+/**
+ * Columns whose lone `+`/`-` must be protected too (#138): a data cell there
+ * starts with a sign and reads as a formula (`+/-`, `++`), so the column is a
+ * score, not a number column where `-` means "none". Excel turns a lone sign
+ * next to such cells into an error or a blank. The header row is not counted.
+ */
+function signColumns(rows: string[][]): Set<number> {
+  const cols = new Set<number>();
+  for (const row of rows.slice(1)) {
+    row.forEach((cell, c) => {
+      if (/^[+\-＋－]/.test(cell) && readsAsFormula(cell)) cols.add(c);
+    });
+  }
+  return cols;
+}
+
+function escapeCsvCell(cell: string, guardLoneSign = false): string {
   // A tab inside the quotes (OWASP's advice for Excel) keeps the text as typed;
   // a leading `'` would stay visible, since Excel does not hide it in a CSV.
-  if (readsAsFormula(cell)) {
+  if (readsAsFormula(cell) || (guardLoneSign && LONE_SIGN_RE.test(cell))) {
     return `"\t${cell.replace(/"/g, '""')}"`;
   }
   if (/[",\n]/.test(cell)) {
@@ -126,7 +180,10 @@ export const UTF8_BOM = '\uFEFF';
  * which garbles Hangul and can merge adjacent columns.
  */
 export function tableToCsv(rows: string[][], opts: { bom?: boolean } = {}): string {
-  const body = rows.map((row) => row.map(escapeCsvCell).join(',')).join('\n') + '\n';
+  const guarded = signColumns(rows);
+  const body =
+    rows.map((row, r) => row.map((cell, c) => escapeCsvCell(cell, r > 0 && guarded.has(c))).join(',')).join('\n') +
+    '\n';
   return opts.bom ? UTF8_BOM + body : body;
 }
 

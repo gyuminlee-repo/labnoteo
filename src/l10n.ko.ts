@@ -180,6 +180,9 @@ const obsidianKo: Record<string, string> = {
   'Exported {0} CSV file(s) ({1} unchanged file(s) left as they were).':
     'CSV 파일 {0}개를 내보냈습니다(내용이 같은 {1}개는 그대로 둠).',
   'The CSV files are already up to date ({0}).': 'CSV 파일이 이미 최신입니다({0}개).',
+  'Saved in {0}: {1}.': '저장 위치 {0}: {1}.',
+  'The file explorer shows CSV files only when Settings → Files and links → Show all file types is on.':
+    '파일 탐색기에는 설정 → 파일 및 링크 → 모든 파일 확장명 인식이 켜져 있을 때만 CSV 파일이 보입니다.',
   'No tables found in this note.': '이 노트에서 표를 찾을 수 없습니다.',
   'These table CSV files no longer match a table in the note. Move them to the trash?\n\n{0}':
     '다음 표 CSV 파일은 이 노트에 더 이상 해당하는 표가 없습니다. 휴지통으로 옮길까요?\n\n{0}',
