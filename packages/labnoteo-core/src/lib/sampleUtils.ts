@@ -80,6 +80,22 @@ export function hasSampleAliasSeparator(alias: string): boolean {
   return /[;:]/.test(alias);
 }
 
+/**
+ * Why `alias` cannot be a sample alias, or undefined when it can:
+ * - `'separator'`: `;` or `:` ends the alias in a note (#98);
+ * - `'markdown'`: `#`, `[[`, `]]`, `*` or a backtick makes Markdown read the
+ *   reference as a tag, link, emphasis or code, so it is not highlighted or
+ *   read back (#168).
+ * Aliases registered before these rules are left as they are; only new ones
+ * are checked. {@link hasSampleAliasSeparator} stays narrow on purpose: it
+ * parses older definitions.
+ */
+export function sampleAliasProblem(alias: string): 'separator' | 'markdown' | undefined {
+  if (hasSampleAliasSeparator(alias)) return 'separator';
+  if (/#|\[\[|\]\]|\*|`/.test(alias)) return 'markdown';
+  return undefined;
+}
+
 /** Whether a description holds `;`, which ends it in a note (#98). */
 export function hasSampleDescriptionSeparator(description: string): boolean {
   return description.includes(';');

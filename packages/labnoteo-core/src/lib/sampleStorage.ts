@@ -518,6 +518,7 @@ export interface AliasRewriteEdit {
  *   leaving the bare id. Anything else is left as written.
  * - An `oldAlias` holding `;` or `:` (allowed before #98) is cut short by the
  *   pattern, so it is compared against the text after the id instead.
+ * - An empty `oldAlias` adds `;newAlias` to the bare-id references (#170).
  *
  * Edits are in document order and do not overlap.
  */
@@ -531,7 +532,8 @@ export function planAliasRewrite(
   const edits: AliasRewriteEdit[] = [];
   const oldEsc = escapeSamplePipes(oldAlias);
   const newEsc = escapeSamplePipes(newAlias);
-  if (!oldAlias || oldAlias === newAlias) return edits;
+  if (!oldAlias) return newAlias ? planAliasAddition(text, type, id, newEsc) : edits;
+  if (oldAlias === newAlias) return edits;
 
   const startsWithAlias = (s: string, alias: string): boolean =>
     s.startsWith(alias) && (s.length === alias.length || /\s/.test(s[alias.length]));
@@ -597,6 +599,25 @@ export function planAliasRewrite(
         ? { start: aliasStart, end: aliasStart + oldEsc.length, text: newEsc, kind: 'reference' }
         : { start: delimiter, end: aliasStart + oldEsc.length, text: '', kind: 'reference' }
     );
+  }
+  return edits;
+}
+
+/**
+ * A sample without an alias got one (#170): `;alias` after every plain
+ * reference that is the bare id, so the notes show the name too. Definitions
+ * are left alone; their blank alias keeps the stored one.
+ */
+function planAliasAddition(text: string, type: string, id: string, aliasEsc: string): AliasRewriteEdit[] {
+  const edits: AliasRewriteEdit[] = [];
+  const pattern = buildSampleDefinitionPattern(type);
+  let match: RegExpExecArray | null;
+  while ((match = nextSampleMatch(pattern, text, type)) !== null) {
+    if (match[0].startsWith('@') || match[1] !== id || match[2] !== undefined) continue;
+    const end = match.index + match[0].indexOf(match[1]) + match[1].length;
+    // `DNA-1;` with nothing after the `;` reads as no alias too.
+    const at = text[end] === ';' ? end + 1 : end;
+    edits.push({ start: end, end: at, text: `;${aliasEsc}`, kind: 'reference' });
   }
   return edits;
 }

@@ -234,6 +234,8 @@ const obsidianKo: Record<string, string> = {
     '{0}을(를) {1}(으)로 바꿀까요? 기록이 {2}.json에서 {3}.json으로 옮겨집니다.',
   'The notes that use it change too ({0}):': '이 샘플을 쓰는 노트도 함께 바뀝니다({0}):',
   'Changed {0} to {1}.': '{0}을(를) {1}(으)로 바꿨습니다.',
+  'Ctrl+Z only reverts the note, not the sample record. To undo, change the type again.':
+    'Ctrl+Z로는 노트만 되돌아가고 샘플 기록은 그대로입니다. 되돌리려면 타입 변경을 다시 하세요.',
   'Sample tracking is off for this note.': '이 노트는 샘플 추적이 꺼져 있습니다.',
   'No samples are registered yet.': '아직 등록된 샘플이 없습니다.',
   'Search by ID or alias': 'ID나 별칭으로 검색',
@@ -303,6 +305,8 @@ const obsidianKo: Record<string, string> = {
     "노트 {0}개에 남은 옛 별칭 '{1}'을(를) '{2}'(으)로 바꿀까요?\n\n{3}",
   "Remove the old alias '{1}' from {0} note(s)?\n\n{2}":
     "노트 {0}개에 남은 옛 별칭 '{1}'을(를) 지울까요?\n\n{2}",
+  "Add the alias '{1}' to the references that show only the ID {2} in {0} note(s)?\n\n{3}":
+    "노트 {0}개에서 ID {2}만 적힌 참조에 별칭 '{1}'을(를) 붙일까요?\n\n{3}",
   '{0} definition(s), {1} reference(s)': '정의 {0}개, 참조 {1}개',
   '{0} note(s) still show the old alias.': '노트 {0}개에 옛 별칭이 남아 있습니다.',
   'Saving a note that defines it may bring the old alias back.':
@@ -316,6 +320,8 @@ const obsidianKo: Record<string, string> = {
   'Sample moved: {0}': '샘플을 이동했습니다: {0}',
   'An alias cannot contain ";" or ":", which separate the ID, alias and description in a note. Use "-" or "/" instead (e.g. 1-10).':
     '별칭에는 ";"나 ":"를 쓸 수 없습니다. 노트에서 ID·별칭·설명을 가르는 글자입니다. 대신 "-"나 "/"를 쓰세요(예: 1-10).',
+  'An alias cannot contain #, [[, ]], * or `, which Markdown reads as a tag, link, emphasis or code. Use "-" or "/" instead.':
+    '별칭에는 #, [[, ]], *, `를 쓸 수 없습니다. 마크다운이 태그·링크·강조·코드로 읽는 글자입니다. 대신 "-"나 "/"를 쓰세요.',
   'A description cannot contain ";", which ends the description in a note. Use "," instead.':
     '설명에는 ";"를 쓸 수 없습니다. 노트에서 설명을 끝내는 글자입니다. 대신 ","를 쓰세요.',
   "Notes in {0} use {1} local sample(s) that are still in another experiment's registry, so the notes cannot find them. Bring them into {0}?":

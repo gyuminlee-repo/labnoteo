@@ -262,6 +262,8 @@ export class SampleEditorSuggest extends EditorSuggest<SuggestEntry> {
           folder: plugin.localSampleFolder(),
           mode: kind,
           scope: 'local',
+          // What was typed after `@type;` fills the ID or alias prompt (#142).
+          initial: /^@[\p{L}\p{N}_]+[;:]?(.*)$/u.exec(originalRange)?.[1],
         });
         referenceText = created?.referenceText;
       }

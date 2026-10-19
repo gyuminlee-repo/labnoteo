@@ -15,6 +15,7 @@ import {
   insertSampleReference,
   listSampleDefinitions,
   sampleUsages,
+  validateAlias,
 } from '../../src/sampleActions';
 import { confirmModal, pickModal, promptModal } from '../../src/modals';
 import type { EditTarget } from '@labnoteo/core';
@@ -157,6 +158,35 @@ describe('createSampleInteractive', () => {
 });
 
 // #84: entering an id that is already registered must not wipe its record.
+// #142: what was typed after `@type;` is not lost.
+describe('createSampleInteractive with a typed search term', () => {
+  it('fills the alias prompt with a name, and the ID prompt with an ID', async () => {
+    answer(undefined);
+    await createSampleInteractive(new App(), plugin, { type: 'RNA', folder: FOLDER, mode: 'generate', initial: ' siKIF ' });
+    expect(vi.mocked(promptModal).mock.calls[0][1]).toMatchObject({ value: 'siKIF' });
+
+    vi.mocked(promptModal).mockReset();
+    answer(undefined);
+    await createSampleInteractive(new App(), plugin, { type: 'RNA', folder: FOLDER, mode: 'manual', initial: 'RNA-12' });
+    expect(vi.mocked(promptModal).mock.calls[0][1]).toMatchObject({ value: 'RNA-12' });
+
+    vi.mocked(promptModal).mockReset();
+    answer('RNA-13', undefined);
+    await createSampleInteractive(new App(), plugin, { type: 'RNA', folder: FOLDER, mode: 'manual', initial: 'siKIF' });
+    expect(vi.mocked(promptModal).mock.calls[0][1]).toMatchObject({ value: 'RNA-' });
+    expect(vi.mocked(promptModal).mock.calls[1][1]).toMatchObject({ value: 'siKIF' });
+  });
+
+  // #168
+  it('refuses Markdown characters in a new alias', () => {
+    const check = validateAlias(plugin);
+    expect(check('#1')).toContain('Markdown');
+    expect(check('[[x]]')).toContain('Markdown');
+    expect(check('a;b')).toContain('";" or ":"');
+    expect(check('pUC19 v2')).toBeNull();
+  });
+});
+
 describe('createSampleInteractive with a manually entered existing id', () => {
   const GLOBAL = 'resources/labsamples';
   const STORED = {
@@ -396,7 +426,9 @@ describe('changeSampleTypeInteractive', () => {
     expect(await fs.read(`${A}/001_WD010_A.labnote.md`)).toBe('@plasmid;Plasmid-1;pUC19;vector\n');
     expect(await fs.read(`${A}/002_WD020_B.labnote.md`)).toBe('used Plasmid-1;pUC19 and RNA-12\n');
     expect(await fs.read(`${B}/001_WD010_C.labnote.md`)).toBe('RNA-1;other\n');
-    expect(Notice.shown.at(-1)).toBe('Changed RNA-1 to Plasmid-1. 2 note(s) updated.');
+    expect(Notice.shown.at(-1)).toBe(
+      'Changed RNA-1 to Plasmid-1. 2 note(s) updated. Ctrl+Z only reverts the note, not the sample record. To undo, change the type again.'
+    );
   });
 
   it('gives a new id when the new type already has those numbers', async () => {

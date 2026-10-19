@@ -28,6 +28,13 @@ describe('parseSampleTrigger', () => {
     expect(t!.searchTerm).toBe('my plasmid');
   });
 
+  // #171
+  it('closes once a definition is being typed', () => {
+    expect(parseSampleTrigger('@DNA;DNA-001;', TYPES)).toBeUndefined();
+    expect(parseSampleTrigger('@DNA;DNA-001;my plasmid', TYPES)).toBeUndefined();
+    expect(parseSampleTrigger('@DNA;DNA-001', TYPES)).toBeDefined();
+  });
+
   it('treats @sample as all types', () => {
     const t = parseSampleTrigger('@sample:', TYPES);
     expect(t!.typesToSearch).toEqual(TYPES);
