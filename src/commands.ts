@@ -892,7 +892,8 @@ export interface ReadmeSyncControl {
 export async function renumberWorkflowsCommand(
   app: App,
   host: LabnoteHost,
-  readmeSync: ReadmeSyncControl
+  readmeSync: ReadmeSyncControl,
+  renameSampleSources?: (dir: string, renames: ReadonlyMap<string, string>) => Promise<void>
 ): Promise<void> {
   const labnoteDir = await resolveLabnoteDir(app, host);
   if (!labnoteDir) return;
@@ -961,6 +962,10 @@ export async function renumberWorkflowsCommand(
       await readmeSync.release(labnoteDir, { dropRenames: true });
     }
   }
+  // The rename listener skips the held folder; the Local registry follows the
+  // net renames here, staging names left out (#149).
+  const net = netRenames(moved);
+  if (renameSampleSources && net.size > 0) await renameSampleSources(labnoteDir, net);
 
   if (renames.length > 0) {
     const done = host.t('Renumbered {0} workflow file(s).', String(renames.length));
@@ -980,6 +985,17 @@ export async function renumberWorkflowsCommand(
       host.t('{0} table CSV file(s) kept their old name: the new name was taken or the rename failed.', String(csvSkipped))
     );
   }
+}
+
+/** Each original name of a chain of `moves` mapped to its final name, unchanged ones left out. */
+export function netRenames(moves: readonly WorkflowRename[]): Map<string, string> {
+  const origin = new Map<string, string>();
+  for (const { from, to } of moves) {
+    const first = origin.get(from) ?? from;
+    origin.delete(from);
+    origin.set(to, first);
+  }
+  return new Map([...origin].filter(([to, from]) => to !== from).map(([to, from]) => [from, to]));
 }
 
 /**

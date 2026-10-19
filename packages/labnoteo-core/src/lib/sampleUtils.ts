@@ -73,6 +73,16 @@ export function escapeSamplePipes(text: string): string {
 }
 
 /**
+ * A Markdown table of `rows` under `headers` (#152). A `|` in a cell is
+ * escaped and a line break becomes a space, so a cell cannot split the row.
+ */
+export function buildMarkdownTable(headers: readonly string[], rows: ReadonlyArray<readonly string[]>): string {
+  const cell = (text: string): string => escapeSamplePipes(text.replace(/\r?\n/g, ' ').trim());
+  const line = (cells: readonly string[]): string => `| ${cells.map(cell).join(' | ')} |`;
+  return [line(headers), `|${headers.map(() => ' --- ').join('|')}|`, ...rows.map(line)].join('\n');
+}
+
+/**
  * Whether an alias holds `;` or `:`, which end the alias in a note (`ID;alias;
  * description`), so the rest would be read back as a description (#98).
  */

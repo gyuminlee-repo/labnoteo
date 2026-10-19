@@ -44,6 +44,7 @@ import {
   hasReferenceCatalog,
   inventorySampleFolder,
   moveSampleFolder,
+  renameSampleSourcesInFolder,
 } from '@labnoteo/core/lib/sampleStorage';
 import { VaultFileSystem } from './vaultFileSystem';
 import { createObsidianTranslator } from './i18n';
@@ -84,6 +85,7 @@ import {
   pickCatalogReference,
   insertSampleReference,
   listSampleDefinitions,
+  insertExperimentSamplesTable,
 } from './sampleActions';
 import {
   offerSamplesAfterMove,
@@ -142,6 +144,8 @@ export default class LabnotePlugin extends Plugin {
   private readonly readmeSyncTimers = new Map<string, number>();
   // Folders whose README sync is paused (renumbering): events queue, no timer.
   private readonly readmeSyncHolds = new Set<string>();
+  // Per experiment: the last queued Local registry rename of note names (#149).
+  private readonly sampleSourceRenames = new Map<string, Promise<void>>();
   // The latest README flush per folder, so a new one runs after it, never beside it.
   private readonly readmeSyncInFlight = new Map<string, Promise<void>>();
   // Set on unload: a flush still waiting for a modal to close must not write.
@@ -355,7 +359,11 @@ export default class LabnotePlugin extends Plugin {
       id: 'renumber-workflows',
       name: this.t('Renumber workflows'),
       callback: () =>
-        this.run(() => renumberWorkflowsCommand(this.app, this.host, this.readmeSyncControl())),
+        this.run(() =>
+          renumberWorkflowsCommand(this.app, this.host, this.readmeSyncControl(), (dir, renames) =>
+            this.queueSampleSourceRenames(dir, renames)
+          )
+        ),
     });
 
     this.addCommand({
@@ -374,6 +382,15 @@ export default class LabnotePlugin extends Plugin {
       id: 'open-sample-definition',
       name: this.t('Open sample definition'),
       callback: () => this.run(() => this.openSampleDefinitionCommand()),
+    });
+
+    this.addCommand({
+      id: 'insert-experiment-samples-table',
+      name: this.t('Insert sample list of this experiment'),
+      callback: () =>
+        this.run(async () => {
+          await insertExperimentSamplesTable(this.app, this);
+        }),
     });
 
     this.addCommand({
@@ -677,6 +694,7 @@ export default class LabnotePlugin extends Plugin {
         }
         if (!(file instanceof TFile)) return;
         const newPath = file.path;
+        this.renameLocalSampleSources(oldPath, newPath);
         // Ahead of the copy branch, which returns early: a copy moved to
         // another experiment needs its samples too.
         this.offerLocalSamplesMoved(oldPath, newPath);
@@ -745,6 +763,39 @@ export default class LabnotePlugin extends Plugin {
         this.scheduleReadmeSync(dir);
       })
     );
+  }
+
+  /**
+   * A note was renamed within its folder in an experiment: the Local registry
+   * lists it under the new name (#149). Renumbering holds the folder and
+   * applies all its renames at once when it is done.
+   */
+  private renameLocalSampleSources(oldPath: string, newPath: string): void {
+    if (!newPath.endsWith('.md') || posix.dirname(newPath) !== posix.dirname(oldPath)) return;
+    const dir = getExperimentDir(newPath);
+    if (!dir || this.readmeSyncHolds.has(dir)) return;
+    const from = posix.basename(oldPath);
+    const to = posix.basename(newPath);
+    if (from !== to) void this.queueSampleSourceRenames(dir, new Map([[from, to]]));
+  }
+
+  /**
+   * Rename note names in `dir`'s Local registry, one write after another per
+   * experiment so quick successive renames apply in event order.
+   */
+  queueSampleSourceRenames(dir: string, renames: ReadonlyMap<string, string>): Promise<void> {
+    const folder = posix.join(dir, 'resources', 'labsamples');
+    const types = getSampleDisplayMeta(this.settings.customSampleTypes).types;
+    const next = (this.sampleSourceRenames.get(dir) ?? Promise.resolve())
+      .then(async () => {
+        if ((await renameSampleSourcesInFolder(this.fs, folder, renames, types)) > 0) this.refreshSampleViews();
+      })
+      .catch(err => console.error('Labnote: renaming sample sources failed', err));
+    this.sampleSourceRenames.set(dir, next);
+    void next.then(() => {
+      if (this.sampleSourceRenames.get(dir) === next) this.sampleSourceRenames.delete(dir);
+    });
+    return next;
   }
 
   /**

@@ -48,6 +48,7 @@ function renderNode(
   // Indentation is data-driven, so it is passed as a CSS variable the stylesheet
   // turns into padding — no styling is hardcoded in JS.
   row.style.setProperty('--labnote-tree-depth', String(depth));
+  if (node.dimmed) row.addClass('is-dimmed');
 
   const twistie = row.createSpan({ cls: 'labnote-tree-twistie' });
   const expanded = ctx.expanded.has(node.id);

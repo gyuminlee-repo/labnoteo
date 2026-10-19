@@ -13,6 +13,7 @@ import {
   escapeSamplePipes,
   hasSampleAliasSeparator,
   hasSampleDescriptionSeparator,
+  buildMarkdownTable,
 } from '../lib/sampleUtils';
 import { buildSampleInsertText, parseSampleTrigger } from '../sample/sampleSuggest';
 
@@ -174,5 +175,13 @@ describe('sampleSuggestActions', () => {
       catalog: false,
     });
     expect(sampleSuggestActions(t, { catalogAvailable: true }).catalog).toBe(true);
+  });
+});
+
+describe('buildMarkdownTable (#152)', () => {
+  it('escapes pipes and flattens line breaks in cells', () => {
+    expect(buildMarkdownTable(['ID', 'Alias'], [['DNA-1', 'a|b'], ['DNA-2', 'two\nlines']])).toBe(
+      ['| ID | Alias |', '| --- | --- |', '| DNA-1 | a\\|b |', '| DNA-2 | two lines |'].join('\n')
+    );
   });
 });

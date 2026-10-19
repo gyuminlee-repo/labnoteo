@@ -138,12 +138,41 @@ function describe(host: LabnoteHost, a: PlannedAdoption): string {
   }`;
 }
 
-async function apply(deps: SampleRelocationDeps, toDir: string, plan: readonly PlannedAdoption[]): Promise<number> {
+/** Which samples {@link apply} moved to Global, and which it copied since Global had the id. */
+interface GlobalMoves {
+  moved: string[];
+  taken: string[];
+}
+
+/**
+ * Bring `plan` into `toDir`. With `copiesToGlobal`, a sample the old
+ * experiment still uses moves to Global instead of being copied, so both
+ * experiments keep one record (#173); one Global already has is copied.
+ */
+async function apply(
+  deps: SampleRelocationDeps,
+  toDir: string,
+  plan: readonly PlannedAdoption[],
+  copiesToGlobal = false
+): Promise<GlobalMoves> {
   const { host } = deps;
   const toFolder = labsamplesOf(toDir);
+  const global = deps.globalSampleFolder;
+  const result: GlobalMoves = { moved: [], taken: [] };
   for (const a of plan) {
-    await putSampleRecord(host.fs, toFolder, a.type, a.id, a.record);
     const fromFolder = labsamplesOf(a.fromDir);
+    if (a.action === 'copy' && copiesToGlobal && global) {
+      if (!(await loadSamplesByType(host.fs, global, a.type))[a.id]) {
+        const old = (await loadSamplesByType(host.fs, fromFolder, a.type))[a.id] ?? a.record;
+        const sources = [...new Set([...old.sources.filter(s => !a.oldNames.includes(s)), ...a.record.sources])];
+        await putSampleRecord(host.fs, global, a.type, a.id, { ...old, sources });
+        await deleteSampleRecord(host.fs, fromFolder, a.type, a.id);
+        result.moved.push(a.id);
+        continue;
+      }
+      result.taken.push(a.id);
+    }
+    await putSampleRecord(host.fs, toFolder, a.type, a.id, a.record);
     if (a.action === 'move') {
       await deleteSampleRecord(host.fs, fromFolder, a.type, a.id);
     } else {
@@ -151,10 +180,15 @@ async function apply(deps: SampleRelocationDeps, toDir: string, plan: readonly P
     }
   }
   if (plan.length > 0) deps.onSamplesChanged();
-  return plan.length;
+  return result;
 }
 
-/** Ask, then re-plan from disk (it may have changed while asking) and apply. */
+/**
+ * Ask, then re-plan from disk (it may have changed while asking) and apply.
+ * When some samples would be copied (the old experiment still uses them), the
+ * copies drift apart from then on, so the user may instead move those to
+ * Global (#173).
+ */
 async function confirmAndApply(
   deps: SampleRelocationDeps,
   toDir: string,
@@ -162,20 +196,49 @@ async function confirmAndApply(
   replan: () => Promise<PlannedAdoption[]>
 ): Promise<number | undefined> {
   const { host } = deps;
-  const ok = await host.confirm(
-    `${host.t(
-      "Notes in {0} use {1} local sample(s) that are still in another experiment's registry, so the notes cannot find them. Bring them into {0}?",
-      posix.basename(toDir),
-      String(plan.length)
-    )}\n\n${plan.map(a => describe(host, a)).join('\n')}`,
-    { confirmLabel: host.t('Bring samples') }
+  const question = host.t(
+    "Notes in {0} use {1} local sample(s) that are still in another experiment's registry, so the notes cannot find them. Bring them into {0}?",
+    posix.basename(toDir),
+    String(plan.length)
   );
-  if (!ok) return undefined;
+  const copies = plan.filter(a => a.action === 'copy');
+  let copiesToGlobal = false;
+  if (copies.length > 0 && deps.globalSampleFolder) {
+    const list = plan.map(a => describe(host, a).replace(/^- /, '')).join('; ');
+    const choice = await host.pick<'bring' | 'global' | 'cancel'>(
+      [
+        {
+          label: host.t('Bring samples (copies are edited separately from now on)'),
+          detail: list,
+          value: 'bring',
+        },
+        {
+          label: host.t('Move samples the other experiment still uses to Global, bring the rest'),
+          detail: copies.map(a => a.id).join(', '),
+          value: 'global',
+        },
+        { label: host.t('Cancel'), value: 'cancel' },
+      ],
+      { placeholder: question }
+    );
+    if (!choice || choice === 'cancel') return undefined;
+    copiesToGlobal = choice === 'global';
+  } else {
+    const ok = await host.confirm(`${question}\n\n${plan.map(a => describe(host, a)).join('\n')}`, {
+      confirmLabel: host.t('Bring samples'),
+    });
+    if (!ok) return undefined;
+  }
   const wanted = new Set(plan.map(a => `${a.fromDir}\u0000${sampleReferenceKey(a.type, a.id)}`));
   const fresh = (await replan()).filter(a =>
     wanted.has(`${a.fromDir}\u0000${sampleReferenceKey(a.type, a.id)}`)
   );
-  return apply(deps, toDir, fresh);
+  const { moved, taken } = await apply(deps, toDir, fresh, copiesToGlobal);
+  if (moved.length > 0) host.notify('info', host.t('Moved to Global: {0}', moved.join(', ')));
+  if (taken.length > 0) {
+    host.notify('warn', host.t('Global already has {0}, so it was copied instead.', taken.join(', ')));
+  }
+  return fresh.length - moved.length;
 }
 
 /**

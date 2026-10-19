@@ -14,7 +14,7 @@ import {
   getSampleDisplayMeta,
   buildSampleReferenceText,
 } from '@labnoteo/core/lib/sampleUtils';
-import { type SampleRecord } from '@labnoteo/core/lib/sampleStorage';
+import { isSameSampleFolder, type SampleRecord } from '@labnoteo/core/lib/sampleStorage';
 import type LabnotePlugin from '../main';
 import { renderTree } from './treeRender';
 import {
@@ -23,6 +23,7 @@ import {
   deleteSampleInteractive,
   moveSampleInteractive,
   changeSampleTypeInteractive,
+  setSampleDiscardedInteractive,
   insertSampleReference,
   sampleUsages,
   type SampleScope,
@@ -159,7 +160,8 @@ export class SampleTreeView extends ItemView {
     this.lastRenderedLocal = local;
     const types = getSampleDisplayMeta(this.plugin.settings.customSampleTypes).types;
 
-    this.lastNodes = (await buildSampleTree(this.plugin.fs, { local, global }, types)).map(root =>
+    const labels = { discarded: this.plugin.t('(discarded)') };
+    this.lastNodes = (await buildSampleTree(this.plugin.fs, { local, global }, types, labels)).map(root =>
       (root.payload as { sameFolder?: boolean } | undefined)?.sameFolder ? this.sameFolderNotice(root) : root
     );
     this.seedInitialExpansion(this.lastNodes);
@@ -327,28 +329,32 @@ export class SampleTreeView extends ItemView {
           });
         })
     );
-    menu.addItem(item =>
-      item
-        .setTitle(
-          sample.scope === 'local'
-            ? this.plugin.t('Move to Global')
-            : this.plugin.t('Move to Local')
-        )
-        .setIcon('arrow-right-left')
-        .onClick(() => {
-          // Hand the move the exact folders this tree rendered with, so it can
-          // never re-derive Local from a since-changed active file and land in
-          // a different experiment than the one shown.
-          const toScope: SampleScope = sample.scope === 'local' ? 'global' : 'local';
-          void moveSampleInteractive(this.app, this.plugin, {
-            fromScope: sample.scope,
-            fromFolder: this.scopeFolder(sample.scope),
-            toFolder: this.scopeFolder(toScope),
-            type: sample.type,
-            id: sample.id,
-          });
-        })
-    );
+    // Outside an experiment Local is the Global folder: there is no Local to move to (#159).
+    const noLocal = isSameSampleFolder(this.lastRenderedLocal, this.plugin.settings.globalSampleFolder);
+    if (sample.scope === 'local' || !noLocal) {
+      menu.addItem(item =>
+        item
+          .setTitle(
+            sample.scope === 'local'
+              ? this.plugin.t('Move to Global')
+              : this.plugin.t('Move to Local')
+          )
+          .setIcon('arrow-right-left')
+          .onClick(() => {
+            // Hand the move the exact folders this tree rendered with, so it can
+            // never re-derive Local from a since-changed active file and land in
+            // a different experiment than the one shown.
+            const toScope: SampleScope = sample.scope === 'local' ? 'global' : 'local';
+            void moveSampleInteractive(this.app, this.plugin, {
+              fromScope: sample.scope,
+              fromFolder: this.scopeFolder(sample.scope),
+              toFolder: this.scopeFolder(toScope),
+              type: sample.type,
+              id: sample.id,
+            });
+          })
+      );
+    }
     menu.addItem(item =>
       item
         .setTitle(this.plugin.t('Change type'))
@@ -358,6 +364,20 @@ export class SampleTreeView extends ItemView {
             folder,
             type: sample.type,
             id: sample.id,
+          });
+        })
+    );
+    const discarded = Boolean(sample.record.discarded);
+    menu.addItem(item =>
+      item
+        .setTitle(discarded ? this.plugin.t('Unmark discarded') : this.plugin.t('Mark as discarded'))
+        .setIcon(discarded ? 'archive-restore' : 'archive')
+        .onClick(() => {
+          void setSampleDiscardedInteractive(this.plugin, {
+            folder,
+            type: sample.type,
+            id: sample.id,
+            discarded: !discarded,
           });
         })
     );
