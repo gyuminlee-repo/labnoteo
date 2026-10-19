@@ -76,6 +76,12 @@ export interface ToolContext {
    * fall back to {@link ToolContext.fs}.
    */
   writeNote?(path: string, content: string): Promise<void>;
+  /**
+   * Optional: vault paths of the notes that use the sample `(type, id)` stored
+   * in `folder`. `get_sample` returns them as `usages` (#131); a host without
+   * a note index leaves it unset and `usages` is left out.
+   */
+  findSampleUsages?(folder: string, type: string, id: string): Promise<string[]>;
 }
 
 /**
@@ -450,7 +456,7 @@ export function createLabnoteTools(): ToolDef[] {
       name: 'get_sample',
       mutates: false,
       description:
-        'Look up a stored sample definition by type and id, searching the document-local labsamples folder then the vault-global one.',
+        'Look up a stored sample definition by type and id, searching the document-local labsamples folder then the vault-global one. When the host can search notes, `usages` lists the vault paths of the notes that use the sample found (`sources` is only where it was defined or recorded).',
       inputSchema: {
         type: 'object',
         properties: {
@@ -472,7 +478,11 @@ export function createLabnoteTools(): ToolDef[] {
 
         for (const folder of folders) {
           const records = await loadSamplesByType(ctx.fs, folder, type);
-          if (records[id]) return { ok: true, data: { ...records[id], id } };
+          if (!records[id]) continue;
+          if (!ctx.findSampleUsages) return { ok: true, data: { ...records[id], id } };
+          const canonical = canonicalSampleType(type, getSampleDisplayMeta(ctx.customTypes).types) ?? type;
+          const usages = await ctx.findSampleUsages(folder, canonical, id);
+          return { ok: true, data: { ...records[id], id, usages } };
         }
         return { ok: false, error: `Sample not found: ${type}/${id}` };
       },

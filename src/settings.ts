@@ -6,7 +6,7 @@
  * that the Obsidian build introduces (VS Code delegates LLM to Copilot Chat,
  * Obsidian talks to Ollama/OpenAI directly).
  */
-import { isValidSampleTypeName, suggestSampleTypeName } from '@labnoteo/core/lib/sampleUtils';
+import { isValidSampleTypeName, SAMPLE_TYPES, suggestSampleTypeName } from '@labnoteo/core/lib/sampleUtils';
 
 export type LlmProviderKind = 'none' | 'ollama' | 'openai';
 
@@ -104,6 +104,30 @@ export function partitionCustomSampleTypes(
     }
   }
   return out;
+}
+
+/**
+ * Custom sample types in `before` that `after` dropped (#137): the samples of
+ * such a type stop showing. A change of case and a built-in name do not count,
+ * since those types stay shown.
+ */
+export function removedCustomSampleTypes(before: readonly string[], after: readonly string[]): string[] {
+  const kept = new Set([...after, ...SAMPLE_TYPES].map(t => t.toLowerCase()));
+  return [...new Set(before)].filter(t => !kept.has(t.toLowerCase()));
+}
+
+/** Samples in the given `{Type}.json` texts (#137); an empty or broken file counts as none. */
+export function countSampleRecords(jsonTexts: readonly string[]): number {
+  let count = 0;
+  for (const text of jsonTexts) {
+    try {
+      const parsed: unknown = JSON.parse(text);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) count += Object.keys(parsed).length;
+    } catch {
+      // Not counted.
+    }
+  }
+  return count;
 }
 
 /**

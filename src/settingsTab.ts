@@ -8,7 +8,16 @@ import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
 import type LabnotePlugin from './main';
 import { suggestSampleTypeName } from '@labnoteo/core/lib/sampleUtils';
 import { isSameSampleFolder } from '@labnoteo/core/lib/sampleStorage';
-import { DEFAULT_SETTINGS, partitionCustomSampleTypes, type LlmProviderKind } from './settings';
+import { getExperimentDir, getExperimentLabsamplesFolder } from '@labnoteo/core/lib/labnoteStructure';
+import * as posix from '@labnoteo/core/posix';
+import {
+  countSampleRecords,
+  DEFAULT_SETTINGS,
+  partitionCustomSampleTypes,
+  removedCustomSampleTypes,
+  type LlmProviderKind,
+} from './settings';
+import { confirmModal } from './modals';
 import { openUserGuide } from './userGuide';
 import { tokenFingerprint } from './llm/mcpServer';
 
@@ -27,6 +36,12 @@ export class LabnoteSettingTab extends PluginSettingTab {
   private globalFolderBaseline?: string;
   /** Polls for the settings modal to close before asking about a folder change. */
   private globalFolderPromptTimer?: number;
+  /** Debounce handle for refreshing sample views after a custom type edit (#137). */
+  private sampleTypesRefreshTimer?: number;
+  /** The custom sample types when the tab was first shown, kept until removed ones were asked about (#137). */
+  private sampleTypesBaseline?: string[];
+  /** Polls for the settings modal to close before asking about removed types. */
+  private sampleTypesPromptTimer?: number;
 
   constructor(app: App, private readonly plugin: LabnotePlugin) {
     super(app, plugin);
@@ -48,6 +63,15 @@ export class LabnoteSettingTab extends PluginSettingTab {
     }, 400);
   }
 
+  /** Re-read the Samples sidebar ~400ms after the custom types change, so it shows the new list (#137). */
+  private scheduleSampleTypesRefresh(): void {
+    window.clearTimeout(this.sampleTypesRefreshTimer);
+    this.sampleTypesRefreshTimer = window.setTimeout(() => {
+      this.sampleTypesRefreshTimer = undefined;
+      this.plugin.refreshSampleViews();
+    }, 400);
+  }
+
   display(): void {
     const { containerEl } = this;
     this.disarmRegenerate();
@@ -55,6 +79,9 @@ export class LabnoteSettingTab extends PluginSettingTab {
     window.clearTimeout(this.globalFolderPromptTimer);
     this.globalFolderPromptTimer = undefined;
     this.globalFolderBaseline ??= this.plugin.settings.globalSampleFolder;
+    window.clearTimeout(this.sampleTypesPromptTimer);
+    this.sampleTypesPromptTimer = undefined;
+    this.sampleTypesBaseline ??= [...this.plugin.settings.customSampleTypes];
     containerEl.empty();
 
     const s = this.plugin.settings;
@@ -105,6 +132,7 @@ export class LabnoteSettingTab extends PluginSettingTab {
           .onChange(v => {
             s.customSampleTypes = partitionCustomSampleTypes(v, storedTypes).save;
             save();
+            this.scheduleSampleTypesRefresh();
           });
         t.inputEl.addEventListener('blur', () => {
           const { rejected } = partitionCustomSampleTypes(t.getValue(), storedTypes);
@@ -310,6 +338,69 @@ export class LabnoteSettingTab extends PluginSettingTab {
   hide(): void {
     this.disarmRegenerate();
     this.askAboutGlobalFolderChange();
+    this.askAboutRemovedSampleTypes();
+  }
+
+  /**
+   * When custom sample types were removed while the tab was open and samples
+   * of them are stored, offer to put the types back (#137): otherwise those
+   * samples silently stop showing. Asked once settings has closed, like the
+   * folder move.
+   */
+  private askAboutRemovedSampleTypes(): void {
+    const removed = removedCustomSampleTypes(this.sampleTypesBaseline ?? [], this.plugin.settings.customSampleTypes);
+    if (removed.length === 0) {
+      this.sampleTypesBaseline = undefined;
+      return;
+    }
+    const check = (): void => {
+      if (document.querySelector('.modal-container')) {
+        this.sampleTypesPromptTimer = window.setTimeout(check, 250);
+        return;
+      }
+      this.sampleTypesPromptTimer = undefined;
+      this.sampleTypesBaseline = undefined;
+      this.offerToRestoreSampleTypes(removed).catch(err =>
+        console.warn('[labnoteo] could not check the removed sample types:', err)
+      );
+    };
+    window.clearTimeout(this.sampleTypesPromptTimer);
+    this.sampleTypesPromptTimer = window.setTimeout(check, 250);
+  }
+
+  private async offerToRestoreSampleTypes(removed: string[]): Promise<void> {
+    const { fs, settings } = this.plugin;
+    const folders = [
+      settings.globalSampleFolder,
+      ...this.app.vault
+        .getMarkdownFiles()
+        .filter(f => f.name === 'README.labnote.md' && getExperimentDir(f.path) === posix.dirname(f.path))
+        .map(f => getExperimentLabsamplesFolder(f.path)!),
+    ];
+    const left: { type: string; count: number }[] = [];
+    for (const type of removed) {
+      const texts: string[] = [];
+      for (const folder of folders) {
+        const file = posix.join(folder, `${type}.json`);
+        if (await fs.exists(file)) texts.push(await fs.read(file));
+      }
+      const count = countSampleRecords(texts);
+      if (count > 0) left.push({ type, count });
+    }
+    if (left.length === 0) return;
+
+    const list = left.map(l => `- ${this.plugin.t('{0}: {1} sample(s)', l.type, String(l.count))}`).join('\n');
+    const ok = await confirmModal(
+      this.app,
+      this.plugin.t('Samples of the removed sample type(s) will no longer show:\n\n{0}\n\nPut the type(s) back in the list?', list),
+      this.plugin.t('Put back')
+    );
+    if (!ok) return;
+    const now = this.plugin.settings.customSampleTypes;
+    this.plugin.settings.customSampleTypes = [...now, ...left.map(l => l.type).filter(t => !now.includes(t))];
+    await this.plugin.saveSettings();
+    this.plugin.refreshSampleViews();
+    new Notice(this.plugin.t('Put back: {0}', left.map(l => l.type).join(', ')));
   }
 
   /**

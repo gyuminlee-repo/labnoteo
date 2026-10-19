@@ -34,6 +34,7 @@ import {
 import type LabnotePlugin from '../main';
 import { getObsidianLanguage } from '../i18n';
 import { buildApprovalMessage } from './approvalMessage';
+import { sampleUsages } from '../sampleActions';
 
 // Available in the CommonJS bundle at runtime (desktop/Electron).
 declare const require: (id: string) => unknown;
@@ -152,6 +153,7 @@ export class LabnoteMcpServer {
       // now. Going through the vault means the open editor picks the change up
       // instead of overwriting it on its next flush.
       writeNote: (path, content) => this.plugin.writeNoteStamped(path, content),
+      findSampleUsages: (folder, type, id) => sampleUsages(this.plugin.app, this.plugin, folder, type, id),
     };
   }
 

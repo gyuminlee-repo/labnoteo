@@ -14,6 +14,7 @@ import {
   editSampleInteractive,
   insertSampleReference,
   listSampleDefinitions,
+  sampleUsages,
 } from '../../src/sampleActions';
 import { confirmModal, pickModal, promptModal } from '../../src/modals';
 import type { EditTarget } from '@labnoteo/core';
@@ -321,6 +322,20 @@ describe('editSampleInteractive alias rewrite', () => {
 
     expect(confirmModal).not.toHaveBeenCalled();
     expect(Notice.shown.at(-1)).toBe('Sample updated: RNA-1');
+  });
+
+  // #130, #131
+  it('lists the usages of a Global sample without the experiments a Local record shadows', async () => {
+    await fs.write(`${A}/001_WD010_A.labnote.md`, 'RNA-1;si KIF\n');
+    await fs.write(`${A}/002_WD020_B.labnote.md`, 'no reference\n');
+    await fs.write(`${B}/resources/labsamples/RNA.json`, JSON.stringify({ 'RNA-1': RECORD }));
+    await fs.write(`${B}/001_WD010_C.labnote.md`, 'RNA-1;si KIF\n');
+    const { app, p } = editPlugin();
+
+    expect(await sampleUsages(app, p, GLOBAL, 'RNA', 'RNA-1')).toEqual([`${A}/001_WD010_A.labnote.md`]);
+    expect(await sampleUsages(app, p, `${B}/resources/labsamples`, 'RNA', 'RNA-1')).toEqual([
+      `${B}/001_WD010_C.labnote.md`,
+    ]);
   });
 });
 
