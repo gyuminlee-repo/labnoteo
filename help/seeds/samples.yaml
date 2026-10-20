@@ -1,0 +1,50 @@
+# 샘플 영상용: 로컬 샘플 DNA-1001(GFP 주형)을 두 노트가 쓰고, 전역 샘플 Plasmid-2001(pUC19)이 있다.
+id: samples
+from: basic
+steps:
+  - tool: open_file
+    args: { path: { ko: labnote/001_GFP_발현/README.labnote.md, en: labnote/001_GFP_expression/README.labnote.md } }
+  - tool: labnoteo_create_workflow
+    args: { query: WB140, alias: { ko: 플라스크, en: flask } }
+  - quit: true
+  - fs.write:
+      path: resources/labsamples/Plasmid.json
+      content:
+        ko: |
+          {
+            "Plasmid-2001": {
+              "type": "Plasmid",
+              "alias": "pUC19",
+              "descriptions": ["클로닝 벡터, 암피실린 내성"],
+              "location": "-20도 냉동고 1칸"
+            }
+          }
+        en: |
+          {
+            "Plasmid-2001": {
+              "type": "Plasmid",
+              "alias": "pUC19",
+              "descriptions": ["Cloning vector, ampicillin resistant"],
+              "location": "-20 freezer, shelf 1"
+            }
+          }
+  - fs.patch:
+      path: { ko: labnote/001_GFP_발현/002_WB140_Liquid_Media_Cell_Culture_플라스크.labnote.md, en: labnote/001_GFP_expression/002_WB140_Liquid_Media_Cell_Culture_flask.labnote.md }
+      find: "## Conclusions and Discussion\n"
+      replace:
+        ko: |
+          ## Conclusions and Discussion
+
+          - 형질전환한 플라스미드: 50 ng DNA-1001;GFP 주형, 대조군 50 ng Plasmid-2001;pUC19
+          - 배양 조건: LB + 암피실린, 37°C 200 rpm 16시간
+        en: |
+          ## Conclusions and Discussion
+
+          - Transformed: 50 ng DNA-1001;GFP template, control 50 ng Plasmid-2001;pUC19
+          - Culture: LB + ampicillin, 37°C 200 rpm for 16 h
+  - launch: true
+  - tool: eval
+    args:
+      expression:
+        ko: "(async () => { const f = app.vault.getAbstractFileByPath('labnote/001_GFP_발현/002_WB140_Liquid_Media_Cell_Culture_플라스크.labnote.md'); await app.plugins.plugins.labnoteo.syncSamples(f); return true; })()"
+        en: "(async () => { const f = app.vault.getAbstractFileByPath('labnote/001_GFP_expression/002_WB140_Liquid_Media_Cell_Culture_flask.labnote.md'); await app.plugins.plugins.labnoteo.syncSamples(f); return true; })()"

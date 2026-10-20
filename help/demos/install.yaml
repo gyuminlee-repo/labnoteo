@@ -1,0 +1,58 @@
+id: install
+order: 1
+section: start
+title: { ko: 설치, en: Installation }
+vault: demo-install
+seed: none
+long: true
+steps:
+  - caption: { ko: 설정 → 커뮤니티 플러그인을 엽니다, en: Open Settings → Community plugins }
+    tool: settings_open
+    args: { tab: { ko: 커뮤니티 플러그인, en: Community plugins } }
+  - caption: { ko: 제한 모드를 끕니다, en: Turn off restricted mode }
+    tool: settings_set
+    args:
+      name: { ko: 커뮤니티 플러그인 허용, en: Allow community plugins }
+      value: { ko: 제한 모드 종료, en: Exit Restricted mode }
+  - caption: { ko: 탐색에서 BRAT를 찾습니다, en: Browse and search for BRAT }
+    tool: settings_set
+    args: { name: { ko: 커뮤니티 플러그인, en: Community plugins }, value: { ko: 탐색, en: Browse } }
+  - tool: modal_fill
+    args: { value: BRAT, placeholder: { ko: 플러그인 검색, en: Search community plugins } }
+  - tool: ui_click
+    args: { selector: .community-item, text: tfthacker }
+  - caption: { ko: 설치한 뒤 활성화합니다, en: "Install it, then enable it" }
+    tool: ui_click
+    args: { selector: button, text: { ko: 설치, en: Install }, exact: true, scope: .community-modal-details }
+  - tool: ui_wait
+    args: { selector: button, text: { ko: 활성화, en: Enable }, exact: true, scope: .community-modal-details, timeoutMs: 60000 }
+    fastForward: true
+  - tool: ui_click
+    args: { selector: button, text: { ko: 활성화, en: Enable }, exact: true, scope: .community-modal-details }
+    hold: 800
+  - tool: settings_close
+  - caption: { ko: "BRAT의 Add a beta plugin 명령을 실행합니다", en: "Run BRAT: Add a beta plugin for testing" }
+    tool: command_palette
+    args: { commandId: obsidian42-brat:AddBetaPlugin }
+  - caption: { ko: "BRAT 창은 영어입니다. Repository에 주소를 넣습니다", en: Enter the repository sblabkribb/labnoteo }
+    tool: modal_fill
+    args: { value: sblabkribb/labnoteo, placeholder: Repository }
+  - tool: ui_press
+    args: { keys: Tab }
+  - caption: { ko: Select a version에서 latest를 고릅니다, en: Pick latest under Select a version }
+    tool: ui_click
+    args: { selector: .brat-version-selector }
+  - tool: modal_pick
+    args: { text: latest }
+  - caption: { ko: Add plugin을 누르면 설치되고 켜집니다, en: Press Add plugin to install and enable it }
+    tool: modal_button
+    args: { text: Add plugin }
+  - tool: ui_wait
+    args: { selector: '.side-dock-ribbon-action:has(.lucide-box)', timeoutMs: 60000 }
+    fastForward: true
+  - caption: { ko: 리본에 워크플로·샘플 아이콘이 생겼습니다, en: Workflows and Samples icons appear in the ribbon }
+    highlight: { selector: '.side-dock-ribbon-action:has(.lucide-box)' }
+    poster: true
+    hold: 1200
+  - highlight: { selector: '.side-dock-ribbon-action:has(.lucide-test-tube)' }
+    hold: 1200

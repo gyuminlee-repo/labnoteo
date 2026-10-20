@@ -1,0 +1,41 @@
+id: ai-ask-agent
+order: 26
+section: ai
+title: { ko: "AI: 어시스턴트에게 요청", en: "AI: Ask assistant" }
+seed: basic
+ai: true
+steps:
+  - caption: { ko: 워크플로 노트를 연 채로 어시스턴트를 부릅니다, en: Call the assistant with the workflow note open }
+    tool: open_file
+    args: { path: { ko: labnote/001_GFP_발현/001_WB030_DNA_Assembly_1차.labnote.md, en: labnote/001_GFP_expression/001_WB030_DNA_Assembly_run1.labnote.md } }
+  - caption: { ko: 전기영동 확인 단계의 Method 칸이 비어 있습니다, en: The Method of the Gel check step is empty }
+    tool: editor_move
+    args: { text: (method used in this step), ch: 0 }
+  - highlight: { selector: .cm-line, text: (method used in this step) }
+    hold: 1200
+  - palette: ai-ask-agent
+  - caption: { ko: 할 일을 적습니다, en: Say what it should do }
+    tool: modal_fill
+    args: { value: { ko: 전기영동 확인 단계의 Method 칸을 짧게 채워 줘, en: Fill in the Method of the Gel check step briefly } }
+    hold: 800
+  - tool: ui_press
+    args: { keys: Enter }
+  - tool: ui_wait
+    args: { notice: '', timeoutMs: 300000 }
+    fastForward: true
+  - caption: { ko: 볼트를 바꾸는 도구는 허용을 물어봅니다, en: Tools that change the vault ask for permission }
+    tool: modal_button
+    args: { text: $t(Allow) }
+  - tool: ui_wait
+    args: { notice: { ko: AI 도구 호출, en: AI tool calls }, timeoutMs: 300000 }
+    fastForward: true
+  - caption: { ko: 무엇을 했는지 알림으로 알려 줍니다, en: A notice says what the tools did }
+    tool: ui_press
+    args: { keys: Escape }
+    hold: 1500
+  - caption: { ko: 허용한 변경은 바로 노트에 들어갑니다, en: The change you allowed is already in the note }
+    tool: editor_move
+    args: { text: Conclusions and Discussion, ch: 0 }
+  - highlight: { selector: .cm-line, text: Method }
+    poster: true
+    hold: 2000

@@ -1,0 +1,32 @@
+id: create-workflow
+order: 7
+section: record
+title: { ko: 워크플로 생성, en: Create workflow }
+seed: basic
+steps:
+  - caption: { ko: 실험 README를 열어 둡니다, en: Open the experiment README }
+    tool: open_file
+    args: { path: { ko: labnote/001_GFP_발현/README.labnote.md, en: labnote/001_GFP_expression/README.labnote.md } }
+  - caption: { ko: 팔레트에서 워크플로 생성을 실행합니다, en: Run Create workflow from the palette }
+    palette: create-workflow
+  - caption: { ko: "카탈로그를 한국어로 검색합니다(예: 형질전환)", en: "Search the catalog (e.g. transformation)" }
+    tool: modal_pick
+    args: { filter: { ko: 형질전환, en: transformation }, text: WB120 }
+  - caption: { ko: 같은 단계를 구분할 별칭을 적습니다, en: Add an alias to tell runs of the same step apart }
+    tool: modal_fill
+    args: { value: { ko: 열충격, en: heat shock } }
+    hold: 1000
+  - tool: ui_press
+    args: { keys: Enter }
+    hold: 1500
+  - caption: { ko: 다음 번호(002)로 워크플로 노트가 생깁니다, en: The workflow note gets the next number (002) }
+    highlight: { selector: .nav-file-title, text: 002_WB120 }
+    hold: 1200
+  - caption: { ko: README 체크리스트에도 등록됩니다, en: It is also added to the README checklist }
+    tool: open_file
+    args: { path: { ko: labnote/001_GFP_발현/README.labnote.md, en: labnote/001_GFP_expression/README.labnote.md } }
+  - tool: editor_move
+    args: { text: WB120, ch: 0 }
+  - highlight: { selector: .cm-line, text: WB120 }
+    poster: true
+    hold: 1500

@@ -1,0 +1,42 @@
+id: sample-view
+order: 17
+section: samples
+title: { ko: 샘플 뷰, en: Samples view }
+seed: basic
+steps:
+  - caption: { ko: 리본의 시험관 아이콘으로 샘플 뷰를 엽니다, en: Open the Samples view from the test-tube icon }
+    tool: open_file
+    args: { path: { ko: labnote/001_GFP_발현/001_WB030_DNA_Assembly_1차.labnote.md, en: labnote/001_GFP_expression/001_WB030_DNA_Assembly_run1.labnote.md } }
+  - tool: ribbon_click
+    args: { label: $t(Samples) }
+    hold: 1200
+  - caption: { ko: 타입을 우클릭해 샘플을 추가합니다, en: Right-click a type to add a sample }
+    tool: labnoteo_tree_click
+    args: { view: sample, label: Primer, button: right }
+  - tool: ui_click
+    args: { selector: .menu-item, text: $t(Add sample) }
+  - tool: modal_answer
+    args: { answers: [GFP-seq, { ko: 시퀀싱 프라이머, en: Sequencing primer }, { ko: -20도 냉동고 1칸, en: "-20 freezer, shelf 1" }] }
+    hold: 1000
+  - caption: { ko: 샘플 편집으로 보관 위치를 적습니다, en: Edit sample to record where it is stored }
+    tool: labnoteo_sample_menu
+    args: { sample: DNA-1001, item: $t(Edit sample) }
+  - tool: modal_answer
+    args:
+      answers:
+        - { ko: GFP 주형, en: GFP template }
+        - { ko: "GFP 서열이 든 주형 플라스미드, 20 ng/µL", en: "Template plasmid carrying GFP, 20 ng/µL" }
+        - { ko: -20도 냉동고 2칸, en: "-20 freezer, shelf 2" }
+    hold: 1000
+  - caption: { ko: 다 쓴 샘플은 폐기로 표시합니다, en: Mark used-up samples as discarded }
+    tool: labnoteo_sample_menu
+    args: { sample: DNA-1002, item: $t(Mark as discarded) }
+  - highlight: { selector: .labnote-tree-row, text: DNA-1002 }
+    hold: 1200
+  - caption: { ko: 검색 칸으로 ID·별칭·설명을 찾습니다, en: "Search by ID, alias or description" }
+    tool: ui_click
+    args: { selector: .labnote-sample-search }
+  - tool: ui_type
+    args: { text: GFP }
+    poster: true
+    hold: 1500

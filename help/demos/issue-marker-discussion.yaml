@@ -1,0 +1,29 @@
+id: issue-marker-discussion
+order: 6
+section: quick
+title: { ko: 이슈 마커와 논의 표시, en: Issue markers and the discussion flag }
+seed: automation-ready
+steps:
+  - caption: { ko: 논의할 문장이 있는 줄에 커서를 둡니다, en: Put the cursor on the line you want to discuss }
+    tool: open_file
+    args: { path: { ko: labnote/001_GFP_발현/001_WB030_DNA_Assembly_1차.labnote.md, en: labnote/001_GFP_expression/001_WB030_DNA_Assembly_run1.labnote.md } }
+  - tool: editor_move
+    args: { text: { ko: 단일 밴드를 확인했다, en: A single band at about 750 bp }, ch: end }
+  - caption: { ko: 논의 이슈 마커 삽입을 실행합니다, en: Run Insert issue marker }
+    palette: insert-issue-marker
+  - caption: { ko: 이 문장이 이슈 제목이 됩니다. Enter로 확정, en: This sentence becomes the issue title; press Enter }
+    tool: ui_press
+    args: { keys: Enter }
+    hold: 800
+  - caption: { ko: 마커가 붙고 색으로 강조됩니다, en: The marker is added and highlighted }
+    highlight: { selector: .labnote-issue-marker }
+    poster: true
+    hold: 1500
+  - caption: { ko: 실험 전체를 논의하려면 논의 표시 전환, en: "To discuss the whole experiment, toggle the discussion flag" }
+    palette: toggle-discussion-flag
+    hold: 1500
+  - caption: { ko: README에 discuss가 켜집니다. push하면 이슈가 열립니다, en: README gets discuss on; the next push opens an issue }
+    tool: open_file
+    args: { path: { ko: labnote/001_GFP_발현/README.labnote.md, en: labnote/001_GFP_expression/README.labnote.md } }
+  - highlight: { selector: '.metadata-property[data-property-key="discuss"]' }
+    hold: 1500

@@ -1,0 +1,106 @@
+# 실험 1개(GFP 발현): 유닛 오퍼레이션 2개와 결과 표가 든 워크플로 1개, 로컬 샘플 4개.
+# 기록·AI·CSV·날짜 영상 대부분이 여기서 시작한다.
+id: basic
+from: empty
+steps:
+  - tool: labnoteo_create_experiment
+    args: { title: { ko: GFP 발현, en: GFP expression } }
+  - quit: true
+  - fs.patch:
+      path: { ko: labnote/001_GFP_발현/README.labnote.md, en: labnote/001_GFP_expression/README.labnote.md }
+      find: "author: ''"
+      replace: "author: Demo Researcher"
+  - fs.patch:
+      path: { ko: labnote/001_GFP_발현/README.labnote.md, en: labnote/001_GFP_expression/README.labnote.md }
+      find: "> Briefly describe the main objective and hypothesis of this experiment."
+      replace:
+        ko: "> pUC19 골격에 GFP 유전자를 Gibson 조립으로 넣고, 대장균 DH5α에서 형광을 확인한다."
+        en: "> Put the GFP gene into a pUC19 backbone by Gibson assembly and check fluorescence in E. coli DH5α."
+  - launch: true
+  - tool: open_file
+    args: { path: { ko: labnote/001_GFP_발현/README.labnote.md, en: labnote/001_GFP_expression/README.labnote.md } }
+  - tool: labnoteo_create_workflow
+    args: { query: WB030, alias: { ko: 1차, en: run1 } }
+  - tool: labnoteo_insert_unit_operation
+    args: { query: UHW100, alias: { ko: GFP 증폭, en: GFP amplification } }
+  - tool: labnoteo_insert_unit_operation
+    args: { query: UHW230, alias: { ko: 전기영동 확인, en: Gel check } }
+  - quit: true
+  # 첫 유닛 오퍼레이션(열 순환): 자리표시 글은 두 블록에 같으므로 처음 것만 바뀐다
+  - fs.patch:
+      path: &wf { ko: labnote/001_GFP_발현/001_WB030_DNA_Assembly_1차.labnote.md, en: labnote/001_GFP_expression/001_WB030_DNA_Assembly_run1.labnote.md }
+      find: "- (samples from the previous step)"
+      replace:
+        ko: "- @DNA;DNA-1001;GFP 주형;GFP 서열이 든 주형 플라스미드, 20 ng/µL"
+        en: "- @DNA;DNA-1001;GFP template;Template plasmid carrying GFP, 20 ng/µL"
+  - fs.patch:
+      path: *wf
+      find: "- (e.g. enzyme, buffer, etc.)"
+      replace:
+        ko: |-
+          - Q5 High-Fidelity 2X Master Mix 25 µL
+          - @Primer;Primer-1001;GFP-F;GFP 정방향 프라이머, 10 µM
+          - @Primer;Primer-1002;GFP-R;GFP 역방향 프라이머, 10 µM
+        en: |-
+          - Q5 High-Fidelity 2X Master Mix, 25 µL
+          - @Primer;Primer-1001;GFP-F;GFP forward primer, 10 µM
+          - @Primer;Primer-1002;GFP-R;GFP reverse primer, 10 µM
+  - fs.patch:
+      path: *wf
+      find: "- (method used in this step)"
+      replace:
+        ko: "- 98°C 30초 → (98°C 10초, 60°C 20초, 72°C 30초) × 30회 → 72°C 2분"
+        en: "- 98°C 30 s → (98°C 10 s, 60°C 20 s, 72°C 30 s) × 30 → 72°C 2 min"
+  - fs.patch:
+      path: *wf
+      find: "- (samples to the next step)"
+      replace:
+        ko: "- @DNA;DNA-1002;GFP 증폭산물;GFP PCR 산물, 약 750 bp"
+        en: "- @DNA;DNA-1002;GFP amplicon;GFP PCR product, about 750 bp"
+  - fs.patch:
+      path: *wf
+      find: "- (Any results and discussions. Link file path if needed)"
+      replace:
+        ko: |-
+          | 시료 | 농도 (ng/µL) | A260/280 |
+          | --- | --- | --- |
+          | GFP 증폭산물 | 86.4 | 1.86 |
+          | 음성 대조군 | 2.1 | - |
+        en: |-
+          | Sample | Conc. (ng/µL) | A260/280 |
+          | --- | --- | --- |
+          | GFP amplicon | 86.4 | 1.86 |
+          | Negative control | 2.1 | - |
+  # 둘째 유닛 오퍼레이션(전기영동): Method는 비워 둔다(AI 초안 영상)
+  - fs.patch:
+      path: *wf
+      find: "- (samples from the previous step)"
+      replace:
+        ko: "- 5 µL DNA-1002;GFP 증폭산물"
+        en: "- 5 µL DNA-1002;GFP amplicon"
+  - fs.patch:
+      path: *wf
+      find: "- (Any results and discussions. Link file path if needed)"
+      replace:
+        ko: "- 약 750 bp에서 단일 밴드를 확인했다. 음성 대조군에는 밴드가 없다."
+        en: "- A single band at about 750 bp. No band in the negative control."
+  - fs.patch:
+      path: *wf
+      find: "## Conclusions and Discussion\n"
+      replace:
+        ko: |
+          ## Conclusions and Discussion
+
+          조립 산물로 DH5α를 형질전환해 형광 콜로니 두 개(pGFP-c1, pGFP-c2)를 골랐다.
+          두 클론은 글리세롤 스톡으로 만들어 -80도 냉동고 2칸에 보관했다.
+        en: |
+          ## Conclusions and Discussion
+
+          The assembly was transformed into DH5α and two fluorescent colonies (pGFP-c1, pGFP-c2) were picked.
+          Both clones were stored as glycerol stocks in the -80 freezer, shelf 2.
+  - launch: true
+  - tool: eval
+    args:
+      expression:
+        ko: "(async () => { const f = app.vault.getAbstractFileByPath('labnote/001_GFP_발현/001_WB030_DNA_Assembly_1차.labnote.md'); await app.plugins.plugins.labnoteo.syncSamples(f); return true; })()"
+        en: "(async () => { const f = app.vault.getAbstractFileByPath('labnote/001_GFP_expression/001_WB030_DNA_Assembly_run1.labnote.md'); await app.plugins.plugins.labnoteo.syncSamples(f); return true; })()"

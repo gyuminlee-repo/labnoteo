@@ -1,0 +1,42 @@
+id: sample-autocomplete
+order: 16
+section: samples
+title: { ko: 샘플 자동완성, en: Sample autocomplete }
+seed: basic
+steps:
+  - caption: { ko: Output 줄에 샘플을 적어 봅니다, en: Let's write a sample on the Output line }
+    tool: open_file
+    args: { path: { ko: labnote/001_GFP_발현/001_WB030_DNA_Assembly_1차.labnote.md, en: labnote/001_GFP_expression/001_WB030_DNA_Assembly_run1.labnote.md } }
+  - tool: editor_move
+    args: { text: (samples to the next step), ch: 2 }
+  - tool: editor_move
+    args: { ch: end, extend: true }
+  - caption: { ko: "@DNA; 를 치면 제안 목록이 뜹니다", en: "Type @DNA; to open the suggestions" }
+    tool: ui_type
+    args: { text: '@DNA;' }
+    hold: 1000
+  - caption: { ko: 새 DNA ID 생성을 고릅니다, en: Pick Generate new DNA ID }
+    tool: ui_click
+    args: { selector: .suggestion-item, text: { ko: 새 DNA ID 생성, en: Generate new DNA ID } }
+  - caption: { ko: 별칭, en: Alias }
+    tool: modal_fill
+    args: { value: { ko: 정제 산물, en: purified product }, submit: true }
+  - caption: { ko: 설명, en: Description }
+    tool: modal_fill
+    args: { value: { ko: 겔 추출한 GFP 단편, en: Gel-extracted GFP fragment }, submit: true }
+  - caption: { ko: 보관 위치, en: Storage location }
+    tool: modal_fill
+    args: { value: { ko: 4도 냉장고 A칸, en: "4 °C fridge, rack A" }, submit: true }
+    hold: 800
+  - caption: { ko: 새 ID로 참조가 들어갔습니다, en: A reference with the new ID is inserted }
+    highlight: { selector: .cm-line, text: { ko: 정제 산물, en: purified product } }
+    poster: true
+    hold: 1500
+  - caption: { ko: 본문 우클릭 → 샘플 추가로도 등록할 수 있습니다, en: Right-click in the note → Add sample works too }
+    tool: ui_click
+    args: { atCursor: true, button: right }
+  - tool: ui_click
+    args: { selector: .menu-item, text: $t(Add sample) }
+    hold: 1200
+  - tool: ui_press
+    args: { keys: Escape }

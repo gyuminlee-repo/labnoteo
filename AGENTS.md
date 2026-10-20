@@ -15,7 +15,12 @@
   `dist-automation/*.mjs`로 번들하고 워크플로/`AGENTS.md`/`QUICKSTART.md`/`SETUP.md`/
   Wiki 템플릿과 함께 `main.js`에 **문자열로 임베드**합니다.
 - `docs/` — 사용자용 문서(`INSTALL.md`, `COPILOT.md`). 저장소 루트 `README.md`(한)·
-  `README.en.md`(영)가 진입점.
+ `README.en.md`(영)가 진입점.
+- `help/` — 도움말 사이트와 기능 영상. `help/site/`(한/영 정적 페이지, `media/`의 영상과
+ `manifest.json`)는 [`.github/workflows/pages.yml`](.github/workflows/pages.yml)이 GitHub
+ Pages로 배포하고, `help/demos/*.yaml`(영상 대본)·`help/seeds/`(영상 시작 상태)는 testpilotO가
+ 영상을 녹화할 때 읽습니다. 플러그인 빌드·테스트·릴리스와는 무관합니다. 자세한 것은
+ [`help/README.md`](help/README.md).
 
 ## 문서 최신화 (중요)
 
@@ -44,7 +49,13 @@
    BRAT 명령 이름, Copilot 버전(현재 V4)·Claude Code 최소 버전·`codex-acp` 최소
    버전을 최신 자료로 확인하고 반영합니다.
 7. **링크·상호참조 점검** — 한/영 헤딩 앵커, `docs/` 상호 링크, `INSTALL.md`의
-   단계 번호 참조가 어긋나지 않는지 육안 확인합니다.
+ 단계 번호 참조가 어긋나지 않는지 육안 확인합니다. 도움말 사이트는 QUICKSTART·README
+ 헤딩 앵커로 링크하므로, 그 헤딩을 바꾸면 `help/site`의 링크도 고칩니다.
+8. **도움말 사이트와 영상** — 기능이나 UI 문구가 바뀌면 `help/demos/`의 해당 대본을 같이
+ 고치고 그 영상을 testpilotO로 다시 녹화합니다(`npm run demo -- <id>`). 오래된 영상은
+ `help/site/media/manifest.json`의 `version`으로 찾습니다. `help/site/index.html`(한)과
+ `help/site/en/index.html`(영)은 README처럼 짝으로 고칩니다. 명령 팔레트 표기(한국어 UI의
+ `한글 (English)`)가 바뀌면 사이트의 명령 표기도 같이 고칩니다.
 
 ## 빌드·검증·커밋
 

@@ -1,0 +1,20 @@
+id: setup-research-automation
+order: 27
+section: automation
+title: { ko: 연구노트 자동화 설정, en: Setup research automation }
+seed: basic
+steps:
+  - caption: { ko: 팔레트에서 연구노트 자동화 설정을 실행합니다, en: Run Setup research automation from the palette }
+    palette: setup-research-automation
+  - caption: { ko: 첨부 파일 위치를 묻습니다. ./images를 고릅니다, en: It asks where attachments go; choose ./images }
+    tool: modal_button
+    args: { text: $t(Use ./images) }
+    hold: 1500
+  - caption: { ko: 볼트 맨 위에 AGENTS.md와 QUICKSTART.md가 생깁니다, en: AGENTS.md and QUICKSTART.md appear at the vault root }
+    highlight: { selector: .nav-file-title, text: AGENTS }
+    poster: true
+    hold: 1200
+  - highlight: { selector: .nav-file-title, text: QUICKSTART }
+    hold: 1200
+  - caption: { ko: .github·.labnoteo 같은 점 폴더는 탐색기에 안 보입니다, en: Dot folders such as .github and .labnoteo are hidden in the explorer }
+    hold: 2500

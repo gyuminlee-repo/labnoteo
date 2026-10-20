@@ -1,0 +1,25 @@
+WEBVTT
+
+1
+00:00:00.008 --> 00:00:01.814
+Create experiment
+
+2
+00:00:01.814 --> 00:00:06.068
+Find Create experiment in the command palette (Ctrl+P)
+
+3
+00:00:06.068 --> 00:00:10.968
+Type a title; the folder-name character count is shown
+
+4
+00:00:10.968 --> 00:00:13.464
+Press Enter to create the folder and its README
+
+5
+00:00:13.464 --> 00:00:19.351
+Fill in author in the README front matter
+
+6
+00:00:19.351 --> 00:00:23.264
+The labnote/001_… folder is in the file explorer

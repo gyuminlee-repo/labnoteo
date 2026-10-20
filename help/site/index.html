@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Labnote Assistant 도움말</title>
+  <meta name="description" content="Obsidian 실험노트 플러그인 Labnote Assistant(labnoteo)의 기능별 짧은 영상과 사용법">
+  <link rel="stylesheet" href="assets/style.css">
+  <link rel="alternate" hreflang="en" href="en/">
+</head>
+<body data-lang="ko" data-media="media/">
+<a class="skip" href="#main">본문으로 건너뛰기</a>
+<header class="top">
+  <div class="top-inner">
+    <a class="brand" href="./">Labnote Assistant <span>도움말</span></a>
+    <nav class="top-links" aria-label="바로 가기">
+      <a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/INSTALL.md">설치 가이드</a>
+      <a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md">QUICKSTART</a>
+      <a href="https://github.com/sblabkribb/labnoteo">GitHub</a>
+      <a class="lang" href="en/" data-lang-switch hreflang="en" lang="en">English</a>
+    </nav>
+  </div>
+</header>
+
+<div class="layout">
+<nav class="toc" aria-label="목차">
+  <p class="toc-title">목차</p>
+  <ol>
+    <li><a href="#start">시작하기</a></li>
+    <li><a href="#find-commands">명령 찾는 법</a></li>
+    <li><a href="#quick">5분 따라하기</a></li>
+    <li><a href="#wiki">Wiki에 결과 쌓기</a></li>
+    <li><a href="#record">기록하기</a></li>
+    <li><a href="#samples">샘플 다루기</a></li>
+    <li><a href="#ai">AI 도우미</a></li>
+    <li><a href="#automation">연구노트 자동화</a></li>
+    <li><a href="#more">그 밖의 설정</a></li>
+    <li><a href="#trouble">자주 겪는 문제</a></li>
+  </ol>
+</nav>
+
+<main id="main">
+<section class="hero">
+  <h1>Labnote Assistant 도움말</h1>
+  <p class="lead">바이오파운드리 기반 합성생물학 실험을 Obsidian 노트로 기록하는 플러그인 <strong>Labnote Assistant</strong>(labnoteo)를 기능별 짧은 영상으로 보여 줍니다. 영상은 실제 플러그인 화면을 녹화한 것이고, 아래 띠의 자막이 각 단계를 설명합니다.</p>
+  <p class="meta" data-recorded-version>영상은 labnoteo <span data-version>0.105.0</span> 기준입니다.</p>
+  <p class="note">세부 규칙(폴더 이름 규칙, CSV 덮어쓰기 조건 등)은 이 페이지에 다시 적지 않고 보관함의 <a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md">QUICKSTART</a>(명령 팔레트 → <code>사용법 열기</code>)로 연결합니다.</p>
+</section>
+
+<section id="start">
+  <h2>시작하기</h2>
+  <article class="feature" id="install">
+    <h3>설치</h3>
+    <p>설정에서 제한 모드를 끄고, 커뮤니티 플러그인에서 <strong>BRAT</strong>를 설치한 뒤, BRAT의 <code>Add beta plugin</code>에 <code>sblabkribb/labnoteo</code>를 넣습니다. 설치가 끝나면 왼쪽 리본에 워크플로·샘플 아이콘이 생깁니다. BRAT 화면은 Obsidian 언어와 상관없이 영어로 나옵니다.</p>
+    <figure class="clip" data-clip="install"><figcaption>설치: 제한 모드 해제 → BRAT → labnoteo 추가</figcaption></figure>
+    <p class="more">단계별 안내: <a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/INSTALL.md#4-labnote-assistant-설치">설치 가이드 4. Labnote Assistant 설치</a></p>
+  </article>
+  <article class="feature" id="overview">
+    <h3>한눈에 보기</h3>
+    <p>실험을 만들고, 워크플로와 유닛 오퍼레이션을 넣고, 본문에서 샘플을 참조하고, 진행 상태를 바꾸는 흐름을 2분 안에 보여 줍니다. 각 단계의 자세한 영상은 아래 링크에 있습니다.</p>
+    <figure class="clip" data-clip="overview"><figcaption>실험 → 워크플로 → 유닛 오퍼레이션 → 샘플 참조 → 상태 변경 → 사용법 열기</figcaption></figure>
+    <ul class="jump">
+      <li><a href="#create-experiment">실험 생성</a></li>
+      <li><a href="#create-workflow">워크플로 생성</a></li>
+      <li><a href="#insert-unit-operation">유닛 오퍼레이션 삽입</a></li>
+      <li><a href="#sample-autocomplete">샘플 자동완성</a></li>
+      <li><a href="#change-experiment-status">실험 상태 변경</a></li>
+    </ul>
+  </article>
+</section>
+
+<section id="find-commands">
+  <h2>명령 찾는 법</h2>
+  <p>명령은 Obsidian <strong>명령 팔레트</strong>(Ctrl/Cmd+P)에서 찾습니다. 한국어 UI에서는 <code>실험 생성 (Create experiment)</code>처럼 한글과 영문이 함께 보이고, <code>실험 생성</code>으로도 <code>Create experiment</code>로도 검색됩니다. <code>Labnote</code>로 검색하면 이 플러그인의 명령만 모입니다. <a href="#overview">한눈에 보기</a> 영상에서 영어로 검색하는 장면을 볼 수 있습니다.</p>
+  <p>우클릭 메뉴와 창(모달)의 항목은 한글만 표시됩니다(예: <code>표를 CSV로 내보내기</code>). 팔레트 명령은 영어 이름을 알면 바로 찾을 수 있도록 함께 적고, 메뉴는 화면에 보이는 그대로 적기 때문입니다. 이 페이지도 팔레트 명령은 처음 나올 때 한글과 영문을 함께, 그 뒤로는 한글만 적습니다.</p>
+  <p class="more">전체 대응표와 팔레트에 없는 기능: <a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#명령-찾는-법">QUICKSTART · 명령 찾는 법</a></p>
+</section>
+
+<section id="quick">
+  <h2>5분 따라하기</h2>
+  <article class="feature" id="create-experiment">
+    <h3>실험 만들기</h3>
+    <p>명령 팔레트 → <code>실험 생성 (Create experiment)</code> → 제목 입력. 입력 창 아래에 폴더 이름 기준 글자 수가 나오고, <code>labnote/###_제목/README.labnote.md</code>가 만들어져 바로 열립니다. <strong>열리자마자 머리말의 <code>author</code>를 채우세요.</strong> 이후 만드는 워크플로의 실험자가 여기서 들어갑니다.</p>
+    <figure class="clip" data-clip="create-experiment"><figcaption>실험 생성과 author 채우기</figcaption></figure>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#1-실험-만들기">QUICKSTART · 1. 실험 만들기</a> (폴더 이름 규칙)</p>
+  </article>
+  <article class="feature" id="change-experiment-status">
+    <h3>진행 상태 바꾸기</h3>
+    <p>명령 팔레트 → <code>실험 상태 변경 (Change experiment status)</code> → 상태 선택. 상태는 어느 실험 노트에서 실행해도 그 실험의 README에 들어갑니다.</p>
+    <figure class="clip" data-clip="change-experiment-status"><figcaption>planned → in-progress</figcaption></figure>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#2-진행-상태-바꾸기">QUICKSTART · 2. 진행 상태 바꾸기</a></p>
+  </article>
+  <article class="feature" id="workflow-view">
+    <h3>워크플로 뷰에서 실험 보기</h3>
+    <p>리본의 상자 아이콘으로 여는 <strong>워크플로 뷰</strong> 맨 위 <code>실험</code> 칸에 보관함의 실험이 묶여 보입니다. <code>실험 검색</code> 칸으로 거르고, 옆의 전환으로 <code>상태별</code>과 <code>과제별</code>(README의 <code>project</code>)을 오갑니다. 실험을 우클릭하면 <code>실험 상태 변경</code>으로 그 실험의 상태를 바로 바꿉니다.</p>
+    <figure class="clip" data-clip="workflow-view"><figcaption>실험 검색 → 과제별 묶음 → 우클릭으로 상태 변경</figcaption></figure>
+    <p class="hint">묶음 전환은 운영체제의 목록 상자라 영상에는 펼쳐진 목록이 찍히지 않습니다. 자막으로 고른 항목을 알려 줍니다.</p>
+  </article>
+  <article class="feature" id="issue-marker-discussion">
+    <h3>논의가 필요한 곳 표시하기</h3>
+    <p>질문이 떠오른 문장을 선택하고 <code>논의 이슈 마커 삽입 (Insert issue marker)</code>을 실행하면 <code>@issue;ISS-…;주제</code> 마커가 붙습니다. 실험 전체를 논의하려면 <code>논의 표시 전환 (Toggle discussion flag)</code>을 씁니다. push하면 GitHub Issue가 열립니다(연구노트 자동화를 설정한 보관함).</p>
+    <figure class="clip" data-clip="issue-marker-discussion"><figcaption>이슈 마커와 논의 표시</figcaption></figure>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#3-기록하다-논의가-필요하면-그-자리에-표시하기">QUICKSTART · 3. 논의 표시</a></p>
+  </article>
+  <article class="feature" id="commit-push">
+    <h3>커밋·푸시와 이슈 확인</h3>
+    <p>커밋·푸시는 Copilot에 연결한 AI 에이전트에게 "오늘 작업 커밋하고 푸시해줘"라고 말하면 됩니다. push하고 잠시 뒤 GitHub 저장소의 <strong>Issues 탭</strong>에서 마커마다 열린 이슈를 확인합니다. 이 단계는 Obsidian 밖 화면이라 영상 대신 화면 사진으로 보여 줍니다.</p>
+    <div class="screens">
+      <figure class="screen" data-screen="copilot-commit"><figcaption>Copilot 대화창에서 커밋·푸시 요청</figcaption></figure>
+      <figure class="screen" data-screen="github-issues"><figcaption>push 뒤 Issues 탭에 열린 이슈</figcaption></figure>
+    </div>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#4-커밋푸시하기">QUICKSTART · 4. 커밋·푸시하기</a> · <a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#5-이슈-자동-생성-확인하기">5. 이슈 자동 생성 확인하기</a> · <a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/COPILOT.md">Copilot 에이전트 가이드</a></p>
+  </article>
+</section>
+
+<section id="wiki">
+  <h2>Wiki에 결과 쌓기</h2>
+  <p>실험이 마무리되면 AI 에이전트에게 "이 실험에서 확인된 객관적 사실을 wiki-staging에 정리해줘"라고 요청합니다. 초안을 검토한 뒤 <code>main</code>에 머지하면 GitHub Wiki로 발행됩니다.</p>
+  <div class="screens">
+    <figure class="screen" data-screen="github-wiki"><figcaption>발행된 Wiki 페이지</figcaption></figure>
+  </div>
+  <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#wiki에-결과-쌓기-실험이-마무리되면">QUICKSTART · Wiki에 결과 쌓기</a></p>
+</section>
+
+<section id="record">
+  <h2>기록하기</h2>
+  <article class="feature" id="create-workflow">
+    <h3>워크플로 만들기</h3>
+    <p>실험 README에서 <code>워크플로 생성 (Create workflow)</code> → 카탈로그 검색 → 별칭 입력. 한국어 UI에서는 <code>클로닝</code>, <code>조립</code>처럼 한국어로도 검색됩니다. 만든 워크플로는 README의 체크리스트에 자동으로 등록됩니다.</p>
+    <figure class="clip" data-clip="create-workflow"><figcaption>카탈로그 검색 → 별칭 → 체크리스트 등록</figcaption></figure>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#워크플로-노트-실험의-단계">QUICKSTART · 워크플로 노트</a> (파일 이름 규칙)</p>
+  </article>
+  <article class="feature" id="workflow-rename-copy">
+    <h3>워크플로 이름 바꾸기와 복사본</h3>
+    <p>탐색기에서 워크플로 노트 이름을 바꾸면 README 체크리스트의 라벨이 따라 바뀝니다. 탐색기 우클릭 메뉴로 복사본을 만들면 복사본의 별칭을 묻고, 다음 번호를 붙여 체크리스트에 등록합니다.</p>
+    <figure class="clip" data-clip="workflow-rename-copy"><figcaption>이름 바꾸기 → 라벨 갱신, 복사본 → 새 별칭</figcaption></figure>
+  </article>
+  <article class="feature" id="workflow-renumber">
+    <h3>워크플로 번호 다시 매기기</h3>
+    <p><code>워크플로 번호 다시 매기기 (Renumber workflows)</code>는 번호를 001부터 빈칸 없이 다시 매기고, 체크리스트도 맞춥니다.</p>
+    <figure class="clip" data-clip="workflow-renumber"><figcaption>001, 003 → 001, 002</figcaption></figure>
+  </article>
+  <article class="feature" id="workflow-sync">
+    <h3>폴더와 체크리스트 맞추기</h3>
+    <p>다른 실험에서 옮겨 오거나 복사한 워크플로는 체크리스트에 자동으로 오르지 않습니다. <code>폴더와 워크플로 체크리스트 맞추기 (Sync workflow checklist with folder)</code>가 빠진 항목을 등록하고, 파일 이름과 어긋난 라벨을 <code>옛 라벨 → 새 라벨</code> 목록으로 보여 준 뒤 고칩니다.</p>
+    <figure class="clip" data-clip="workflow-sync"><figcaption>빠진 워크플로 등록과 라벨 맞추기</figcaption></figure>
+  </article>
+  <article class="feature" id="context-menu-only">
+    <h3>우클릭으로만 쓰는 기능</h3>
+    <p>README에서 우클릭 → <code>워크플로 삽입</code>, 워크플로 뷰의 카탈로그 항목 우클릭 → <code>유닛 오퍼레이션 삽입</code>, 파일 탐색기에서 노트 우클릭 → <code>표를 CSV로 내보내기</code>. 팔레트만 훑어서는 알기 어려운 경로입니다.</p>
+    <figure class="clip" data-clip="context-menu-only"><figcaption>README · 워크플로 뷰 · 파일 탐색기의 우클릭 메뉴</figcaption></figure>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#팔레트에-없는-기능-우클릭--클릭-전용">QUICKSTART · 팔레트에 없는 기능</a></p>
+  </article>
+  <article class="feature" id="insert-unit-operation">
+    <h3>유닛 오퍼레이션 넣기</h3>
+    <p>워크플로 노트를 연 상태에서 <code>유닛 오퍼레이션 삽입 (Insert unit operation)</code> → 작업 선택 → 별칭. 문서 맨 위 목차가 헤딩 순서대로 다시 만들어집니다.</p>
+    <figure class="clip" data-clip="insert-unit-operation"><figcaption>별칭 입력 → 목차 갱신</figcaption></figure>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#유닛-오퍼레이션-한-번의-작업">QUICKSTART · 유닛 오퍼레이션</a></p>
+  </article>
+  <article class="feature" id="uo-reorder">
+    <h3>유닛 오퍼레이션 순서 바꾸기</h3>
+    <p>Obsidian <strong>개요(Outline)</strong> 보기에서 유닛 오퍼레이션 제목을 끌어 옮기면 목차와 <code>---</code> 구분선이 자동으로 정리됩니다.</p>
+    <figure class="clip" data-clip="uo-reorder"><figcaption>개요에서 끌어 옮기기 → 목차 정리</figcaption></figure>
+  </article>
+  <article class="feature" id="insert-date">
+    <h3>날짜 넣기</h3>
+    <p><code>날짜 삽입 (Insert date)</code>과 <code>날짜 및 시간 삽입 (Insert date and time)</code>은 커서 위치에 오늘 날짜와 시각을 넣습니다. 유닛 오퍼레이션 <code>#### Meta</code>의 날짜 줄 끝 📅 아이콘을 누르면 날짜 칸이 열립니다.</p>
+    <figure class="clip" data-clip="insert-date"><figcaption>날짜 삽입과 📅 날짜 칸</figcaption></figure>
+    <p class="hint">달력 팝업은 운영체제가 그리는 창이라 영상에 찍히지 않아, 입력 칸에서 값을 바꾸는 장면으로 보여 줍니다.</p>
+  </article>
+  <article class="feature" id="export-tables-csv">
+    <h3>표를 CSV로 내보내기</h3>
+    <p><code>표를 CSV로 내보내기 (Export tables to CSV)</code>는 노트 안의 표를 각각 <code>노트이름.labnote_table1.csv</code>로 같은 폴더에 저장합니다.</p>
+    <figure class="clip" data-clip="export-tables-csv"><figcaption>완료 알림 → 탐색기의 CSV 파일</figcaption></figure>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#날짜--표">QUICKSTART · 날짜 · 표</a> (덮어쓰기 조건)</p>
+  </article>
+</section>
+
+<section id="samples">
+  <h2>샘플 다루기</h2>
+  <article class="feature" id="sample-autocomplete">
+    <h3>본문에서 샘플 참조하기</h3>
+    <p>편집 중 <code>@DNA;</code>처럼 치면 자동완성이 열립니다. <code>새 DNA ID 생성</code>을 고르면 ID를 만들어 등록하고 본문에는 참조만 넣습니다. 본문 우클릭 → <code>샘플 추가</code>로도 만들 수 있습니다.</p>
+    <figure class="clip" data-clip="sample-autocomplete"><figcaption>@DNA; 자동완성과 우클릭 샘플 추가</figcaption></figure>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#본문에서-쓰기">QUICKSTART · 본문에서 쓰기</a></p>
+  </article>
+  <article class="feature" id="sample-view">
+    <h3>샘플 뷰</h3>
+    <p>리본의 시험관 아이콘으로 여는 샘플 뷰에서 샘플을 추가·편집(보관 위치 포함)·검색하고, 다 쓴 시료는 지우지 않고 <code>폐기로 표시</code>합니다.</p>
+    <figure class="clip" data-clip="sample-view"><figcaption>추가 · 편집 · 검색 · 폐기로 표시</figcaption></figure>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#샘플-뷰">QUICKSTART · 샘플 뷰</a></p>
+  </article>
+  <article class="feature" id="sample-definition">
+    <h3>정의 보기와 사용처</h3>
+    <p>본문의 참조 위에서 우클릭 → <code>정의로 이동</code>으로 그 샘플의 정의 창을 엽니다. 샘플 뷰에서 우클릭 → <code>사용처 보기</code>는 그 샘플을 쓰는 노트 목록을 보여 주고, 고르면 그 노트를 엽니다.</p>
+    <figure class="clip" data-clip="sample-definition"><figcaption>정의로 이동 → 사용처 보기 → 노트 열기</figcaption></figure>
+  </article>
+  <article class="feature" id="sample-type-scope">
+    <h3>타입 변경과 전역으로 이동</h3>
+    <p>잘못 고른 타입은 샘플 뷰 우클릭 → <code>타입 변경</code>으로 바꿉니다. 바뀔 노트 목록을 확인하면 노트의 참조 ID 접두사도 함께 바뀝니다. 여러 실험에서 함께 쓰는 샘플은 <code>전역으로 이동</code>으로 Global에 둡니다.</p>
+    <figure class="clip" data-clip="sample-type-scope"><figcaption>타입 변경 → 전역으로 이동</figcaption></figure>
+  </article>
+  <article class="feature" id="insert-experiment-samples-table">
+    <h3>이 실험의 시료를 표로</h3>
+    <p><code>이 실험의 시료 목록 삽입 (Insert sample list of this experiment)</code>은 이 실험의 로컬 샘플과 본문이 참조하는 전역 샘플을 ID·별칭·설명·보관 위치·범위·폐기 열의 표로 넣습니다.</p>
+    <figure class="clip" data-clip="insert-experiment-samples-table"><figcaption>시료 목록 표 삽입</figcaption></figure>
+  </article>
+  <article class="feature" id="custom-sample-type">
+    <h3>사용자 정의 샘플 타입</h3>
+    <p>설정 → Labnote Assistant → <code>사용자 정의 샘플 타입</code>에 <code>배지</code> 같은 타입을 더하면 바로 <code>@배지</code>로 자동완성됩니다. 타입 이름에는 글자·숫자·<code>_</code>만 씁니다.</p>
+    <figure class="clip" data-clip="custom-sample-type"><figcaption>설정에서 타입 추가 → @배지 자동완성</figcaption></figure>
+  </article>
+</section>
+
+<section id="ai">
+  <h2>AI 도우미</h2>
+  <p>Obsidian 안에서 쓰는 보조 기능입니다. 영상은 로컬 Ollama의 <code>qwen3.5:9b</code> 모델로 녹화했고, 응답을 기다리는 구간은 빨리 감았습니다. 모델과 언어에 따라 결과 글은 달라집니다.</p>
+  <article class="feature" id="ai-settings">
+    <h3>AI 제공자 설정</h3>
+    <p>설정 → Labnote Assistant → <code>AI 프로바이더</code>의 <code>프로바이더</code>를 <code>Ollama</code>나 <code>OpenAI-compatible</code>로 고르고 <code>Ollama 엔드포인트</code>(또는 OpenAI 엔드포인트)와 <code>모델</code>을 채웁니다. 기본값은 <code>비활성화됨</code>이라 그대로 두면 AI 명령이 동작하지 않습니다.</p>
+    <figure class="clip" data-clip="ai-settings"><figcaption>프로바이더 · 엔드포인트 · 모델</figcaption></figure>
+  </article>
+  <article class="feature" id="ai-draft-method">
+    <h3>Method 초안</h3>
+    <p>유닛 오퍼레이션 안에서 <code>AI: Method 섹션 초안 작성 (AI: Draft Method section)</code>을 실행하면 그 블록의 <code>#### Method</code> 절이 채워집니다.</p>
+    <figure class="clip" data-clip="ai-draft-method"><figcaption>Method 절 채우기</figcaption></figure>
+  </article>
+  <article class="feature" id="ai-summarize-results">
+    <h3>결과 요약</h3>
+    <p><code>AI: 결과 요약 (AI: Summarize results)</code>은 노트 전체를 읽고 커서 다음 줄에 <code>&gt; [!note] AI 요약</code> 콜아웃을 넣습니다.</p>
+    <figure class="clip" data-clip="ai-summarize-results"><figcaption>AI 요약 콜아웃</figcaption></figure>
+  </article>
+  <article class="feature" id="ai-extract-samples">
+    <h3>샘플 정의 추출</h3>
+    <p><code>AI: 샘플 정의 추출 (AI: Extract sample definitions)</code>은 본문에 적힌 시료를 샘플 대장에 등록하고 "새로 N개, 건너뜀 M개"로 알려 줍니다. 본문에는 넣지 않으니 결과는 샘플 뷰에서 봅니다.</p>
+    <figure class="clip" data-clip="ai-extract-samples"><figcaption>추출 알림 → 샘플 뷰의 새 샘플</figcaption></figure>
+  </article>
+  <article class="feature" id="ai-ask-agent">
+    <h3>어시스턴트에게 요청</h3>
+    <p><code>AI: 어시스턴트에게 요청 (툴 사용) (AI: Ask assistant (uses tools))</code>에 목표를 적으면 모델이 Labnote 도구로 보관함을 고칩니다. 쓰기 전에 매번 확인을 받고, 허용한 변경은 바로 노트에 들어갑니다. 모델이 마지막에 답을 주면 창으로 보여 주며, 그 답은 <code>노트에 넣기</code>를 눌러야 노트에 들어갑니다.</p>
+    <figure class="clip" data-clip="ai-ask-agent"><figcaption>목표 입력 → 도구 실행 허용 → 노트에 바로 반영</figcaption></figure>
+  </article>
+  <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#ai-도우미">QUICKSTART · AI 도우미</a></p>
+</section>
+
+<section id="automation">
+  <h2>연구노트 자동화</h2>
+  <article class="feature" id="setup-research-automation">
+    <h3>연구노트 자동화 설정</h3>
+    <p><code>연구노트 자동화 설정 (Setup research automation)</code>은 노트 검증, 실험과 GitHub Issue 연결, Wiki 발행에 쓰는 GitHub Actions·스크립트·AI 에이전트 규칙을 보관함에 설치합니다. 탐색기에는 <code>AGENTS.md</code>와 <code>QUICKSTART.md</code>가 보이고, <code>.github/</code>·<code>.labnoteo/</code> 같은 점 폴더는 Obsidian에 보이지 않습니다.</p>
+    <figure class="clip" data-clip="setup-research-automation"><figcaption>자동화 설정 → 첨부 파일 위치 → 설치된 파일</figcaption></figure>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/README.md#연구노트-자동화">README · 연구노트 자동화</a> · <a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/INSTALL.md#6-연구노트-자동화-설정">설치 가이드 6</a></p>
+  </article>
+</section>
+
+<section id="more">
+  <h2>그 밖의 설정</h2>
+  <ul class="plain">
+    <li><strong>샘플 추적·전역 샘플 폴더</strong>: 설정 → Labnote Assistant의 <code>샘플 추적</code>은 자동완성·하이라이트·대장 기록을 켜고 끕니다(다시 불러와야 적용). <code>전역 샘플 폴더</code>를 바꾸고 설정을 닫으면 옛 폴더의 샘플을 옮길지 묻습니다. <a href="https://github.com/sblabkribb/labnoteo/blob/main/README.md#설정">README · 설정</a></li>
+    <li><strong>MCP 서버</strong>: <code>MCP 서버 활성화</code>로 외부 MCP 클라이언트에 Labnote 도구를 내놓습니다. <a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/COPILOT.md">Copilot 에이전트 가이드</a></li>
+    <li><strong>노트를 다른 실험으로 옮길 때</strong>: 옮긴 노트가 원래 실험의 로컬 샘플을 쓰면 새 실험으로 가져올지 묻습니다. <a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#노트를-다른-실험으로-옮길-때">QUICKSTART · 노트를 다른 실험으로 옮길 때</a></li>
+  </ul>
+</section>
+
+<section id="trouble">
+  <h2>자주 겪는 문제</h2>
+  <ul class="plain">
+    <li><strong>push했는데 이슈가 안 생겨요</strong>: 보관함이 GitHub와 연결된 git 저장소인지, 노트에 <code>@issue</code> 마커·논의 표시·<code>needs-review</code> 중 하나가 있는지 확인하세요.</li>
+    <li><strong><code>유닛 오퍼레이션 삽입</code>이 거부돼요</strong>: README가 아니라 <code>###_이름.labnote.md</code> 워크플로 노트를 열고 실행하세요.</li>
+    <li><strong>AI 명령이 응답이 없어요</strong>: 설정의 <code>프로바이더</code>가 <code>비활성화됨</code>이 아닌지, 엔드포인트·모델 이름이 맞는지 확인하세요. 실패 알림이 고칠 설정을 알려 줍니다.</li>
+  </ul>
+  <p class="more">전체 목록: <a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#자주-겪는-문제">QUICKSTART · 자주 겪는 문제</a></p>
+</section>
+</main>
+</div>
+
+<footer class="foot">
+  <p>Labnote Assistant (labnoteo) · <a href="https://github.com/sblabkribb/labnoteo">sblabkribb/labnoteo</a> · 영상은 테스트용 보관함에서 녹화했습니다.</p>
+</footer>
+<script src="assets/app.js" defer></script>
+</body>
+</html>

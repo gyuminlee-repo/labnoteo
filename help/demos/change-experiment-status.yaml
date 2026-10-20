@@ -1,0 +1,19 @@
+id: change-experiment-status
+order: 4
+section: quick
+title: { ko: 실험 상태 변경, en: Change experiment status }
+seed: multi
+steps:
+  - caption: { ko: 실험 README를 엽니다. 지금 상태는 planned, en: Open the experiment README; it is planned now }
+    tool: open_file
+    args: { path: { ko: labnote/002_RFP_프로모터_비교/README.labnote.md, en: labnote/002_RFP_promoter_comparison/README.labnote.md } }
+    hold: 800
+  - caption: { ko: 팔레트에서 실험 상태 변경을 실행합니다, en: Run Change experiment status from the palette }
+    palette: change-experiment-status
+  - caption: { ko: 목록에서 in-progress를 고릅니다, en: Pick in-progress from the list }
+    tool: modal_pick
+    args: { text: in-progress }
+  - caption: { ko: README의 status가 바뀌었습니다, en: The README status has changed }
+    highlight: { selector: '.metadata-property[data-property-key="status"]' }
+    poster: true
+    hold: 1500

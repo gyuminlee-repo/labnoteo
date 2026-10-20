@@ -1,0 +1,21 @@
+WEBVTT
+
+1
+00:00:00.022 --> 00:00:01.826
+Custom sample types
+
+2
+00:00:01.826 --> 00:00:04.377
+Open Settings → Labnote Assistant
+
+3
+00:00:04.377 --> 00:00:11.469
+Add Media to Custom sample types
+
+4
+00:00:11.469 --> 00:00:22.544
+It works right away, no reload needed
+
+5
+00:00:22.544 --> 00:00:41.800
+Generate an ID of the new type and reference it

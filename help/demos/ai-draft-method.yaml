@@ -1,0 +1,23 @@
+id: ai-draft-method
+order: 23
+section: ai
+title: { ko: "AI: Method 초안", en: "AI: Draft Method" }
+seed: basic
+ai: true
+steps:
+  - caption: { ko: Method가 빈 유닛 오퍼레이션 안에 커서를 둡니다, en: Put the cursor inside a unit operation with an empty Method }
+    tool: open_file
+    args: { path: { ko: labnote/001_GFP_발현/001_WB030_DNA_Assembly_1차.labnote.md, en: labnote/001_GFP_expression/001_WB030_DNA_Assembly_run1.labnote.md } }
+  - tool: editor_move
+    args: { text: (method used in this step), ch: end }
+  - caption: { ko: "팔레트에서 AI: Method 초안 작성", en: "Run AI: Draft Method from the palette" }
+    palette: ai-draft-method
+  - tool: ui_wait
+    args: { notice: '', timeoutMs: 300000 }
+    fastForward: true
+  - caption: { ko: 그 유닛 오퍼레이션의 Method가 채워졌습니다, en: That unit operation's Method is filled in }
+    tool: editor_move
+    args: { line: 86, ch: 0 }
+  - highlight: { selector: .cm-line.cm-active }
+    poster: true
+    hold: 2500

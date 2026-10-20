@@ -1,0 +1,21 @@
+WEBVTT
+
+1
+00:00:00.013 --> 00:00:01.823
+Setup research automation
+
+2
+00:00:01.823 --> 00:00:06.755
+Run Setup research automation from the palette
+
+3
+00:00:06.755 --> 00:00:09.706
+It asks where attachments go; choose ./images
+
+4
+00:00:09.706 --> 00:00:15.556
+AGENTS.md and QUICKSTART.md appear at the vault root
+
+5
+00:00:15.556 --> 00:00:21.678
+Dot folders such as .github and .labnoteo are hidden in the explorer

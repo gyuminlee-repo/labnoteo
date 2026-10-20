@@ -1,0 +1,35 @@
+id: sample-type-scope
+order: 19
+section: samples
+title: { ko: 타입 변경·전역으로 이동, en: Change type and Move to Global }
+seed: samples
+steps:
+  - caption: { ko: DNA로 등록한 GFP 주형을 Plasmid로 바꿉니다, en: Change the GFP template from DNA to Plasmid }
+    tool: open_file
+    args: { path: { ko: labnote/001_GFP_발현/002_WB140_Liquid_Media_Cell_Culture_플라스크.labnote.md, en: labnote/001_GFP_expression/002_WB140_Liquid_Media_Cell_Culture_flask.labnote.md } }
+  - tool: ribbon_click
+    args: { label: $t(Samples) }
+  - tool: labnoteo_sample_menu
+    args: { sample: DNA-1001, item: $t(Change type) }
+  - tool: modal_pick
+    args: { text: Plasmid }
+  - caption: { ko: 바뀔 노트 목록을 확인하고 진행합니다, en: "Check the notes that will change, then go ahead" }
+    hold: 1500
+  - tool: modal_button
+    args: { text: $t(Change type) }
+    hold: 1000
+  - caption: { ko: 노트의 참조 ID 앞부분도 Plasmid로 바뀌었습니다, en: The reference ID in the note now starts with Plasmid }
+    tool: open_file
+    args: { path: { ko: labnote/001_GFP_발현/002_WB140_Liquid_Media_Cell_Culture_플라스크.labnote.md, en: labnote/001_GFP_expression/002_WB140_Liquid_Media_Cell_Culture_flask.labnote.md } }
+  - tool: editor_move
+    args: { text: Plasmid-1001, ch: 0 }
+  - highlight: { selector: .cm-line, text: Plasmid-1001 }
+    poster: true
+    hold: 1500
+  - caption: { ko: 다른 실험에서도 쓰려면 전역으로 이동, en: Move to Global to use it in other experiments }
+    tool: labnoteo_sample_menu
+    args: { sample: { ko: GFP 주형, en: GFP template }, item: $t(Move to Global) }
+    hold: 1200
+  - caption: { ko: 로컬에서 전역 칸으로 옮겨졌습니다, en: It moved from Local to Global }
+    highlight: { selector: .labnote-tree-row, text: { ko: GFP 주형, en: GFP template } }
+    hold: 1500
