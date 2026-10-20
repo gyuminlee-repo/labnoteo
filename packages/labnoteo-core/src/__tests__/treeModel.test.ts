@@ -34,6 +34,19 @@ describe('buildWorkflowTree', () => {
     expect(wf.kind).toBe('workflowRoot');
   });
 
+  // #213
+  it('words tooltips through the host', () => {
+    const [wf, hw, sw] = buildWorkflowTree(data, {
+      describe: (id, description) => `${id}:${description}`,
+      equipment: '장비',
+      software: '소프트웨어',
+    });
+    expect(wf.children![0].children![0].tooltip).toBe('WD010:d');
+    expect(hw.children![0].tooltip).toBe('UHW010:x\n장비: Centrifuge');
+    expect(sw.children![0].tooltip).toBe('USW010:y\n소프트웨어: BWA');
+    expect(buildWorkflowTree(data)[1].children![0].tooltip).toBe('x\nEquipment: Centrifuge');
+  });
+
   it('orders categories by DBTL and nests workflows', () => {
     const [wf] = buildWorkflowTree(data);
     const cats = wf.children!.map(c => c.label);

@@ -34,6 +34,7 @@ import {
   unitOpAliasPrompt,
   changeExperimentStatusCommand,
   toggleDiscussionFlagCommand,
+  catalogDescription,
 } from '../commands';
 import { focusTree, renderTree } from './treeRender';
 
@@ -220,11 +221,18 @@ export class WorkflowTreeView extends ItemView {
       loadUnitOperations(fs, root, 'sw'),
     ]);
 
-    this.catalogNodes = buildWorkflowTree({
-      workflows: catalog.workflows,
-      hwUnitOps: hw.unitOperations,
-      swUnitOps: sw.unitOperations,
-    });
+    this.catalogNodes = buildWorkflowTree(
+      {
+        workflows: catalog.workflows,
+        hwUnitOps: hw.unitOperations,
+        swUnitOps: sw.unitOperations,
+      },
+      {
+        describe: catalogDescription,
+        equipment: this.plugin.t('Equipment'),
+        software: this.plugin.t('Software'),
+      }
+    );
     this.render();
   }
 

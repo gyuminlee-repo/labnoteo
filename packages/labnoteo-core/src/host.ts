@@ -45,6 +45,18 @@ export interface PromptOpts {
    * accept.
    */
   validate?: (value: string) => string | null | undefined | Promise<string | null | undefined>;
+  /**
+   * A note under the input, worked out again on every change (e.g. how much
+   * of the value fits in a file name); `warn` shows it in the warning colour.
+   * It never blocks the submit.
+   */
+  hint?: (value: string) => PromptHint | undefined;
+}
+
+/** {@link PromptOpts.hint} result. */
+export interface PromptHint {
+  text: string;
+  warn?: boolean;
 }
 
 export type NotifyKind = 'info' | 'warn' | 'error';

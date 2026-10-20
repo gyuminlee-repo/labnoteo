@@ -111,6 +111,19 @@ const obsidianKo: Record<string, string> = {
   'Workflow name': '워크플로 이름',
   'Enter a name for this workflow': '이 워크플로의 상세 별칭을 입력하세요',
   'Unit operation alias': '유닛 오퍼레이션 별칭',
+  '{0}/{1} characters in the folder name. Anything longer is cut from the folder name only; the experiment title keeps it all.':
+    '폴더 이름 기준 {0}/{1}자. 넘는 부분은 폴더 이름에서만 잘리고, 실험 제목에는 전체가 남습니다.',
+  '{0}/{1} characters in the file name. Anything longer is cut from the file name only; the workflow title and checklist keep it all.':
+    '파일 이름 기준 {0}/{1}자. 넘는 부분은 파일 이름에서만 잘리고, 워크플로 제목과 체크리스트에는 전체가 남습니다.',
+  "This workflow's name is long, so the alias won't fit in the file name. The title and checklist still keep it.":
+    '이 워크플로는 이름이 길어 별칭이 파일 이름에 들어가지 않습니다. 제목과 체크리스트에는 남습니다.',
+  '{0} characters · no limit (not used in a file name)': '{0}자 · 글자 수 제한 없음 (파일 이름에 쓰이지 않음)',
+  'A workflow is a note for one design, build, test or learn stage of the experiment. The alias tells uses of the same workflow apart and also goes into the file name and the README checklist. You can leave it empty.':
+    '워크플로는 실험을 이루는 설계·구축·시험·학습 단계 가운데 하나를 기록하는 노트입니다. 별칭은 같은 워크플로를 여러 번 쓸 때 서로 구분하는 이름으로, 파일 이름과 README 체크리스트에 함께 쓰입니다. 비워 두어도 됩니다.',
+  'A unit operation is a single task within a workflow (one step using a piece of equipment or software). The alias tells repeats of the same task apart by run or condition and appears in its heading and the table of contents. You can leave it empty.':
+    '유닛 오퍼레이션은 워크플로 안에서 수행하는 개별 작업(장비나 소프트웨어를 쓰는 한 단계)입니다. 별칭은 같은 작업을 여러 번 할 때 회차나 조건을 구분하는 이름으로, 제목 줄과 목차에 쓰입니다. 비워 두어도 됩니다.',
+  'Equipment': '장비',
+  'Software': '소프트웨어',
   'Run or condition of this step (optional)': '이 공정의 회차·조건 별칭(선택)',
 
   // Notices / results

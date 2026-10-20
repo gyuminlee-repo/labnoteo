@@ -264,6 +264,20 @@ ${frontMatter}
 }
 
 /**
+ * Room left for an alias in the `ID_name_alias` part of a workflow file name
+ * once `ID_name_` is in, never below 0; {@link createWorkflowFileName} cuts the
+ * alias there.
+ */
+export function workflowAliasBudget(id: string, name: string): number {
+  return Math.max(0, WORKFLOW_FILE_NAME_MAX - Array.from(`${id}_${sanitizeWorkflowName(name)}_`).length);
+}
+
+/** Code points of `alias` that go into a workflow file name, counted after sanitizing. */
+export function workflowAliasLength(alias: string): number {
+  return Array.from(sanitizeWorkflowName(alias.trim())).length;
+}
+
+/**
  * Create workflow filename with .md extension
  * @param sequence 3-digit sequence number (e.g., '001')
  * @param workflow Workflow information

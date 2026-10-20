@@ -69,8 +69,12 @@ import {
   syncReadmeAndSamplesOnDelete,
   offerTableCsvCleanupOnDelete,
   setupResearchAutomationCommand,
+  catalogDescription,
+  workflowAliasHint,
+  workflowConcept,
   type ReadmeSyncControl,
 } from './commands';
+import { loadWorkflows } from '@labnoteo/core/lib/workflowDataLoader';
 import * as posix from '@labnoteo/core/posix';
 import {
   diagnoseExperimentPath,
@@ -1155,12 +1159,22 @@ export default class LabnotePlugin extends Plugin {
         ? title.trim().slice(prefix.length).trim()
         : heading.alias;
 
+    let description: string | undefined;
+    try {
+      const wf = (await loadWorkflows(this.fs, '.')).workflows.find(w => w.id === heading.id);
+      if (wf?.description) description = catalogDescription(wf.id, wf.description);
+    } catch {
+      description = undefined;
+    }
     const alias = await workflowAliasModal(this.app, {
       id: heading.id,
       catalogName: heading.name,
       title: this.t('Name this copy of the workflow'),
       placeholder: this.t('Enter a name for this workflow'),
       value: originalAlias,
+      about: workflowConcept(this.host),
+      description,
+      hint: workflowAliasHint(this.host, heading.id, heading.name),
     });
     if (alias === undefined || this.unloaded) return;
     if (!this.copiedWorkflows.has(copyPath) || file.path !== copyPath) return;

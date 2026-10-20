@@ -242,8 +242,17 @@ export interface WorkflowTreeData {
   swUnitOps: UnitOperationItem[];
 }
 
+/** How {@link buildWorkflowTree} words its tooltips, in the host's language. */
+export interface WorkflowTreeLabels {
+  /** The description to show for a catalog item; defaults to the item's own (#213). */
+  describe?: (id: string, description: string) => string;
+  equipment?: string;
+  software?: string;
+}
+
 /** Build the 3-level workflow / unit-operation catalog tree. */
-export function buildWorkflowTree(data: WorkflowTreeData): TreeNode[] {
+export function buildWorkflowTree(data: WorkflowTreeData, labels: WorkflowTreeLabels = {}): TreeNode[] {
+  const describe = labels.describe ?? ((_id: string, description: string) => description);
   const grouped = groupWorkflowsByCategory(data.workflows);
   // Rank known DBTL categories by their fixed order; any unknown category (e.g.
   // "Uncategorized") gets a rank past the end so it sorts AFTER the known ones
@@ -272,7 +281,7 @@ export function buildWorkflowTree(data: WorkflowTreeData): TreeNode[] {
         label: `${wf.id}: ${wf.name}`,
         kind: 'workflow' as const,
         icon: 'file',
-        tooltip: wf.description || undefined,
+        tooltip: describe(wf.id, wf.description) || undefined,
         payload: wf,
       })),
     })),
@@ -293,11 +302,11 @@ export function buildWorkflowTree(data: WorkflowTreeData): TreeNode[] {
       kind: 'unitOperation' as const,
       icon: 'symbol-function',
       tooltip:
-        op.description +
+        describe(op.id, op.description) +
         (op.equipment
-          ? `\nEquipment: ${op.equipment}`
+          ? `\n${labels.equipment ?? 'Equipment'}: ${op.equipment}`
           : op.software
-            ? `\nSoftware: ${op.software}`
+            ? `\n${labels.software ?? 'Software'}: ${op.software}`
             : ''),
       payload: { ...op, opType: kind },
     })),
