@@ -548,6 +548,10 @@ const obsidianKo: Record<string, string> = {
   'This empties section "{0}", which now has {1} line(s).':
     '절 "{0}"의 내용을 모두 지웁니다. 지금 {1}줄이 있습니다.',
   'Its {0} nested heading(s) are replaced too.': '그 안의 하위 제목 {0}개도 함께 바뀝니다.',
+  'Lines removed:': '사라지는 줄:',
+  'Lines added:': '새로 들어가는 줄:',
+  'No recorded lines are removed.': '지워지는 기록은 없습니다.',
+  '(+{0} more line(s))': '(그 밖에 {0}줄)',
   'It is occurrence {0} of {1}, with its heading on line {2}.':
     '같은 절 {1}개 중 {0}번째로, 제목이 {2}번째 줄에 있습니다.',
   'This creates a {0} sample with a new ID.': '{0} 샘플을 새 ID로 만듭니다.',

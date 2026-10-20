@@ -55,6 +55,7 @@ import {
   stripRepeatedHeading,
   replaceSectionBodyAt,
   sectionBodyAt,
+  diffBodyLines,
   type SectionMatch,
 } from '../sections/sectionEdit';
 import * as posix from '../util/posixPath';
@@ -162,6 +163,27 @@ export interface SectionEditPreview {
   removedSubheadings: number;
   /** True when the call empties the section (`clear: true`). */
   clearing: boolean;
+  /** The first non-blank lines the edit erases, so the user sees what goes (#187). */
+  removedText: string[];
+  /** Erased lines beyond {@link removedText}. */
+  removedMore: number;
+  /** The first non-blank lines the edit brings in. */
+  addedText: string[];
+  /** New lines beyond {@link addedText}. */
+  addedMore: number;
+}
+
+/** Lines of each side an `update_section` preview lists, and their length cap. */
+const PREVIEW_LINES = 8;
+const PREVIEW_LINE_CHARS = 160;
+
+function previewLines(lines: string[]): { text: string[]; more: number } {
+  return {
+    text: lines
+      .slice(0, PREVIEW_LINES)
+      .map(l => (l.length > PREVIEW_LINE_CHARS ? `${l.slice(0, PREVIEW_LINE_CHARS)}…` : l)),
+    more: Math.max(0, lines.length - PREVIEW_LINES),
+  };
 }
 
 /** `create_sample` preview: the sample that will be created or added to (#113). */
@@ -826,6 +848,9 @@ export function createLabnoteTools(): ToolDef[] {
         const resolved = await resolveSectionTarget(ctx, args);
         if ('error' in resolved) return { error: resolved.error };
         const body = sectionBodyAt(resolved.md, resolved.target.line);
+        const diff = diffBodyLines(body?.text ?? '', resolved.content);
+        const removed = previewLines(diff.removed);
+        const added = previewLines(diff.added);
         return {
           kind: 'sectionEdit',
           documentPath: resolved.documentPath,
@@ -837,6 +862,10 @@ export function createLabnoteTools(): ToolDef[] {
           removedLines: body?.lines ?? 0,
           removedSubheadings: body?.subheadings ?? 0,
           clearing: resolved.content === '',
+          removedText: removed.text,
+          removedMore: removed.more,
+          addedText: added.text,
+          addedMore: added.more,
         };
       },
     },

@@ -638,11 +638,27 @@ describe('update_section', () => {
         removedLines: 2,
         removedSubheadings: 0,
         clearing: false,
+        removedText: ['r1', 'r2'],
+        removedMore: 0,
+        addedText: ['x'],
+        addedMore: 0,
       });
       expect(
         await describe(ctx, { documentPath: NOTE_PATH, heading: 'Results', content: '', clear: true })
       ).toMatchObject({ clearing: true });
       expect(await fs.read(NOTE_PATH)).toBe(doc);
+    });
+
+    // #187: the whole body is sent, so an appended line shows as the only change.
+    it('lists only the lines that change', async () => {
+      await fs.write(NOTE_PATH, doc);
+      const describe = tool('update_section').describe!;
+      expect(
+        await describe(ctx, { documentPath: NOTE_PATH, heading: 'Results', content: 'r1\nr2\nr3' })
+      ).toMatchObject({ removedText: [], addedText: ['r3'] });
+      expect(
+        await describe(ctx, { documentPath: NOTE_PATH, heading: 'Results', content: 'r2' })
+      ).toMatchObject({ removedText: ['r1'], addedText: [] });
     });
 
     // #114

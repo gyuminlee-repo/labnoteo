@@ -171,6 +171,8 @@ body > input.labnote-datetime-picker {
 /* --- Confirm modal ------------------------------------------------------ */
 .labnote-confirm-message {
   white-space: pre-wrap; /* 확인 대상 목록·경로를 줄마다 표시 */
+  max-height: 60vh; /* 지워질 줄 목록이 길어도 버튼이 화면 밖으로 밀리지 않게 */
+  overflow-y: auto;
 }
 
 /* AI 답변 창: 긴 답변은 버튼이 가려지지 않게 본문만 스크롤하고, 일부만 골라 복사할 수 있게 함 */
