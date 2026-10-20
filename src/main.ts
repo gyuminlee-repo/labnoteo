@@ -22,7 +22,7 @@ import {
   touchLastUpdatedDate,
 } from '@labnoteo/core/lib/dateUtils';
 import { getSampleDisplayMeta, isCatalogSampleType } from '@labnoteo/core/lib/sampleUtils';
-import { isPathTooLongError, PATH_SEGMENT_MAX } from '@labnoteo/core/lib/regexUtils';
+import { isPathTooLongError, WINDOWS_PATH_MAX } from '@labnoteo/core/lib/regexUtils';
 import {
   classifyWorkflowMoveOut,
   classifyWorkflowRename,
@@ -276,8 +276,8 @@ export default class LabnotePlugin extends Plugin {
         this.host.notify(
           'error',
           this.t(
-            'Command failed: the name is too long for the file system. Shorten the title or alias to {0} characters or fewer.',
-            String(PATH_SEGMENT_MAX)
+            'Command failed: the path is too long for the file system (Windows allows {0} characters including the vault folder). Move the vault to a shorter folder path, or shorten the title or alias.',
+            String(WINDOWS_PATH_MAX - 1)
           )
         );
         return;

@@ -57,6 +57,7 @@ export class Notice {
 export const Platform = {
   isDesktopApp: true,
   isMobile: false,
+  isWin: false,
 };
 
 export interface RequestUrlParam {

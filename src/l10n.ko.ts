@@ -240,8 +240,10 @@ const obsidianKo: Record<string, string> = {
   '{0} rows → {1} rows': '{0}행 → {1}행',
   'row {0}: {1} → {2}': '{0}번째 행: {1} → {2}',
   'Command failed: {0}': '명령 실행 실패: {0}',
-  'Command failed: the name is too long for the file system. Shorten the title or alias to {0} characters or fewer.':
-    '명령 실행 실패: 이름이 너무 길어 파일을 만들 수 없습니다. 제목이나 별칭을 {0}자 이하로 줄이세요.',
+  'Command failed: the path is too long for the file system (Windows allows {0} characters including the vault folder). Move the vault to a shorter folder path, or shorten the title or alias.':
+    '명령 실행 실패: 경로가 너무 길어 파일을 만들 수 없습니다(Windows는 보관함 폴더를 포함해 {0}자까지 허용). 보관함을 더 짧은 경로의 폴더로 옮기거나 제목·별칭을 줄이세요.',
+  '"{0}" is {1} characters long including the vault folder, past the {2} Windows allows. Opening it on Windows (including git clones) may fail; move the vault to a shorter folder path or shorten the name.':
+    '"{0}"은(는) 보관함 폴더를 포함한 경로가 {1}자로, Windows가 허용하는 {2}자를 넘습니다. Windows에서 열거나 git으로 받을 때 실패할 수 있으니 보관함을 더 짧은 경로의 폴더로 옮기거나 이름을 줄이세요.',
   'Yes': '예',
   'Workflow created: {0}': '워크플로가 생성되었습니다: {0}',
   'This experiment has no README.labnote.md, so the workflow was not added to a checklist.':

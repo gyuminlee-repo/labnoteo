@@ -4,7 +4,13 @@
 
 import * as path from '../util/posixPath';
 import { getSeoulDateString, findMetaDateFieldInLine } from './dateUtils';
-import { sanitizePathSegment, legacySanitizePathSegment, capPathSegment, escapeRegExp } from './regexUtils';
+import {
+  sanitizePathSegment,
+  legacySanitizePathSegment,
+  capPathSegment,
+  escapeRegExp,
+  WORKFLOW_FILE_NAME_MAX,
+} from './regexUtils';
 import { parseFrontMatterYaml, serializeFrontMatterEntry } from '../sections/frontMatter';
 import { stepFence, type OpenFence } from '../sections/sectionEdit';
 import {
@@ -274,7 +280,7 @@ export function createWorkflowFileName(
   const safeAlias = aliasSegment ? `_${aliasSegment}` : '';
 
   // The title and alias stay whole in the note; only the file name is capped (#148).
-  return `${sequence}_${capPathSegment(`${workflow.id}_${safeName}${safeAlias}`)}.labnote.md`;
+  return `${sequence}_${capPathSegment(`${workflow.id}_${safeName}${safeAlias}`, WORKFLOW_FILE_NAME_MAX)}.labnote.md`;
 }
 
 /**
@@ -883,14 +889,17 @@ export function defaultWorkflowTitle(fileName: string): string {
  * sanitizer, so `WT020 Protein/Enzyme Expression` matches
  * `002_WT020_ProteinEnzyme_Expression.labnote.md`. A file named before the
  * current rules (#148 length cap, #165 `_plus`/`_minus`) matches under the
- * rules it was named with, so `IND+` still matches `..._IND.labnote.md`.
+ * rules it was named with, so `IND+` still matches `..._IND.labnote.md`. Both
+ * sides are cut to the current cap, so a file cut at the longer cap of 0.101.0
+ * still matches its label.
  */
 export function labelMatchesFileName(label: string, fileName: string): boolean {
   const parts = parseWorkflowFileName(fileName);
   if (!parts) return false;
   const file = `${parts.id}_${parts.safeName}`;
   return (
-    capPathSegment(sanitizePathSegment(label)) === capPathSegment(sanitizePathSegment(file)) ||
+    capPathSegment(sanitizePathSegment(label), WORKFLOW_FILE_NAME_MAX) ===
+      capPathSegment(sanitizePathSegment(file), WORKFLOW_FILE_NAME_MAX) ||
     legacySanitizePathSegment(label) === legacySanitizePathSegment(file)
   );
 }

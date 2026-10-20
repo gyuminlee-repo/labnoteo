@@ -10,7 +10,7 @@
  * `join('', 'labnote', ...)` yields vault-relative `labnote/...` paths that the
  * adapter understands.
  */
-import { TFile, type App, type Editor } from 'obsidian';
+import { Platform, TFile, type App, type Editor } from 'obsidian';
 import type {
   LabnoteHost,
   WorkflowItem,
@@ -47,6 +47,7 @@ import {
   getExperimentDir,
   sanitizeTitle,
 } from '@labnoteo/core/lib/labnoteStructure';
+import { fullPathLength, WINDOWS_PATH_MAX } from '@labnoteo/core/lib/regexUtils';
 import {
   ensureWorkflowResources,
   loadWorkflows,
@@ -143,6 +144,28 @@ async function experimentFolderNames(host: LabnoteHost): Promise<string[]> {
   return [...names, ...nested];
 }
 
+/**
+ * Warn, without stopping, when a file just made is past Windows' path limit
+ * once the vault's own folder is counted (#148): names are capped, but a vault
+ * deep in the disk can still push the whole path over.
+ */
+function warnIfWindowsPathTooLong(app: App, host: LabnoteHost, vaultPath: string): void {
+  if (!Platform.isWin) return;
+  const basePath = (app.vault.adapter as { getBasePath?: () => string }).getBasePath?.();
+  if (!basePath) return;
+  const length = fullPathLength(basePath, vaultPath);
+  if (length < WINDOWS_PATH_MAX) return;
+  host.notify(
+    'warn',
+    host.t(
+      '"{0}" is {1} characters long including the vault folder, past the {2} Windows allows. Opening it on Windows (including git clones) may fail; move the vault to a shorter folder path or shorten the name.',
+      posix.basename(vaultPath),
+      String(length),
+      String(WINDOWS_PATH_MAX - 1)
+    )
+  );
+}
+
 /** Create a new experiment folder (labnote/###_Title) + README scaffold. */
 export async function createExperimentCommand(app: App, host: LabnoteHost): Promise<void> {
   const title = await host.prompt({
@@ -170,6 +193,7 @@ export async function createExperimentCommand(app: App, host: LabnoteHost): Prom
 
   await host.openFile(structure.readmePath);
   host.notify('info', host.t('Experiment created: {0}', posix.basename(structure.labnoteFolder)));
+  warnIfWindowsPathTooLong(app, host, structure.readmePath);
 }
 
 /**
@@ -607,6 +631,7 @@ async function createWorkflowFile(
       locale: getObsidianLanguage(),
     })
   );
+  warnIfWindowsPathTooLong(app, host, workflowPath);
 
   const displayTitle = cleanAlias
     ? `${chosen.id} ${chosen.name} ${cleanAlias}`

@@ -12,6 +12,7 @@ import {
   commandName,
 } from '../lib/labnoteStructure';
 import { parseFrontMatterYaml } from '../sections/frontMatter';
+import { EXPERIMENT_FOLDER_TITLE_MAX } from '../lib/regexUtils';
 import { isValidStatus } from '../lib/experimentStatus';
 import {
   diagnoseExperimentPath,
@@ -247,6 +248,15 @@ describe('generateReadmeContent', () => {
   it('threads the locale through createLabnoteStructure', () => {
     const s = createLabnoteStructure('.', 'Assay', [], undefined, { locale: 'ko' });
     expect(s.readmeContent).toContain('(`워크플로 생성`)');
+  });
+
+  // #148: the folder name is cut, the README title is not.
+  it('caps the title part of the folder name at EXPERIMENT_FOLDER_TITLE_MAX', () => {
+    expect(EXPERIMENT_FOLDER_TITLE_MAX).toBe(60);
+    const title = `${'가'.repeat(58)} 나다라`;
+    const s = createLabnoteStructure('', title, []);
+    expect(s.labnoteFolder).toBe(`labnote/001_${'가'.repeat(58)}_나`);
+    expect(s.readmeContent).toContain(`title: ${title}\n`);
   });
 });
 
