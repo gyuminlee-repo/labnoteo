@@ -234,7 +234,7 @@ export function filterExperiments(experiments: ExperimentEntry[], query: string)
 // Workflow catalog tree (read-only)
 // ===========================================================================
 
-const DBTL_ORDER = ['Design', 'Build', 'Test', 'Learn', 'General'];
+const DBTL_ORDER = ['Design', 'Build', 'Test', 'Learn'];
 
 export interface WorkflowTreeData {
   workflows: WorkflowItem[];

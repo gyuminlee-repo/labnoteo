@@ -82,6 +82,12 @@
       "category": "Design"
     },
     {
+      "id": "WB001",
+      "name": "General Build",
+      "description": "This workflow provides a general-purpose approach for building biological materials such as DNA constructs, strains, cells, reagents, and media when no specific Build workflow fits. Unit operations are chosen freely for the steps performed, e.g., Manual, Liquid Handling, Incubation, and Centrifuge.",
+      "category": "Build"
+    },
+    {
       "id": "WB005",
       "name": "Nucleotide Quantification",
       "description": "This workflow quantifies nucleic acids (DNA, RNA, and oligonucleotides) and assesses purity using UV absorbance (A260/A280, A260/A230) and fluorometric dye-based assays with spectrophotometers or microplate readers. It can support 96/384-well plate formats for high-throughput normalization and quality control prior to downstream steps such as assembly, PCR, sequencing, and cloning.",
@@ -206,6 +212,12 @@
       "name": "CRISPR-based Genome Editing",
       "description": "This workflow introduces targeted genetic modifications using CRISPR-based genome engineering systems, including base editing (BE) for precise nucleotide substitutions and CRISPR-associated transposase (CAST) systems for programmable DNA insertion. It enables the construction of edited strains, targeted variant libraries, or genome-integrated genetic elements for downstream screening and characterization.",
       "category": "Build"
+    },
+    {
+      "id": "WT001",
+      "name": "General Test",
+      "description": "This workflow provides a general-purpose approach for measuring and characterizing samples, such as absorbance or fluorescence readings, gel or microscope images, and growth checks, when no specific Test workflow fits. It records the conditions, controls, and raw results of each measurement.",
+      "category": "Test"
     },
     {
       "id": "WT010",
@@ -334,6 +346,12 @@
       "category": "Test"
     },
     {
+      "id": "WL001",
+      "name": "General Data Analysis",
+      "description": "This workflow provides a general-purpose approach for organizing, visualizing, and statistically analyzing experimental data, using tools such as spreadsheets, R, or Python, and for interpreting the results, when no specific Learn workflow fits.",
+      "category": "Learn"
+    },
+    {
       "id": "WL010",
       "name": "Sequence Variant Analysis",
       "description": "This workflow is designed for verifying the sequence of template DNA, including target genes, pathways, and plasmids. It is essential for activities such as gene cloning and assembly, and includes the comparison and analysis of sequence variants to ensure accuracy and integrity.",
@@ -398,12 +416,6 @@
       "name": "Foundation Model Development",
       "description": "This workflow focuses on training foundation models using large sequence datasets such as protein databases or metagenomic coding sequences (CDS). It supports the development of robust models for various applications in bioinformatics and synthetic biology.",
       "category": "Learn"
-    },
-    {
-      "id": "WG010",
-      "name": "Blank Workflow",
-      "description": "A general-purpose blank workflow template. Use this when the workflow does not fit into Design, Build, Test, or Learn categories.",
-      "category": "General"
     }
   ]
 }

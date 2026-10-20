@@ -31,6 +31,7 @@ export const CATALOG_KO: Readonly<Record<string, CatalogKoEntry>> = {
   WD120: { name: '역합성 경로 설계' },
   WD130: { name: '경로 라이브러리 설계' },
   // Workflows — Build
+  WB001: { name: '일반 구축', keywords: ['범용', '기타', '시료 준비', '시약 제조'] },
   WB005: { name: '핵산 정량' },
   WB010: { name: 'DNA 올리고머 조립', keywords: ['올리고'] },
   WB020: { name: 'DNA 라이브러리 구축' },
@@ -53,6 +54,7 @@ export const CATALOG_KO: Readonly<Record<string, CatalogKoEntry>> = {
   WB155: { name: 'RCA 기반 표적 증폭', keywords: ['롤링서클 증폭', '등온 증폭'] },
   WB160: { name: 'CRISPR 기반 유전체 편집', keywords: ['크리스퍼', '게놈', '염기 편집', 'CAST'] },
   // Workflows — Test
+  WT001: { name: '일반 시험·측정', keywords: ['범용', '기타', '측정', '예비 실험'] },
   WT010: { name: '핵산 서열 분석', keywords: ['시퀀싱'] },
   WT012: { name: '표적 mRNA 발현 측정', keywords: ['qPCR', 'RT-qPCR'] },
   WT015: { name: '핵산 크기 확인', keywords: ['전기영동', '젤'] },
@@ -75,6 +77,7 @@ export const CATALOG_KO: Readonly<Record<string, CatalogKoEntry>> = {
   WT150: { name: '파일럿 규모 발효' },
   WT160: { name: '산업 규모 발효' },
   // Workflows — Learn
+  WL001: { name: '일반 데이터 분석', keywords: ['범용', '기타', '통계', '그래프'] },
   WL010: { name: '서열 변이 분석' },
   WL020: { name: '유전체 재분석', keywords: ['리시퀀싱', '게놈'] },
   WL030: { name: '신규 유전체 분석', keywords: ['de novo', '게놈'] },
@@ -86,7 +89,6 @@ export const CATALOG_KO: Readonly<Record<string, CatalogKoEntry>> = {
   WL080: { name: '단백질/효소 최적화 모델 개발' },
   WL090: { name: '발효 최적화 모델 개발' },
   WL100: { name: '파운데이션 모델 개발' },
-  WG010: { name: '빈 워크플로' },
 
   // Hardware unit operations
   UHW010: { name: '액체 분주', keywords: ['리퀴드 핸들링', '피펫팅'] },

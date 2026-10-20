@@ -80,7 +80,7 @@ describe('updateCatalogsCommand', () => {
     expect(await fs.read(pathOf(SW))).toBe(oldCopy(SW));
     expect(host.notify).toHaveBeenLastCalledWith(
       'info',
-      'Updated the catalogs: 2 added, 14 changed. Commit the changed files in resources/workflows.'
+      'Updated the catalogs: 5 added, 14 changed. Commit the changed files in resources/workflows.'
     );
   });
 
@@ -157,7 +157,7 @@ describe('catalogUpdateNotice', () => {
     expect(host.notify).toHaveBeenCalledTimes(1);
     expect(host.notify).toHaveBeenCalledWith(
       'info',
-      'Catalog update available: 2 new, 14 changed. Run "Update catalogs" from the command palette.'
+      'Catalog update available: 5 new, 14 changed. Run "Update catalogs" from the command palette.'
     );
   });
 
