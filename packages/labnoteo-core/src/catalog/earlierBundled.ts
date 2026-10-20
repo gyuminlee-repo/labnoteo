@@ -80,4 +80,4 @@ export const EARLIER_BUNDLED: Readonly<Record<string, Partial<Record<CatalogFiel
  * added to a vault copy that lacks them; an older id missing from it was
  * deleted by the lab.
  */
-export const ADDED_BUNDLED_IDS: readonly string[] = ['WB155', 'WB160'];
+export const ADDED_BUNDLED_IDS: readonly string[] = ['WB155', 'WB160', 'WB001', 'WT001', 'WL001'];

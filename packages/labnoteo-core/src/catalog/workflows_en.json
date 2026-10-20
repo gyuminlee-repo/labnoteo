@@ -82,6 +82,12 @@
       "category": "Design"
     },
     {
+      "id": "WB001",
+      "name": "General Build",
+      "description": "This workflow provides a general-purpose approach for building biological materials such as DNA constructs, strains, cells, reagents, and media when no specific Build workflow fits. Unit operations are chosen freely for the steps performed, e.g., Manual, Liquid Handling, Incubation, and Centrifuge.",
+      "category": "Build"
+    },
+    {
       "id": "WB005",
       "name": "Nucleotide Quantification",
       "description": "This workflow quantifies nucleic acids (DNA, RNA, and oligonucleotides) and assesses purity using UV absorbance (A260/A280, A260/A230) and fluorometric dye-based assays with spectrophotometers or microplate readers. It can support 96/384-well plate formats for high-throughput normalization and quality control prior to downstream steps such as assembly, PCR, sequencing, and cloning.",
@@ -208,6 +214,12 @@
       "category": "Build"
     },
     {
+      "id": "WT001",
+      "name": "General Test",
+      "description": "This workflow provides a general-purpose approach for measuring and characterizing samples, such as absorbance or fluorescence readings, gel or microscope images, and growth checks, when no specific Test workflow fits. It records the conditions, controls, and raw results of each measurement.",
+      "category": "Test"
+    },
+    {
       "id": "WT010",
       "name": "Nucleotide Sequencing",
       "description": "This workflow runs next-generation sequencing (NGS) instruments to generate raw data (e.g., fastq files) from sequencing-ready libraries. It covers flow cell/chip loading, run setup, on-instrument QC/monitoring, and data offloading/demultiplexing. Transcriptome-scale assays (e.g., RNA-seq) are executed here once libraries have been prepared in the dedicated library preparation workflow. For Sanger sequencing, this involves preparing DNA templates and primers, performing cycle sequencing reactions, and basecalling on capillary electrophoresis equipment to generate .ab1 chromatogram files. Typical applications include targeted gene/plasmid verification and small-scale sequencing; transcriptome-scale RNA sequencing is performed via NGS workflows (e.g., RNA-seq).",
@@ -332,6 +344,12 @@
       "name": "Industrial-scale Fermentation",
       "description": "This workflow is dedicated to performing fermentations of more than 500L while monitoring key parameters such as pH, temperature, and DO. It supports large-scale production and optimization of fermentation processes for industrial applications.",
       "category": "Test"
+    },
+    {
+      "id": "WL001",
+      "name": "General Data Analysis",
+      "description": "This workflow provides a general-purpose approach for organizing, visualizing, and statistically analyzing experimental data, using tools such as spreadsheets, R, or Python, and for interpreting the results, when no specific Learn workflow fits.",
+      "category": "Learn"
     },
     {
       "id": "WL010",

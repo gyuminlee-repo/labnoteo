@@ -158,15 +158,19 @@ describe('bundled catalogs', () => {
     }
   );
 
-  it('renames WB125 and adds WB155 and WB160 after WB150 in the workflows', () => {
+  it('renames WB125 and adds the new workflows where the bundled catalog has them', () => {
     const s = CATALOG_FILE_SPECS[0];
     const old = seededBeforeUpdate(s.items);
     const p = planCatalogUpdate(old, s.items, s.fields);
-    expect(p.added.map(i => i.id)).toEqual(['WB155', 'WB160']);
+    expect(p.added.map(i => i.id)).toEqual(['WB001', 'WB155', 'WB160', 'WT001', 'WL001']);
     expect(p.updated).toContainEqual({ id: 'WB125', field: 'name', from: 'Colony Picking', to: 'Colony Selection' });
     expect(p.updated.filter(u => u.field === 'description').map(u => u.id)).toContain('WT015');
     const ids = (applyCatalogUpdate({ workflows: old }, s, p).workflows as { id: string }[]).map(i => i.id);
-    expect(ids.slice(ids.indexOf('WB150'), ids.indexOf('WB150') + 3)).toEqual(['WB150', 'WB155', 'WB160']);
+    const after = (id: string, n: number): string[] => ids.slice(ids.indexOf(id), ids.indexOf(id) + n);
+    expect(after('WB150', 3)).toEqual(['WB150', 'WB155', 'WB160']);
+    expect(after('WD130', 3)).toEqual(['WD130', 'WB001', 'WB005']);
+    expect(after('WB160', 3)).toEqual(['WB160', 'WT001', 'WT010']);
+    expect(after('WT160', 3)).toEqual(['WT160', 'WL001', 'WL010']);
   });
 
   it('keeps the history consistent with the bundled catalogs', () => {
