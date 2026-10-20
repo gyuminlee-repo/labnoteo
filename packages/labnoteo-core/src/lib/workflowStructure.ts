@@ -1297,6 +1297,8 @@ export interface WorkflowExperimenterSync {
   unitOpLines: number;
   /** Unit-op `- Experimenter:` lines kept because their unit op has an `End_date` (#155). */
   skippedLines: number;
+  /** How many of {@link skippedLines} are empty, so nobody's name is kept there (#193). */
+  skippedEmptyLines: number;
 }
 
 /**
@@ -1330,7 +1332,7 @@ export function planWorkflowExperimenterSync(
     if (/^experimenter\s*:/.test(lines[i])) lines[i] = serializeFrontMatterEntry('experimenter', to);
   }
   // Experimenter lines to rewrite, grouped by unit op, and which unit ops ended.
-  const blocks: { lines: number[]; ended: boolean }[] = [{ lines: [], ended: false }];
+  const blocks: { lines: number[]; empty: number; ended: boolean }[] = [{ lines: [], empty: 0, ended: false }];
   let fence: OpenFence | null = null;
   for (let i = fmEnd + 1; i < lines.length; i++) {
     const next = stepFence(lines[i], fence);
@@ -1339,20 +1341,25 @@ export function planWorkflowExperimenterSync(
       continue;
     }
     if (/^###\s+\[/.test(lines[i])) {
-      blocks.push({ lines: [], ended: false });
+      blocks.push({ lines: [], empty: 0, ended: false });
       continue;
     }
     const block = blocks[blocks.length - 1];
     const date = findMetaDateFieldInLine(lines[i]);
     if (date?.field === 'End_date' && date.value.trim() !== '') block.ended = true;
     const m = /^(\s*-\s*Experimenter:)(.*)$/.exec(lines[i]);
-    if (m && (m[2].trim() === from || m[2].trim() === '')) block.lines.push(i);
+    if (m && (m[2].trim() === from || m[2].trim() === '')) {
+      block.lines.push(i);
+      if (m[2].trim() === '') block.empty++;
+    }
   }
   let unitOpLines = 0;
   let skippedLines = 0;
+  let skippedEmptyLines = 0;
   for (const block of blocks) {
     if (block.ended) {
       skippedLines += block.lines.length;
+      skippedEmptyLines += block.empty;
       continue;
     }
     for (const i of block.lines) {
@@ -1361,7 +1368,7 @@ export function planWorkflowExperimenterSync(
     }
   }
   const next = lines.join(newline);
-  return next === content ? undefined : { from, to, content: next, unitOpLines, skippedLines };
+  return next === content ? undefined : { from, to, content: next, unitOpLines, skippedLines, skippedEmptyLines };
 }
 
 /**

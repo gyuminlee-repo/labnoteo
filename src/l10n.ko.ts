@@ -538,6 +538,8 @@ const obsidianKo: Record<string, string> = {
     '아래 노트의 실험자(experimenter)가 README의 author와 다릅니다. 노트를 고칠까요?',
   '{0} unit operation line(s)': '유닛 오퍼레이션 {0}줄',
   '{0} kept because the unit operation has an End_date': '{0}줄은 End_date가 있는 유닛 오퍼레이션이라 유지',
+  '{0} left empty because the unit operation is finished; fill it in yourself':
+    '{0}줄은 끝난 유닛 오퍼레이션이라 비어 있는 채로 둠(직접 채우세요)',
   '(empty)': '(비어 있음)',
   '{0} note(s) updated.': '노트 {0}개를 고쳤습니다.',
   'Name this copy of the workflow': '복제한 워크플로의 이름',

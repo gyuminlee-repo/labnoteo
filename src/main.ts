@@ -32,6 +32,7 @@ import {
   parseWorkflowFileName,
   parseWorkflowHeading,
   planWorkflowChecklistSync,
+  planWorkflowRetitle,
   resetCopiedWorkflowDates,
   rewriteWorkflowTitle,
   suggestCopiedWorkflowFileName,
@@ -1182,6 +1183,8 @@ export default class LabnotePlugin extends Plugin {
     // Obsidian may be asking whether to update links for this rename.
     const settled = await this.waitForNoModal();
     if (this.unloaded || !settled || file.path !== path) return;
+    // Before asking (#194): the title and heading follow the new name even if the copy is not listed.
+    await this.app.vault.process(file, data => planWorkflowRetitle(data, file.name)?.content ?? data);
     const ok = await this.host.confirm(this.t('Add "{0}" to the README checklist?', file.name), {
       confirmLabel: this.t('Add to checklist'),
     });

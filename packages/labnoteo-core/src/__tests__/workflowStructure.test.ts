@@ -145,6 +145,7 @@ describe('planWorkflowExperimenterSync', () => {
       ),
       unitOpLines: 2,
       skippedLines: 0,
+      skippedEmptyLines: 0,
     });
   });
 
@@ -160,7 +161,17 @@ describe('planWorkflowExperimenterSync', () => {
         `### [UHW010 PCR]${op('2026-10-02 18:00')}### [UHW020 Gel]${op('').replace('홍길동', '이영희')}`
       )
     );
-    expect(out).toMatchObject({ unitOpLines: 1, skippedLines: 1 });
+    expect(out).toMatchObject({ unitOpLines: 1, skippedLines: 1, skippedEmptyLines: 0 });
+  });
+
+  // #193: an empty line kept in a finished unit op is counted apart.
+  it('counts the empty experimenter lines of finished unit ops apart', () => {
+    const op = (who: string) => `\n- Experimenter: ${who}\n- End_date: '2026-10-19 18:00'\n`;
+    const body = `### [UHW010 PCR]${op('')}### [UHW020 Gel]${op('홍길동')}`;
+    const out = planWorkflowExperimenterSync(note("experimenter: ''", body), '이영희');
+    expect(out).toMatchObject({ unitOpLines: 0, skippedLines: 1, skippedEmptyLines: 1 });
+    const out2 = planWorkflowExperimenterSync(note('experimenter: 홍길동', body), '이영희');
+    expect(out2).toMatchObject({ unitOpLines: 0, skippedLines: 2, skippedEmptyLines: 1 });
   });
 
   it('fills an empty experimenter and keeps CRLF', () => {
@@ -775,6 +786,23 @@ describe('planWorkflowRetitle (#71)', () => {
     expect(planWorkflowRetitle(ORIGINAL, NEW)?.to).toBe('WB120 Biology-mediated DNA Transfers 전기천공');
     expect(planWorkflowRetitle(note('My own title', '열충격'), NEW)?.from).toBe('My own title');
     expect(planWorkflowRetitle(ORIGINAL, OLD)).toBeUndefined();
+  });
+
+  // #194: a copy renamed by hand kept the original's title and heading.
+  it('retitles a copy renamed by hand, with the alias as the file name spells it', () => {
+    const copy = [
+      '---',
+      'title: WT100 Micro-scale Parallel Cell Culture 톨루엔 계대 L1-L6',
+      '---',
+      '',
+      '## [WT100 Micro-scale Parallel Cell Culture] 톨루엔 계대 L1-L6',
+    ].join('\n');
+    const out = planWorkflowRetitle(copy, '003_WT100_Micro-scale_Parallel_Cell_Culture_L1-L5_0.1%p.labnote.md');
+    expect(out?.to).toBe('WT100 Micro-scale Parallel Cell Culture L1-L5 0.1%p');
+    expect(out?.content).toContain('\n## [WT100 Micro-scale Parallel Cell Culture] L1-L5 0.1%p');
+    // A file name cannot hold `/`, so an alias typed with one comes back without it.
+    const slash = planWorkflowRetitle(copy, '003_WT100_Micro-scale_Parallel_Cell_Culture_L1_L5.labnote.md');
+    expect(slash?.to).toBe('WT100 Micro-scale Parallel Cell Culture L1 L5');
   });
 });
 

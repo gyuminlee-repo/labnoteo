@@ -1339,8 +1339,11 @@ export async function syncWorkflowChecklistCommand(
       .map(e => {
         const counts = [
           host.t('{0} unit operation line(s)', String(e.unitOpLines)),
-          ...(e.skippedLines > 0
-            ? [host.t('{0} kept because the unit operation has an End_date', String(e.skippedLines))]
+          ...(e.skippedLines > e.skippedEmptyLines
+            ? [host.t('{0} kept because the unit operation has an End_date', String(e.skippedLines - e.skippedEmptyLines))]
+            : []),
+          ...(e.skippedEmptyLines > 0
+            ? [host.t('{0} left empty because the unit operation is finished; fill it in yourself', String(e.skippedEmptyLines))]
             : []),
         ].join(', ');
         return `- ${e.name}: ${e.from || host.t('(empty)')} → ${e.to} (${counts})`;
