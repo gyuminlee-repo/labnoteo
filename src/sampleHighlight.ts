@@ -28,6 +28,7 @@ import {
   findSampleIdRanges,
   type IssueMarkerRange,
 } from '@labnoteo/core';
+import { findDefinedSampleIds } from '@labnoteo/core/lib/sampleStorage';
 import { noteMarkerIds } from './issueMarkerIndex';
 
 export interface HighlightState {
@@ -39,9 +40,16 @@ export interface HighlightState {
   markerVersion?: number;
   /** Tooltip of a duplicate marker; `owner` is undefined when this note repeats the ID. */
   duplicateTitle?: (owner: string | undefined) => string;
+  /** Lower-cased sample IDs the note can resolve; without it no ID is marked missing (#210). */
+  knownIds?: ReadonlySet<string>;
+  /** Changes whenever `knownIds` may have, so the editor redraws. */
+  sampleVersion?: number;
+  /** Tooltip of a sample ID the registry does not have. */
+  missingTitle?: string;
 }
 
 const SAMPLE_ID_CLASS = 'labnote-sample-id';
+const MISSING_SAMPLE_CLASS = 'labnote-sample-id-missing';
 const ISSUE_MARKER_CLASS = 'labnote-issue-marker';
 const DUPLICATE_MARKER_CLASS = 'labnote-issue-marker-duplicate';
 const MARKER_ID_RE = /^@issue[;:]([A-Za-z0-9-]+)/i;
@@ -61,6 +69,25 @@ interface MarkerOptions {
   inCode?: (start: number, end: number) => boolean;
   /** Tooltip for a marker whose ID is used again, undefined otherwise (#119). */
   duplicate?: (id: string) => string | undefined;
+  /** Tooltip for a sample ID the note cannot resolve, undefined otherwise (#210). */
+  missing?: (id: string) => string | undefined;
+}
+
+/**
+ * Tooltip for the sample IDs of a note that are neither in its registries nor
+ * defined in the note itself, which the sample sync has yet to save.
+ */
+export function missingSampleCheck(
+  state: HighlightState,
+  definedIds: ReadonlySet<string>
+): ((id: string) => string | undefined) | undefined {
+  const known = state.knownIds;
+  if (!known) return undefined;
+  const title = state.missingTitle ?? '';
+  return id => {
+    const key = id.toLowerCase();
+    return known.has(key) || definedIds.has(key) ? undefined : title;
+  };
 }
 
 /**
@@ -71,7 +98,7 @@ interface MarkerOptions {
  * sorted-insert contract, so the marker wins and the sample ID inside it is
  * dropped. Sample IDs in code are kept, since the sample sync does register them.
  */
-function collectTokenRanges(
+export function collectTokenRanges(
   text: string,
   types: string[],
   colors: Record<string, string>,
@@ -88,7 +115,13 @@ function collectTokenRanges(
 
   for (const r of findSampleIdRanges(text, types)) {
     if (markers.some(m => r.start < m.end && r.end > m.start)) continue;
-    ranges.push({ start: r.start, end: r.end, cls: SAMPLE_ID_CLASS, color: colors[r.type] ?? '' });
+    const color = colors[r.type] ?? '';
+    const title = opts.missing?.(text.slice(r.start, r.end));
+    ranges.push(
+      title === undefined
+        ? { start: r.start, end: r.end, cls: SAMPLE_ID_CLASS, color }
+        : { start: r.start, end: r.end, cls: `${SAMPLE_ID_CLASS} ${MISSING_SAMPLE_CLASS}`, color, title }
+    );
   }
 
   return ranges.sort((a, b) => a.start - b.start);
@@ -108,7 +141,8 @@ function sampleColorVar(color: string): string | undefined {
 /** What a set of decorations was drawn for; a different key means redraw. */
 export function highlightStateKey(state: HighlightState): string {
   const key = state.types.map(t => `${t}=${state.colors[t] ?? ''}`).join('\u0000');
-  return state.markerVersion === undefined ? key : `${key}\u0001${state.markerVersion}`;
+  const marker = state.markerVersion === undefined ? key : `${key}\u0001${state.markerVersion}`;
+  return state.sampleVersion === undefined ? marker : `${marker}\u0002${state.sampleVersion}`;
 }
 
 /**
@@ -141,6 +175,10 @@ export function createSampleHighlightPlugin(getState: (path: string | undefined)
       /** How often each marker ID appears in `fencedDoc`, off screen included. */
       ownIds = new Map<string, number>();
       fencedDoc: DocText | undefined;
+      /** Sample IDs `definedDoc` defines, off screen included, for the types of `definedTypes`. */
+      definedIds: ReadonlySet<string> = new Set();
+      definedDoc: DocText | undefined;
+      definedTypes = '';
 
       constructor(view: EditorView) {
         this.decorations = this.build(view);
@@ -165,6 +203,13 @@ export function createSampleHighlightPlugin(getState: (path: string | undefined)
           for (const id of noteMarkerIds(whole)) this.ownIds.set(id, (this.ownIds.get(id) ?? 0) + 1);
           this.fencedDoc = doc;
         }
+        const typesKey = types.join('\u0000');
+        if (state.knownIds && (this.definedDoc !== doc || this.definedTypes !== typesKey)) {
+          this.definedIds = findDefinedSampleIds(doc.toString(), types);
+          this.definedDoc = doc;
+          this.definedTypes = typesKey;
+        }
+        const missing = missingSampleCheck(state, this.definedIds);
         const { fenced, ownIds } = this;
         // The open note counts as typed, the others as last saved.
         const duplicate = (id: string): string | undefined => {
@@ -179,7 +224,7 @@ export function createSampleHighlightPlugin(getState: (path: string | undefined)
           const text = doc.sliceString(from, to);
           const inCode = (start: number, end: number): boolean =>
             fenced.some(f => from + start < f.end && from + end > f.start);
-          for (const r of collectTokenRanges(text, types, colors, { inCode, duplicate })) {
+          for (const r of collectTokenRanges(text, types, colors, { inCode, duplicate, missing })) {
             const styleVar = sampleColorVar(r.color ?? '');
             const attributes: Record<string, string> = {};
             if (styleVar) attributes.style = styleVar;
@@ -195,20 +240,41 @@ export function createSampleHighlightPlugin(getState: (path: string | undefined)
   );
 }
 
+/** What the reading-mode post-processor reads of its context. */
+interface ReadingContext {
+  sourcePath: string;
+  /** `text` is the whole note the section belongs to. */
+  getSectionInfo?: (el: HTMLElement) => { text: string } | null;
+}
+
 /** Reading-mode Markdown post-processor factory. */
 export function createSampleReadingHighlighter(
   getState: (path: string | undefined) => HighlightState
-): (el: HTMLElement, ctx: { sourcePath: string }) => void {
-  return (el: HTMLElement, ctx: { sourcePath: string }) => {
-    const { types, colors } = getState(ctx.sourcePath);
-    highlightTextNodes(el, types, colors);
+): (el: HTMLElement, ctx: ReadingContext) => void {
+  // Every section of a note hands over the same note text.
+  let definedText: string | undefined;
+  let definedIds: ReadonlySet<string> = new Set();
+  return (el: HTMLElement, ctx: ReadingContext) => {
+    const state = getState(ctx.sourcePath);
+    const { types, colors } = state;
+    let missing: MarkerOptions['missing'];
+    if (state.knownIds) {
+      const text = ctx.getSectionInfo?.(el)?.text ?? '';
+      if (text !== definedText) {
+        definedIds = findDefinedSampleIds(text, types);
+        definedText = text;
+      }
+      missing = missingSampleCheck(state, definedIds);
+    }
+    highlightTextNodes(el, types, colors, { missing });
   };
 }
 
 function highlightTextNodes(
   root: HTMLElement,
   types: string[],
-  colors: Record<string, string>
+  colors: Record<string, string>,
+  opts: MarkerOptions = {}
 ): void {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const targets: Text[] = [];
@@ -224,7 +290,7 @@ function highlightTextNodes(
 
   for (const textNode of targets) {
     const text = textNode.data;
-    const ranges = collectTokenRanges(text, types, colors);
+    const ranges = collectTokenRanges(text, types, colors, opts);
     const frag = document.createDocumentFragment();
     let last = 0;
     for (const r of ranges) {
@@ -233,6 +299,7 @@ function highlightTextNodes(
       span.className = r.cls;
       span.textContent = text.slice(r.start, r.end);
       if (r.color) span.style.setProperty('--labnote-sample-color', r.color);
+      if (r.title) span.title = r.title;
       frag.appendChild(span);
       last = r.end;
     }

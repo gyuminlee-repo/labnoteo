@@ -29,7 +29,12 @@ export async function openSampleDefinition(
 ): Promise<void> {
   const resolved = opts.resolved ?? (await resolveSampleDefinition(plugin, opts));
   if (!resolved) {
-    new Notice(plugin.t('No definition found for {0}', opts.id));
+    new Notice(
+      plugin.t(
+        'No definition found for {0}. It is not in the sample registry: it may have been deleted or moved to another experiment, or the Global sample folder setting changed.',
+        opts.id
+      )
+    );
     return;
   }
   new SampleDefinitionModal(app, plugin, opts.type, opts.id, opts.docPath, resolved).open();
