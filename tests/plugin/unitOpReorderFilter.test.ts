@@ -5,6 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { EditorState, type TransactionSpec } from '@codemirror/state';
+import { history, redo, undo } from '@codemirror/commands';
 import { applyTextEdits, computeUnitOpSyncEdits, findUnitOpInsertOffset, rebuildUnitOpToc } from '@labnoteo/core';
 import { createWorkflowContent } from '@labnoteo/core/lib/workflowStructure';
 import { buildHwUnitOpMarkdown } from '@labnoteo/core/lib/unitOpTemplate';
@@ -147,6 +148,56 @@ describe('createUnitOpReorderFilter', () => {
       ['notes/free.md', false],
       [WORKFLOW_PATH, true],
     ]);
+  });
+
+  // #207: real undo/redo are dispatched with `filter: false` and skip filters.
+  describe('with real history', () => {
+    function historyState(doc: string, onDocChange?: (p: string, h: boolean) => void) {
+      return EditorState.create({
+        doc,
+        extensions: [
+          history(),
+          createUnitOpReorderFilter({ isEnabled: () => true, getFilePath: () => WORKFLOW_PATH, onDocChange }),
+        ],
+      });
+    }
+    function run(state: EditorState, command: typeof undo): EditorState {
+      let next = state;
+      command({ state, dispatch: tr => (next = tr.state) });
+      return next;
+    }
+
+    it('reports undo and redo as history changes', () => {
+      const calls: boolean[] = [];
+      let state = historyState('abc', (_p, h) => calls.push(h));
+      state = state.update({ changes: { from: 0, insert: 'x' }, userEvent: 'input.type' }).state;
+      state = run(state, undo);
+      state = run(state, redo);
+      expect(state.doc.toString()).toBe('xabc');
+      expect(calls).toEqual([false, true, true]);
+    });
+
+    it('drops a deleted block from the TOC in the same undo step', () => {
+      const doc = buildNote();
+      const from = doc.indexOf('### [UHW020 Beta]');
+      const to = doc.indexOf('### [UHW030 Gamma]');
+      let state = historyState(doc);
+      state = state.update({ changes: { from, to }, userEvent: 'delete.cut' }).state;
+
+      const toc = [...state.doc.toString().matchAll(/^- \[(UHW\d+) /gm)].map(m => m[1]);
+      expect(toc).toEqual(['UHW010', 'UHW030']);
+      expect(state.doc.toString()).toBe(rebuildUnitOpToc(doc.slice(0, from) + doc.slice(to)));
+
+      state = run(state, undo);
+      expect(state.doc.toString()).toBe(doc);
+    });
+
+    it('leaves the TOC alone while a heading is deleted character by character', () => {
+      const doc = buildNote();
+      const at = doc.indexOf('### [UHW020 Beta]') + '### [UHW020 Bet'.length;
+      const state = historyState(doc).update({ changes: { from: at, to: at + 1 }, userEvent: 'delete.backward' }).state;
+      expect(state.doc.toString()).toBe(doc.slice(0, at) + doc.slice(at + 1));
+    });
   });
 
   describe('change kind', () => {

@@ -1303,6 +1303,11 @@ export default class LabnotePlugin extends Plugin {
       ? touchLastUpdatedDate(content, getSeoulDateString())
       : content;
 
+  /** Forget hand-set dates and pending edits, so toggling the setting resumes stamping (#202). */
+  resetLastUpdatedTracking(): void {
+    this.lastUpdatedTracker.clear();
+  }
+
   /** `writeNote` hook for AI tools: writes through the vault, stamping lab notes. */
   writeNoteStamped(path: string, content: string): Promise<void> {
     return writeNoteStamped(this.app, this.host, path, content, this.stampLastUpdated);
@@ -1338,8 +1343,19 @@ export default class LabnotePlugin extends Plugin {
     if (prev !== undefined) window.clearTimeout(prev);
     const handle = window.setTimeout(() => {
       this.lastUpdatedTimers.delete(path);
-      if (!this.lastUpdatedTracker.consume(path)) return;
+      const decision = this.lastUpdatedTracker.consume(path);
       if (!this.settings.autoUpdateLastUpdated) return;
+      if (decision === 'handSet') {
+        this.host.notify(
+          'info',
+          this.t(
+            'Kept the last_updated_date you set by hand in {0}. It updates automatically again from tomorrow.',
+            posix.basename(path)
+          )
+        );
+        return;
+      }
+      if (decision !== 'stamp') return;
       stampNoteAndReadme(this.app, this.host, path, this.stampLastUpdated).catch(err =>
         console.warn('[labnoteo] last_updated_date update failed:', err)
       );
