@@ -23,6 +23,7 @@ import type {
   Translator,
 } from '@labnoteo/core';
 import { pickModal, pickManyModal, promptModal, confirmModal } from './modals';
+import { noteTargetBelowTable, tableCellHostView } from './tableCellTarget';
 
 export function createObsidianHost(
   app: App,
@@ -43,6 +44,11 @@ export function createObsidianHost(
     const file = view?.file;
     if (!view || !file) return undefined;
     const editor = view.editor;
+    const noteView = tableCellHostView(editor);
+    if (noteView) {
+      const cell = (editor as unknown as { cm: { dom: HTMLElement } }).cm.dom;
+      return noteTargetBelowTable(file.path, noteView, cell);
+    }
     return {
       path: file.path,
       async getText() {

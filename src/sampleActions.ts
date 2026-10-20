@@ -150,6 +150,7 @@ export async function insertExperimentSamplesTable(app: App, plugin: LabnotePlug
   const row = (id: string, rec: SampleRecord, scope: string): string[] => [
     id,
     rec.alias ?? '',
+    rec.descriptions?.[0] ?? '',
     rec.location ?? '',
     scope,
     rec.discarded ?? '',
@@ -168,7 +169,14 @@ export async function insertExperimentSamplesTable(app: App, plugin: LabnotePlug
   }
 
   const table = buildMarkdownTable(
-    [plugin.t('ID'), plugin.t('Alias'), plugin.t('Location'), plugin.t('Scope'), plugin.t('Discarded')],
+    [
+      plugin.t('ID'),
+      plugin.t('Alias'),
+      plugin.t('Description'),
+      plugin.t('Location'),
+      plugin.t('Scope'),
+      plugin.t('Discarded'),
+    ],
     rows
   );
   const text = await target.getText();
@@ -176,7 +184,9 @@ export async function insertExperimentSamplesTable(app: App, plugin: LabnotePlug
   const before = at === 0 || text[at - 1] === '\n' ? (at > 1 && text[at - 2] !== '\n' ? '\n' : '') : '\n\n';
   const after = at >= text.length || text[at] === '\n' ? '\n' : '\n\n';
   await target.replaceRange(at, at, `${before}${table}${after}`);
-  await target.revealOffset?.(at + before.length + table.length);
+  // Below the table, not in its last cell, so running the command again does
+  // not land inside this table (#196).
+  await target.revealOffset?.(at + before.length + table.length + after.length);
   plugin.markUserEdit(target.path);
   new Notice(plugin.t('Inserted {0} sample(s).', String(rows.length)));
   return true;
