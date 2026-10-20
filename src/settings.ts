@@ -6,6 +6,7 @@
  * that the Obsidian build introduces (VS Code delegates LLM to Copilot Chat,
  * Obsidian talks to Ollama/OpenAI directly).
  */
+import type { ExperimentGrouping } from '@labnoteo/core';
 import { isValidSampleTypeName, SAMPLE_TYPES, suggestSampleTypeName } from '@labnoteo/core/lib/sampleUtils';
 
 export type LlmProviderKind = 'none' | 'ollama' | 'openai';
@@ -30,6 +31,8 @@ export interface LabnoteSettings {
   customSampleTypes: string[];
   /** Folder (vault-relative) that holds vault-global sample storage. */
   globalSampleFolder: string;
+  /** What the workflow view groups experiments by (#204). */
+  workflowViewGroupBy: ExperimentGrouping;
 
   // --- LLM ---
   llmProvider: LlmProviderKind;
@@ -59,6 +62,7 @@ export const DEFAULT_SETTINGS: LabnoteSettings = {
   autoUpdateLastUpdated: true,
   customSampleTypes: [],
   globalSampleFolder: 'resources/labsamples',
+  workflowViewGroupBy: 'status',
   llmProvider: 'none',
   llmEndpointOllama: 'http://localhost:11434',
   llmEndpointOpenai: 'https://api.openai.com',
@@ -154,6 +158,9 @@ export function migrateSettings(raw: unknown): LabnoteSettings {
     );
   }
   if (typeof data.globalSampleFolder === 'string') out.globalSampleFolder = data.globalSampleFolder;
+  if (data.workflowViewGroupBy === 'status' || data.workflowViewGroupBy === 'project') {
+    out.workflowViewGroupBy = data.workflowViewGroupBy;
+  }
   if (data.llmProvider === 'none' || data.llmProvider === 'ollama' || data.llmProvider === 'openai') {
     out.llmProvider = data.llmProvider;
   }

@@ -21,6 +21,7 @@ import * as path from '../util/posixPath';
 export type TreeNodeKind =
   | 'experimentRoot'
   | 'experimentStatus'
+  | 'experimentProject'
   | 'experiment'
   | 'sampleRoot'
   | 'sampleType'
@@ -63,7 +64,12 @@ export interface ExperimentEntry {
   lastUpdated?: string;
   /** Checked and total entries of the README "Related Workflows" checklist (#157). */
   progress?: { done: number; total: number };
+  /** The README's `project`: the larger project the experiment belongs to (#204). */
+  project?: string;
 }
+
+/** What {@link buildExperimentTree} groups experiments by (#204). */
+export type ExperimentGrouping = 'status' | 'project';
 
 /** Labels {@link buildExperimentTree} puts into the tree; English defaults. */
 export interface ExperimentTreeLabels {
@@ -77,6 +83,10 @@ export interface ExperimentTreeLabels {
   status?: string;
   workflows?: string;
   lastUpdated?: string;
+  /** Tooltip line name for the README's `project` (#204). */
+  project?: string;
+  /** Group of experiments without a `project`. */
+  noProject?: string;
 }
 
 /** `001` of `001_GFP`, or the whole name when it has no number. */
@@ -85,7 +95,7 @@ function experimentNumber(name: string): string {
 }
 
 /**
- * The vault's experiments grouped by `status`, in {@link EXPERIMENT_STATUSES}
+ * The vault's experiments grouped by `status` (the default), in {@link EXPERIMENT_STATUSES}
  * order. Experiments without a status, and each value outside that list, get
  * groups of their own after those, marked as not allowed (#143); empty groups
  * are left out. Each experiment shows as `001 · title (done/total)` so the
@@ -93,12 +103,47 @@ function experimentNumber(name: string): string {
  * carries its folder and README path. The tooltip names the title, folder,
  * status, checklist progress and last update (#157). One flagged for
  * discussion gets a discussion icon and says so in its tooltip (#134).
+ *
+ * Grouped by `project` instead, the experiments of one project sit together
+ * whatever their status, projects in name order and those without one last
+ * (#204).
  */
 export function buildExperimentTree(
   experiments: ExperimentEntry[],
-  labels: ExperimentTreeLabels = {}
+  labels: ExperimentTreeLabels = {},
+  groupBy: ExperimentGrouping = 'status'
 ): TreeNode {
   const noStatus = labels.noStatus ?? '(none)';
+  const root = {
+    id: 'experiments',
+    label: `${labels.root ?? 'Experiments'} [${experiments.length}]`,
+    kind: 'experimentRoot' as const,
+    icon: 'beaker',
+  };
+  if (groupBy === 'project') {
+    const byProject = new Map<string, ExperimentEntry[]>();
+    for (const e of experiments) {
+      const project = e.project?.trim() ?? '';
+      byProject.set(project, [...(byProject.get(project) ?? []), e]);
+    }
+    const projects = [...byProject.keys()].filter(Boolean).sort((a, b) => a.localeCompare(b));
+    if (byProject.has('')) projects.push('');
+    return {
+      ...root,
+      children: projects.map(project => {
+        const members = sortByFolder(byProject.get(project)!);
+        return {
+          id: `experimentProject:${project}`,
+          label: `${project || (labels.noProject ?? '(no project)')} [${members.length}]`,
+          kind: 'experimentProject' as const,
+          icon: 'folder',
+          payload: { project: project || undefined },
+          children: members.map(e => experimentNode(e, labels)),
+        };
+      }),
+    };
+  }
+
   const groups = new Map<string, ExperimentEntry[]>();
   for (const e of experiments) {
     const status = e.status?.trim() ?? '';
@@ -109,14 +154,9 @@ export function buildExperimentTree(
   const order = [...known, ...unknown, ''].filter(s => groups.has(s));
 
   return {
-    id: 'experiments',
-    label: `${labels.root ?? 'Experiments'} [${experiments.length}]`,
-    kind: 'experimentRoot',
-    icon: 'beaker',
+    ...root,
     children: order.map(status => {
-      const members = [...groups.get(status)!].sort((a, b) =>
-        path.basename(a.folder).localeCompare(path.basename(b.folder), undefined, { numeric: true })
-      );
+      const members = sortByFolder(groups.get(status)!);
       const invalid = status !== '' && !known.includes(status);
       return {
         id: `experimentStatus:${status}`,
@@ -134,33 +174,60 @@ export function buildExperimentTree(
             }
           : {}),
         payload: { status: status || undefined },
-        children: members.map(e => {
-          const name = path.basename(e.folder);
-          const title = e.title?.trim();
-          const named = title && title !== name ? `${experimentNumber(name)} · ${title}` : name;
-          const progress = e.progress && e.progress.total > 0 ? ` (${e.progress.done}/${e.progress.total})` : '';
-          const tooltip = [
-            ...(title && title !== name ? [title] : []),
-            e.folder,
-            `${labels.status ?? 'Status'}: ${status || noStatus}`,
-            ...(e.progress && e.progress.total > 0
-              ? [`${labels.workflows ?? 'Workflows done'}: ${e.progress.done}/${e.progress.total}`]
-              : []),
-            ...(e.lastUpdated ? [`${labels.lastUpdated ?? 'Last updated'}: ${e.lastUpdated}`] : []),
-            ...(e.discuss ? [labels.discuss ?? 'Flagged for discussion'] : []),
-          ].join('\n');
-          return {
-            id: `experiment:${e.folder}`,
-            label: `${named}${progress}`,
-            kind: 'experiment' as const,
-            icon: e.discuss ? 'comment-discussion' : 'file',
-            tooltip,
-            payload: { folder: e.folder, readmePath: path.join(e.folder, 'README.labnote.md') },
-          };
-        }),
+        children: members.map(e => experimentNode(e, labels)),
       };
     }),
   };
+}
+
+function sortByFolder(entries: ExperimentEntry[]): ExperimentEntry[] {
+  return [...entries].sort((a, b) =>
+    path.basename(a.folder).localeCompare(path.basename(b.folder), undefined, { numeric: true })
+  );
+}
+
+function experimentNode(e: ExperimentEntry, labels: ExperimentTreeLabels): TreeNode {
+  const noStatus = labels.noStatus ?? '(none)';
+  const status = e.status?.trim() ?? '';
+  const project = e.project?.trim();
+  const name = path.basename(e.folder);
+  const title = e.title?.trim();
+  const named = title && title !== name ? `${experimentNumber(name)} · ${title}` : name;
+  const progress = e.progress && e.progress.total > 0 ? ` (${e.progress.done}/${e.progress.total})` : '';
+  const tooltip = [
+    ...(title && title !== name ? [title] : []),
+    e.folder,
+    `${labels.status ?? 'Status'}: ${status || noStatus}`,
+    ...(project ? [`${labels.project ?? 'Project'}: ${project}`] : []),
+    ...(e.progress && e.progress.total > 0
+      ? [`${labels.workflows ?? 'Workflows done'}: ${e.progress.done}/${e.progress.total}`]
+      : []),
+    ...(e.lastUpdated ? [`${labels.lastUpdated ?? 'Last updated'}: ${e.lastUpdated}`] : []),
+    ...(e.discuss ? [labels.discuss ?? 'Flagged for discussion'] : []),
+  ].join('\n');
+  return {
+    id: `experiment:${e.folder}`,
+    label: `${named}${progress}`,
+    kind: 'experiment',
+    icon: e.discuss ? 'comment-discussion' : 'file',
+    tooltip,
+    payload: { folder: e.folder, readmePath: path.join(e.folder, 'README.labnote.md') },
+  };
+}
+
+/**
+ * The experiments whose folder name, title, project or status contains every
+ * word of `query`, ignoring case (#204). A blank query returns the input.
+ */
+export function filterExperiments(experiments: ExperimentEntry[], query: string): ExperimentEntry[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return experiments;
+  return experiments.filter(e => {
+    const haystack = [path.basename(e.folder), e.title ?? '', e.project ?? '', e.status ?? '']
+      .join('\u0000')
+      .toLowerCase();
+    return words.every(w => haystack.includes(w));
+  });
 }
 
 // ===========================================================================

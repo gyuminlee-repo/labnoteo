@@ -176,6 +176,8 @@ export {
   buildWorkflowTree,
   buildSampleTree,
   filterSampleTree,
+  filterExperiments,
+  type ExperimentGrouping,
   type TreeNode,
   type TreeNodeKind,
   type ExperimentEntry,

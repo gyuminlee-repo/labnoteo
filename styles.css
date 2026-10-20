@@ -13,6 +13,18 @@
   margin-bottom: 6px;
 }
 
+/* --- Workflow sidebar: experiment search + grouping ---------------------- */
+.labnote-workflow-controls {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.labnote-workflow-search {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 /* --- Sidebar view hint (what to do here) --------------------------------- */
 .labnote-view-hint {
   margin-bottom: 6px;

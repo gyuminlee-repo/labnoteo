@@ -85,6 +85,12 @@ const obsidianKo: Record<string, string> = {
   'Status': '상태',
   'Workflows done': '완료한 워크플로',
   'Last updated': '마지막 수정',
+  'Project': '과제',
+  '(no project)': '(과제 없음)',
+  'Search experiments': '실험 검색',
+  'Group experiments by': '실험 묶는 기준',
+  'By status': '상태별',
+  'By project': '과제별',
   'Type @dna (or another type) in a note, or right-click → "{0}" to register a sample.':
     '노트에서 @dna처럼 입력하거나 우클릭 → "{0}"(으)로 샘플을 등록합니다.',
 
