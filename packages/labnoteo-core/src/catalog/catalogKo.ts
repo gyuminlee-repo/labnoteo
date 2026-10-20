@@ -86,7 +86,6 @@ export const CATALOG_KO: Readonly<Record<string, CatalogKoEntry>> = {
   WL080: { name: '단백질/효소 최적화 모델 개발' },
   WL090: { name: '발효 최적화 모델 개발' },
   WL100: { name: '파운데이션 모델 개발' },
-  WG010: { name: '빈 워크플로' },
 
   // Hardware unit operations
   UHW010: { name: '액체 분주', keywords: ['리퀴드 핸들링', '피펫팅'] },

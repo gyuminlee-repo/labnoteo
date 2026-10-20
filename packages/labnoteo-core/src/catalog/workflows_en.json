@@ -398,12 +398,6 @@
       "name": "Foundation Model Development",
       "description": "This workflow focuses on training foundation models using large sequence datasets such as protein databases or metagenomic coding sequences (CDS). It supports the development of robust models for various applications in bioinformatics and synthetic biology.",
       "category": "Learn"
-    },
-    {
-      "id": "WG010",
-      "name": "Blank Workflow",
-      "description": "A general-purpose blank workflow template. Use this when the workflow does not fit into Design, Build, Test, or Learn categories.",
-      "category": "General"
     }
   ]
 }
