@@ -45,10 +45,12 @@ export const CATALOG_KO: Readonly<Record<string, CatalogKoEntry>> = {
   WB100: { name: '배지 제조 및 멸균', keywords: ['오토클레이브', '고압멸균'] },
   WB110: { name: '컴피턴트 세포 제작' },
   WB120: { name: '생물학적 DNA 전달', keywords: ['형질전환', '형질도입', '접합', '전기천공', '열충격'] },
-  WB125: { name: '콜로니 피킹' },
+  WB125: { name: '콜로니 선별', keywords: ['콜로니 피킹'] },
   WB130: { name: '고체 배지 세포 배양', keywords: ['플레이트'] },
   WB140: { name: '액체 배지 세포 배양' },
   WB150: { name: 'PCR 기반 표적 증폭', keywords: ['중합효소 연쇄반응'] },
+  WB155: { name: 'RCA 기반 표적 증폭', keywords: ['롤링서클 증폭', '등온 증폭'] },
+  WB160: { name: 'CRISPR 기반 유전체 편집', keywords: ['크리스퍼', '게놈', '염기 편집', 'CAST'] },
   // Workflows — Test
   WT010: { name: '핵산 서열 분석', keywords: ['시퀀싱'] },
   WT012: { name: '표적 mRNA 발현 측정', keywords: ['qPCR', 'RT-qPCR'] },
@@ -182,15 +184,50 @@ const BUNDLED_DESCRIPTIONS = new Map<string, string>(
 );
 
 /**
+ * English text earlier releases bundled for items whose description has since
+ * changed. Vaults keep the copy they were first seeded with, so this text is
+ * still unedited and gets the Korean translation.
+ */
+const EARLIER_BUNDLED_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  WT010:
+    'This workflow runs next-generation sequencing (NGS) instruments to generate raw data (e.g., fastq files) from sequencing-ready libraries. It covers flow cell/chip loading, run setup, on-instrument QC/monitoring, and data offloading/demultiplexing. Transcriptome-scale assays (e.g., RNA-seq) are executed here once libraries have been prepared in the dedicated library preparation workflow. For Sanger sequencing, this involves preparing DNA templates and primers, performing cycle sequencing reactions, and basecalling on capillary electrophoresis equipment to generate .ab1 chromatogram files.',
+  WT012:
+    'This workflow measures specific transcript levels from RNA samples using targeted assays such as RT-qPCR, qPCR, and digital PCR (ddPCR). It supports absolute (standard curve/copy number) and relative (ΔΔCt) quantification with appropriate reference genes, and enables high-throughput measurements in 96/384-well plates with automated liquid handling.',
+  WT015:
+    'This workflow verifies the size and assesses the integrity of nucleic acid fragments (DNA or RNA) using electrophoretic separation techniques. Methods such as traditional agarose gel electrophoresis or capillary electrophoresis are employed to separate fragments based on size.',
+  WT045:
+    'This workflow quantifies viability and cytotoxic effects in mammalian/eukaryotic cells induced by proteins, small molecules, or gene perturbations using colorimetric/fluorometric/luminescent assays (e.g., MTT/MTS/Resazurin, LDH release, ATP-based luminescence) and imaging-based markers (e.g., Annexin V/PI, caspase activity, live/dead staining).',
+  WT046:
+    'This workflow measures growth inhibition and viability of microbial cells (e.g., bacteria, yeast) under treatment with compounds, proteins, or genetic perturbations. It includes OD600 growth curves/kinetics, broth microdilution for MIC/MBC determination, CFU enumeration, resazurin/ATP-based viability assays, membrane integrity dyes (e.g., PI/SYTOX), and time-kill/biofilm susceptibility when applicable.',
+  WT085:
+    'This workflow screens mammalian cell cultures for mycoplasma contamination using rapid biochemical assays (e.g., ATP-based luminescence), targeted PCR/qPCR of mycoplasmal DNA, and culture-based confirmation when required. It supports routine high-throughput screening in 96/384-well formats with appropriate positive/negative controls.',
+  WL055:
+    'This workflow focuses on analyzing individual cells to understand cellular heterogeneity and functional characteristics. It includes techniques such as single-cell RNA sequencing, single-cell ATAC-seq, and other omics approaches. The workflow supports the identification of rare cell populations, lineage tracing, and the study of cellular responses to various stimuli.',
+  WL080:
+    'This workflow is aimed at developing models to optimize characteristics (such as activity, solubility) of target proteins by utilizing phenotypic and sequence data obtained from protein/enzyme expression and activity measurements. It includes protein structure and function analysis, leveraging pre-trained models or publicly available models (e.g., Alphafold2, Rosettafold, MPNN).',
+  UHW290:
+    'High-performance liquid chromatography coupled with tandem mass spectrometry. Provides highly sensitive and selective quantification and structural information by separating components with LC and analyzing specific ions through two stages of mass analysis. Ideal for targeted analysis in complex matrices like biological fluids.',
+  UHW300:
+    'Liquid chromatography coupled with mass spectrometry. Separates components using LC and identifies them based on their mass-to-charge ratio. Offers better identification than LC alone but less structural info and selectivity than LC-MS/MS. Used for general profiling.',
+  UHW310:
+    'High-performance liquid chromatography. It separates, identifies, and quantifies components in a liquid mixture using high pressure and a detector such as UV-Vis. Common for routine analysis, purity checks, and QC.',
+  UHW330:
+    'Gas chromatography. It separates volatile or semi-volatile compounds in their gaseous phase based on their interaction with a stationary phase. Typically uses detectors like FID or TCD. Used for analyzing volatile organic compounds, solvent purity, and flavor/fragrance profiling.',
+  UHW355:
+    'Solid-Phase Extraction (SPE) system coupled with Tandem Mass Spectrometer. Combines automated SPE for sample cleanup, concentration, and matrix removal with Tandem Mass Spectrometry for highly sensitive and selective quantification.',
+};
+
+/**
  * The description to show for a catalog item (#213): its Korean translation
  * when `locale` is Korean and the vault's copy still has the bundled English
- * text, otherwise `description` as it is. The vault's catalog files are
- * editable copies, so a lab's edit or its own item shows as written rather
- * than hidden behind a translation of the original.
+ * text (current or earlier), otherwise `description` as it is. The vault's
+ * catalog files are editable copies, so a lab's edit or its own item shows as
+ * written rather than hidden behind a translation of the original.
  */
 export function catalogDescriptionFor(id: string, description: string, locale: string | undefined): string {
   if (!locale?.toLowerCase().startsWith('ko')) return description;
   const ko = CATALOG_KO_DESCRIPTIONS[id];
-  if (!ko || BUNDLED_DESCRIPTIONS.get(id) !== description.trim()) return description;
+  const text = description.trim();
+  if (!ko || (BUNDLED_DESCRIPTIONS.get(id) !== text && EARLIER_BUNDLED_DESCRIPTIONS[id] !== text)) return description;
   return ko;
 }

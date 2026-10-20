@@ -193,19 +193,19 @@
       "id": "UHW290",
       "name": "LC-MS-MS",
       "equipment": "LC-MS/MS",
-      "description": "High-performance liquid chromatography coupled with tandem mass spectrometry. Provides highly sensitive and selective quantification and structural information by separating components with LC and analyzing specific ions through two stages of mass analysis. Ideal for targeted analysis in complex matrices like biological fluids."
+      "description": "High-performance liquid chromatography coupled with tandem mass spectrometry. Provides highly sensitive and selective quantification and structural information by separating components with LC and analyzing specific ions through two stages of mass analysis. Ideal for targeted analysis in complex matrices like biological fluids (e.g., quantifying drug metabolites, analyzing specific peptides)."
     },
     {
       "id": "UHW300",
       "name": "LC-MS",
       "equipment": "LC-MS",
-      "description": "Liquid chromatography coupled with mass spectrometry. Separates components using LC and identifies them based on their mass-to-charge ratio. Offers better identification than LC alone but less structural info and selectivity than LC-MS/MS. Used for general profiling."
+      "description": "Liquid chromatography coupled with mass spectrometry. Separates components using LC and identifies them based on their mass-to-charge ratio. Offers better identification than LC alone but less structural info and selectivity than LC-MS/MS. Used for general profiling (e.g., metabolic profiling, identifying major components in natural extracts)."
     },
     {
       "id": "UHW310",
       "name": "HPLC",
       "equipment": "HPLC",
-      "description": "High-performance liquid chromatography. It separates, identifies, and quantifies components in a liquid mixture using high pressure and a detector such as UV-Vis. Common for routine analysis, purity checks, and QC."
+      "description": "High-performance liquid chromatography. It separates, identifies, and quantifies components in a liquid mixture using high pressure and a detector such as UV-Vis. Common for routine analysis, purity checks, and QC (e.g., analyzing active pharmaceutical ingredient purity, quantifying vitamins in supplements)."
     },
     {
       "id": "UHW320",
@@ -217,7 +217,7 @@
       "id": "UHW330",
       "name": "GC",
       "equipment": "GC",
-      "description": "Gas chromatography. It separates volatile or semi-volatile compounds in their gaseous phase based on their interaction with a stationary phase. Typically uses detectors like FID or TCD. Used for analyzing volatile organic compounds, solvent purity, and flavor/fragrance profiling."
+      "description": "Gas chromatography. It separates volatile or semi-volatile compounds in their gaseous phase based on their interaction with a stationary phase. Typically uses detectors like FID or TCD. Used for analyzing volatile organic compounds, solvent purity, and flavor/fragrance profiling (e.g., analyzing aroma compounds, measuring ethanol content)."
     },
     {
       "id": "UHW340",
@@ -235,7 +235,7 @@
       "id": "UHW355",
       "name": "SPE-MS-MS",
       "equipment": "SPE-MS/MS",
-      "description": "Solid-Phase Extraction (SPE) system coupled with Tandem Mass Spectrometer. Combines automated SPE for sample cleanup, concentration, and matrix removal with Tandem Mass Spectrometry for highly sensitive and selective quantification."
+      "description": "Solid-Phase Extraction (SPE) system coupled with Tandem Mass Spectrometer. Combines automated SPE for sample cleanup, concentration, and matrix removal with Tandem Mass Spectrometry for highly sensitive and selective quantification. It often used for rapid screening or targeted quantification where extensive chromatography is not needed (e.g., quantifying specific pesticide residues in food extracts after SPE cleanup)."
     },
     {
       "id": "UHW360",
