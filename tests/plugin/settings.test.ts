@@ -126,6 +126,14 @@ describe('migrateSettings', () => {
     expect(migrateSettings({ mcpToken: 42 }).mcpToken).toBe('');
   });
 
+  it('keeps in-range scan settings and falls back otherwise', () => {
+    expect(migrateSettings({})).toMatchObject({ scanMaxImageEdge: 2400, scanJpegQuality: 0.85, worksheetPaperSize: 'a4' });
+    expect(migrateSettings({ scanMaxImageEdge: 3200.4, scanJpegQuality: 0.7, worksheetPaperSize: 'letter' }))
+      .toMatchObject({ scanMaxImageEdge: 3200, scanJpegQuality: 0.7, worksheetPaperSize: 'letter' });
+    expect(migrateSettings({ scanMaxImageEdge: 100, scanJpegQuality: 2, worksheetPaperSize: 'a3' }))
+      .toMatchObject({ scanMaxImageEdge: 2400, scanJpegQuality: 0.85, worksheetPaperSize: 'a4' });
+  });
+
   it('rejects an unknown provider rather than trusting the string', () => {
     expect(migrateSettings({ llmProvider: 'anthropic' }).llmProvider).toBe('none');
   });

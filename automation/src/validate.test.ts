@@ -87,6 +87,18 @@ describe('validateExperiments', () => {
     ).toEqual([]);
   });
 
+  it('flags a labnote_id shared by notes of different experiments', () => {
+    const withIds = (dir: string, ids: string[]): ValidatedNote => ({
+      path: `labnote/${dir}/README.labnote.md`,
+      frontMatter: { experiment_type: 'labnote', status: 'in-progress' },
+      sources: ids.map((noteId, i) => ({ path: `labnote/${dir}/00${i}_WD010_X.labnote.md`, body: '', bodyLineOffset: 0, noteId })),
+    });
+    const errors = validateExperiments([withIds('001_A', ['LN-7K3M9QX2']), withIds('002_B', ['LN-AAAAAAAA', 'LN-7K3M9QX2'])]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('Duplicate `labnote_id: LN-7K3M9QX2`');
+    expect(errors[0]).toContain('labnote/001_A/000_WD010_X.labnote.md, labnote/002_B/001_WD010_X.labnote.md');
+  });
+
   it('ignores notes that are not experiment_type: labnote', () => {
     expect(
       validateExperiments([

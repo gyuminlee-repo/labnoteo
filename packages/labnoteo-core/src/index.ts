@@ -56,6 +56,22 @@ export {
   type BlockInsert,
 } from './sections/blockInsert';
 
+// Scanned worksheet pages filed under each unit operation.
+export {
+  WORKSHEET_SCANS_HEADING,
+  listUnitOpBlocks,
+  resolveScanTarget,
+  insertScanEntries,
+  removeScanEntry,
+  listScanHashes,
+  listFiledScans,
+  renderScanEntry,
+  type FiledScan,
+  type UnitOpBlock,
+  type ScanEntry,
+  type ScanTarget,
+} from './sections/scanInsert';
+
 // Front-matter primitives (YAML parse + per-entry serialize). Shared by plugin
 // commands that read/rewrite README frontmatter (e.g. the status command).
 export {

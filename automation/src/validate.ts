@@ -7,6 +7,7 @@
  *   - `id` values are unique across experiments (duplicate → error),
  *   - `@issue` markers in ANY `*.labnote.md` of the folder parse, and their IDs
  *     are unique within the experiment,
+ *   - `labnote_id` values of the `*.labnote.md` notes are unique across the vault,
  * then re-runs the central large-file size guard.
  *
  * Lenient by design initially: only `status` is required; other fields are
@@ -21,6 +22,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { isValidStatus, EXPERIMENT_STATUSES } from '@labnoteo/core/lib/experimentStatus';
 import { parseFrontMatterYaml, parseIssueMarkers } from '@labnoteo/core';
 import { unrecognizedDiscussValue } from '@labnoteo/core/lib/discussFlag';
+import { findDuplicateNoteIds } from '@labnoteo/core/lib/noteId';
 import { run as runLargeFileCheck } from './lib/largeFiles';
 import { isVaultRoot, vaultRootFromScript } from './lib/vaultRoot';
 import {
@@ -104,6 +106,15 @@ export function validateExperiments(notes: ValidatedNote[]): string[] {
     if (owners.length > 1) {
       errors.push(`Duplicate \`id: ${id}\` used by: ${owners.join(', ')}.`);
     }
+  }
+
+  // A copied note keeps the original's ID, and scans of either would land in one of them.
+  const noteIds = notes.flatMap(n => n.sources.flatMap(s => (s.noteId ? [{ path: s.path, id: s.noteId }] : [])));
+  for (const [id, owners] of findDuplicateNoteIds(noteIds)) {
+    errors.push(
+      `Duplicate \`labnote_id: ${id}\` used by: ${owners.join(', ')}. ` +
+        'Delete the `labnote_id` line of the copy and run "Assign note ID" in Obsidian to give it its own.'
+    );
   }
 
   return errors;

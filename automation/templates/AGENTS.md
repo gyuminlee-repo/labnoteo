@@ -29,6 +29,7 @@ Claude Code, Codex, Cursor 등)는 아래 규칙을 따라 작업합니다.
 - 대용량 원시데이터 (`*.fastq*`, `*.bam`, `raw-data/` 등 — `.gitignore` 참고).
 - 시크릿/토큰/API 키.
 - Obsidian 개인 상태 (`.obsidian/workspace.json`, `workspace-mobile.json`).
+- 인식하지 못한 출력본 사진 대기열 `_labnote-scans/`.
 - AI 에이전트 **상태** 폴더 (`.claude/`, `.copilot/`, `.opencode/`, `.agents/`)와
   Copilot 플러그인 폴더 `copilot/`(대화 기록·메모리).
   단, **스킬(`.agents/skills/`, `.claude/skills/`, `copilot/skills/`)은 공유 자산이므로
@@ -44,6 +45,16 @@ Claude Code, Codex, Cursor 등)는 아래 규칙을 따라 작업합니다.
   `YYYY-MM-DD`)로 바꾸고, 워크플로 노트라면 같은 실험의 README도 바꿉니다. 필드가
   없으면 추가하지 않습니다. 파일을 직접 고치면 플러그인의 자동 갱신을 거치지 않기
   때문입니다.
+- frontmatter의 `labnote_id`(`LN-` + 8자)는 출력한 기록지의 QR이 이 노트를 찾는
+  열쇠입니다. **고치거나 지우지 말고, 노트를 복제·템플릿화할 때 복사하지 마세요** — 두
+  노트가 같은 ID를 가지면 스캔이 어느 쪽에 붙을지 정할 수 없고, 서버 `validate`가
+  실패합니다. 새 노트에 ID가 필요하면 사람이 플러그인의 *Assign note ID*로 발급합니다.
+- 유닛 오퍼레이션 끝(또는 노트 끝)의 `#### Worksheet scans` / `## Worksheet scans` 절은
+  플러그인이 출력본 사진을 붙이는 곳입니다. 안의 `<!-- labnoteo-scan page=… sha=… -->`
+  주석·이미지·캡션을 고치거나 지우거나 다른 노트로 옮기지 마세요(되돌리기와 중복 감지가
+  이 주석으로 동작). 절 제목을 번역하거나 바꾸지 말고, `update_section`으로 이 절이 든
+  유닛 오퍼레이션을 통째로 바꿀 때는 이 절을 그대로 남기세요. `images/scans/`의 이미지는
+  플러그인이 관리하므로 지우지 않습니다.
 - `discuss: true`는 "논의 신호" 필드입니다 — 에이전트가 설정할 수 있으며
   `status`와는 별개입니다 (아래 Playbook A). 사람은 플러그인의
   *Toggle discussion flag* 명령으로 같은 표시를 켜고 끕니다. 해제는 키를

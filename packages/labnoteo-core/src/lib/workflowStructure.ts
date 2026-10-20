@@ -13,6 +13,7 @@ import {
 } from './regexUtils';
 import { parseFrontMatterYaml, serializeFrontMatterEntry } from '../sections/frontMatter';
 import { stepFence, type OpenFence } from '../sections/sectionEdit';
+import { generateNoteId, NOTE_ID_KEY } from './noteId';
 import {
   commandName,
   diagnoseExperimentPath,
@@ -218,13 +219,14 @@ export function sanitizeWorkflowName(name: string): string {
  * Create workflow file content with YAML front matter
  * @param workflow Workflow information
  * @param experimenter Experimenter name (from README author field)
- * @param opts Hint options (UI locale for command names)
+ * @param opts Hint options (UI locale for command names); `noteId` fixes the
+ *   note's `labnote_id`, otherwise a fresh one is generated
  */
 export function createWorkflowContent(
   workflow: WorkflowInfo,
   experimenter: string,
   alias?: string,
-  opts: TemplateHintOptions = {}
+  opts: TemplateHintOptions & { noteId?: string } = {}
 ): string {
   const today = getSeoulDateString(new Date());
   // An optional per-instance alias is appended *after* the bracketed catalog
@@ -237,6 +239,7 @@ export function createWorkflowContent(
   // containing a colon is emitted as valid, round-trippable YAML.
   const frontMatter = [
     serializeFrontMatterEntry('title', title),
+    serializeFrontMatterEntry(NOTE_ID_KEY, opts.noteId ?? generateNoteId()),
     serializeFrontMatterEntry('experimenter', experimenter),
     serializeFrontMatterEntry('created_date', today),
     serializeFrontMatterEntry('last_updated_date', today),

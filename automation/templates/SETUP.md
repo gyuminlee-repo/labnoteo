@@ -96,13 +96,13 @@ vault/
 | --- | --- |
 | `.labnoteo/scripts/check-large-files.mjs` | 파일 크기 검사(<10MB 허용 / 10–50MB 경고 / >50MB 차단, 자동 이동 없음) |
 | `.labnoteo/hooks/pre-commit` | 커밋 전 대용량 파일 **차단**. 이어서 `labnote/` 파일이 스테이징된 커밋에 한해 `validate.mjs --notes-only`를 **경고 전용**으로 실행(마커 형식·ID 중복을 push 전에 알림). Node 없으면 shell 크기 검사로 대체 |
-| `.gitignore` | 대용량 데이터 패턴 + Obsidian 개인 상태 + AI 에이전트 상태 폴더(**스킬은 제외 예외로 커밋됨**) (기존 내용에 누락분만 추가) |
+| `.gitignore` | 대용량 데이터 패턴 + Obsidian 개인 상태 + AI 에이전트 상태 폴더(**스킬은 제외 예외로 커밋됨**) + 인식하지 못한 출력본 사진 대기열 `_labnote-scans/` (기존 내용에 누락분만 추가) |
 
 ### 노트 검증 (GitHub-hosted)
 
 | 경로 | 설명 |
 | --- | --- |
-| `.labnoteo/scripts/validate.mjs` | status 허용값 / 중복 id / `@issue` 마커 형식·폴더 내 ID 중복 / 대용량 파일 중앙 재검사 (결정적). `--notes-only`는 마지막 대용량 재검사를 생략(훅 전용). 어느 폴더에서 실행해도 스크립트가 있는 보관함을 검사하고, 보관함을 찾지 못하면 종료 코드 2. 실험 노트가 0개면 통과 대신 경고 |
+| `.labnoteo/scripts/validate.mjs` | status 허용값 / 중복 id / 노트 ID(`labnote_id`) 중복 / `@issue` 마커 형식·폴더 내 ID 중복 / 대용량 파일 중앙 재검사 (결정적). `--notes-only`는 마지막 대용량 재검사를 생략(훅 전용). 어느 폴더에서 실행해도 스크립트가 있는 보관함을 검사하고, 보관함을 찾지 못하면 종료 코드 2. 실험 노트가 0개면 통과 대신 경고 |
 | `.github/workflows/validate.yml` | `labnote/**` push마다 `node .labnoteo/scripts/validate.mjs` 실행. Actions 탭에서 **수동 실행**도 가능(항상 전체 검사) |
 
 ### Experiment ↔ Issue (결정적, AI 불필요)
@@ -211,7 +211,7 @@ AI가 필요한 판단은 GitHub Actions가 아니라 **로컬 AI 에이전트**
 
 ```sh
 node .labnoteo/scripts/check-large-files.mjs   # 대용량 파일 검사
-node .labnoteo/scripts/validate.mjs            # 노트 검증 (status/중복 id/@issue 마커)
+node .labnoteo/scripts/validate.mjs            # 노트 검증 (status/중복 id/노트 ID/@issue 마커)
 node .labnoteo/scripts/validate.mjs --notes-only  # 위에서 대용량 재검사만 생략 (훅과 동일)
 ```
 

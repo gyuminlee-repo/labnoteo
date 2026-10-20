@@ -53,7 +53,17 @@ export interface LabnoteSettings {
   mcpEnabled: boolean;
   /** MCP bearer token (48 hex chars), kept across restarts; '' until first needed. */
   mcpToken: string;
+
+  // --- Barcode & scans ---
+  /** Long edge, in pixels, that a scanned page is scaled down to before it is stored. */
+  scanMaxImageEdge: number;
+  /** JPEG quality (0.5–1) of stored scans. */
+  scanJpegQuality: number;
+  /** Paper the worksheets are laid out for. */
+  worksheetPaperSize: WorksheetPaperSize;
 }
+
+export type WorksheetPaperSize = 'a4' | 'letter';
 
 const MCP_TOKEN_RE = /^[0-9a-f]{48}$/;
 
@@ -73,7 +83,13 @@ export const DEFAULT_SETTINGS: LabnoteSettings = {
   llmApiKey: '',
   mcpEnabled: false,
   mcpToken: '',
+  scanMaxImageEdge: 2400,
+  scanJpegQuality: 0.85,
+  worksheetPaperSize: 'a4',
 };
+
+export const SCAN_IMAGE_EDGE_RANGE = { min: 800, max: 6000 } as const;
+export const SCAN_JPEG_QUALITY_RANGE = { min: 0.5, max: 1 } as const;
 
 /** {@link partitionCustomSampleTypes} result. */
 export interface CustomSampleTypesInput {
@@ -173,6 +189,17 @@ export function migrateSettings(raw: unknown): LabnoteSettings {
   if (typeof data.mcpEnabled === 'boolean') out.mcpEnabled = data.mcpEnabled;
   if (typeof data.mcpToken === 'string' && MCP_TOKEN_RE.test(data.mcpToken)) {
     out.mcpToken = data.mcpToken;
+  }
+  const edge = data.scanMaxImageEdge;
+  if (typeof edge === 'number' && edge >= SCAN_IMAGE_EDGE_RANGE.min && edge <= SCAN_IMAGE_EDGE_RANGE.max) {
+    out.scanMaxImageEdge = Math.round(edge);
+  }
+  const quality = data.scanJpegQuality;
+  if (typeof quality === 'number' && quality >= SCAN_JPEG_QUALITY_RANGE.min && quality <= SCAN_JPEG_QUALITY_RANGE.max) {
+    out.scanJpegQuality = quality;
+  }
+  if (data.worksheetPaperSize === 'a4' || data.worksheetPaperSize === 'letter') {
+    out.worksheetPaperSize = data.worksheetPaperSize;
   }
 
   // Provider-specific endpoints (new shape) win when present…

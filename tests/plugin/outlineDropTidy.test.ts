@@ -12,7 +12,9 @@ import { createOutlineDropTidy, OUTLINE_DROP_ARM_MS } from '../../src/outlineDro
 const WORKFLOW_PATH = 'labnote/001_Exp/001_WD010_Design.labnote.md';
 
 function buildNote(order: string[]): string {
-  let md = createWorkflowContent({ id: 'WD010', name: 'Design', description: 'desc' }, 'Dr. Kim');
+  let md = createWorkflowContent({ id: 'WD010', name: 'Design', description: 'desc' }, 'Dr. Kim', undefined, {
+    noteId: 'LN-00000000',
+  });
   for (const opId of order) {
     const block = buildHwUnitOpMarkdown(
       { opId, opName: `Op ${opId}`, opDescription: 'step' },
