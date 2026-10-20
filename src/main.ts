@@ -7,7 +7,7 @@
  * highlighting, sidebar views, the settings tab and the LLM/MCP layer are added
  * by subsequent modules that all consume the same `LabnoteHost` built here.
  */
-import { MarkdownView, Plugin, Notice, TFile, TFolder, editorInfoField } from 'obsidian';
+import { MarkdownView, Plugin, Notice, TFile, TFolder, editorInfoField, type WorkspaceLeaf } from 'obsidian';
 import type { LabnoteHost, Translator } from '@labnoteo/core';
 import {
   findSampleReferenceAt,
@@ -1651,16 +1651,16 @@ export default class LabnotePlugin extends Plugin {
   /** Reveal (or create) a sidebar leaf hosting the given view type. */
   private async activateView(viewType: string): Promise<void> {
     const { workspace } = this.app;
-    const existing = workspace.getLeavesOfType(viewType);
-    if (existing.length > 0) {
-      await workspace.revealLeaf(existing[0]);
-      return;
-    }
-    const leaf = workspace.getRightLeaf(false);
-    if (leaf) {
+    let leaf: WorkspaceLeaf | null = workspace.getLeavesOfType(viewType)[0] ?? null;
+    if (!leaf) {
+      leaf = workspace.getRightLeaf(false);
+      if (!leaf) return;
       await leaf.setViewState({ type: viewType, active: true });
-      await workspace.revealLeaf(leaf);
     }
+    await workspace.revealLeaf(leaf);
+    // Arrow keys should move in the tree right away, not in the editor (#197).
+    const view = leaf.view;
+    if (view instanceof WorkflowTreeView || view instanceof SampleTreeView) view.focusTree();
   }
 
   /** Sample autocomplete, live/reading-mode highlighting, and save-time sync. */

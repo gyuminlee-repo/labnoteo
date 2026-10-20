@@ -35,7 +35,7 @@ import {
   changeExperimentStatusCommand,
   toggleDiscussionFlagCommand,
 } from '../commands';
-import { renderTree } from './treeRender';
+import { focusTree, renderTree } from './treeRender';
 
 const README = 'README.labnote.md';
 
@@ -58,6 +58,11 @@ export class WorkflowTreeView extends ItemView {
 
   constructor(leaf: WorkspaceLeaf, private readonly plugin: LabnotePlugin) {
     super(leaf);
+  }
+
+  /** Put keyboard focus on the tree (#197); opening the view alone leaves it elsewhere. */
+  focusTree(): void {
+    if (this.treeEl) focusTree(this.treeEl);
   }
 
   getViewType(): string {

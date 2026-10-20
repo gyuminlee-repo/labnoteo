@@ -16,7 +16,7 @@ import {
 } from '@labnoteo/core/lib/sampleUtils';
 import { isSameSampleFolder, type SampleRecord } from '@labnoteo/core/lib/sampleStorage';
 import type LabnotePlugin from '../main';
-import { renderTree } from './treeRender';
+import { focusTree, renderTree } from './treeRender';
 import {
   createSampleInteractive,
   editSampleInteractive,
@@ -72,6 +72,11 @@ export class SampleTreeView extends ItemView {
 
   constructor(leaf: WorkspaceLeaf, private readonly plugin: LabnotePlugin) {
     super(leaf);
+  }
+
+  /** Put keyboard focus on the tree (#197); opening the view alone leaves it elsewhere. */
+  focusTree(): void {
+    if (this.treeEl) focusTree(this.treeEl);
   }
 
   getViewType(): string {
