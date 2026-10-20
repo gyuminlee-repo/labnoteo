@@ -83,36 +83,86 @@ function fitRow(cells: string[], width: number): string[] {
   return [...cells, ...Array<string>(width - cells.length).fill('')];
 }
 
+/** A line with its blockquote / callout markers (`> `) taken off, and how many there were. */
+interface QuotedLine {
+  depth: number;
+  text: string;
+}
+
+const QUOTE_MARK_RE = /^ {0,3}>[ \t]?/;
+const LIST_ITEM_RE = /^\s*(?:[-*+]|\d+[.)])(?:\s|$)/;
+const INDENTED_CODE_RE = /^(?: {4}|\t)/;
+
+function unquote(line: string): QuotedLine {
+  let depth = 0;
+  let text = line;
+  for (let m = QUOTE_MARK_RE.exec(text); m; m = QUOTE_MARK_RE.exec(text)) {
+    depth++;
+    text = text.slice(m[0].length);
+  }
+  return { depth, text };
+}
+
+const isPipeRow = (l: QuotedLine | undefined, depth: number): boolean =>
+  !!l && l.depth === depth && l.text.trim().startsWith('|');
+
 /**
  * Finds every GFM pipe table in `markdown` (header row + `---` separator +
  * zero or more data rows). Tables are matched in document order. Data rows
  * are fitted to the header width, `<br>` becomes a newline inside a cell, and
  * bold, italic, code and strikethrough marks are handled as the reading view
  * shows them (see {@link stripInlineFormatting}).
- * Pipe rows inside fenced code blocks are not tables in the rendered note, so
- * they are neither exported nor counted (#90).
+ *
+ * The rendered note decides what is a table:
+ * - pipe rows in a fenced code block (#90) or in an indented code block — four
+ *   spaces after a blank line, outside a list (#209) — are code, so they are
+ *   neither exported nor counted;
+ * - a table inside a blockquote or callout (`> | a |`) is a table (#205); its
+ *   rows must share the same quote depth.
  */
 export function extractMarkdownTables(markdown: string): CsvTable[] {
-  const lines = markdown.replace(/\r\n/g, '\n').split('\n');
+  const lines = markdown.replace(/\r\n/g, '\n').split('\n').map(unquote);
   const tables: CsvTable[] = [];
 
   let fence: OpenFence | null = null;
+  let inList = false;
+  let inIndentedCode = false;
   let i = 0;
   while (i < lines.length) {
-    const next = stepFence(lines[i], fence);
+    const line = lines[i];
+    const prev = lines[i - 1];
+    const next = stepFence(line.text, fence);
     if (next !== fence || fence) {
       fence = next;
       i++;
       continue;
     }
-    const isHeaderLine = lines[i].trim().startsWith('|');
-    const nextIsSeparator = i + 1 < lines.length && SEPARATOR_ROW_RE.test(lines[i + 1]);
-    if (isHeaderLine && nextIsSeparator) {
-      const header = splitTableRow(lines[i]);
+    const blank = line.text.trim() === '';
+    if (blank) {
+      i++;
+      continue;
+    }
+    const prevBlank = !prev || prev.text.trim() === '' || prev.depth !== line.depth;
+    if (INDENTED_CODE_RE.test(line.text)) {
+      if (inIndentedCode || (prevBlank && !inList)) {
+        inIndentedCode = true;
+        i++;
+        continue;
+      }
+    } else {
+      inIndentedCode = false;
+      inList = LIST_ITEM_RE.test(line.text) || (inList && !prevBlank && /^\s/.test(line.text));
+    }
+
+    const nextIsSeparator =
+      i + 1 < lines.length && lines[i + 1].depth === line.depth && SEPARATOR_ROW_RE.test(lines[i + 1].text);
+    if (isPipeRow(line, line.depth) && nextIsSeparator) {
+      const header = splitTableRow(line.text);
       const rows: string[][] = [header];
+      const depth = line.depth;
       i += 2;
-      while (i < lines.length && lines[i].trim().startsWith('|')) {
-        rows.push(fitRow(splitTableRow(lines[i]), header.length));
+      while (i < lines.length && isPipeRow(lines[i], depth)) {
+        rows.push(fitRow(splitTableRow(lines[i].text), header.length));
         i++;
       }
       tables.push({ index: tables.length, rows });

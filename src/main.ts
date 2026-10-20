@@ -696,8 +696,9 @@ export default class LabnotePlugin extends Plugin {
         const newPath = file.path;
         this.renameLocalSampleSources(oldPath, newPath);
         // Ahead of the copy branch, which returns early: a copy moved to
-        // another experiment needs its samples too.
+        // another experiment needs its samples and CSVs too.
         this.offerLocalSamplesMoved(oldPath, newPath);
+        this.moveTableCsvsWithNote(oldPath, newPath);
         if (this.copiedWorkflows.delete(oldPath)) {
           if (posix.dirname(newPath) !== posix.dirname(oldPath)) return;
           if (isValidWorkflowPath(newPath)) this.run(() => this.offerListRenamedCopy(file));
@@ -885,13 +886,58 @@ export default class LabnotePlugin extends Plugin {
 
   /** A workflow note was renamed by hand: its table CSVs follow it (#60). */
   private async moveTableCsvsAfterRename(dir: string, from: string, to: string): Promise<void> {
-    const skipped = await moveTableCsvs(this.app, dir, { from, to }, new Set(await this.fs.list(dir)));
+    const { skipped } = await moveTableCsvs(
+      this.app,
+      { from: dir, to: dir },
+      { from, to },
+      new Set(await this.fs.list(dir))
+    );
     if (skipped > 0) {
       this.host.notify(
         'warn',
         this.t('{0} table CSV file(s) kept their old name: the new name was taken or the rename failed.', String(skipped))
       );
     }
+  }
+
+  /**
+   * A note moved to another folder takes its `_tableN.csv` exports along, as a
+   * rename in place does, then says so (#206). A CSV whose name is already
+   * taken there stays behind with a warning. Skipped for a move into the trash
+   * or a hidden folder, and when a whole experiment folder moved (its CSVs
+   * moved with it; the old folder is gone by then).
+   */
+  private moveTableCsvsWithNote(oldPath: string, newPath: string): void {
+    if (!/\.md$/i.test(newPath)) return;
+    const fromDir = posix.dirname(oldPath);
+    const toDir = posix.dirname(newPath);
+    if (fromDir === toDir) return;
+    if (toDir.split('/').some(segment => segment.startsWith('.'))) return;
+    if (!this.app.vault.getAbstractFileByPath(fromDir)) return;
+    this.run(async () => {
+      const names = new Set(await this.fs.list(fromDir));
+      const { moved, skipped } = await moveTableCsvs(
+        this.app,
+        { from: fromDir, to: toDir },
+        { from: posix.basename(oldPath), to: posix.basename(newPath) },
+        names,
+        new Set(await this.fs.list(toDir))
+      );
+      if (moved > 0) {
+        this.host.notify('info', this.t('Moved {0} table CSV file(s) to {1} with the note.', String(moved), toDir));
+      }
+      if (skipped > 0) {
+        this.host.notify(
+          'warn',
+          this.t(
+            '{0} table CSV file(s) stayed in {1}: a file with the same name is already in {2}, or the move failed.',
+            String(skipped),
+            fromDir,
+            toDir
+          )
+        );
+      }
+    });
   }
 
   /**

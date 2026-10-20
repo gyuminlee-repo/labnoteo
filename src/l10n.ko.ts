@@ -530,6 +530,9 @@ const obsidianKo: Record<string, string> = {
     '복제본의 이슈 마커 {0}개에 새 ID를 붙였습니다(원본의 이슈와 섞이지 않게).',
   '{0} table CSV file(s) kept their old name: the new name was taken or the rename failed.':
     '표 CSV 파일 {0}개는 옛 이름 그대로 두었습니다. 새 이름의 파일이 이미 있거나 이름 변경에 실패했습니다.',
+  'Moved {0} table CSV file(s) to {1} with the note.': '노트와 함께 표 CSV 파일 {0}개를 {1}(으)로 옮겼습니다.',
+  '{0} table CSV file(s) stayed in {1}: a file with the same name is already in {2}, or the move failed.':
+    '표 CSV 파일 {0}개는 {1}에 남았습니다. {2}에 같은 이름의 파일이 이미 있거나 옮기지 못했습니다.',
   '{0} got a new ID because theirs did not match <Type>-<number>.':
     '{0}개는 ID가 <타입>-<숫자> 형식이 아니어서 새 ID를 만들었습니다.',
   '{0} skipped: unknown sample type.': '{0}개는 알 수 없는 샘플 타입이라 건너뛰었습니다.',

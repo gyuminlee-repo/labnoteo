@@ -197,6 +197,41 @@ describe('extractMarkdownTables', () => {
     expect(extractMarkdownTables(md)).toEqual([{ index: 0, rows: [['조성', '비고'], ['M1', 'ok']] }]);
   });
 
+  // #209: four spaces after a blank line is an indented code block.
+  it('skips a table in an indented code block', () => {
+    const md = '기록 양식(코드):\n\n    | 시료 | OD |\n    | --- | --- |\n\n| a | b |\n|---|---|\n| 1 | 2 |\n';
+    expect(extractMarkdownTables(md)).toEqual([{ index: 0, rows: [['a', 'b'], ['1', '2']] }]);
+  });
+
+  it('still finds a table indented under a list item', () => {
+    const md = '- 측정 결과\n\n    | a | b |\n    | --- | --- |\n    | 1 | 2 |\n';
+    expect(extractMarkdownTables(md)).toEqual([{ index: 0, rows: [['a', 'b'], ['1', '2']] }]);
+  });
+
+  // #205: the reading view renders a table inside a quote or callout.
+  it('finds tables inside a callout and a blockquote', () => {
+    const md = [
+      '> [!note] 반복 측정',
+      '> | 회차 | 기준법 |',
+      '> | --- | --- |',
+      '> | 1 | 12.4 |',
+      '',
+      '> | 장비 | 보정일 |',
+      '> |---|---|',
+      '> | pH | 10-01 |',
+      '',
+    ].join('\n');
+    expect(extractMarkdownTables(md)).toEqual([
+      { index: 0, rows: [['회차', '기준법'], ['1', '12.4']] },
+      { index: 1, rows: [['장비', '보정일'], ['pH', '10-01']] },
+    ]);
+  });
+
+  it('ends a quoted table where the quote depth changes', () => {
+    const md = '> | a |\n> |---|\n> | 1 |\n| 2 |\n';
+    expect(extractMarkdownTables(md)).toEqual([{ index: 0, rows: [['a'], ['1']] }]);
+  });
+
   it('keeps a ``` line inside a ~~~ block from closing it', () => {
     const md = `~~~\n\`\`\`\n| a |\n|---|\n| 1 |\n~~~\n| b |\n|---|\n| 2 |\n`;
     expect(extractMarkdownTables(md)).toEqual([{ index: 0, rows: [['b'], ['2']] }]);
