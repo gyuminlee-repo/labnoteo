@@ -81,6 +81,21 @@ describe('create_sample / get_sample / list_samples', () => {
     expect(got.data).toMatchObject({ id: 'DNA-1', alias: 'plasmidA' });
   });
 
+  // #188
+  it('keeps a discarded sample discarded and warns about it', async () => {
+    await fs.write(
+      `${NOTE_DIR}/resources/labsamples/DNA.json`,
+      JSON.stringify({
+        'DNA-1': { type: 'DNA', alias: 'a', descriptions: [], sources: [], location: null, discarded: '2026-10-19' },
+      })
+    );
+    const res = await tool('create_sample').handler(ctx, { type: 'DNA', id: 'DNA-1', documentPath: NOTE_PATH });
+    expect(res.ok).toBe(true);
+    expect(res.warnings?.join('\n')).toContain('discarded on 2026-10-19');
+    const stored = JSON.parse(await fs.read(`${NOTE_DIR}/resources/labsamples/DNA.json`));
+    expect(stored['DNA-1'].discarded).toBe('2026-10-19');
+  });
+
   it('auto-generates an id when none is given', async () => {
     const res = await tool('create_sample').handler(ctx, {
       type: 'RNA',

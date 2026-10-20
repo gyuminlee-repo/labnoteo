@@ -29,7 +29,7 @@ const unescape = (s: string): string =>
   s.replace(/\\(n|t|\\|'|"|`)/g, (_m, c: string) => (c === 'n' ? '\n' : c === 't' ? '\t' : c));
 
 /** Translator keys written as a single string literal (template literals with `${…}` are skipped). */
-export function translatorKeys(source: string): string[] {
+function translatorKeys(source: string): string[] {
   const keys: string[] = [];
   const re = /\bt\(\s*(['"`])((?:\\.|(?!\1)[^\\])*)\1\s*[,)]/g;
   for (const m of source.matchAll(re)) {

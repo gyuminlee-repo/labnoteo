@@ -713,18 +713,25 @@ export function createLabnoteTools(): ToolDef[] {
         // Atomic merge into an existing record (#73): calling again for a known
         // id adds this note as a source and the description in front, and an
         // omitted alias or location keeps what was recorded in Obsidian.
-        await mergeSampleRecord(ctx.fs, folder, type, id, {
+        const { discarded } = await mergeSampleRecord(ctx.fs, folder, type, id, {
           alias,
           description,
           sources: [posix.basename(documentPath)],
           location,
         });
         const result: ToolResult = { ok: true, data: { id, type, folder, scope } };
+        const warnings: string[] = [];
         if (scope === 'global') {
-          result.warnings = [
-            `${documentPath} is outside an experiment folder, so the sample was written to the global samples folder (${folder}).`,
-          ];
+          warnings.push(
+            `${documentPath} is outside an experiment folder, so the sample was written to the global samples folder (${folder}).`
+          );
         }
+        if (discarded) {
+          warnings.push(
+            `${id} was marked discarded on ${discarded} and stays discarded; tell the user, who can clear it with "Unmark discarded" in the samples view.`
+          );
+        }
+        if (warnings.length) result.warnings = warnings;
         return result;
       },
       async describe(ctx, args) {

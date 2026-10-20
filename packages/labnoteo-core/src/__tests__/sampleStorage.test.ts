@@ -767,6 +767,45 @@ describe('upsertSampleRecord (Phase 3 atomic merge)', () => {
     expect(records['DNA-1'].sources).toEqual(['note.labnote.md']);
   });
 
+  // #188
+  it('keeps discarded, descriptionSources and the descriptions other notes added', async () => {
+    const fs = new MemFileSystem();
+    const stored = {
+      type: 'DNA',
+      alias: 'a',
+      descriptions: ['first', 'from B'],
+      sources: ['A.md', 'B.md'],
+      location: 'Box-1',
+      discarded: '2026-10-19',
+      descriptionSources: { 'B.md': 'from B' },
+    };
+    await putSampleRecord(fs, FOLDER, 'DNA', 'DNA-1', stored);
+
+    await upsertSampleRecord(fs, FOLDER, 'DNA', 'DNA-1', { alias: 'a', description: 'first', location: 'Box-1' });
+    expect((await loadSamplesByType(fs, FOLDER, 'DNA'))['DNA-1']).toEqual(stored);
+
+    await upsertSampleRecord(fs, FOLDER, 'DNA', 'DNA-1', { alias: 'b', description: 'edited', location: 'Trash' });
+    expect((await loadSamplesByType(fs, FOLDER, 'DNA'))['DNA-1']).toEqual({
+      ...stored,
+      alias: 'b',
+      descriptions: ['edited', 'from B'],
+      location: 'Trash',
+    });
+  });
+
+  it('drops only the first description when it is cleared', async () => {
+    const fs = new MemFileSystem();
+    await putSampleRecord(fs, FOLDER, 'DNA', 'DNA-1', {
+      type: 'DNA',
+      alias: 'a',
+      descriptions: ['first', 'second'],
+      sources: [],
+      location: null,
+    });
+    await upsertSampleRecord(fs, FOLDER, 'DNA', 'DNA-1', { alias: 'a', description: null });
+    expect((await loadSamplesByType(fs, FOLDER, 'DNA'))['DNA-1'].descriptions).toEqual(['second']);
+  });
+
   it('does not drop concurrent upserts of different ids into one file', async () => {
     const fs = new MemFileSystem();
     await Promise.all([
@@ -820,6 +859,28 @@ describe('mergeSampleRecord (#73)', () => {
     await mergeSampleRecord(fs, FOLDER, 'DNA', 'DNA-1', { alias: 'a', location: 'L1' });
     await mergeSampleRecord(fs, FOLDER, 'DNA', 'DNA-1', { alias: 'b', location: 'L2' });
     expect((await loadSamplesByType(fs, FOLDER, 'DNA'))['DNA-1']).toMatchObject({ alias: 'b', location: 'L2' });
+  });
+
+  // #188
+  it('keeps a discarded date and descriptionSources, and reports the date', async () => {
+    const fs = new MemFileSystem();
+    await putSampleRecord(fs, FOLDER, 'DNA', 'DNA-1', {
+      type: 'DNA',
+      alias: 'a',
+      descriptions: ['d'],
+      sources: ['a.md'],
+      location: null,
+      discarded: '2026-10-19',
+      descriptionSources: { 'a.md': 'd' },
+    });
+    const result = await mergeSampleRecord(fs, FOLDER, 'DNA', 'DNA-1', { description: 'e', sources: ['b.md'] });
+    expect(result).toEqual({ discarded: '2026-10-19' });
+    expect((await loadSamplesByType(fs, FOLDER, 'DNA'))['DNA-1']).toMatchObject({
+      discarded: '2026-10-19',
+      descriptionSources: { 'a.md': 'd' },
+      descriptions: ['e', 'd'],
+    });
+    expect(await mergeSampleRecord(fs, FOLDER, 'DNA', 'DNA-2', { description: 'x' })).toEqual({ discarded: null });
   });
 });
 
