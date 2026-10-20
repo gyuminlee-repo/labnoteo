@@ -12,6 +12,7 @@
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
+import { readNoteId } from '@labnoteo/core/lib/noteId';
 import { findEnclosingHeading, parseFrontMatterYaml, type IssueMarker } from '@labnoteo/core';
 
 /** File name of the single-source-of-truth note inside each experiment folder. */
@@ -62,6 +63,8 @@ export interface MarkerSource {
    * GitHub permalink needs.
    */
   bodyLineOffset: number;
+  /** The file's `labnote_id`, when it has a valid one. */
+  noteId?: string;
 }
 
 /** Read a front-matter string field, trimmed; undefined when absent/blank. */
@@ -379,7 +382,12 @@ export function readMarkerSources(dir: string): MarkerSource[] {
       const raw = readFileSync(path, 'utf8').replace(/\r\n/g, '\n');
       const { body } = parseFrontMatterYaml(raw);
       // `body` is a suffix of `raw`, so the line delta is exactly what was dropped.
-      sources.push({ path, body, bodyLineOffset: raw.split('\n').length - body.split('\n').length });
+      sources.push({
+        path,
+        body,
+        bodyLineOffset: raw.split('\n').length - body.split('\n').length,
+        noteId: readNoteId(raw),
+      });
     } catch {
       continue;
     }

@@ -177,6 +177,10 @@ describe('.gitignore snippet', () => {
     // one file carrying a secret has to be named explicitly.
     expect(lines).toContain('.obsidian/plugins/*/data.json');
   });
+
+  it('excludes the unmatched scan queue, which holds raw photos', () => {
+    expect(lines).toContain('_labnote-scans/');
+  });
 });
 
 describe('findStaleIgnoreLines', () => {

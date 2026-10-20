@@ -15,7 +15,9 @@ import { buildHwUnitOpMarkdown } from '../lib/unitOpTemplate';
 
 /** A workflow note built the way the insert command builds it (block + TOC rebuild). */
 function buildNote(ops: [string, string][]): string {
-  let md = createWorkflowContent({ id: 'WD010', name: 'Design', description: 'desc' }, 'Dr. Kim');
+  let md = createWorkflowContent({ id: 'WD010', name: 'Design', description: 'desc' }, 'Dr. Kim', undefined, {
+    noteId: 'LN-00000000',
+  });
   ops.forEach(([opId, name]) => {
     const block = buildHwUnitOpMarkdown(
       { opId, opName: name, opDescription: `${name} step` },

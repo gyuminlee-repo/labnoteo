@@ -13,7 +13,7 @@
 | 빨리 가기 | |
 | --- | --- |
 | [5분 따라하기](#5분-따라하기) · [Wiki에 결과 쌓기](#wiki에-결과-쌓기-실험이-마무리되면) · [치트시트](#치트시트) | 처음 한 번 |
-| [명령 찾는 법](#명령-찾는-법) · [실험 폴더의 구조](#실험-폴더의-구조) · [기록하기](#기록하기) · [샘플 다루기](#샘플-다루기) · [AI 도우미](#ai-도우미) | 필요할 때 |
+| [명령 찾는 법](#명령-찾는-법) · [실험 폴더의 구조](#실험-폴더의-구조) · [기록하기](#기록하기) · [샘플 다루기](#샘플-다루기) · [AI 도우미](#ai-도우미) · [출력본 스캔 붙이기](#출력본-스캔-붙이기) | 필요할 때 |
 | [자주 겪는 문제](#자주-겪는-문제) | 막혔을 때 |
 
 ## 이 보관함으로 하는 일
@@ -206,6 +206,8 @@ push하고 잠시 뒤, GitHub 저장소의 **Issues 탭**을 열어 보세요.
 | 결과를 Wiki에 반영 | 에이전트에게 "사실을 wiki-staging에 정리해줘" → 검토 → `main` 머지 |
 | 대용량 원시데이터 | Git에 넣지 말고 `raw-data/` 등 별도 보관(자동 제외됨), 노트에는 경로/ID만 기록 |
 | AI로 방법 초안/결과 요약 | 명령 팔레트 → `AI: Draft Method section` / `AI: Summarize results` |
+| 실험실에 들고 갈 기록지 출력 | 워크플로 노트에서 → `Print experiment worksheet` (페이지마다 QR) |
+| 손으로 적은 기록지를 노트에 붙이기 | 사진·스캔을 스캔 폴더에 넣거나 `Import scanned pages` 창에 끌어다 놓기 ([출력본 스캔 붙이기](#출력본-스캔-붙이기)) |
 | 플러그인 업데이트 | BRAT가 앱 시작 시 자동 확인 · 수동은 `Check for updates to all beta plugins and UPDATE` |
 | 이 문서 다시 열기 | 명령 팔레트 → `Open user guide` (설정의 Labnote Assistant 탭 맨 위 버튼도 같음) |
 
@@ -239,6 +241,9 @@ push하고 잠시 뒤, GitHub 저장소의 **Issues 탭**을 열어 보세요.
 | Open sample definition | 샘플 정의 열기 (편집·이동·삭제) |
 | Insert sample list of this experiment | 이 실험의 시료 목록 삽입 |
 | Open user guide | 사용법 열기 |
+| Show note barcode / Assign note ID | 노트 바코드 보기 / 노트 ID 발급 |
+| Print experiment worksheet / Print whole note with barcodes | 실험 기록지 출력 / 노트 전체를 바코드와 함께 출력 |
+| Import scanned pages / Process scan folder now / Assign unmatched scans | 스캔 가져오기 / 스캔 폴더 지금 처리 / 미인식 스캔 할당 |
 | AI: Draft Method section | AI: Method 섹션 초안 작성 |
 | AI: Summarize results | AI: 결과 요약 |
 | AI: Extract sample definitions | AI: 샘플 정의 추출 |
@@ -255,7 +260,8 @@ push하고 잠시 뒤, GitHub 저장소의 **Issues 탭**을 열어 보세요.
 | **Go to definition** (정의로 이동) | 샘플 ID나 참조의 별칭 위에서 **우클릭** | 그 샘플의 타입·별칭·설명·저장 파일을 팝업으로. 설정에서 **샘플 추적이 꺼져 있으면 메뉴 자체가 뜨지 않습니다.** 일반 `.md` 노트에서도 됩니다. 키보드로는 팔레트의 `Open sample definition`이 같은 창을 엽니다. |
 | **날짜 선택기** | `#### Meta`의 `Start_date` / `End_date` 줄 끝 **📅 아이콘** 또는 **값을 클릭** | 달력·시계 피커. 📅 아이콘은 값이 있어도 항상 보입니다. 바꾼 값은 바로 노트에 들어가고, Enter나 바깥 클릭으로 닫힙니다. Esc를 누르면 연 시점의 값으로 되돌리고 닫습니다. 선택기로 여러 번 바꿔도 **Ctrl+Z 한 번**으로 연 시점의 값으로 돌아갑니다. 같은 블록에 `Start_date`가 있으면 `End_date` 달력은 그보다 이른 날을 고를 수 없게 하고, 그래도 시작보다 이른 종료 시각이 되면 닫을 때 "End_date(…)가 Start_date(…)보다 이릅니다"라고 알려 줍니다(값은 그대로 기록). 새 창으로 띄운 노트에서는 그 창에 열립니다. 읽기 모드에서는 동작하지 않습니다. |
 | **표 CSV 내보내기** | 파일 탐색기에서 노트 **우클릭** | 팔레트 명령과 동일. |
-| **리본 아이콘 2개** | 왼쪽 사이드바 | 상자 = 워크플로 뷰(맨 위에 실험 목록, 상태별), 시험관 = 샘플 뷰. 실험은 `001 · 제목 (2/5)`처럼 번호·제목과 README 체크리스트의 완료/전체 워크플로 수로 보이고, 마우스를 올리면 폴더·상태·과제·마지막 수정일이 나옵니다. 위의 `실험 검색`·`상태별/과제별` 전환으로 거르고 묶습니다. 허용되지 않는 `status`(예: `Failed`) 묶음에는 `(허용되지 않는 상태)`가 붙습니다. |
+| **노트 QR 아이콘** | 실험 노트(`*.labnote.md`) 위쪽 오른편 | 노트 ID와 QR을 보여 주고, 워크플로 노트면 `실험 기록지 출력` 버튼도 있습니다. 팔레트의 `Show note barcode`와 같습니다. |
+| **리본 아이콘 3개** | 왼쪽 사이드바 | 상자 = 워크플로 뷰(맨 위에 실험 목록, 상태별), 시험관 = 샘플 뷰, 스캔 = `Import scanned pages`. 실험은 `001 · 제목 (2/5)`처럼 번호·제목과 README 체크리스트의 완료/전체 워크플로 수로 보이고, 마우스를 올리면 폴더·상태·과제·마지막 수정일이 나옵니다. 위의 `실험 검색`·`상태별/과제별` 전환으로 거르고 묶습니다. 허용되지 않는 `status`(예: `Failed`) 묶음에는 `(허용되지 않는 상태)`가 붙습니다. |
 | **실험 목록에서 상태 변경** | 워크플로 뷰의 실험 **우클릭** | 그 실험의 README `status`를 바로 바꾸거나 논의 표시를 전환. 상태 창 제목과 알림에 실험 폴더 이름이 나오고, 되돌리려면 같은 실험을 다시 우클릭합니다. 논의 표시된 실험은 말풍선 아이콘. 클릭하면 README를 엶. |
 
 ## 실험 폴더의 구조
@@ -269,6 +275,7 @@ labnote/
     001_WD010_General_Design_of_Experiment.labnote.md   ← 워크플로 노트
     002_WB020_Cloning.labnote.md
     images/                    ← 그림 넣는 곳
+      scans/                   ← 출력본 사진·스캔 (플러그인이 저장)
     resources/
       labsamples/              ← 이 실험에서만 쓰는 샘플 (DNA.json, Primer.json …)
 resources/
@@ -676,7 +683,38 @@ Obsidian 안에서 쓰는 보조 기능입니다 (커밋·이슈·Wiki를 다루
 엔드포인트를 `localhost:11434`처럼 `http://` 없이 적으면 접속할 때 `http://`를 붙입니다.
 API 키는 OpenAI 계열에만 전송되며 Ollama로는 절대 나가지 않습니다.
 
+## 출력본 스캔 붙이기
+
+워크플로 노트를 **기록지로 출력**해 실험실에서 손으로 적고, 사진이나 스캔을 PC로 보내면 종이의 QR을
+읽어 **원래 노트의 그 유닛 오퍼레이션 아래에** 붙입니다. 데스크톱 Obsidian에서만 됩니다.
+
+1. **출력** — 워크플로 노트에서 명령 팔레트 → `Print experiment worksheet`(실험 기록지 출력). 실험실
+   유닛 오퍼레이션이 미리 골라져 있고, 페이지마다 두 모서리에 QR이 찍힙니다. 인쇄 창이 안 뜨면
+   `브라우저에서 열기`를 누르세요. 노트에는 고유 ID(`labnote_id: LN-…`)가 생깁니다.
+2. **보내기** — 다 적은 기록지를 휴대폰으로 찍거나 복합기로 스캔(PDF·JPEG)해서
+   - 설정 → Labnote Assistant → **바코드와 스캔** → `스캔 폴더`에 지정한 PC 폴더(Google Drive 전용
+     폴더, 카카오톡 받은 파일, 복합기 폴더 등)에 넣거나 — 30초마다 확인합니다 —
+   - 명령 팔레트 → `Import scanned pages`(스캔 가져오기) 창에 끌어다 놓습니다(zip·여러 쪽 PDF도 됨).
+3. **확인** — "N쪽 붙임" 알림의 `자세히`나 결과 창에서 `노트 열기`·`되돌리기`를 고릅니다. 붙은
+   이미지는 실험의 `images/scans/`에 저장되고, 노트에는 `#### Worksheet scans` 절이 생깁니다.
+4. **못 읽은 페이지** — 명령 팔레트 → `Assign unmatched scans`(미인식 스캔 할당)에서 노트와 유닛
+   오퍼레이션을 골라 붙입니다.
+
+- 스캔 폴더는 **PC 한 대에서만** 지정하세요(PC마다 따로 저장됨).
+- 노트의 `labnote_id` 줄과 `#### Worksheet scans` 절(안의 `<!-- labnoteo-scan … -->` 주석 포함)은
+  지우거나 다른 노트로 복사하지 마세요. 스캔을 찾아 붙이고 되돌리는 데 씁니다.
+- 아이폰은 **설정 → 카메라 → 포맷 → 높은 호환성**으로 두세요(HEIC 사진은 열지 못함).
+
+입력 경로별 자세한 방법(Google Drive·카카오톡·OneDrive·이메일·복합기·Slack)과 문제 해결은
+[출력본 스캔 가이드](https://github.com/sblabkribb/labnoteo/blob/main/docs/SCAN.md)를 보세요.
+
 ## 자주 겪는 문제
+
+**사진을 넣었는데 노트에 안 붙어요**
+- 결과 창이나 알림의 `자세히`에 이유가 나옵니다. QR을 못 읽은 페이지는 `Assign unmatched scans`로 직접 붙이세요.
+- 스캔 폴더는 그 PC에서 지정했나요? 지정하기 **전에** 있던 파일은 설정의 `기존 파일도 처리`를 눌러야 처리됩니다.
+- 아이폰 HEIC나 복합기 TIFF는 열지 못합니다. JPEG·PDF로 보내세요.
+- "여러 노트가 같은 ID …을(를) 쓰고 있습니다"는 노트를 파일 탐색기나 git으로 복사해 ID까지 복사된 것입니다. 복사본에서 명령 팔레트 → `Assign note ID`로 새 ID를 받으세요.
 
 **push했는데 이슈가 안 생겨요**
 - 먼저 보관함이 GitHub 저장소와 연결된 git 저장소인지 확인하세요(관리자 설정 완료 여부). 보관함 폴더에 `.git`이 없으면 push 자체가 되지 않습니다. 이때 플러그인은 논의 표시나 이슈 마커를 넣을 때 "아직 git 저장소가 아니라 이슈가 생성되지 않습니다"라고 알려 줍니다. `.labnoteo/SETUP.md`의 저장소 연결을 마치세요.
@@ -731,7 +769,7 @@ API 키는 OpenAI 계열에만 전송되며 Ollama로는 절대 나가지 않습
   돌려준 것입니다. 다시 시도하거나 다른 모델을 고르세요.
 
 **노트 검증이 실패해요 (Actions의 validate)**
-- `status` 값이 허용 목록(`planned`, `in-progress`, `needs-review`, `completed`, `failed`, `discontinued`, `needs-repeat`)에 있는지, 실험 `id`와 마커 ID가 중복되지 않는지 확인하세요.
+- `status` 값이 허용 목록(`planned`, `in-progress`, `needs-review`, `completed`, `failed`, `discontinued`, `needs-repeat`)에 있는지, 실험 `id`와 마커 ID, 노트 ID(`labnote_id`)가 중복되지 않는지 확인하세요. 노트 ID가 겹치면 복사본에서 `Assign note ID`로 새 ID를 받으세요.
 
 **Wiki가 갱신되지 않아요**
 - Wiki 발행은 **`main` 브랜치에 들어갔을 때만** 일어납니다. 작업 브랜치에 `wiki-staging/`을 고쳐 push해도 발행되지 않습니다(이슈·검증과 다른 점입니다).

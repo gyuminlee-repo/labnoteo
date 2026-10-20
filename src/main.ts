@@ -126,6 +126,7 @@ import {
 } from './llm/commands';
 import { LabnoteMcpServer } from './llm/mcpServer';
 import { CURRENT_SCHEMA_VERSION, migrateSettings, type LabnoteSettings } from './settings';
+import { BarcodeFeature } from './barcode/barcodeFeature';
 
 export default class LabnotePlugin extends Plugin {
   // `Plugin` already declares `settings?: unknown`; re-type it concretely.
@@ -134,6 +135,7 @@ export default class LabnotePlugin extends Plugin {
   t!: Translator;
   host!: LabnoteHost;
   mcpServer!: LabnoteMcpServer;
+  barcode!: BarcodeFeature;
   private sampleSuggest?: SampleEditorSuggest;
   private sampleIds?: SampleIdIndex;
   // Last experiment folder (`labnote/###_*`) resolved from an active note, kept
@@ -190,6 +192,8 @@ export default class LabnotePlugin extends Plugin {
     this.mcpServer = new LabnoteMcpServer(this);
 
     this.registerCommands();
+    this.barcode = new BarcodeFeature(this, key => this.paletteName(key));
+    this.barcode.register();
     this.registerSampleFeatures();
     this.registerInlineHighlighting();
     this.registerEditorExtension(
@@ -936,7 +940,8 @@ export default class LabnotePlugin extends Plugin {
 
   /**
    * A note moved to another folder takes its `_tableN.csv` exports along, as a
-   * rename in place does, then says so (#206). A CSV whose name is already
+   * rename in place does, then says so (#206); its worksheet scans follow it to
+   * the new experiment's `images/scans` the same way. A CSV whose name is already
    * taken there stays behind with a warning. Skipped for a move into the trash
    * or a hidden folder, and when a whole experiment folder moved (its CSVs
    * moved with it; the old folder is gone by then).
@@ -948,6 +953,7 @@ export default class LabnotePlugin extends Plugin {
     if (fromDir === toDir) return;
     if (toDir.split('/').some(segment => segment.startsWith('.'))) return;
     if (!this.app.vault.getAbstractFileByPath(fromDir)) return;
+    this.run(() => this.barcode.moveScansWithNote(newPath, fromDir, toDir));
     this.run(async () => {
       const names = new Set(await this.fs.list(fromDir));
       const { moved, skipped } = await moveTableCsvs(
@@ -1066,6 +1072,8 @@ export default class LabnotePlugin extends Plugin {
         )
       );
     }
+    // Same for the note ID, or scans of either note could be filed in the other.
+    await this.barcode.reassignCopiedId(file);
     const suggestion = suggestCopiedWorkflowFileName(file.name, await this.fs.list(dir));
     const target = suggestion ? posix.join(dir, suggestion) : undefined;
     if (!settled || !suggestion || !target || this.app.vault.getAbstractFileByPath(target)) {

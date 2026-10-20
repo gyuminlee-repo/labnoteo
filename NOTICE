@@ -16,3 +16,15 @@ Third-party components bundled in the distributed plugin (main.js):
   js-yaml
   Copyright (c) 2011-2015 Vitaly Puzrin
   Licensed under the MIT License. https://github.com/nodeca/js-yaml
+
+  jsQR
+  Copyright the jsQR authors
+  Licensed under the Apache License, Version 2.0. https://github.com/cozmo/jsQR
+
+  qrcode-generator
+  Copyright (c) 2009 Kazuhiko Arase
+  Licensed under the MIT License. https://github.com/kazuhikoarase/qrcode-generator
+
+  fflate
+  Copyright (c) 2026 Arjun Barrett
+  Licensed under the MIT License. https://github.com/101arrowz/fflate
