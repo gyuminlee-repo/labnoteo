@@ -107,6 +107,39 @@ export function fromDateTimeLocalValue(value: string): string {
 }
 
 /**
+ * The other date of the Meta block holding `lineIndex` (#192): `End_date` for
+ * a `Start_date` line and the reverse, with its value as written. The block
+ * runs between the nearest headings; undefined when `lineIndex` is not a Meta
+ * date line or the block has no such field.
+ */
+export function findPairedMetaDate(
+  lines: readonly string[],
+  lineIndex: number
+): { field: MetaDateFieldMatch['field']; value: string } | undefined {
+  const own = lines[lineIndex] === undefined ? null : findMetaDateFieldInLine(lines[lineIndex]);
+  if (!own) return undefined;
+  const want: MetaDateFieldMatch['field'] = own.field === 'Start_date' ? 'End_date' : 'Start_date';
+  const isHeading = (l: string) => /^#{1,6}\s/.test(l);
+  let start = lineIndex;
+  while (start > 0 && !isHeading(lines[start - 1])) start--;
+  for (let i = start; i < lines.length && (i === start || !isHeading(lines[i])); i++) {
+    const m = findMetaDateFieldInLine(lines[i]);
+    if (m?.field === want) return { field: want, value: m.value };
+  }
+  return undefined;
+}
+
+/**
+ * Whether `end` is earlier than `start`, both Meta date values (#192). False
+ * when either is empty or not a date, so an unfinished block raises nothing.
+ */
+export function isEndBeforeStart(start: string, end: string): boolean {
+  const a = toDateTimeLocalValue(start);
+  const b = toDateTimeLocalValue(end);
+  return a !== '' && b !== '' && b < a;
+}
+
+/**
  * Date field match result
  */
 export interface DateFieldMatch {

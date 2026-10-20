@@ -19,6 +19,7 @@ const obsidianKo: Record<string, string> = {
   'Insert unit operation': '유닛 오퍼레이션 삽입',
   'Insert date': '날짜 삽입',
   'Insert date and time': '날짜 및 시간 삽입',
+  'End_date {0} is earlier than Start_date {1}.': 'End_date({0})가 Start_date({1})보다 이릅니다.',
   'Pick date and time': '날짜 및 시간 선택',
   'Export tables to CSV': '표를 CSV로 내보내기',
   'Open workflow view': '워크플로 뷰 열기',

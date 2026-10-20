@@ -185,7 +185,12 @@ export default class LabnotePlugin extends Plugin {
     this.registerCommands();
     this.registerSampleFeatures();
     this.registerInlineHighlighting();
-    this.registerEditorExtension(createMetaDatePickerExtension(this.t('Pick date and time')));
+    this.registerEditorExtension(
+      createMetaDatePickerExtension({
+        pick: this.t('Pick date and time'),
+        endBeforeStart: (end, start) => this.t('End_date {0} is earlier than Start_date {1}.', end, start),
+      })
+    );
     this.registerViews();
     this.registerFileMenu();
     this.registerEditorMenu();
