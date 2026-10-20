@@ -1,0 +1,436 @@
+{
+  "clips": [
+    {
+      "id": "ai-ask-agent",
+      "lang": "en",
+      "version": "0.105.0",
+      "durationSec": 48.4,
+      "bytes": 684895,
+      "recordedAt": "2026-10-20T10:10:47.753Z"
+    },
+    {
+      "id": "ai-ask-agent",
+      "lang": "ko",
+      "version": "0.105.0",
+      "durationSec": 45.4,
+      "bytes": 592093,
+      "recordedAt": "2026-10-20T10:08:59.985Z"
+    },
+    {
+      "id": "ai-draft-method",
+      "lang": "en",
+      "version": "0.105.0",
+      "durationSec": 29,
+      "bytes": 452762,
+      "recordedAt": "2026-10-20T08:09:11.104Z"
+    },
+    {
+      "id": "ai-draft-method",
+      "lang": "ko",
+      "version": "0.105.0",
+      "durationSec": 31.4,
+      "bytes": 477868,
+      "recordedAt": "2026-10-20T07:42:55.379Z"
+    },
+    {
+      "id": "ai-extract-samples",
+      "lang": "en",
+      "version": "0.105.0",
+      "durationSec": 41.6,
+      "bytes": 543371,
+      "recordedAt": "2026-10-20T09:46:20.885Z"
+    },
+    {
+      "id": "ai-extract-samples",
+      "lang": "ko",
+      "version": "0.105.0",
+      "durationSec": 42.8,
+      "bytes": 555631,
+      "recordedAt": "2026-10-20T09:34:58.890Z"
+    },
+    {
+      "id": "ai-settings",
+      "lang": "en",
+      "version": "0.105.0",
+      "durationSec": 27.6,
+      "bytes": 385963,
+      "recordedAt": "2026-10-20T08:07:47.906Z"
+    },
+    {
+      "id": "ai-settings",
+      "lang": "ko",
+      "version": "0.105.0",
+      "durationSec": 27.6,
+      "bytes": 385940,
+      "recordedAt": "2026-10-20T06:34:34.473Z"
+    },
+    {
+      "id": "ai-summarize-results",
+      "lang": "en",
+      "version": "0.105.0",
+      "durationSec": 25.4,
+      "bytes": 414565,
+      "recordedAt": "2026-10-20T08:09:58.296Z"
+    },
+    {
+      "id": "ai-summarize-results",
+      "lang": "ko",
+      "version": "0.105.0",
+      "durationSec": 25.8,
+      "bytes": 409396,
+      "recordedAt": "2026-10-20T07:44:09.744Z"
+    },
+    {
+      "id": "change-experiment-status",
+      "lang": "en",
+      "version": "0.105.0",
+      "durationSec": 24.6,
+      "bytes": 461915,
+      "recordedAt": "2026-10-20T07:56:01.445Z"
+    },
+    {
+      "id": "change-experiment-status",
+      "lang": "ko",
+      "version": "0.105.0",
+      "durationSec": 22.6,
+      "bytes": 355923,
+      "recordedAt": "2026-10-20T06:24:15.900Z"
+    },
+    {
+      "id": "context-menu-only",
+      "lang": "en",
+      "version": "0.105.0",
+      "durationSec": 62,
+      "bytes": 1343536,
+      "recordedAt": "2026-10-20T08:00:41.431Z"
+    },
+    {
+      "id": "context-menu-only",
+      "lang": "ko",
+      "version": "0.105.0",
+      "durationSec": 60.8,
+      "bytes": 1185427,
+      "recordedAt": "2026-10-20T07:38:02.712Z"
+    },
+    {
+      "id": "create-experiment",
+      "lang": "en",
+      "version": "0.105.0",
+      "durationSec": 27.1,
+      "bytes": 266081,
+      "recordedAt": "2026-10-20T07:55:33.826Z"
+    },
+    {
+      "id": "create-experiment",
+      "lang": "ko",
+      "version": "0.105.0",
+      "durationSec": 25,
+      "bytes": 214272,
+      "recordedAt": "2026-10-20T06:23:50.478Z"
+    },
+    {
+      "id": "create-workflow",
+      "lang": "en",
+      "version": "0.105.0",
+      "durationSec": 41.6,
+      "bytes": 820473,
+      "recordedAt": "2026-10-20T07:58:03.574Z"
+    },
+    {
+      "id": "create-workflow",
+      "lang": "ko",
+      "version": "0.105.0",
+      "durationSec": 39.1,
+      "bytes": 759298,
+      "recordedAt": "2026-10-20T06:26:11.117Z"
+    },
+    {
+      "id": "custom-sample-type",
+      "lang": "en",
+      "version": "0.105.0",
+      "durationSec": 49.2,
+      "bytes": 592633,
+      "recordedAt": "2026-10-20T08:07:18.292Z"
+    },
+    {
+      "id": "custom-sample-type",
+      "lang": "ko",
+      "version": "0.105.0",
+      "durationSec": 46.6,
+      "bytes": 573767,
+      "recordedAt": "2026-10-20T06:34:04.488Z"
+    },
+    {
+      "id": "export-tables-csv",
+      "lang": "en",
+      "version": "0.105.0",
+      "durationSec": 26.7,
+      "bytes": 826568,
+      "recordedAt": "2026-10-20T08:02:57.648Z"
+    },
+    {
+      "id": "export-tables-csv",
+      "lang": "ko",
+      "version": "0.105.0",
+      "durationSec": 26.1,
+      "bytes": 800161,
+      "recordedAt": "2026-10-20T07:38:31.678Z"
+    },
+    {
+      "id": "insert-date",
+      "lang": "en",
+      "version": "0.105.0",
+      "durationSec": 38.7,
+      "bytes": 571711,
+      "recordedAt": "2026-10-20T08:02:28.131Z"
+    },
+    {
+      "id": "insert-date",
+      "lang": "ko",
+      "version": "0.105.0",
+      "durationSec": 36.7,
+      "bytes": 520769,
+      "recordedAt": "2026-10-20T06:30:16.129Z"
+    },
+    {
+      "id": "insert-experiment-samples-table",
+      "lang": "en",
+      "version": "0.105.0",
+      "durationSec": 24.3,
+      "bytes": 390487,
+      "recordedAt": "2026-10-20T08:06:29.812Z"
+    },
+    {
+      "id": "insert-experiment-samples-table",
+      "lang": "ko",
+      "version": "0.105.0",
+      "durationSec": 22.2,
+      "bytes": 352619,
+      "recordedAt": "2026-10-20T06:33:18.640Z"
+    },
+    {
+      "id": "insert-unit-operation",
+      "lang": "en",
+      "version": "0.105.0",
+      "durationSec": 33,
+      "bytes": 609264,
+      "recordedAt": "2026-10-20T08:01:16.269Z"
+    },
+    {
+      "id": "insert-unit-operation",
+      "lang": "ko",
+      "version": "0.105.0",
+      "durationSec": 30.1,
+      "bytes": 518766,
+      "recordedAt": "2026-10-20T06:29:07.634Z"
+    },
+    {
+      "id": "install",
+      "lang": "en",
+      "version": "0.105.0",
+      "durationSec": 71.1,
+      "bytes": 966180,
+      "recordedAt": "2026-10-20T07:53:39.577Z"
+    },
+    {
+      "id": "install",
+      "lang": "ko",
+      "version": "0.105.0",
+      "durationSec": 68.5,
+      "bytes": 914186,
+      "recordedAt": "2026-10-20T06:22:08.657Z"
+    },
+    {
+      "id": "issue-marker-discussion",
+      "lang": "en",
+      "version": "0.105.0",
+      "durationSec": 39,
+      "bytes": 681310,
+      "recordedAt": "2026-10-20T07:57:20.507Z"
+    },
+    {
+      "id": "issue-marker-discussion",
+      "lang": "ko",
+      "version": "0.105.0",
+      "durationSec": 36.6,
+      "bytes": 622648,
+      "recordedAt": "2026-10-20T06:25:30.802Z"
+    },
+    {
+      "id": "overview",
+      "lang": "en",
+      "version": "0.105.0",
+      "durationSec": 94.8,
+      "bytes": 1604519,
+      "recordedAt": "2026-10-20T07:55:05.243Z"
+    },
+    {
+      "id": "overview",
+      "lang": "ko",
+      "version": "0.105.0",
+      "durationSec": 85.7,
+      "bytes": 1278748,
+      "recordedAt": "2026-10-20T06:23:24.064Z"
+    },
+    {
+      "id": "sample-autocomplete",
+      "lang": "en",
+      "version": "0.105.0",
+      "durationSec": 48,
+      "bytes": 557636,
+      "recordedAt": "2026-10-20T08:03:45.392Z"
+    },
+    {
+      "id": "sample-autocomplete",
+      "lang": "ko",
+      "version": "0.105.0",
+      "durationSec": 44.8,
+      "bytes": 493217,
+      "recordedAt": "2026-10-20T07:39:15.812Z"
+    },
+    {
+      "id": "sample-definition",
+      "lang": "en",
+      "version": "0.105.0",
+      "durationSec": 38.6,
+      "bytes": 655657,
+      "recordedAt": "2026-10-20T08:05:17.825Z"
+    },
+    {
+      "id": "sample-definition",
+      "lang": "ko",
+      "version": "0.105.0",
+      "durationSec": 38.3,
+      "bytes": 741480,
+      "recordedAt": "2026-10-20T06:32:25.389Z"
+    },
+    {
+      "id": "sample-type-scope",
+      "lang": "en",
+      "version": "0.105.0",
+      "durationSec": 54.4,
+      "bytes": 978330,
+      "recordedAt": "2026-10-20T09:43:54.026Z"
+    },
+    {
+      "id": "sample-type-scope",
+      "lang": "ko",
+      "version": "0.105.0",
+      "durationSec": 54.5,
+      "bytes": 951871,
+      "recordedAt": "2026-10-20T09:29:18.144Z"
+    },
+    {
+      "id": "sample-view",
+      "lang": "en",
+      "version": "0.105.0",
+      "durationSec": 73.6,
+      "bytes": 1073671,
+      "recordedAt": "2026-10-20T09:43:03.060Z"
+    },
+    {
+      "id": "sample-view",
+      "lang": "ko",
+      "version": "0.105.0",
+      "durationSec": 70.9,
+      "bytes": 1027315,
+      "recordedAt": "2026-10-20T09:28:27.291Z"
+    },
+    {
+      "id": "setup-research-automation",
+      "lang": "en",
+      "version": "0.105.0",
+      "durationSec": 24.7,
+      "bytes": 244493,
+      "recordedAt": "2026-10-20T08:14:35.243Z"
+    },
+    {
+      "id": "setup-research-automation",
+      "lang": "ko",
+      "version": "0.105.0",
+      "durationSec": 23.4,
+      "bytes": 221895,
+      "recordedAt": "2026-10-20T06:42:13.858Z"
+    },
+    {
+      "id": "uo-reorder",
+      "lang": "en",
+      "version": "0.105.0",
+      "durationSec": 29.7,
+      "bytes": 590111,
+      "recordedAt": "2026-10-20T08:01:47.164Z"
+    },
+    {
+      "id": "uo-reorder",
+      "lang": "ko",
+      "version": "0.105.0",
+      "durationSec": 28.7,
+      "bytes": 518554,
+      "recordedAt": "2026-10-20T06:29:37.632Z"
+    },
+    {
+      "id": "workflow-rename-copy",
+      "lang": "en",
+      "version": "0.105.0",
+      "durationSec": 44.1,
+      "bytes": 607878,
+      "recordedAt": "2026-10-20T07:58:47.696Z"
+    },
+    {
+      "id": "workflow-rename-copy",
+      "lang": "ko",
+      "version": "0.105.0",
+      "durationSec": 43,
+      "bytes": 537791,
+      "recordedAt": "2026-10-20T06:26:53.194Z"
+    },
+    {
+      "id": "workflow-renumber",
+      "lang": "en",
+      "version": "0.105.0",
+      "durationSec": 26.4,
+      "bytes": 391736,
+      "recordedAt": "2026-10-20T07:59:16.162Z"
+    },
+    {
+      "id": "workflow-renumber",
+      "lang": "ko",
+      "version": "0.105.0",
+      "durationSec": 25.9,
+      "bytes": 433117,
+      "recordedAt": "2026-10-20T06:27:21.074Z"
+    },
+    {
+      "id": "workflow-sync",
+      "lang": "en",
+      "version": "0.105.0",
+      "durationSec": 29.5,
+      "bytes": 484134,
+      "recordedAt": "2026-10-20T07:59:47.918Z"
+    },
+    {
+      "id": "workflow-sync",
+      "lang": "ko",
+      "version": "0.105.0",
+      "durationSec": 28.2,
+      "bytes": 435704,
+      "recordedAt": "2026-10-20T06:27:51.317Z"
+    },
+    {
+      "id": "workflow-view",
+      "lang": "en",
+      "version": "0.105.0",
+      "durationSec": 38.4,
+      "bytes": 431228,
+      "recordedAt": "2026-10-20T07:56:37.969Z"
+    },
+    {
+      "id": "workflow-view",
+      "lang": "ko",
+      "version": "0.105.0",
+      "durationSec": 37.2,
+      "bytes": 456143,
+      "recordedAt": "2026-10-20T06:24:51.094Z"
+    }
+  ]
+}

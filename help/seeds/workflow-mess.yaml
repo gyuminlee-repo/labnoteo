@@ -1,0 +1,38 @@
+# 정리가 필요한 실험: 워크플로 번호에 빈칸(001, 003), 체크리스트에 없는 파일(004),
+# 파일 이름과 어긋난 라벨(001). Obsidian을 끈 채로 망가뜨려 플러그인이 바로 고치지 못하게 한다.
+id: workflow-mess
+from: basic
+steps:
+  - tool: open_file
+    args: { path: &readme { ko: labnote/001_GFP_발현/README.labnote.md, en: labnote/001_GFP_expression/README.labnote.md } }
+  - tool: labnoteo_create_workflow
+    args: { query: WB140, alias: { ko: 플라스크, en: flask } }
+  - tool: open_file
+    args: { path: *readme }
+  - tool: labnoteo_create_workflow
+    args: { query: WT010, alias: { ko: 생어, en: Sanger } }
+  - tool: open_file
+    args: { path: *readme }
+  - tool: labnoteo_create_workflow
+    args: { query: WB040, alias: { ko: 플라스미드, en: plasmid } }
+  - quit: true
+  - fs.delete:
+      path: { ko: labnote/001_GFP_발현/002_WB140_Liquid_Media_Cell_Culture_플라스크.labnote.md, en: labnote/001_GFP_expression/002_WB140_Liquid_Media_Cell_Culture_flask.labnote.md }
+  - fs.patch:
+      path: *readme
+      find:
+        ko: "- [ ] [WB140 Liquid Media Cell Culture 플라스크](./002_WB140_Liquid_Media_Cell_Culture_플라스크.labnote.md)\n"
+        en: "- [ ] [WB140 Liquid Media Cell Culture flask](./002_WB140_Liquid_Media_Cell_Culture_flask.labnote.md)\n"
+      replace: ""
+  - fs.patch:
+      path: *readme
+      find:
+        ko: "- [ ] [WB040 DNA Purification 플라스미드](./004_WB040_DNA_Purification_플라스미드.labnote.md)\n"
+        en: "- [ ] [WB040 DNA Purification plasmid](./004_WB040_DNA_Purification_plasmid.labnote.md)\n"
+      replace: ""
+  - fs.patch:
+      path: *readme
+      find:
+        ko: "- [ ] [WB030 DNA Assembly 1차]("
+        en: "- [ ] [WB030 DNA Assembly run1]("
+      replace: "- [ ] [WB030 DNA Assembly]("

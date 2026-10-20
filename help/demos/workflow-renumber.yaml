@@ -1,0 +1,21 @@
+id: workflow-renumber
+order: 9
+section: record
+title: { ko: 워크플로 번호 다시 매기기, en: Renumber workflows }
+seed: workflow-mess
+steps:
+  - caption: { ko: 001 다음이 003이라 번호가 비어 있습니다, en: Numbers skip from 001 to 003 }
+    tool: open_file
+    args: { path: { ko: labnote/001_GFP_발현/README.labnote.md, en: labnote/001_GFP_expression/README.labnote.md } }
+  - highlight: { selector: .nav-file-title, text: 003_ }
+    hold: 1200
+  - caption: { ko: 팔레트에서 워크플로 번호 다시 매기기, en: Run Renumber workflows from the palette }
+    palette: renumber-workflows
+  - caption: { ko: 바뀔 이름을 확인하고 진행합니다, en: Check the new names and go ahead }
+    tool: modal_button
+    args: { text: $t(Yes) }
+    hold: 1500
+  - caption: { ko: 003이 002가 되고 체크리스트도 맞춰집니다, en: 003 becomes 002 and the checklist follows }
+    highlight: { selector: .nav-file-title, text: 002_ }
+    poster: true
+    hold: 1500

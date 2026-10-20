@@ -1,0 +1,28 @@
+id: ai-settings
+order: 22
+section: ai
+title: { ko: AI 프로바이더 설정, en: AI provider settings }
+seed: basic
+setup:
+  - tool: eval
+    args:
+      expression: "(async () => { const p = app.plugins.plugins.labnoteo; Object.assign(p.settings, { llmProvider: 'none', llmEndpointOllama: '', llmModel: '' }); await p.saveSettings(); return true; })()"
+steps:
+  - caption: { ko: 설정 → Labnote Assistant의 AI 프로바이더 칸, en: Settings → Labnote Assistant → AI provider }
+    tool: settings_open
+    args: { tab: Labnote Assistant }
+  - caption: { ko: 프로바이더를 Ollama로 고릅니다(목록 창은 영상에 안 보임), en: Choose Ollama as the provider (the drop-down is not shown in video) }
+    tool: settings_set
+    args: { name: $t(Provider), value: Ollama }
+    hold: 1000
+  - caption: { ko: Ollama 엔드포인트 주소를 적습니다, en: Enter the Ollama endpoint }
+    tool: settings_set
+    args: { name: $t(Ollama endpoint), value: localhost:11434 }
+    hold: 1000
+  - caption: { ko: 내려받은 모델 이름을 적습니다, en: Enter the name of a model you pulled }
+    tool: settings_set
+    args: { name: $t(Model), value: qwen3.5:9b }
+  - highlight: { selector: .setting-item, text: $t(Model) }
+    poster: true
+    hold: 1500
+  - tool: settings_close

@@ -1,0 +1,29 @@
+WEBVTT
+
+1
+00:00:00.024 --> 00:00:01.830
+Create workflow
+
+2
+00:00:01.830 --> 00:00:07.899
+Open the experiment README
+
+3
+00:00:07.899 --> 00:00:11.847
+Run Create workflow from the palette
+
+4
+00:00:11.847 --> 00:00:15.765
+Search the catalog (e.g. transformation)
+
+5
+00:00:15.765 --> 00:00:22.196
+Add an alias to tell runs of the same step apart
+
+6
+00:00:22.196 --> 00:00:25.131
+The workflow note gets the next number (002)
+
+7
+00:00:25.131 --> 00:00:37.051
+It is also added to the README checklist

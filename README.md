@@ -13,6 +13,7 @@
 1. **[설치 가이드](docs/INSTALL.md)** — Obsidian 설치부터 첫 push까지 순서대로.
 2. 설치 후 일상 사용법은 명령 팔레트 → **사용법 열기**(`Open user guide`)로 여는 `QUICKSTART.md`(연구원용)를 보세요. 없으면 보관함에 바로 만들어 주며, 연구노트 자동화 설정은 필요 없습니다.
 3. 커밋·이슈·Wiki를 AI 에이전트에게 맡기려면 **[Copilot 에이전트 가이드](docs/COPILOT.md)**.
+4. 기능을 영상으로 먼저 보려면 **[도움말 사이트](https://sblabkribb.github.io/labnoteo/)** — 기능별 짧은 영상과 사용법(한/영).
 
 ## 주요 기능
 

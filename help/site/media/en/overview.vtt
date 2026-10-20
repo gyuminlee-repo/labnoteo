@@ -1,0 +1,45 @@
+WEBVTT
+
+1
+00:00:00.021 --> 00:00:01.828
+The whole flow at a glance
+
+2
+00:00:01.828 --> 00:00:06.028
+Type Create experiment in the palette (Ctrl+P)
+
+3
+00:00:06.028 --> 00:00:10.875
+A title creates the experiment folder and README
+
+4
+00:00:10.875 --> 00:00:15.511
+Create workflow picks a step from the catalog
+
+5
+00:00:15.511 --> 00:00:18.845
+Pick a workflow from the catalog
+
+6
+00:00:18.845 --> 00:00:23.033
+Give it an alias to create the workflow note
+
+7
+00:00:23.033 --> 00:00:36.344
+Insert a unit operation into the workflow
+
+8
+00:00:36.344 --> 00:00:42.878
+Type @DNA; under Input to reference a sample
+
+9
+00:00:42.878 --> 00:00:57.228
+Alias, description and location give it a new ID
+
+10
+00:00:57.228 --> 00:01:07.012
+Change the experiment status to in-progress
+
+11
+00:01:07.012 --> 00:01:17.282
+Stuck? Open user guide opens QUICKSTART

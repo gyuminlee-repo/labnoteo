@@ -1,0 +1,29 @@
+id: ai-extract-samples
+order: 25
+section: ai
+title: { ko: "AI: 샘플 추출", en: "AI: Extract samples" }
+seed: basic
+ai: true
+steps:
+  - caption: { ko: 본문에 적은 클론들을 샘플로 등록해 봅니다, en: Register the clones written in the note as samples }
+    tool: open_file
+    args: { path: { ko: labnote/001_GFP_발현/001_WB030_DNA_Assembly_1차.labnote.md, en: labnote/001_GFP_expression/001_WB030_DNA_Assembly_run1.labnote.md } }
+  - tool: editor_move
+    args: { text: pGFP-c1, ch: 0 }
+  - highlight: { selector: .cm-line, text: pGFP-c1 }
+    hold: 1200
+  - caption: { ko: "팔레트에서 AI: 샘플 추출", en: "Run AI: Extract samples from the palette" }
+    palette: ai-extract-samples
+  - tool: ui_wait
+    args: { notice: '', timeoutMs: 300000 }
+    fastForward: true
+  - caption: { ko: 새로 만든 수와 건너뛴 수가 알림으로 뜹니다, en: A notice tells how many were created and skipped }
+    hold: 1500
+  - caption: { ko: 샘플 뷰에 새 샘플이 생겼습니다, en: The new samples are in the Samples view }
+    tool: ribbon_click
+    args: { label: $t(Samples) }
+  - tool: ui_wait
+    args: { selector: .labnote-tree-row, text: pGFP }
+  - highlight: { selector: .labnote-tree-row, text: pGFP }
+    poster: true
+    hold: 2000

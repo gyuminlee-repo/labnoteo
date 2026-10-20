@@ -21,6 +21,7 @@
 *.scss      text eol=lf
 *.svg       text eol=lf
 *.sh        text eol=lf
+*.vtt       text eol=lf
 
 # Windows-only scripts must keep CRLF or they break under cmd.exe / PowerShell.
 *.bat       text eol=crlf
@@ -46,3 +47,4 @@
 *.ttf       binary
 *.otf       binary
 *.eot       binary
+*.mp4       binary

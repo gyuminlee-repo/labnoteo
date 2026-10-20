@@ -1,0 +1,20 @@
+id: insert-experiment-samples-table
+order: 20
+section: samples
+title: { ko: 이 실험의 샘플 목록 넣기, en: Insert sample list of this experiment }
+seed: samples
+steps:
+  - caption: { ko: README의 Summary 아래에 커서를 둡니다, en: Put the cursor under Summary in the README }
+    tool: open_file
+    args: { path: { ko: labnote/001_GFP_발현/README.labnote.md, en: labnote/001_GFP_expression/README.labnote.md } }
+  - tool: editor_move
+    args: { text: '## Summary and Discussion', ch: end }
+  - tool: ui_press
+    args: { keys: Enter }
+  - caption: { ko: 팔레트에서 이 실험의 샘플 목록 넣기, en: Run Insert sample list of this experiment }
+    palette: insert-experiment-samples-table
+    hold: 1500
+  - caption: { ko: 로컬 샘플과 쓰인 전역 샘플이 표로 들어갑니다, en: Local samples and the Global ones in use go in as a table }
+    highlight: { selector: .cm-table-widget }
+    poster: true
+    hold: 2000

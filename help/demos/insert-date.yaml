@@ -1,0 +1,32 @@
+id: insert-date
+order: 14
+section: record
+title: { ko: 날짜 삽입, en: Insert date }
+seed: basic
+steps:
+  - caption: { ko: 커서 자리에 오늘 날짜를 넣습니다, en: Insert today's date at the cursor }
+    tool: open_file
+    args: { path: { ko: labnote/001_GFP_발현/001_WB030_DNA_Assembly_1차.labnote.md, en: labnote/001_GFP_expression/001_WB030_DNA_Assembly_run1.labnote.md } }
+  - tool: editor_move
+    args: { text: { ko: 두 클론은, en: Both clones }, ch: end }
+  - tool: ui_press
+    args: { keys: Enter }
+  - tool: ui_type
+    args: { text: { ko: '확인한 날: ', en: 'Checked on: ' } }
+  - palette: insert-date
+    hold: 1200
+  - caption: { ko: 빈 End_date 줄에서는 날짜와 시간을 채웁니다, en: On an empty End_date line it fills in date and time }
+    tool: editor_move
+    args: { text: Nucleic acid fragment analyzer, ch: end }
+  - tool: ui_press
+    args: { keys: ArrowUp }
+  - palette: insert-datetime
+    poster: true
+    hold: 1500
+  - caption: { ko: 값을 바꿀 때는 📅을 눌러 입력 칸에서 고칩니다, en: "To change a value, click 📅 and edit it in the field" }
+    tool: ui_click
+    args: { selector: .labnote-date-pick, nth: 0 }
+  - highlight: { selector: .labnote-datetime-picker }
+    hold: 1500
+  - tool: ui_press
+    args: { keys: Escape }

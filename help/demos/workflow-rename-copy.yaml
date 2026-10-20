@@ -1,0 +1,35 @@
+id: workflow-rename-copy
+order: 8
+section: record
+title: { ko: 워크플로 이름 바꾸기·복사, en: Rename and copy a workflow }
+seed: basic
+steps:
+  - caption: { ko: 탐색기에서 워크플로 노트 이름을 바꿉니다, en: Rename the workflow note in the file explorer }
+    tool: file_rename
+    args:
+      path: { ko: labnote/001_GFP_발현/001_WB030_DNA_Assembly_1차.labnote.md, en: labnote/001_GFP_expression/001_WB030_DNA_Assembly_run1.labnote.md }
+      name: { ko: 001_WB030_DNA_Assembly_깁슨.labnote, en: 001_WB030_DNA_Assembly_gibson.labnote }
+    hold: 1200
+  - caption: { ko: README 체크리스트 라벨이 따라 바뀝니다, en: The README checklist label follows }
+    tool: open_file
+    args: { path: { ko: labnote/001_GFP_발현/README.labnote.md, en: labnote/001_GFP_expression/README.labnote.md } }
+  - tool: editor_move
+    args: { text: { ko: WB030 DNA Assembly 깁슨, en: WB030 DNA Assembly gibson }, ch: 0 }
+  - highlight: { selector: .cm-line, text: { ko: 깁슨, en: gibson } }
+    hold: 1500
+  - caption: { ko: 우클릭 → 복사본 생성으로 같은 단계를 한 번 더, en: Right-click → Make a copy to run the step again }
+    tool: context_menu
+    args:
+      selector: .nav-file-title
+      text: { ko: 001_WB030_DNA_Assembly_깁슨, en: 001_WB030_DNA_Assembly_gibson }
+      item: { ko: 복사본 생성, en: Make a copy }
+  - caption: { ko: 새 별칭을 적으면 다음 번호로 등록됩니다, en: Give it a new alias; it gets the next number }
+    tool: modal_fill
+    args: { value: { ko: 깁슨 2차, en: gibson run2 } }
+    hold: 1000
+  - tool: ui_press
+    args: { keys: Enter }
+    hold: 1500
+  - highlight: { selector: .nav-file-title, text: 002_WB030 }
+    poster: true
+    hold: 1500

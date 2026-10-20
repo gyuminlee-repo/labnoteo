@@ -1,0 +1,17 @@
+WEBVTT
+
+1
+00:00:00.010 --> 00:00:01.818
+Insert date
+
+2
+00:00:01.818 --> 00:00:17.449
+Insert today's date at the cursor
+
+3
+00:00:17.449 --> 00:00:26.785
+On an empty End_date line it fills in date and time
+
+4
+00:00:26.785 --> 00:00:35.173
+To change a value, click 📅 and edit it in the field

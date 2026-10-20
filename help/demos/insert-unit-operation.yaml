@@ -1,0 +1,27 @@
+id: insert-unit-operation
+order: 12
+section: record
+title: { ko: 유닛 오퍼레이션 삽입, en: Insert unit operation }
+seed: basic
+steps:
+  - caption: { ko: 워크플로 노트를 엽니다, en: Open the workflow note }
+    tool: open_file
+    args: { path: { ko: labnote/001_GFP_발현/001_WB030_DNA_Assembly_1차.labnote.md, en: labnote/001_GFP_expression/001_WB030_DNA_Assembly_run1.labnote.md } }
+  - caption: { ko: 팔레트에서 유닛 오퍼레이션 삽입, en: Run Insert unit operation from the palette }
+    palette: insert-unit-operation
+  - caption: { ko: 카탈로그에서 단계를 고릅니다, en: Pick a step from the catalog }
+    tool: modal_pick
+    args: { filter: { ko: 정제, en: purification }, text: UHW250 }
+  - caption: { ko: 별칭을 적고 Enter, en: Type an alias and press Enter }
+    tool: modal_fill
+    args: { value: { ko: 겔 추출, en: gel extraction } }
+    hold: 800
+  - tool: ui_press
+    args: { keys: Enter }
+    hold: 1500
+  - caption: { ko: 맨 위 목차가 다시 만들어집니다, en: The table of contents at the top is rebuilt }
+    tool: editor_move
+    args: { text: '## Related Unit Operations', ch: 0 }
+  - highlight: { selector: .cm-line, text: UHW250 }
+    poster: true
+    hold: 1500

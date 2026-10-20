@@ -1,0 +1,39 @@
+# 실험 6개: 상태와 과제(project)가 섞여 있어 워크플로 뷰의 상태별·과제별 묶음 차이가 보인다.
+# create-experiment는 project를 묻지 않으므로 Obsidian을 끈 뒤 README 머리말을 고친다.
+id: multi
+from: empty
+steps:
+  - tool: labnoteo_create_experiment
+    args: { title: { ko: GFP 발현, en: GFP expression } }
+  - tool: labnoteo_create_experiment
+    args: { title: { ko: RFP 프로모터 비교, en: RFP promoter comparison } }
+  - tool: labnoteo_create_experiment
+    args: { title: { ko: lacZ 녹아웃, en: lacZ knockout } }
+  - tool: labnoteo_create_experiment
+    args: { title: { ko: 라이코펜 생산 균주, en: Lycopene strain } }
+  - tool: labnoteo_create_experiment
+    args: { title: { ko: 성장 곡선 측정, en: Growth curve } }
+  - tool: labnoteo_create_experiment
+    args: { title: { ko: 형질전환 효율 비교, en: Transformation efficiency } }
+  - quit: true
+  # 001 GFP 발현: in-progress, 형광 리포터
+  - fs.patch: { path: &e1 { ko: labnote/001_GFP_발현/README.labnote.md, en: labnote/001_GFP_expression/README.labnote.md }, find: "author: ''", replace: "author: Demo Researcher" }
+  - fs.patch: { path: *e1, find: "status: planned", replace: "status: in-progress" }
+  - fs.patch: { path: *e1, find: "project: ", replace: { ko: "project: 형광 리포터", en: "project: Fluorescent reporters" } }
+  # 002 RFP 프로모터 비교: planned, 형광 리포터
+  - fs.patch: { path: &e2 { ko: labnote/002_RFP_프로모터_비교/README.labnote.md, en: labnote/002_RFP_promoter_comparison/README.labnote.md }, find: "author: ''", replace: "author: Demo Researcher" }
+  - fs.patch: { path: *e2, find: "project: ", replace: { ko: "project: 형광 리포터", en: "project: Fluorescent reporters" } }
+  # 003 lacZ 녹아웃: completed, 대사공학
+  - fs.patch: { path: &e3 { ko: labnote/003_lacZ_녹아웃/README.labnote.md, en: labnote/003_lacZ_knockout/README.labnote.md }, find: "author: ''", replace: "author: Demo Researcher" }
+  - fs.patch: { path: *e3, find: "status: planned", replace: "status: completed" }
+  - fs.patch: { path: *e3, find: "project: ", replace: { ko: "project: 대사공학", en: "project: Metabolic engineering" } }
+  # 004 라이코펜 생산 균주: in-progress, 대사공학
+  - fs.patch: { path: &e4 { ko: labnote/004_라이코펜_생산_균주/README.labnote.md, en: labnote/004_Lycopene_strain/README.labnote.md }, find: "author: ''", replace: "author: Demo Researcher" }
+  - fs.patch: { path: *e4, find: "status: planned", replace: "status: in-progress" }
+  - fs.patch: { path: *e4, find: "project: ", replace: { ko: "project: 대사공학", en: "project: Metabolic engineering" } }
+  # 005 성장 곡선 측정: needs-review, 과제 없음
+  - fs.patch: { path: &e5 { ko: labnote/005_성장_곡선_측정/README.labnote.md, en: labnote/005_Growth_curve/README.labnote.md }, find: "author: ''", replace: "author: Demo Researcher" }
+  - fs.patch: { path: *e5, find: "status: planned", replace: "status: needs-review" }
+  # 006 형질전환 효율 비교: failed, 과제 없음
+  - fs.patch: { path: &e6 { ko: labnote/006_형질전환_효율_비교/README.labnote.md, en: labnote/006_Transformation_efficiency/README.labnote.md }, find: "author: ''", replace: "author: Demo Researcher" }
+  - fs.patch: { path: *e6, find: "status: planned", replace: "status: failed" }

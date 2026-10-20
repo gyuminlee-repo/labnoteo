@@ -1,0 +1,26 @@
+id: create-experiment
+order: 3
+section: quick
+title: { ko: 실험 생성, en: Create experiment }
+seed: empty
+steps:
+  - caption: { ko: 명령 팔레트(Ctrl+P)에서 실험 생성을 찾습니다, en: Find Create experiment in the command palette (Ctrl+P) }
+    palette: create-experiment
+  - caption: { ko: 제목을 입력하면 폴더 이름 글자 수가 표시됩니다, en: Type a title; the folder-name character count is shown }
+    tool: modal_fill
+    args: { value: { ko: GFP 발현 확인, en: GFP expression check } }
+    hold: 1200
+  - caption: { ko: Enter로 실험 폴더와 README가 만들어집니다, en: Press Enter to create the folder and its README }
+    tool: ui_press
+    args: { keys: Enter }
+    poster: true
+    hold: 1500
+  - caption: { ko: README 머리말의 author에 이름을 적습니다, en: Fill in author in the README front matter }
+    tool: ui_click
+    args: { selector: '.metadata-property[data-property-key="author"] .metadata-property-value' }
+  - tool: ui_type
+    args: { text: Demo Researcher }
+  - tool: ui_press
+    args: { keys: Enter }
+  - caption: { ko: 파일 탐색기에 labnote/001_… 폴더가 생겼습니다, en: The labnote/001_… folder is in the file explorer }
+    highlight: { selector: '.nav-folder-title', text: '001_' }

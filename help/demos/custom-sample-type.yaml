@@ -1,0 +1,33 @@
+id: custom-sample-type
+order: 21
+section: samples
+title: { ko: 사용자 정의 샘플 타입, en: Custom sample types }
+seed: basic
+steps:
+  - caption: { ko: 설정 → Labnote Assistant를 엽니다, en: Open Settings → Labnote Assistant }
+    tool: settings_open
+    args: { tab: Labnote Assistant }
+  - caption: { ko: "사용자 정의 샘플 타입에 '배지'를 적습니다", en: Add Media to Custom sample types }
+    tool: settings_set
+    args: { name: $t(Custom sample types), value: { ko: 배지, en: Media } }
+    hold: 1200
+  - tool: settings_close
+  - caption: { ko: 다시 불러오지 않아도 바로 쓸 수 있습니다, en: "It works right away, no reload needed" }
+    tool: open_file
+    args: { path: { ko: labnote/001_GFP_발현/001_WB030_DNA_Assembly_1차.labnote.md, en: labnote/001_GFP_expression/001_WB030_DNA_Assembly_run1.labnote.md } }
+  - tool: editor_move
+    args: { text: '(e.g. enzyme, buffer, etc.)', ch: 2 }
+  - tool: editor_move
+    args: { ch: end, extend: true }
+  - tool: ui_type
+    args: { text: { ko: '@배지;', en: '@Media;' } }
+    hold: 1000
+  - caption: { ko: 새 타입으로 ID를 만들어 참조합니다, en: Generate an ID of the new type and reference it }
+    tool: ui_click
+    args: { selector: .suggestion-item, text: { ko: 새 배지 ID 생성, en: Generate new Media ID } }
+  - tool: modal_answer
+    args: { answers: [LB, { ko: LB 액체 배지, en: LB broth }, { ko: 상온 선반, en: Room-temperature shelf }] }
+    hold: 800
+  - highlight: { selector: .cm-line, text: { ko: 배지-, en: Media- } }
+    poster: true
+    hold: 1500

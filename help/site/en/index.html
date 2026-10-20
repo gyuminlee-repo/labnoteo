@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Labnote Assistant Help</title>
+  <meta name="description" content="Short clips of each feature of Labnote Assistant (labnoteo), the Obsidian lab notebook plugin">
+  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="alternate" hreflang="ko" href="../">
+</head>
+<body data-lang="en" data-media="../media/">
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="top-inner">
+    <a class="brand" href="./">Labnote Assistant <span>Help</span></a>
+    <nav class="top-links" aria-label="Shortcuts">
+      <a href="https://github.com/sblabkribb/labnoteo/blob/main/README.en.md#installation">Installation</a>
+      <a href="https://github.com/sblabkribb/labnoteo/blob/main/README.en.md#commands">Commands</a>
+      <a href="https://github.com/sblabkribb/labnoteo">GitHub</a>
+      <a class="lang" href="../" data-lang-switch hreflang="ko" lang="ko">한국어</a>
+    </nav>
+  </div>
+</header>
+
+<div class="layout">
+<nav class="toc" aria-label="Contents">
+  <p class="toc-title">Contents</p>
+  <ol>
+    <li><a href="#start">Getting started</a></li>
+    <li><a href="#find-commands">Finding commands</a></li>
+    <li><a href="#quick">5-minute walkthrough</a></li>
+    <li><a href="#wiki">Building the Wiki</a></li>
+    <li><a href="#record">Recording</a></li>
+    <li><a href="#samples">Working with samples</a></li>
+    <li><a href="#ai">AI assistant</a></li>
+    <li><a href="#automation">Research automation</a></li>
+    <li><a href="#more">Other settings</a></li>
+    <li><a href="#trouble">Troubleshooting</a></li>
+  </ol>
+</nav>
+
+<main id="main">
+<section class="hero">
+  <h1>Labnote Assistant Help</h1>
+  <p class="lead">Short clips of each feature of <strong>Labnote Assistant</strong> (labnoteo), a plugin for recording biofoundry-based synthetic biology experiments as Obsidian notes. The clips are recordings of the plugin itself, and the caption strip below each one explains the steps.</p>
+  <p class="meta" data-recorded-version>Clips recorded with labnoteo <span data-version>0.105.0</span>.</p>
+  <p class="note">This page does not repeat the detailed rules (folder naming, when CSVs are overwritten, …); it links to the <a href="https://github.com/sblabkribb/labnoteo/blob/main/README.en.md">README</a> for them. The in-vault user guide (command palette → <code>Open user guide</code>) is in Korean.</p>
+</section>
+
+<section id="start">
+  <h2>Getting started</h2>
+  <article class="feature" id="install">
+    <h3>Installation</h3>
+    <p>Turn off Restricted mode in Settings, install <strong>BRAT</strong> from Community plugins, then enter <code>sblabkribb/labnoteo</code> in BRAT's <code>Add beta plugin</code>. Once it is installed, workflow and sample icons appear in the left ribbon.</p>
+    <figure class="clip" data-clip="install"><figcaption>Installation: Restricted mode off → BRAT → add labnoteo</figcaption></figure>
+    <p class="more">Step by step: <a href="https://github.com/sblabkribb/labnoteo/blob/main/README.en.md#installation">README · Installation</a></p>
+  </article>
+  <article class="feature" id="overview">
+    <h3>Overview</h3>
+    <p>In under two minutes: create an experiment, add a workflow and a unit operation, refer to a sample in the text, and change the progress status. Each step has its own clip, linked below.</p>
+    <figure class="clip" data-clip="overview"><figcaption>Experiment → workflow → unit operation → sample reference → status → user guide</figcaption></figure>
+    <ul class="jump">
+      <li><a href="#create-experiment">Create experiment</a></li>
+      <li><a href="#create-workflow">Create workflow</a></li>
+      <li><a href="#insert-unit-operation">Insert unit operation</a></li>
+      <li><a href="#sample-autocomplete">Sample autocomplete</a></li>
+      <li><a href="#change-experiment-status">Change experiment status</a></li>
+    </ul>
+  </article>
+</section>
+
+<section id="find-commands">
+  <h2>Finding commands</h2>
+  <p>Commands live in Obsidian's <strong>command palette</strong> (Ctrl/Cmd+P). Type <code>Labnote</code> to list only this plugin's commands. Under a Korean UI each name shows as <code>Korean (English)</code>, such as <code>실험 생성 (Create experiment)</code>, and the English name finds it too; an English UI shows the English name alone.</p>
+  <p>Right-click menus and dialogs show the UI language only. Some features are only on right-click menus; see <a href="#context-menu-only">Right-click only features</a>.</p>
+  <p class="more">All commands: <a href="https://github.com/sblabkribb/labnoteo/blob/main/README.en.md#commands">README · Commands</a></p>
+</section>
+
+<section id="quick">
+  <h2>5-minute walkthrough</h2>
+  <article class="feature" id="create-experiment">
+    <h3>Create an experiment</h3>
+    <p>Command palette → <code>Create experiment</code> → enter a title. Below the box it counts the characters that go into the folder name, then creates and opens <code>labnote/###_title/README.labnote.md</code>. <strong>Fill in <code>author</code> in the front matter right away</strong>: workflows you create later take their experimenter from it.</p>
+    <figure class="clip" data-clip="create-experiment"><figcaption>Create an experiment and fill in author</figcaption></figure>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/README.en.md#commands">README · Commands</a> (folder name rules)</p>
+  </article>
+  <article class="feature" id="change-experiment-status">
+    <h3>Change the status</h3>
+    <p>Command palette → <code>Change experiment status</code> → pick a status. Run from any note of an experiment, it updates that experiment's README.</p>
+    <figure class="clip" data-clip="change-experiment-status"><figcaption>planned → in-progress</figcaption></figure>
+  </article>
+  <article class="feature" id="workflow-view">
+    <h3>Experiments in the workflow view</h3>
+    <p>The <strong>workflow view</strong>, opened with the box icon in the ribbon, groups the vault's experiments under <code>Experiments</code> at the top. Filter them with <code>Search experiments</code> and switch between <code>By status</code> and <code>By project</code> (the README's <code>project</code>). Right-click an experiment and choose <code>Change experiment status</code> to change it in place.</p>
+    <figure class="clip" data-clip="workflow-view"><figcaption>Search experiments → By project → right-click to change status</figcaption></figure>
+    <p class="hint">The grouping switch is a system list box, so its open list does not show in the clip; the caption says which item is picked.</p>
+  </article>
+  <article class="feature" id="issue-marker-discussion">
+    <h3>Flag what needs discussion</h3>
+    <p>Select the sentence you have a question about and run <code>Insert issue marker</code> to add an <code>@issue;ISS-…;topic</code> marker. To discuss the whole experiment, use <code>Toggle discussion flag</code>. A push then opens GitHub Issues (in a vault with research automation set up).</p>
+    <figure class="clip" data-clip="issue-marker-discussion"><figcaption>Issue marker and discussion flag</figcaption></figure>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/README.en.md#research-automation">README · Research automation</a></p>
+  </article>
+  <article class="feature" id="commit-push">
+    <h3>Commit, push and check the Issues</h3>
+    <p>To commit and push, tell the AI agent connected through Copilot "commit and push today's work". Shortly after the push, the repository's <strong>Issues tab</strong> shows an Issue for each marker. These steps happen outside Obsidian, so they are shown as screenshots rather than clips.</p>
+    <div class="screens">
+      <figure class="screen" data-screen="copilot-commit"><figcaption>Asking Copilot to commit and push</figcaption></figure>
+      <figure class="screen" data-screen="github-issues"><figcaption>Issues opened after the push</figcaption></figure>
+    </div>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/COPILOT.md">Copilot agents guide</a> (Korean)</p>
+  </article>
+</section>
+
+<section id="wiki">
+  <h2>Building the Wiki</h2>
+  <p>When an experiment wraps up, ask the AI agent to "summarize the objective facts this experiment established into wiki-staging". After you review the draft and merge it into <code>main</code>, it is published to the GitHub Wiki.</p>
+  <div class="screens">
+    <figure class="screen" data-screen="github-wiki"><figcaption>A published Wiki page</figcaption></figure>
+  </div>
+  <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/README.en.md#research-automation">README · Research automation</a></p>
+</section>
+
+<section id="record">
+  <h2>Recording</h2>
+  <article class="feature" id="create-workflow">
+    <h3>Create a workflow</h3>
+    <p>From the experiment README, <code>Create workflow</code> → search the catalog → enter an alias. The new workflow is added to the README checklist on its own.</p>
+    <figure class="clip" data-clip="create-workflow"><figcaption>Search the catalog → alias → added to the checklist</figcaption></figure>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/README.en.md#commands">README · Commands</a> (file name rules)</p>
+  </article>
+  <article class="feature" id="workflow-rename-copy">
+    <h3>Rename and copy a workflow</h3>
+    <p>Rename a workflow note in the file explorer and its label in the README checklist follows. Make a copy from the explorer's right-click menu and you are asked for the copy's alias; it gets the next number and is listed in the checklist.</p>
+    <figure class="clip" data-clip="workflow-rename-copy"><figcaption>Rename → label updated; copy → new alias</figcaption></figure>
+  </article>
+  <article class="feature" id="workflow-renumber">
+    <h3>Renumber workflows</h3>
+    <p><code>Renumber workflows</code> renumbers the workflows from 001 without gaps and updates the checklist.</p>
+    <figure class="clip" data-clip="workflow-renumber"><figcaption>001, 003 → 001, 002</figcaption></figure>
+  </article>
+  <article class="feature" id="workflow-sync">
+    <h3>Sync the checklist with the folder</h3>
+    <p>Workflows moved in from another experiment or copied are not listed on their own. <code>Sync workflow checklist with folder</code> lists the missing ones and shows labels that no longer match their file names as <code>old label → new label</code> before fixing them.</p>
+    <figure class="clip" data-clip="workflow-sync"><figcaption>List missing workflows and fix labels</figcaption></figure>
+  </article>
+  <article class="feature" id="context-menu-only">
+    <h3>Right-click only features</h3>
+    <p>README right-click → <code>Insert workflow</code>; right-click a catalog item in the workflow view → <code>Insert unit operation</code>; right-click a note in the file explorer → <code>Export tables to CSV</code>. These are easy to miss from the palette alone.</p>
+    <figure class="clip" data-clip="context-menu-only"><figcaption>Right-click menus in the README, workflow view and file explorer</figcaption></figure>
+  </article>
+  <article class="feature" id="insert-unit-operation">
+    <h3>Insert a unit operation</h3>
+    <p>With a workflow note open, <code>Insert unit operation</code> → pick the operation → alias. The table of contents at the top of the note is rebuilt in heading order.</p>
+    <figure class="clip" data-clip="insert-unit-operation"><figcaption>Alias → TOC updated</figcaption></figure>
+  </article>
+  <article class="feature" id="uo-reorder">
+    <h3>Reorder unit operations</h3>
+    <p>Drag a unit operation heading in Obsidian's <strong>Outline</strong> view and the TOC and <code>---</code> separators are tidied for you.</p>
+    <figure class="clip" data-clip="uo-reorder"><figcaption>Drag in Outline → TOC tidied</figcaption></figure>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/README.en.md#settings">README · Settings</a> (Auto-sync unit operation TOC)</p>
+  </article>
+  <article class="feature" id="insert-date">
+    <h3>Insert dates</h3>
+    <p><code>Insert date</code> and <code>Insert date and time</code> put today's date and time at the cursor. The 📅 icon at the end of a date line in a unit operation's <code>#### Meta</code> opens a date field.</p>
+    <figure class="clip" data-clip="insert-date"><figcaption>Insert date and the 📅 date field</figcaption></figure>
+    <p class="hint">The calendar popup is drawn by the operating system and does not show in recordings, so the clip changes the value in the field instead.</p>
+  </article>
+  <article class="feature" id="export-tables-csv">
+    <h3>Export tables to CSV</h3>
+    <p><code>Export tables to CSV</code> saves each table of the note as <code>note name.labnote_table1.csv</code> next to it.</p>
+    <figure class="clip" data-clip="export-tables-csv"><figcaption>Completion notice → CSV files in the explorer</figcaption></figure>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/README.en.md#commands">README · Commands</a> (when files are overwritten)</p>
+  </article>
+</section>
+
+<section id="samples">
+  <h2>Working with samples</h2>
+  <article class="feature" id="sample-autocomplete">
+    <h3>Refer to samples in the text</h3>
+    <p>Type <code>@DNA;</code> while editing to open autocomplete. Pick <code>Generate new DNA ID</code> to register a new ID; only the reference goes into the text. Right-click in the text → <code>Add sample</code> works too.</p>
+    <figure class="clip" data-clip="sample-autocomplete"><figcaption>@DNA; autocomplete and right-click Add sample</figcaption></figure>
+  </article>
+  <article class="feature" id="sample-view">
+    <h3>Samples view</h3>
+    <p>In the Samples view, opened with the test-tube icon in the ribbon, add, edit (including the storage location) and search samples; mark a used-up sample with <code>Mark as discarded</code> instead of deleting it.</p>
+    <figure class="clip" data-clip="sample-view"><figcaption>Add · edit · search · mark as discarded</figcaption></figure>
+  </article>
+  <article class="feature" id="sample-definition">
+    <h3>Definitions and usages</h3>
+    <p>Right-click a reference in the text → <code>Go to definition</code> opens that sample's definition. In the Samples view, right-click → <code>View usages</code> lists the notes that use the sample; pick one to open it.</p>
+    <figure class="clip" data-clip="sample-definition"><figcaption>Go to definition → View usages → open a note</figcaption></figure>
+  </article>
+  <article class="feature" id="sample-type-scope">
+    <h3>Change type and move to Global</h3>
+    <p>Fix a wrong type with Samples view right-click → <code>Change type</code>. After you confirm the list of notes it will change, the ID prefix in their references changes too. Keep samples shared by several experiments in Global with <code>Move to Global</code>.</p>
+    <figure class="clip" data-clip="sample-type-scope"><figcaption>Change type → Move to Global</figcaption></figure>
+  </article>
+  <article class="feature" id="insert-experiment-samples-table">
+    <h3>This experiment's samples as a table</h3>
+    <p><code>Insert sample list of this experiment</code> inserts a table of the experiment's Local samples and the Global samples its notes refer to, with ID, alias, description, location, scope and discarded columns.</p>
+    <figure class="clip" data-clip="insert-experiment-samples-table"><figcaption>Insert the sample list table</figcaption></figure>
+  </article>
+  <article class="feature" id="custom-sample-type">
+    <h3>Custom sample types</h3>
+    <p>Add a type such as <code>Media</code> under Settings → Labnote Assistant → <code>Custom sample types</code> and <code>@Media</code> autocompletes right away. Use letters, digits and <code>_</code> only.</p>
+    <figure class="clip" data-clip="custom-sample-type"><figcaption>Add a type in settings → @Media autocomplete</figcaption></figure>
+  </article>
+</section>
+
+<section id="ai">
+  <h2>AI assistant</h2>
+  <p>Helpers that work inside Obsidian. The clips were recorded with a local Ollama <code>qwen3.5:9b</code> model, with the wait for each reply fast-forwarded. What the model writes varies with the model and the language.</p>
+  <article class="feature" id="ai-settings">
+    <h3>AI provider settings</h3>
+    <p>Under Settings → Labnote Assistant → <code>AI provider</code>, set <code>Provider</code> to <code>Ollama</code> or <code>OpenAI-compatible</code> and fill in the <code>Ollama endpoint</code> (or OpenAI endpoint) and <code>Model</code>. It is <code>Disabled</code> by default, and the AI commands do nothing until you change it.</p>
+    <figure class="clip" data-clip="ai-settings"><figcaption>Provider · endpoint · model</figcaption></figure>
+  </article>
+  <article class="feature" id="ai-draft-method">
+    <h3>Draft the Method</h3>
+    <p>Run <code>AI: Draft Method section</code> inside a unit operation and it fills that block's <code>#### Method</code> section.</p>
+    <figure class="clip" data-clip="ai-draft-method"><figcaption>Filling the Method section</figcaption></figure>
+  </article>
+  <article class="feature" id="ai-summarize-results">
+    <h3>Summarize results</h3>
+    <p><code>AI: Summarize results</code> reads the whole note and inserts a <code>&gt; [!note] AI summary</code> callout after the cursor's line.</p>
+    <figure class="clip" data-clip="ai-summarize-results"><figcaption>AI summary callout</figcaption></figure>
+  </article>
+  <article class="feature" id="ai-extract-samples">
+    <h3>Extract sample definitions</h3>
+    <p><code>AI: Extract sample definitions</code> registers the samples the text mentions and reports how many were new and how many were skipped. Nothing goes into the text, so check the result in the Samples view.</p>
+    <figure class="clip" data-clip="ai-extract-samples"><figcaption>Extraction notice → new samples in the Samples view</figcaption></figure>
+  </article>
+  <article class="feature" id="ai-ask-agent">
+    <h3>Ask the assistant</h3>
+    <p>Give <code>AI: Ask assistant (uses tools)</code> a goal and the model changes the vault with Labnote's tools, asking before each write; a change you allow goes into the note at once. If the model ends with an answer, it opens in a dialog and goes into the note only when you press <code>Insert into note</code>.</p>
+    <figure class="clip" data-clip="ai-ask-agent"><figcaption>Goal → allow the tool call → the note changes</figcaption></figure>
+  </article>
+  <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/README.en.md#commands">README · Commands</a></p>
+</section>
+
+<section id="automation">
+  <h2>Research automation</h2>
+  <article class="feature" id="setup-research-automation">
+    <h3>Setup research automation</h3>
+    <p><code>Setup research automation</code> installs the GitHub Actions, scripts and AI agent rules for note validation, Experiment ↔ Issue links and Wiki publishing into the vault. <code>AGENTS.md</code> and <code>QUICKSTART.md</code> appear in the explorer; dot folders such as <code>.github/</code> and <code>.labnoteo/</code> are hidden in Obsidian.</p>
+    <figure class="clip" data-clip="setup-research-automation"><figcaption>Setup → attachment location → installed files</figcaption></figure>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/README.en.md#research-automation">README · Research automation</a></p>
+  </article>
+</section>
+
+<section id="more">
+  <h2>Other settings</h2>
+  <ul class="plain">
+    <li><strong>Sample tracking and Global sample folder</strong>: <code>Sample tracking</code> under Settings → Labnote Assistant turns autocomplete, highlighting and registry sync on or off (reload to apply). After you change the <code>Global sample folder</code> and close settings, you are asked whether to move the samples in the old folder. <a href="https://github.com/sblabkribb/labnoteo/blob/main/README.en.md#settings">README · Settings</a></li>
+    <li><strong>MCP server</strong>: <code>Enable MCP server</code> exposes Labnote's tools to an external MCP client. <a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/COPILOT.md">Copilot agents guide</a> (Korean)</li>
+    <li><strong>Moving a note to another experiment</strong>: when the moved note uses Local samples of its old experiment, you are asked whether to bring them along. <a href="https://github.com/sblabkribb/labnoteo/blob/main/README.en.md#commands">README · Commands</a></li>
+  </ul>
+</section>
+
+<section id="trouble">
+  <h2>Troubleshooting</h2>
+  <ul class="plain">
+    <li><strong>I pushed but no Issue opened</strong>: check that the vault is a git repository connected to GitHub, and that the note has an <code>@issue</code> marker, the discussion flag, or <code>needs-review</code>.</li>
+    <li><strong><code>Insert unit operation</code> refuses to run</strong>: open a <code>###_name.labnote.md</code> workflow note, not the README, and run it there.</li>
+    <li><strong>AI commands do nothing</strong>: check that <code>Provider</code> is not <code>Disabled</code> and that the endpoint and model name are right. A failure notice names the setting to fix.</li>
+  </ul>
+</section>
+</main>
+</div>
+
+<footer class="foot">
+  <p>Labnote Assistant (labnoteo) · <a href="https://github.com/sblabkribb/labnoteo">sblabkribb/labnoteo</a> · Clips were recorded in a test vault.</p>
+</footer>
+<script src="../assets/app.js" defer></script>
+</body>
+</html>

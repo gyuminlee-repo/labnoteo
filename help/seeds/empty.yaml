@@ -1,0 +1,6 @@
+# 실험이 하나도 없는 보관함. 플러그인 설치와 공통 설정만 들어 있다.
+id: empty
+from: base
+steps:
+  - tool: ui_wait
+    args: { ms: 500 }

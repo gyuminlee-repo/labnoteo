@@ -1,0 +1,12 @@
+# basic에 연구노트 자동화 설정을 마친 상태. 이슈 마커·논의 표시 영상에서
+# "자동화 설정을 먼저 하세요" 안내가 뜨지 않게 한다(git 저장소는 데모 볼트가 이미 갖춤).
+id: automation-ready
+from: basic
+steps:
+  - tool: open_file
+    args: { path: { ko: labnote/001_GFP_발현/README.labnote.md, en: labnote/001_GFP_expression/README.labnote.md } }
+  - palette: setup-research-automation
+  - tool: modal_button
+    args: { text: $t(Use ./images) }
+  - tool: ui_wait
+    args: { ms: 1500 }
