@@ -100,8 +100,12 @@ export interface LabnoteHost {
   /**
    * Yes/No confirmation. Resolves false if dismissed, or when `signal` aborts
    * (the dialog closes so nobody answers a question that no longer applies).
+   * `destructive` makes Cancel the default, so Enter does not confirm.
    */
-  confirm(message: string, opts?: { confirmLabel?: string; signal?: AbortSignal }): Promise<boolean>;
+  confirm(
+    message: string,
+    opts?: { confirmLabel?: string; signal?: AbortSignal; destructive?: boolean }
+  ): Promise<boolean>;
 
   /** Show a transient notification. */
   notify(kind: NotifyKind, message: string): void;

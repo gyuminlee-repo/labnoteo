@@ -208,7 +208,8 @@ class ConfirmModal extends Modal {
     app: App,
     private readonly message: string,
     private readonly confirmLabel: string,
-    private readonly resolve: (ok: boolean) => void
+    private readonly resolve: (ok: boolean) => void,
+    private readonly destructive = false
   ) {
     super(app);
   }
@@ -227,13 +228,16 @@ class ConfirmModal extends Modal {
             this.close();
           })
       )
-      .addButton(b =>
+      .addButton(b => {
         b.setButtonText(t('Cancel')).onClick(() => {
           this.resolved = true;
           this.resolve(false);
           this.close();
-        })
-      );
+        });
+        // Obsidian focuses the first button, so Enter would run a deletion or
+        // a move that breaks references before the warning is read (#198).
+        if (this.destructive) window.setTimeout(() => b.buttonEl.focus(), 0);
+      });
   }
 
   onClose(): void {
@@ -242,19 +246,30 @@ class ConfirmModal extends Modal {
   }
 }
 
-/** Aborting `signal` closes the dialog, which then resolves false. */
+/**
+ * Aborting `signal` closes the dialog, which then resolves false.
+ * `destructive` focuses Cancel, so Enter does not confirm something that
+ * cannot be undone.
+ */
 export function confirmModal(
   app: App,
   message: string,
   confirmLabel = 'Yes',
-  signal?: AbortSignal
+  opts: { signal?: AbortSignal; destructive?: boolean } = {}
 ): Promise<boolean> {
+  const { signal, destructive } = opts;
   if (signal?.aborted) return Promise.resolve(false);
   return new Promise(resolve => {
-    const modal = new ConfirmModal(app, message, confirmLabel, ok => {
-      signal?.removeEventListener('abort', onAbort);
-      resolve(ok);
-    });
+    const modal = new ConfirmModal(
+      app,
+      message,
+      confirmLabel,
+      ok => {
+        signal?.removeEventListener('abort', onAbort);
+        resolve(ok);
+      },
+      destructive
+    );
     const onAbort = (): void => modal.close();
     signal?.addEventListener('abort', onAbort);
     modal.open();

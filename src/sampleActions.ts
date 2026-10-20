@@ -856,7 +856,8 @@ ${plugin.t('To keep it for those notes but show it as used up, mark it discarded
   const ok = await confirmModal(
     app,
     plugin.t('Are you sure you want to delete {0}?', id),
-    plugin.t('Delete')
+    plugin.t('Delete'),
+    { destructive: true }
   );
   if (!ok) return false;
 
@@ -1037,7 +1038,8 @@ export async function moveSampleInteractive(
           id,
           list
         ),
-        plugin.t('Move anyway')
+        plugin.t('Move anyway'),
+        { destructive: true }
       );
       if (!ok) return false;
     }
@@ -1049,7 +1051,8 @@ export async function moveSampleInteractive(
     const ok = await confirmModal(
       app,
       plugin.t('{0} already exists in the destination. Overwrite it?', id),
-      plugin.t('Overwrite')
+      plugin.t('Overwrite'),
+      { destructive: true }
     );
     if (!ok) return false;
   }

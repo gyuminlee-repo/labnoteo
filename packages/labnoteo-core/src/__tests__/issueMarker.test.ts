@@ -324,7 +324,22 @@ describe('planIssueMarkerInsertion', () => {
 
     const toEnd = 'a first\nsecond';
     expect(insert(toEnd, ...select(toEnd, 'first\nsecond')).out).toBe('a first\nsecond @issue;ISS-t;first second');
-    expect(insert(toEnd, ...select(toEnd, 'a first\nsecond')).out).toBe('@issue;ISS-t;a first second');
+    // #200: whole lines are kept too, with the marker on the last one.
+    expect(insert(toEnd, ...select(toEnd, 'a first\nsecond')).out).toBe('a first\nsecond @issue;ISS-t;a first second');
+  });
+
+  // #200
+  it('keeps a selected list and drops its list marks from the topic', () => {
+    const doc = '- 1단계 48개 통과\n- 2단계 12개\n- [ ] 3단계 2개 남음\n\n다음';
+    const from = doc.indexOf('1단계');
+    const to = doc.indexOf('\n\n');
+    const { out } = insert(doc, from, to);
+    expect(out).toBe(
+      '- 1단계 48개 통과\n- 2단계 12개\n- [ ] 3단계 2개 남음 @issue;ISS-t;1단계 48개 통과 2단계 12개 3단계 2개 남음\n\n다음'
+    );
+
+    const quoted = '> 1. 첫째\n> 2. 둘째';
+    expect(titleOf(insert(quoted, 0, quoted.length).out)).toBe('첫째 둘째');
   });
 
   it('accepts a backwards selection', () => {
