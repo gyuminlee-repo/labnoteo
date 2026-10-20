@@ -1,25 +1,25 @@
 WEBVTT
 
 1
-00:00:00.009 --> 00:00:01.815
+00:00:00.009 --> 00:00:02.522
 Change type and Move to Global
 
 2
-00:00:01.815 --> 00:00:16.257
+00:00:02.522 --> 00:00:17.169
 Change the GFP template from DNA to Plasmid
 
 3
-00:00:16.257 --> 00:00:22.355
+00:00:17.169 --> 00:00:24.604
 Check the notes that will change, then go ahead
 
 4
-00:00:22.355 --> 00:00:32.921
+00:00:24.604 --> 00:00:35.036
 The reference ID in the note now starts with Plasmid
 
 5
-00:00:32.921 --> 00:00:38.954
+00:00:35.036 --> 00:00:41.049
 Move to Global to use it in other experiments
 
 6
-00:00:38.954 --> 00:00:44.011
+00:00:41.049 --> 00:00:46.107
 It moved from Local to Global

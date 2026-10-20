@@ -1,21 +1,21 @@
 WEBVTT
 
 1
-00:00:00.021 --> 00:00:01.831
+00:00:00.024 --> 00:00:02.538
 AI provider settings
 
 2
-00:00:01.831 --> 00:00:04.384
+00:00:02.538 --> 00:00:05.338
 Settings → Labnote Assistant → AI provider
 
 3
-00:00:04.384 --> 00:00:06.196
+00:00:05.338 --> 00:00:09.805
 Choose Ollama as the provider (the drop-down is not shown in video)
 
 4
-00:00:06.196 --> 00:00:11.465
+00:00:09.805 --> 00:00:15.088
 Enter the Ollama endpoint
 
 5
-00:00:11.465 --> 00:00:23.485
+00:00:15.088 --> 00:00:27.052
 Enter the name of a model you pulled

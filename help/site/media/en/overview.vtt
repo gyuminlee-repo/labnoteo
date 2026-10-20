@@ -1,45 +1,69 @@
 WEBVTT
 
 1
-00:00:00.021 --> 00:00:01.828
+00:00:00.018 --> 00:00:02.519
 The whole flow at a glance
 
 2
-00:00:01.828 --> 00:00:06.028
+00:00:02.519 --> 00:00:06.693
 Type Create experiment in the palette (Ctrl+P)
 
 3
-00:00:06.028 --> 00:00:10.875
+00:00:06.693 --> 00:00:11.628
 A title creates the experiment folder and README
 
 4
-00:00:10.875 --> 00:00:15.511
-Create workflow picks a step from the catalog
+00:00:11.628 --> 00:00:16.606
+The workflow view lists the new experiment as planned
 
 5
-00:00:15.511 --> 00:00:18.845
-Pick a workflow from the catalog
+00:00:16.606 --> 00:00:21.176
+Find it in the palette by its English name
 
 6
-00:00:18.845 --> 00:00:23.033
-Give it an alias to create the workflow note
+00:00:21.176 --> 00:00:24.626
+Pick a workflow from the catalog
 
 7
-00:00:23.033 --> 00:00:36.344
-Insert a unit operation into the workflow
+00:00:24.626 --> 00:00:28.703
+Give it an alias to create the workflow note
 
 8
-00:00:36.344 --> 00:00:42.878
-Type @DNA; under Input to reference a sample
+00:00:28.703 --> 00:00:32.108
+The experiment row now shows workflow progress
 
 9
-00:00:42.878 --> 00:00:57.228
-Alias, description and location give it a new ID
+00:00:32.108 --> 00:00:45.471
+Insert a unit operation into the workflow
 
 10
-00:00:57.228 --> 00:01:07.012
-Change the experiment status to in-progress
+00:00:45.471 --> 00:00:50.516
+Open the Samples view: no DNA samples yet
 
 11
-00:01:07.012 --> 00:01:17.282
+00:00:50.516 --> 00:00:59.144
+Type @DNA; under Input to reference a sample
+
+12
+00:00:59.144 --> 00:01:13.345
+Alias, description and location give it a new ID
+
+13
+00:01:13.345 --> 00:01:20.614
+The new DNA sample is in the Samples view
+
+14
+00:01:20.614 --> 00:01:25.328
+In the workflow view it is still planned
+
+15
+00:01:25.328 --> 00:01:35.046
+Change the experiment status to in-progress
+
+16
+00:01:35.046 --> 00:01:38.261
+The experiment moved to the in-progress group
+
+17
+00:01:38.261 --> 00:01:48.584
 Stuck? Open user guide opens QUICKSTART

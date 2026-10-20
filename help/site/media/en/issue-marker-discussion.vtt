@@ -1,29 +1,29 @@
 WEBVTT
 
 1
-00:00:00.021 --> 00:00:01.828
+00:00:00.010 --> 00:00:02.514
 Issue markers and the discussion flag
 
 2
-00:00:01.828 --> 00:00:09.297
+00:00:02.514 --> 00:00:10.132
 Put the cursor on the line you want to discuss
 
 3
-00:00:09.297 --> 00:00:13.630
+00:00:10.132 --> 00:00:14.403
 Run Insert issue marker
 
 4
-00:00:13.630 --> 00:00:15.431
+00:00:14.403 --> 00:00:17.738
 This sentence becomes the issue title; press Enter
 
 5
-00:00:15.431 --> 00:00:18.664
+00:00:17.738 --> 00:00:20.966
 The marker is added and highlighted
 
 6
-00:00:18.664 --> 00:00:25.212
+00:00:20.966 --> 00:00:27.449
 To discuss the whole experiment, toggle the discussion flag
 
 7
-00:00:25.212 --> 00:00:36.172
+00:00:27.449 --> 00:00:38.421
 README gets discuss on; the next push opens an issue
