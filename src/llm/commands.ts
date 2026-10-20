@@ -37,7 +37,7 @@ import {
 import type LabnotePlugin from '../main';
 import { createLlmProvider, type ChatMessage } from './provider';
 import { describeLlmError } from './llmError';
-import { runAgent } from './agent';
+import { countToolOutcomes, runAgent, type AgentRun } from './agent';
 import { buildApprovalMessage, erasesRecordedLines } from './approvalMessage';
 import { getObsidianLanguage } from '../i18n';
 import { getSeoulDateString } from '@labnoteo/core/lib/dateUtils';
@@ -63,6 +63,29 @@ function toolContext(plugin: LabnotePlugin): ToolContext {
   };
 }
 
+/** The notice for an empty reply (#195), naming a thinking-only one as such. */
+function noAnswerMessage(plugin: LabnotePlugin, thinkingOnly: boolean | undefined): string {
+  return thinkingOnly
+    ? plugin.t('The model gave no answer (it only thought). Try again or choose another model.')
+    : plugin.t('The model gave no answer. Try again or choose another model.');
+}
+
+/**
+ * The end notice of the assistant (#186): what changed, what was only read,
+ * and what was denied or failed, so a denied write is not counted as done.
+ */
+export function toolRunNotice(plugin: LabnotePlugin, executed: AgentRun['executed']): string {
+  if (executed.length === 0) return plugin.t('The AI used no tools; nothing in the vault changed.');
+  const c = countToolOutcomes(executed);
+  const parts: string[] = [];
+  if (c.changed > 0) parts.push(plugin.t('{0} change(s) made', String(c.changed)));
+  if (c.read > 0) parts.push(plugin.t('{0} lookup(s)', String(c.read)));
+  if (c.denied > 0) parts.push(plugin.t('{0} denied by you', String(c.denied)));
+  if (c.failed > 0) parts.push(plugin.t('{0} failed', String(c.failed)));
+  const summary = plugin.t('AI tool calls: {0}.', parts.join(', '));
+  return c.changed > 0 ? summary : `${summary} ${plugin.t('Nothing in the vault changed.')}`;
+}
+
 async function complete(
   plugin: LabnotePlugin,
   messages: ChatMessage[]
@@ -74,11 +97,18 @@ async function complete(
   }
   try {
     const notice = new Notice(plugin.t('Contacting {0}…', provider.name), 0);
+    let result;
     try {
-      return (await provider.chat(messages, { temperature: 0.2 })).content.trim();
+      result = await provider.chat(messages, { temperature: 0.2 });
     } finally {
       notice.hide();
     }
+    const content = result.content.trim();
+    if (!content) {
+      new Notice(noAnswerMessage(plugin, result.thinkingOnly), 10000);
+      return undefined;
+    }
+    return content;
   } catch (err) {
     console.error('[labnoteo] AI request failed:', err);
     new Notice(describeLlmError(err, plugin.settings, plugin.t), 10000);
@@ -543,21 +573,21 @@ export async function askAgentCommand(plugin: LabnotePlugin): Promise<void> {
     );
 
     if (run.stoppedAtLimit) {
-      new Notice(plugin.t('AI stopped after too many steps.'));
+      new Notice(`${plugin.t('AI stopped after too many steps.')} ${toolRunNotice(plugin, run.executed)}`, 10000);
       return;
     }
     const answer = run.content;
-    if (!answer.trim() && run.executed.length === 0) {
-      // Nothing said and nothing done: the request may need a tool there is not (#161).
+    if (!answer.trim()) {
+      // No answer to show; the tool summary below still says what happened (#161, #186).
       new Notice(
-        plugin.t(
-          'The assistant gave no answer. What you asked may be outside the tools it can use.'
-        ),
+        run.thinkingOnly
+          ? noAnswerMessage(plugin, true)
+          : run.executed.length === 0
+            ? plugin.t('The assistant gave no answer. What you asked may be outside the tools it can use.')
+            : plugin.t('The assistant gave no answer.'),
         10000
       );
-      return;
-    }
-    if (answer) {
+    } else {
       // The answer only goes in on request (#77), possibly minutes later, so
       // the note must still be the one open.
       aiAnswerModal(plugin.app, {
@@ -574,7 +604,7 @@ export async function askAgentCommand(plugin: LabnotePlugin): Promise<void> {
         },
       });
     }
-    new Notice(plugin.t('AI ran {0} tool call(s).', String(run.executed.length)));
+    new Notice(toolRunNotice(plugin, run.executed), 8000);
   } catch (err) {
     console.error('[labnoteo] AI request failed:', err);
     new Notice(describeLlmError(err, plugin.settings, plugin.t), 10000);

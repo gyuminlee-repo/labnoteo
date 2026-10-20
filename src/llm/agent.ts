@@ -43,13 +43,38 @@ export interface AgentDeps {
   temperature?: number;
 }
 
+/**
+ * What became of one tool call (#186): `done` ran and succeeded, `denied` was
+ * refused in the approval dialog, `rejected` was refused by the tool before
+ * anyone was asked, `failed` ran and returned an error.
+ */
+export type ToolOutcome = 'done' | 'denied' | 'rejected' | 'failed';
+
 export interface AgentRun {
   /** The model's final prose answer (empty if it never produced one). */
   content: string;
-  /** Every tool the loop actually executed, in order. */
-  executed: Array<{ call: ToolCall; ok: boolean }>;
+  /** True when the final turn had reasoning but no answer (#195). */
+  thinkingOnly?: boolean;
+  /** Every call of a known tool, in order; `mutates` tells writes from reads. */
+  executed: Array<{ call: ToolCall; outcome: ToolOutcome; mutates: boolean }>;
   /** True when the cap stopped the loop before the model finished. */
   stoppedAtLimit: boolean;
+}
+
+/** {@link AgentRun.executed} counted the way the end notice reports it. */
+export function countToolOutcomes(executed: AgentRun['executed']): {
+  changed: number;
+  read: number;
+  denied: number;
+  failed: number;
+} {
+  const counts = { changed: 0, read: 0, denied: 0, failed: 0 };
+  for (const e of executed) {
+    if (e.outcome === 'done') counts[e.mutates ? 'changed' : 'read']++;
+    else if (e.outcome === 'denied') counts.denied++;
+    else counts.failed++;
+  }
+  return counts;
 }
 
 /**
@@ -87,7 +112,12 @@ export async function runAgent(
     });
 
     if (turn.toolCalls.length === 0) {
-      return { content: turn.content, executed, stoppedAtLimit: false };
+      return {
+        content: turn.content,
+        ...(turn.thinkingOnly ? { thinkingOnly: true } : {}),
+        executed,
+        stoppedAtLimit: false,
+      };
     }
 
     // The assistant turn must be echoed back verbatim: both providers reject a
@@ -107,12 +137,12 @@ export async function runAgent(
         const preview = tool.describe ? await tool.describe(deps.ctx, call.arguments) : undefined;
         if (preview && 'error' in preview) {
           history.push(resultMessage(call, { error: preview.error }));
-          executed.push({ call, ok: false });
+          executed.push({ call, outcome: 'rejected', mutates: true });
           continue;
         }
         if (!(await deps.confirm(call, tool, preview))) {
           history.push(resultMessage(call, { error: 'User denied this write.' }));
-          executed.push({ call, ok: false });
+          executed.push({ call, outcome: 'denied', mutates: true });
           continue;
         }
       }
@@ -129,7 +159,7 @@ export async function runAgent(
             : payload
         )
       );
-      executed.push({ call, ok: res.ok });
+      executed.push({ call, outcome: res.ok ? 'done' : 'failed', mutates: !!tool.mutates });
     }
   }
 

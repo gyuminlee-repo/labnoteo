@@ -21,6 +21,10 @@ export class LlmHttpError extends Error {
 const CONNECTION_FAILURE =
   /ERR_CONNECTION|ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED|ERR_ADDRESS_UNREACHABLE|ERR_TIMED_OUT|ECONNREFUSED|ECONNRESET|ENOTFOUND|ETIMEDOUT|EHOSTUNREACH|timed? ?out/i;
 
+/** The endpoint is not an http(s) URL, e.g. `htp://…` or `ftp://…` (#203). */
+const SCHEME_FAILURE =
+  /only supports http: and https:|Invalid URL|Failed to parse URL|unsupported protocol|ERR_UNKNOWN_URL_SCHEME|ERR_INVALID_URL/i;
+
 const DETAIL_MAX = 160;
 
 /** The `error.message` (OpenAI) or `error` (Ollama) of a JSON body, else the body. */
@@ -66,6 +70,14 @@ export function describeLlmError(err: unknown, settings: LabnoteSettings, t: Tra
   }
 
   const message = err instanceof Error ? err.message : String(err);
+  if (SCHEME_FAILURE.test(message)) {
+    return t(
+      '{0} is not an http:// or https:// address. Check {1}: write it like {2}.',
+      endpoint,
+      endpointSetting,
+      ollama ? 'http://localhost:11434' : 'https://api.openai.com'
+    );
+  }
   if (CONNECTION_FAILURE.test(message)) {
     return t('Cannot connect to {0} ({1}). Check that it is running and that {2} is right.', providerName, endpoint, endpointSetting);
   }

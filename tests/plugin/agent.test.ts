@@ -9,7 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import { MemFileSystem } from '../../packages/labnoteo-core/src/fs/memFileSystem';
 import type { ToolContext, ToolDef } from '@labnoteo/core';
-import { runAgent, MAX_ITERATIONS } from '../../src/llm/agent';
+import { runAgent, countToolOutcomes, MAX_ITERATIONS } from '../../src/llm/agent';
 import type { ChatMessage, ChatResult, LlmProvider, ToolCall } from '../../src/llm/provider';
 
 /** Replays a fixed script of turns and records what it was sent. */
@@ -147,7 +147,7 @@ describe('runAgent', () => {
     });
 
     expect(ran).toEqual([]);
-    expect(run.executed).toEqual([{ call: call('write_thing'), ok: false }]);
+    expect(run.executed).toEqual([{ call: call('write_thing'), outcome: 'denied', mutates: true }]);
   });
 
   it('tells the model about a denial so it can adapt', async () => {
@@ -220,7 +220,7 @@ describe('runAgent', () => {
       });
       expect(asked).toBe(0);
       expect(ran).toEqual([]);
-      expect(run.executed).toEqual([{ call: call('write_thing'), ok: false }]);
+      expect(run.executed).toEqual([{ call: call('write_thing'), outcome: 'rejected', mutates: true }]);
       const toolMessage = provider.seen[1][provider.seen[1].length - 1];
       expect(toolMessage.content).toBe(JSON.stringify({ error: 'Section not found: Results' }));
     });
@@ -242,7 +242,7 @@ describe('runAgent', () => {
 
     // The model recovered and called a second tool after the failure.
     expect(ran).toEqual(['failing_thing', 'read_thing']);
-    expect(run.executed.map(e => e.ok)).toEqual([false, true]);
+    expect(run.executed.map(e => e.outcome)).toEqual(['failed', 'done']);
     expect(run.content).toBe('done');
   });
 
@@ -349,5 +349,40 @@ describe('runAgent', () => {
     await runAgent(messages, { provider, ctx: ctx(), tools, confirm: allow });
 
     expect(messages).toEqual([{ role: 'user', content: 'go' }]);
+  });
+
+  // #195: a thinking-only final turn is passed on so the command can say so.
+  it('passes on a thinking-only final turn', async () => {
+    const { tools } = makeTools();
+    const provider = new ScriptedProvider([{ content: '', toolCalls: [], thinkingOnly: true }]);
+    const run = await runAgent([{ role: 'user', content: 'go' }], { provider, ctx: ctx(), tools, confirm: allow });
+    expect(run.content).toBe('');
+    expect(run.thinkingOnly).toBe(true);
+  });
+});
+
+// #186: a denied write was counted the same as one that ran.
+describe('countToolOutcomes', () => {
+  it('tells changes, reads, denials and failures apart', async () => {
+    const { tools } = makeTools();
+    tools[1].describe = async (_ctx, args) => (args.bad ? { error: 'no' } : (undefined as never));
+    const answers = [true, false];
+    const provider = new ScriptedProvider([
+      turn([
+        call('read_thing', {}, 'a'),
+        call('write_thing', {}, 'b'),
+        call('write_thing', {}, 'c'),
+        call('write_thing', { bad: true }, 'd'),
+        call('failing_thing', {}, 'e'),
+      ]),
+    ]);
+    const run = await runAgent([{ role: 'user', content: 'go' }], {
+      provider,
+      ctx: ctx(),
+      tools,
+      confirm: async () => answers.shift() ?? false,
+    });
+    expect(run.executed.map(e => e.outcome)).toEqual(['done', 'done', 'denied', 'rejected', 'failed']);
+    expect(countToolOutcomes(run.executed)).toEqual({ changed: 1, read: 1, denied: 1, failed: 2 });
   });
 });

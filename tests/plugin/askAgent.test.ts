@@ -14,7 +14,10 @@ import type LabnotePlugin from '../../src/main';
 vi.mock('../../src/llm/provider', () => ({
   createLlmProvider: vi.fn(() => ({ name: 'Fake', chat: vi.fn() })),
 }));
-vi.mock('../../src/llm/agent', () => ({ runAgent: vi.fn() }));
+vi.mock('../../src/llm/agent', async importOriginal => ({
+  ...(await importOriginal<typeof import('../../src/llm/agent')>()),
+  runAgent: vi.fn(),
+}));
 vi.mock('../../src/modals', () => ({ aiAnswerModal: vi.fn() }));
 
 const NOTE = 'labnote/001_Test/001_WD010_A.labnote.md';
@@ -112,7 +115,41 @@ describe('askAgentCommand (#77)', () => {
     expect(Notice.shown).toContain(
       'The assistant gave no answer. What you asked may be outside the tools it can use.'
     );
-    expect(Notice.shown.some(m => m.includes('tool call(s)'))).toBe(false);
+    // Changed expectation (#186): the end notice now says plainly that nothing changed.
+    expect(Notice.shown).toContain('The AI used no tools; nothing in the vault changed.');
+  });
+
+  // #195: a thinking model's empty answer says so instead of passing silently.
+  it('names a thinking-only empty answer', async () => {
+    vi.mocked(runAgent).mockResolvedValue({ content: '', thinkingOnly: true, executed: [], stoppedAtLimit: false });
+    await askAgentCommand(plugin);
+    expect(Notice.shown).toContain('The model gave no answer (it only thought). Try again or choose another model.');
+  });
+
+  // #186: a write denied in the approval dialog counted as a tool call that ran.
+  it('tells denied writes from changes in the end notice', async () => {
+    const c = { id: 'call_0', name: 'create_sample', arguments: {} };
+    vi.mocked(runAgent).mockResolvedValue({
+      content: '',
+      executed: [{ call: c, outcome: 'denied', mutates: true }],
+      stoppedAtLimit: false,
+    });
+    await askAgentCommand(plugin);
+    expect(Notice.shown).toContain('The assistant gave no answer.');
+    expect(Notice.shown).toContain('AI tool calls: 1 denied by you. Nothing in the vault changed.');
+
+    Notice.reset();
+    vi.mocked(runAgent).mockResolvedValue({
+      content: '끝',
+      executed: [
+        { call: c, outcome: 'done', mutates: true },
+        { call: c, outcome: 'done', mutates: false },
+        { call: c, outcome: 'failed', mutates: true },
+      ],
+      stoppedAtLimit: false,
+    });
+    await askAgentCommand(plugin);
+    expect(Notice.shown).toContain('AI tool calls: 1 change(s) made, 1 lookup(s), 1 failed.');
   });
 
   it('lists its tools and asks the model to say what it cannot do', async () => {

@@ -54,6 +54,11 @@ export interface ChatMessage {
 export interface ChatResult {
   content: string;
   toolCalls: ToolCall[];
+  /**
+   * True when a thinking model spent the reply on reasoning and left `content`
+   * empty (#195), so callers can say why there is no answer.
+   */
+  thinkingOnly?: boolean;
 }
 
 export interface ChatOptions {
@@ -67,9 +72,21 @@ export interface LlmProvider {
   chat(messages: ChatMessage[], opts?: ChatOptions): Promise<ChatResult>;
 }
 
-/** Join a base URL and path with exactly one slash between them. */
+/**
+ * Join a base URL and path with exactly one slash between them. A base without
+ * a scheme (`localhost:11434`, as Ollama's own docs write it) gets `http://`
+ * (#203); the settings field saves on every keystroke, so it is fixed here at
+ * request time rather than rewritten there.
+ */
 export function joinUrl(base: string, path: string): string {
-  return base.replace(/\/+$/, '') + '/' + path.replace(/^\/+/, '');
+  const trimmed = base.trim().replace(/\/+$/, '');
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  return withScheme + '/' + path.replace(/^\/+/, '');
+}
+
+/** True when the reply has reasoning text but no answer. */
+function isThinkingOnly(content: unknown, thinking: unknown): boolean {
+  return !(typeof content === 'string' && content.trim()) && typeof thinking === 'string' && thinking.trim() !== '';
 }
 
 /**
@@ -164,15 +181,18 @@ class OllamaProvider implements LlmProvider {
       throw new LlmHttpError('Ollama', res.status, res.text);
     }
     const message = res.json?.message;
+    const toolCalls = normalizeToolCalls(message?.tool_calls);
     // Thinking models can spend the whole reply on `thinking` and leave `content` empty (#161).
-    if (!message?.content?.trim() && typeof message?.thinking === 'string' && message.thinking.trim()) {
+    const thinkingOnly = toolCalls.length === 0 && isThinkingOnly(message?.content, message?.thinking);
+    if (thinkingOnly) {
       console.warn(
         `[labnoteo] Ollama model "${this.settings.llmModel}" returned only "thinking" and no answer content.`
       );
     }
     return {
-      content: res.json?.message?.content ?? '',
-      toolCalls: normalizeToolCalls(res.json?.message?.tool_calls),
+      content: message?.content ?? '',
+      toolCalls,
+      ...(thinkingOnly ? { thinkingOnly: true } : {}),
     };
   }
 }
@@ -223,9 +243,13 @@ class OpenAiProvider implements LlmProvider {
       throw new LlmHttpError('OpenAI', res.status, res.text);
     }
     const message = res.json?.choices?.[0]?.message;
+    const toolCalls = normalizeToolCalls(message?.tool_calls);
+    // OpenAI-compatible servers for reasoning models put the reasoning in `reasoning_content`.
+    const thinkingOnly = toolCalls.length === 0 && isThinkingOnly(message?.content, message?.reasoning_content);
     return {
       content: message?.content ?? '',
-      toolCalls: normalizeToolCalls(message?.tool_calls),
+      toolCalls,
+      ...(thinkingOnly ? { thinkingOnly: true } : {}),
     };
   }
 }

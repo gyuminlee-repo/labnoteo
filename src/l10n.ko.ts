@@ -37,9 +37,20 @@ const obsidianKo: Record<string, string> = {
     '예: PCR 조건을 설명하는 Method 섹션 추가',
   'Allow AI tool "{0}" to modify the vault?': 'AI 툴 "{0}"이(가) 보관함을 수정하도록 허용할까요?',
   'AI stopped after too many steps.': 'AI가 너무 많은 단계를 거쳐 중단되었습니다.',
-  'AI ran {0} tool call(s).': 'AI가 툴을 {0}회 호출했습니다.',
   'The assistant gave no answer. What you asked may be outside the tools it can use.':
     '어시스턴트가 답을 주지 않았습니다. 요청한 일이 쓸 수 있는 도구 밖일 수 있습니다.',
+  'The assistant gave no answer.': '어시스턴트가 답을 주지 않았습니다.',
+  'The model gave no answer (it only thought). Try again or choose another model.':
+    '모델이 답을 주지 않았습니다(생각만 하고 끝남). 다시 시도하거나 다른 모델을 고르세요.',
+  'The model gave no answer. Try again or choose another model.':
+    '모델이 답을 주지 않았습니다. 다시 시도하거나 다른 모델을 고르세요.',
+  'The AI used no tools; nothing in the vault changed.': 'AI가 도구를 쓰지 않았습니다. 보관함은 바뀌지 않았습니다.',
+  'AI tool calls: {0}.': 'AI 도구 호출: {0}.',
+  '{0} change(s) made': '변경 {0}건',
+  '{0} lookup(s)': '조회 {0}건',
+  '{0} denied by you': '거절 {0}건',
+  '{0} failed': '실패 {0}건',
+  'Nothing in the vault changed.': '보관함은 바뀌지 않았습니다.',
   'AI answer': 'AI 답변',
   'Insert into note': '노트에 넣기',
   'Copy': '복사',
@@ -467,6 +478,10 @@ const obsidianKo: Record<string, string> = {
   'Settings': '설정',
   'Cannot connect to {0} ({1}). Check that it is running and that {2} is right.':
     '{0}에 연결할 수 없습니다({1}). 실행 중인지, {2} 값이 맞는지 확인하세요.',
+  '{0} is not an http:// or https:// address. Check {1}: write it like {2}.':
+    '{0}은(는) http:// 또는 https:// 주소가 아닙니다. {1} 값을 {2}처럼 적으세요.',
+  'Without http:// or https://, http:// is added when connecting.':
+    'http:// 또는 https://를 빼고 적으면 접속할 때 http://를 붙입니다.',
   'The API key is missing or wrong. Check {0}.': 'API 키가 없거나 잘못되었습니다. {0} 값을 확인하세요.',
   'Model {0} was not found. Check {1}.': '모델 {0}을(를) 찾을 수 없습니다. {1} 값을 확인하세요.',
   '{0} has no such address (404). Check {1}: enter only the server address, without a path such as /v1 or /api.':

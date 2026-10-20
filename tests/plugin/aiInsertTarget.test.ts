@@ -163,3 +163,22 @@ describe('draftMethodCommand (#112)', () => {
     expect(plugin.markUserEdit).toHaveBeenCalledWith(NOTE);
   });
 });
+
+// #195: an empty reply (a thinking model that only thought) ended with no notice at all.
+describe('empty AI reply (#195)', () => {
+  it('tells the user the model gave no answer and leaves the note alone', async () => {
+    chat.mockResolvedValue({ content: '', toolCalls: [], thinkingOnly: true });
+    const target = makeTarget(NOTE, BODY.indexOf('#### Method') + '#### Method\n'.length);
+    open = target;
+    await draftMethodCommand(plugin);
+    expect(Notice.shown).toContain('The model gave no answer (it only thought). Try again or choose another model.');
+    expect(target.replaceRange).not.toHaveBeenCalled();
+    expect(aiAnswerModal).not.toHaveBeenCalled();
+
+    Notice.reset();
+    chat.mockResolvedValue({ content: '  ', toolCalls: [] });
+    await summarizeResultsCommand(plugin);
+    expect(Notice.shown).toContain('The model gave no answer. Try again or choose another model.');
+    expect(target.replaceRange).not.toHaveBeenCalled();
+  });
+});
