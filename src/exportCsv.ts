@@ -14,15 +14,10 @@ import {
   tableToCsv,
   type CsvOverwriteKind,
 } from '@labnoteo/core/lib/exportTablesCsv';
-import { siblingTableCsvs, staleTableCsvs } from '@labnoteo/core/lib/workflowStructure';
+import { planTableCsvNames, siblingTableCsvs, staleTableCsvs } from '@labnoteo/core/lib/workflowStructure';
 import { confirmModal } from './modals';
 import { listFileNames, trashTableCsvs } from './commands';
 import type LabnotePlugin from './main';
-
-/** Strip the trailing `.md` (keeps a compound `.labnote` stem). */
-function noteStem(file: TFile): string {
-  return file.name.replace(/\.md$/i, '');
-}
 
 /**
  * Offer to trash the CSVs of tables the note no longer has (#74). Returns the
@@ -57,12 +52,17 @@ export async function exportTablesToCsv(plugin: LabnotePlugin, file: TFile): Pro
   }
 
   const dir = posix.dirname(file.path);
-  const stem = noteStem(file);
+  const siblings = await plugin.fs.list(dir);
+  const plan = planTableCsvNames(file.name, siblings, tables.length);
+  const renamedFrom = new Map(plan.renames.map(r => [r.to, r.from]));
   const outputs = await Promise.all(
     tables.map(async table => {
-      const path = posix.join(dir, `${stem}_table${table.index + 1}.csv`);
+      const name = plan.names[table.index];
+      const path = posix.join(dir, name);
+      // A CSV still to be renamed holds the old content of this table.
+      const current = posix.join(dir, renamedFrom.get(name) ?? name);
       const csv = tableToCsv(table.rows, { bom: true });
-      const old = (await plugin.fs.exists(path)) ? normalizeCsv(await plugin.fs.read(path)) : undefined;
+      const old = (await plugin.fs.exists(current)) ? normalizeCsv(await plugin.fs.read(current)) : undefined;
       return { path, csv, fresh: normalizeCsv(csv), old };
     })
   );
@@ -77,15 +77,12 @@ export async function exportTablesToCsv(plugin: LabnotePlugin, file: TFile): Pro
       ? ` (${plugin.t('row {0}: {1} → {2}', String(diff.row), clip(diff.from), clip(diff.to))})`
       : '';
   };
-  const siblings = await plugin.fs.list(dir);
   const existingCount = Math.max(
     0,
     ...siblingTableCsvs(file.name, siblings).map(f => Number(/_table(\d+)\.csv$/.exec(f)![1]))
   );
   const staleOld = await Promise.all(
-    staleTableCsvs(file.name, siblings, tables.length).map(async name =>
-      normalizeCsv(await plugin.fs.read(posix.join(dir, name)))
-    )
+    plan.stale.map(async name => normalizeCsv(await plugin.fs.read(posix.join(dir, name))))
   );
   const kinds = classifyCsvOverwrites(outputs, existingCount, staleOld);
 
@@ -119,9 +116,24 @@ export async function exportTablesToCsv(plugin: LabnotePlugin, file: TFile): Pro
     }
   }
 
+  // Renamed before writing: the new name must be free when the CSV moves to it.
+  const renamed: string[] = [];
+  const notRenamed = new Set<string>();
+  for (const r of plan.renames) {
+    const csvFile = plugin.app.vault.getFileByPath(posix.join(dir, r.from));
+    try {
+      if (!(csvFile instanceof TFile)) throw new Error(`${r.from} is not in the vault index`);
+      await plugin.app.fileManager.renameFile(csvFile, posix.join(dir, r.to));
+      renamed.push(`${r.from} → ${r.to}`);
+    } catch (err) {
+      console.warn('[labnoteo] could not rename table CSV:', err);
+      notRenamed.add(r.to);
+    }
+  }
+
   let written = 0;
   for (const o of outputs) {
-    if (o.old === o.fresh) continue;
+    if (o.old === o.fresh && !notRenamed.has(posix.basename(o.path))) continue;
     await plugin.fs.write(o.path, o.csv);
     written++;
   }
@@ -133,8 +145,24 @@ export async function exportTablesToCsv(plugin: LabnotePlugin, file: TFile): Pro
       : unchanged > 0
         ? plugin.t('Exported {0} CSV file(s) ({1} unchanged file(s) left as they were).', String(written), String(unchanged))
         : plugin.t('Exported {0} CSV file(s).', String(written));
+  const renames =
+    renamed.length > 0
+      ? plugin.t(
+          'Renamed {0} CSV file(s) so their numbers sort in table order: {1}. Update these paths in any analysis script.',
+          String(renamed.length),
+          renamed.length > 1 ? plugin.t('{0} (+{1} more)', renamed[0], String(renamed.length - 1)) : renamed[0]
+        )
+      : '';
+  const renameFailed =
+    notRenamed.size > 0
+      ? plugin.t('Could not rename {0} old CSV file(s); they keep their old names.', String(notRenamed.size))
+      : '';
   const cleanup = await offerStaleCsvCleanup(plugin, file, tables.length);
-  new Notice([exported, savedIn(plugin, dir, outputs.map(o => o.path)), cleanup, explorerHint(plugin)].filter(Boolean).join(' '));
+  new Notice(
+    [exported, renames, renameFailed, savedIn(plugin, dir, outputs.map(o => o.path)), cleanup, explorerHint(plugin)]
+      .filter(Boolean)
+      .join(' ')
+  );
 }
 
 /** Where the CSVs are, so they can be found outside Obsidian (#140): the folder and the first few names. */

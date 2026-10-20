@@ -27,7 +27,7 @@ export interface UnitOpMeta {
   dateTime: string;
   /** Optional `Software: ...` line for SW unit ops. Empty string emits `- Software:` (no value). */
   software?: string;
-  /** Optional `Equipment: ...` line for HW unit ops. Omitted when empty/undefined. */
+  /** HW unit ops: the catalog's equipment, listed in `#### Equipment` in place of its placeholder. */
   equipment?: string;
 }
 
@@ -57,8 +57,12 @@ function buildSwMetaContent(meta: UnitOpMeta): string {
 }
 
 function buildHwMetaContent(meta: UnitOpMeta): string {
-  const base = `- Experimenter: ${meta.experimenter}\n- Start_date: '${meta.dateTime}'\n- End_date: ''`;
-  return meta.equipment ? `${base}\n- Equipment: ${meta.equipment}` : base;
+  return `- Experimenter: ${meta.experimenter}\n- Start_date: '${meta.dateTime}'\n- End_date: ''`;
+}
+
+/** `#### Equipment` of a HW unit op has its own section, so Meta does not repeat it (#218). */
+function buildHwEquipmentContent(meta: UnitOpMeta): string {
+  return meta.equipment ? `- ${meta.equipment}` : HW_PLACEHOLDERS.Equipment;
 }
 
 /**
@@ -87,7 +91,7 @@ export function buildHwUnitOpSections(meta: UnitOpMeta): UnitOpSection[] {
     { heading: 'Input', content: HW_PLACEHOLDERS.Input },
     { heading: 'Reagent', content: HW_PLACEHOLDERS.Reagent },
     { heading: 'Labware and Consumables', content: HW_PLACEHOLDERS['Labware and Consumables'] },
-    { heading: 'Equipment', content: HW_PLACEHOLDERS.Equipment },
+    { heading: 'Equipment', content: buildHwEquipmentContent(meta) },
     { heading: 'Method', content: HW_PLACEHOLDERS.Method },
     { heading: 'Output', content: HW_PLACEHOLDERS.Output },
     { heading: 'Results & Discussions', content: HW_PLACEHOLDERS['Results & Discussions'] },
@@ -153,7 +157,6 @@ ${SW_PLACEHOLDERS.Discussion}
  * with the same role as `buildSwUnitOpMarkdown` for non-software steps.
  */
 export function buildHwUnitOpMarkdown(info: UnitOpMarkdownInfo, meta: UnitOpMeta): string {
-  const equipmentLine = meta.equipment ? `- Equipment: ${meta.equipment}\n` : '';
   const headingExtra = info.descriptionExtra ?? '';
   return `
 
@@ -164,10 +167,8 @@ export function buildHwUnitOpMarkdown(info: UnitOpMarkdownInfo, meta: UnitOpMeta
 > ${info.opDescription}
 
 #### Meta
-- Experimenter: ${meta.experimenter}
-- Start_date: '${meta.dateTime}'
-- End_date: ''
-${equipmentLine}
+${buildHwMetaContent(meta)}
+
 #### Input
 ${HW_PLACEHOLDERS.Input}
 
@@ -178,7 +179,7 @@ ${HW_PLACEHOLDERS.Reagent}
 ${HW_PLACEHOLDERS['Labware and Consumables']}
 
 #### Equipment
-${HW_PLACEHOLDERS.Equipment}
+${buildHwEquipmentContent(meta)}
 
 #### Method
 ${HW_PLACEHOLDERS.Method}

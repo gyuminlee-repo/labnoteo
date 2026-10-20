@@ -25,6 +25,17 @@ import type {
 import { pickModal, pickManyModal, promptModal, confirmModal } from './modals';
 import { noteTargetBelowTable, tableCellHostView } from './tableCellTarget';
 
+const readingViewChecks = new WeakMap<EditTarget, () => boolean>();
+
+/**
+ * Whether `target` is a note shown in reading view, where a write switches
+ * the view to editing. A write the user did not ask for in that note should
+ * go through the vault instead.
+ */
+export function isReadingViewTarget(target: EditTarget): boolean {
+  return readingViewChecks.get(target)?.() ?? false;
+}
+
 export function createObsidianHost(
   app: App,
   fs: LabnoteFs,
@@ -43,27 +54,51 @@ export function createObsidianHost(
     }
     const file = view?.file;
     if (!view || !file) return undefined;
+    const noteView = view;
     const editor = view.editor;
-    const noteView = tableCellHostView(editor);
-    if (noteView) {
+    const cellHost = tableCellHostView(editor);
+    if (cellHost) {
       const cell = (editor as unknown as { cm: { dom: HTMLElement } }).cm.dom;
-      return noteTargetBelowTable(file.path, noteView, cell);
+      return noteTargetBelowTable(file.path, cellHost, cell);
     }
-    return {
+    // In reading view the editor is hidden: what is written to it is never
+    // saved (#216), and its cursor is not where the reader is. Reads take the
+    // note's text and treat the cursor as the end of the note; the first write
+    // switches the view to editing, which reloads the editor from that text.
+    const inPreview = (): boolean => noteView.getMode() === 'preview';
+    const toSource = async (): Promise<void> => {
+      if (!inPreview()) return;
+      const before = noteView.getViewData();
+      await noteView.setState({ ...noteView.getState(), mode: 'source' }, { history: false });
+      if (editor.getValue() !== before) {
+        throw new Error(t('The note changed while switching to editing view. Run the command again.'));
+      }
+      new Notice(t('This note was in reading view, so it was switched to editing view to make the change.'));
+    };
+    const target: EditTarget = {
       path: file.path,
       async getText() {
-        return editor.getValue();
+        return inPreview() ? noteView.getViewData() : editor.getValue();
       },
       async insertAtCursor(text: string) {
+        if (inPreview()) {
+          await toSource();
+          const end = editor.offsetToPos(editor.getValue().length);
+          editor.replaceRange(text, end, end);
+          return;
+        }
         editor.replaceSelection(text);
       },
       async replaceRange(start: number, end: number, text: string) {
+        await toSource();
         editor.replaceRange(text, editor.offsetToPos(start), editor.offsetToPos(end));
       },
       async getCursorOffset() {
+        if (inPreview()) return noteView.getViewData().length;
         return editor.posToOffset(editor.getCursor('from'));
       },
       async revealOffset(offset: number) {
+        await toSource();
         // setCursor treats a bare number as a line index, so convert first.
         const pos = editor.offsetToPos(offset);
         editor.setCursor(pos);
@@ -71,6 +106,8 @@ export function createObsidianHost(
         editor.focus();
       },
     };
+    readingViewChecks.set(target, inPreview);
+    return target;
   }
 
   return {

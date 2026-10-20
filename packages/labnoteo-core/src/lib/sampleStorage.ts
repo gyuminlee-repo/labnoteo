@@ -258,6 +258,23 @@ export function findSampleReferenceSpans(text: string, types: readonly string[])
 }
 
 /**
+ * The IDs `text` defines with `@type;` (or `@type:`), lower-cased, read as
+ * {@link extractSampleInfoFromText} reads definitions: a note's own
+ * definitions count as known before the sample sync has saved them (#210).
+ */
+export function findDefinedSampleIds(text: string, types: readonly string[]): Set<string> {
+  const ids = new Set<string>();
+  for (const type of types) {
+    const pattern = buildSampleDefinitionPattern(type);
+    let match;
+    while ((match = nextSampleMatch(pattern, text, type)) !== null) {
+      if (match[0].startsWith('@')) ids.add(match[1].toLowerCase());
+    }
+  }
+  return ids;
+}
+
+/**
  * Extract sample information from document text
  * Supports formats (new ; delimiter + legacy |/: for backward compatibility):
  * - @type;ID;alias;description (definition format)
@@ -819,6 +836,30 @@ export async function loadSamplesByType(
     }
   }
   return records;
+}
+
+/**
+ * The IDs of `labsamplesFolder`'s `{type}.json`, lower-cased, for telling a
+ * reference to an unregistered sample (#210). Unlike {@link loadSamplesByType}
+ * it never writes: highlighting a note must not change the registry. An empty
+ * set when there is no file; undefined when it cannot be read (a merge
+ * conflict left in it), so nothing is reported missing because of it.
+ */
+export async function loadSampleIds(
+  fs: LabnoteFs,
+  labsamplesFolder: string,
+  type: string
+): Promise<Set<string> | undefined> {
+  assertSafeSampleType(type);
+  const filePath = path.join(labsamplesFolder, `${type}.json`);
+  if (!(await fs.exists(filePath))) return new Set();
+  try {
+    const data: unknown = JSON.parse(await fs.read(filePath));
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return undefined;
+    return new Set(Object.keys(data).map(id => id.toLowerCase()));
+  } catch {
+    return undefined;
+  }
 }
 
 const isReferenceCatalogFile = (name: string, type: string): boolean =>

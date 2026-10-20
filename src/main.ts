@@ -107,6 +107,7 @@ import { createMetaDatePickerExtension } from './dateFieldPicker';
 import { createUnitOpReorderFilter } from './unitOpReorderFilter';
 import { LastUpdatedTracker } from './lastUpdatedTracker';
 import { IssueMarkerIndex } from './issueMarkerIndex';
+import { SampleIdIndex } from './sampleIdIndex';
 import { isLabNotePath, stampNoteAndReadme, writeNoteStamped } from './lastUpdatedStamp';
 import { createOutlineDropTidy, type OutlineDropSnapshot } from './outlineDropTidy';
 import { WorkflowTreeView, WORKFLOW_VIEW_TYPE } from './views/workflowView';
@@ -133,6 +134,7 @@ export default class LabnotePlugin extends Plugin {
   host!: LabnoteHost;
   mcpServer!: LabnoteMcpServer;
   private sampleSuggest?: SampleEditorSuggest;
+  private sampleIds?: SampleIdIndex;
   // Last experiment folder (`labnote/###_*`) resolved from an active note, kept
   // in memory so the Samples sidebar's Local scope stays pinned to that
   // experiment even when focus moves to a file outside it. Reset on reload.
@@ -1716,16 +1718,40 @@ export default class LabnotePlugin extends Plugin {
       owner === undefined
         ? this.t('This marker ID appears more than once in this note.')
         : this.t('This marker ID is already used in {0}.', owner);
+    const sampleIds = new SampleIdIndex(this.fs, {
+      globalFolder: () => this.settings.globalSampleFolder,
+      types: () => getSampleDisplayMeta(this.settings.customSampleTypes).types,
+      onChange: () => this.redrawSampleHighlights(),
+    });
+    this.sampleIds = sampleIds;
+    const missingTitle = this.t('Not in the sample registry');
     const getState = (path: string | undefined): HighlightState => {
-      const base = this.sampleTrackingFor(path)
+      const tracked = this.sampleTrackingFor(path);
+      const base: HighlightState = tracked
         ? getSampleDisplayMeta(this.settings.customSampleTypes)
         : { types: [], colors: {} };
+      const known = tracked ? sampleIds.knownFor(path) : undefined;
+      const samples: HighlightState = known
+        ? { ...base, knownIds: known.ids, sampleVersion: known.version, missingTitle }
+        : base;
       const others = markers.othersFor(path);
       return others
-        ? { ...base, otherMarkerIds: others.ids, markerVersion: others.version, duplicateTitle }
-        : base;
+        ? { ...samples, otherMarkerIds: others.ids, markerVersion: others.version, duplicateTitle }
+        : samples;
     };
     this.registerIssueMarkerIndex(markers);
+    // Sample JSON written by the plugin arrives through `refreshSampleViews`;
+    // these catch registries changed outside it, such as by a git pull.
+    const jsonChanged = (path: string): void => sampleIds.fileChanged(path);
+    this.registerEvent(this.app.vault.on('modify', file => jsonChanged(file.path)));
+    this.registerEvent(this.app.vault.on('create', file => jsonChanged(file.path)));
+    this.registerEvent(this.app.vault.on('delete', file => jsonChanged(file.path)));
+    this.registerEvent(
+      this.app.vault.on('rename', (file, oldPath) => {
+        jsonChanged(oldPath);
+        jsonChanged(file.path);
+      })
+    );
     this.registerEditorExtension(createSampleHighlightPlugin(getState));
     this.registerMarkdownPostProcessor(createSampleReadingHighlighter(getState));
     // An experiment's `sample_tracking` lives in its README (#105); editors
@@ -1825,6 +1851,22 @@ export default class LabnotePlugin extends Plugin {
   refreshSampleViews(): void {
     for (const leaf of this.app.workspace.getLeavesOfType(SAMPLE_VIEW_TYPE)) {
       if (leaf.view instanceof SampleTreeView) void leaf.view.refresh();
+    }
+    this.sampleIds?.invalidate();
+  }
+
+  /**
+   * Redraw sample highlighting after the registries were read (#210). Editors
+   * redraw on `updateOptions`; reading view renders once, so lab notes shown
+   * there are rendered again.
+   */
+  private redrawSampleHighlights(): void {
+    this.app.workspace.updateOptions();
+    for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+      const view = leaf.view;
+      if (view instanceof MarkdownView && view.getMode() === 'preview' && view.file?.path.endsWith('.labnote.md')) {
+        view.previewMode.rerender(true);
+      }
     }
   }
 

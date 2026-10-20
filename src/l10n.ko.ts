@@ -237,6 +237,10 @@ const obsidianKo: Record<string, string> = {
   'Delete these lines from .gitignore so agent skills can be committed: {0}':
     '에이전트 스킬이 커밋되도록 .gitignore에서 다음 줄을 직접 지우세요: {0}',
   'Exported {0} CSV file(s).': 'CSV 파일 {0}개를 내보냈습니다.',
+  'Renamed {0} CSV file(s) so their numbers sort in table order: {1}. Update these paths in any analysis script.':
+    '이름순으로 표 순서대로 놓이도록 번호 자릿수를 맞춰 CSV {0}개의 이름을 바꿨습니다: {1}. 분석 스크립트에서 이 파일 경로를 쓰고 있다면 고쳐 주세요.',
+  'Could not rename {0} old CSV file(s); they keep their old names.':
+    '옛 CSV {0}개는 이름을 바꾸지 못해 옛 이름 그대로 남았습니다.',
   'Exported {0} CSV file(s) ({1} unchanged file(s) left as they were).':
     'CSV 파일 {0}개를 내보냈습니다(내용이 같은 {1}개는 그대로 둠).',
   'The CSV files are already up to date ({0}).': 'CSV 파일이 이미 최신입니다({0}개).',
@@ -313,6 +317,10 @@ const obsidianKo: Record<string, string> = {
   'No samples are registered yet.': '아직 등록된 샘플이 없습니다.',
   'Search by ID or alias': 'ID나 별칭으로 검색',
   'Open a note to insert into.': '삽입할 노트를 여세요.',
+  'This note was in reading view, so it was switched to editing view to make the change.':
+    '읽기 화면이던 노트를 편집 화면으로 바꿔서 고쳤습니다.',
+  'The note changed while switching to editing view. Run the command again.':
+    '편집 화면으로 바꾸는 사이에 노트 내용이 달라졌습니다. 명령을 다시 실행해 주세요.',
   'Open a note of an experiment to list its samples.': '시료 목록을 넣으려면 실험 안의 노트를 여세요.',
   'This experiment has no samples yet.': '이 실험에는 아직 시료가 없습니다.',
   'Inserted {0} sample(s).': '시료 {0}개를 표로 넣었습니다.',
@@ -347,7 +355,9 @@ const obsidianKo: Record<string, string> = {
   'File': '파일',
   'Open JSON file': 'JSON 파일 열기',
   'Could not open {0}': '{0}을(를) 열 수 없습니다',
-  'No definition found for {0}': '{0}의 정의를 찾을 수 없습니다',
+  'No definition found for {0}. It is not in the sample registry: it may have been deleted or moved to another experiment, or the Global sample folder setting changed.':
+    '{0}의 정의를 찾을 수 없습니다. 시료 대장에 없는 시료입니다. 대장에서 지웠거나 다른 실험으로 옮겼거나, 전역 샘플 폴더 설정을 바꿨을 수 있습니다.',
+  'Not in the sample registry': '시료 대장에 없는 시료',
   'Close': '닫기',
   'Enter the {0} sample ID': '{0} 샘플 ID를 입력하세요',
   'e.g. {0}-12345': '예: {0}-12345',

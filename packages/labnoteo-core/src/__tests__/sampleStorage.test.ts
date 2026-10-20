@@ -38,10 +38,50 @@ import {
   renameSampleSourcesInFolder,
   setSampleDiscarded,
   listExperimentSampleFolders,
+  findDefinedSampleIds,
+  loadSampleIds,
   type SampleDatabase,
   type SampleRecord,
 } from '../lib/sampleStorage';
 import { MemFileSystem } from '../fs/memFileSystem';
+
+// #210: what a note's sample references can resolve to, read without writing.
+describe('findDefinedSampleIds', () => {
+  const types = ['DNA', 'RNA'];
+
+  it('takes the IDs defined with @type; or @type:, in any case, and not the plain references', () => {
+    const text = '@dna;DNA-1;pUC19\n@RNA:RNA-2\nDNA-3;alias\nRNA-4\n';
+    expect(findDefinedSampleIds(text, types)).toEqual(new Set(['dna-1', 'rna-2']));
+  });
+
+  it('matches what the sample sync reads as definitions', () => {
+    const text = 'DNA-5;alias of a reference @dna;DNA-6;defined\n@dna;dna-7\n';
+    const synced = extractSampleInfoFromText(text)
+      .filter(s => s.definition)
+      .map(s => s.id.toLowerCase());
+    expect([...findDefinedSampleIds(text, types)].sort()).toEqual(synced.sort());
+  });
+});
+
+describe('loadSampleIds', () => {
+  const FOLDER = 'labnote/001_Test/resources/labsamples';
+
+  it('reads the IDs lower-cased and never rewrites a registry with case-colliding keys', async () => {
+    const raw = JSON.stringify({ 'DNA-55': { alias: 'a' }, 'dna-55': { alias: 'b' }, 'DNA-1': {} });
+    const fs = new MemFileSystem({ [`${FOLDER}/DNA.json`]: raw });
+    const write = vi.spyOn(fs, 'write');
+
+    expect(await loadSampleIds(fs, FOLDER, 'DNA')).toEqual(new Set(['dna-55', 'dna-1']));
+    expect(write).not.toHaveBeenCalled();
+    expect(await fs.read(`${FOLDER}/DNA.json`)).toBe(raw);
+  });
+
+  it('gives an empty set without a registry and undefined for one it cannot read', async () => {
+    const fs = new MemFileSystem({ [`${FOLDER}/RNA.json`]: '<<<<<<< HEAD\n{}\n=======\n{}\n>>>>>>> x\n' });
+    expect(await loadSampleIds(fs, FOLDER, 'DNA')).toEqual(new Set());
+    expect(await loadSampleIds(fs, FOLDER, 'RNA')).toBeUndefined();
+  });
+});
 
 describe('resolveLocalSampleFolder (#70)', () => {
   const GLOBAL = 'resources/labsamples';

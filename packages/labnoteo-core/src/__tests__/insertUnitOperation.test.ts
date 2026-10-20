@@ -112,11 +112,35 @@ describe('insertUnitOperation', () => {
     expect(ok).toBe(true);
     expect(inserted).toHaveLength(1);
     expect(inserted[0]).toContain('### [UHW010 Centrifugation]');
-    expect(inserted[0]).toContain('- Equipment: Centrifuge 5424');
     expect(notes.at(-1)).toEqual({
       kind: 'info',
       message: 'Unit operation inserted: UHW010 Centrifugation',
     });
+  });
+
+  // #218: the catalog's equipment goes in `#### Equipment`, not again in Meta.
+  it('lists the catalog equipment in the Equipment section only', async () => {
+    const { host, inserted } = makeHost({ targetPath: VALID_WORKFLOW, doc: EMPTY_WORKFLOW });
+
+    await insertUnitOperation(host, {
+      opId: 'UHW010',
+      opName: 'Centrifugation',
+      opType: 'hw',
+      equipment: 'Centrifuge 5424',
+    });
+
+    expect(inserted[0]).not.toContain('- Equipment:');
+    expect(inserted[0]).toContain("- End_date: ''\n\n#### Input\n");
+    expect(inserted[0]).toContain('#### Equipment\n- Centrifuge 5424\n\n#### Method\n');
+  });
+
+  it('keeps the Equipment placeholder and the blank line after Meta without catalog equipment', async () => {
+    const { host, inserted } = makeHost({ targetPath: VALID_WORKFLOW, doc: EMPTY_WORKFLOW });
+
+    await insertUnitOperation(host, { opId: 'UHW180', opName: 'Incubation', opType: 'hw' });
+
+    expect(inserted[0]).toContain("- End_date: ''\n\n#### Input\n");
+    expect(inserted[0]).toContain('#### Equipment\n- (e.g. centrifuge, spectrophotometer, etc.)\n\n#### Method\n');
   });
 
   // #118: the same unit operation run twice needs names to tell the runs apart.

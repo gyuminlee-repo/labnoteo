@@ -89,6 +89,13 @@
   padding: 0 2px;
 }
 
+/* A sample ID neither registered nor defined in the note: deleted, moved
+   away, or typed without registering it (#210). The title says so. */
+.labnote-sample-id-missing {
+  text-decoration: wavy underline var(--text-error);
+  text-underline-offset: 3px;
+}
+
 /* --- @issue markers (editor + reading mode) ------------------------------
    Only well-formed markers get this class, so the styling is also the signal
    that a marker will actually open an issue. The opaque error background hides
