@@ -55,6 +55,10 @@ beforeEach(() => {
         trashed.push(file.path);
         await fs.remove(file.path);
       },
+      renameFile: async (file: TFile, to: string) => {
+        await fs.write(to, await fs.read(file.path));
+        await fs.remove(file.path);
+      },
     },
   } as unknown as App;
 });
@@ -255,6 +259,65 @@ describe('the export notice (#140)', () => {
 
     expect(getConfig).toHaveBeenCalledWith('showUnsupportedFiles');
     expect(Notice.shown.at(-1)).toBe(`Exported 1 CSV file(s). Saved in ${DIR}/: 001_WT020_A.labnote_table1.csv.`);
+  });
+});
+
+// #217: with ten tables or more the numbers get as many digits as the count.
+describe('re-exporting a note that reached ten tables', () => {
+  const plugin = () => ({ app, fs, t }) as unknown as LabnotePlugin;
+  const padded = (n: string) => `${DIR}/001_WT020_A.labnote_table${n}.csv`;
+  const nine = () => Object.fromEntries(Array.from({ length: 9 }, (_, k) => [csv(k + 1), CSV_A]));
+
+  it('renames the old CSVs to the padded numbers before writing, and says so', async () => {
+    fs = new MemFileSystem(nine());
+    await fs.write(`${DIR}/${NOTE}`, Array(10).fill(TABLE).join('\n'));
+    const write = vi.spyOn(fs, 'write');
+
+    await exportTablesToCsv(plugin(), noteFile());
+
+    expect(confirmModal).not.toHaveBeenCalled();
+    for (let k = 1; k <= 9; k++) {
+      expect(await fs.exists(csv(k))).toBe(false);
+      expect(await fs.read(padded(`0${k}`))).toBe(CSV_A);
+    }
+    expect(await fs.read(padded('10'))).toBe(CSV_A);
+    expect(write.mock.calls.at(-1)?.[0]).toBe(padded('10'));
+    expect(Notice.shown.at(-1)).toContain(
+      'Renamed 9 CSV file(s) so their numbers sort in table order: 001_WT020_A.labnote_table1.csv → 001_WT020_A.labnote_table01.csv (+8 more).'
+    );
+    expect(trashed).toEqual([]);
+  });
+
+  it('renames nothing when the overwrite prompt is declined', async () => {
+    fs = new MemFileSystem(nine());
+    await fs.write(`${DIR}/${NOTE}`, ['| b |\n|---|\n| 2 |\n', ...Array(9).fill(TABLE)].join('\n'));
+    vi.mocked(confirmModal).mockResolvedValue(false);
+
+    await exportTablesToCsv(plugin(), noteFile());
+
+    expect(vi.mocked(confirmModal).mock.calls[0][1]).toContain('- 001_WT020_A.labnote_table01.csv: a → b');
+    expect(await fs.exists(csv(1))).toBe(true);
+    expect(await fs.exists(padded('01'))).toBe(false);
+    expect(Notice.shown.at(-1)).toBe('No changes made.');
+  });
+
+  it('writes the padded CSV and keeps the old one when a rename fails', async () => {
+    fs = new MemFileSystem(nine());
+    await fs.write(`${DIR}/${NOTE}`, Array(10).fill(TABLE).join('\n'));
+    const renameFile = vi.fn(async (file: TFile, to: string) => {
+      if (file.path === csv(1)) throw new Error('locked');
+      await fs.write(to, await fs.read(file.path));
+      await fs.remove(file.path);
+    });
+    Object.assign(app.fileManager, { renameFile });
+    vi.mocked(confirmModal).mockResolvedValue(false);
+
+    await exportTablesToCsv(plugin(), noteFile());
+
+    expect(await fs.read(padded('01'))).toBe(CSV_A);
+    expect(await fs.exists(csv(1))).toBe(true);
+    expect(vi.mocked(confirmModal).mock.calls.at(-1)?.[1]).toContain('001_WT020_A.labnote_table1.csv');
+    expect(Notice.shown.at(-1)).toContain('Could not rename 1 old CSV file(s); they keep their old names.');
   });
 });
 

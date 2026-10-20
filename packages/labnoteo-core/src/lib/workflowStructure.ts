@@ -632,15 +632,58 @@ export function siblingTableCsvs(noteName: string, files: readonly string[]): st
 }
 
 /**
- * The table CSVs of `noteName` numbered above `tableCount` (#74): left over
- * from tables the note no longer has. Sorted by table number.
+ * The CSV name of table `number` (1-based) of a note with `tableCount` tables.
+ * The number has as many digits as `tableCount`, so the files sort in table
+ * order by name (`_table01` … `_table11`, #217).
  */
-export function staleTableCsvs(noteName: string, files: readonly string[], tableCount: number): string[] {
+export function tableCsvName(noteName: string, number: number, tableCount: number): string {
+  const digits = String(Math.max(tableCount, 1)).length;
+  return `${tableCsvStem(noteName)}_table${String(number).padStart(digits, '0')}.csv`;
+}
+
+/** What "Export tables to CSV" does to the table CSVs already next to a note. */
+export interface TableCsvPlan {
+  /** The CSV name of each table, in table order. */
+  names: string[];
+  /** Existing CSVs of a table whose name differs only in its digits, to take the new name. */
+  renames: WorkflowRename[];
+  /** The CSVs left over once renamed: numbered above the table count, or not renamed for a collision. Sorted by table number. */
+  stale: string[];
+}
+
+/**
+ * Plan the table CSVs of `noteName` for `tableCount` tables among `files`
+ * (base names). Renames and leftovers are planned together: a CSV about to be
+ * renamed is not also offered for the trash.
+ */
+export function planTableCsvNames(noteName: string, files: readonly string[], tableCount: number): TableCsvPlan {
+  const names = Array.from({ length: tableCount }, (_, i) => tableCsvName(noteName, i + 1, tableCount));
   const offset = `${tableCsvStem(noteName)}_table`.length;
   const number = (f: string) => Number(f.slice(offset, -'.csv'.length));
-  return siblingTableCsvs(noteName, files)
-    .filter(f => number(f) > tableCount)
-    .sort((a, b) => number(a) - number(b));
+  const taken = new Set(files);
+  const renames: WorkflowRename[] = [];
+  const stale: string[] = [];
+  const siblings = siblingTableCsvs(noteName, files).sort((a, b) => number(a) - number(b) || a.localeCompare(b));
+  for (const f of siblings) {
+    const n = number(f);
+    const name = n >= 1 && n <= tableCount ? names[n - 1] : undefined;
+    if (name === f) continue;
+    if (name && !taken.has(name)) {
+      renames.push({ from: f, to: name });
+      taken.add(name);
+      continue;
+    }
+    stale.push(f);
+  }
+  return { names, renames, stale };
+}
+
+/**
+ * The table CSVs of `noteName` that do not belong to its `tableCount` tables
+ * (#74): left over from tables the note no longer has. Sorted by table number.
+ */
+export function staleTableCsvs(noteName: string, files: readonly string[], tableCount: number): string[] {
+  return planTableCsvNames(noteName, files, tableCount).stale;
 }
 
 /**

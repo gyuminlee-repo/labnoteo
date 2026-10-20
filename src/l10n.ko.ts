@@ -237,6 +237,10 @@ const obsidianKo: Record<string, string> = {
   'Delete these lines from .gitignore so agent skills can be committed: {0}':
     '에이전트 스킬이 커밋되도록 .gitignore에서 다음 줄을 직접 지우세요: {0}',
   'Exported {0} CSV file(s).': 'CSV 파일 {0}개를 내보냈습니다.',
+  'Renamed {0} CSV file(s) so their numbers sort in table order: {1}. Update these paths in any analysis script.':
+    '이름순으로 표 순서대로 놓이도록 번호 자릿수를 맞춰 CSV {0}개의 이름을 바꿨습니다: {1}. 분석 스크립트에서 이 파일 경로를 쓰고 있다면 고쳐 주세요.',
+  'Could not rename {0} old CSV file(s); they keep their old names.':
+    '옛 CSV {0}개는 이름을 바꾸지 못해 옛 이름 그대로 남았습니다.',
   'Exported {0} CSV file(s) ({1} unchanged file(s) left as they were).':
     'CSV 파일 {0}개를 내보냈습니다(내용이 같은 {1}개는 그대로 둠).',
   'The CSV files are already up to date ({0}).': 'CSV 파일이 이미 최신입니다({0}개).',

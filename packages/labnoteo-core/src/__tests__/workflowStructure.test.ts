@@ -22,6 +22,8 @@ import {
   siblingTableCsvs,
   staleTableCsvs,
   planTableCsvMoves,
+  planTableCsvNames,
+  tableCsvName,
   labelMatchesFileName,
   workflowLabelFor,
   rewriteWorkflowTitle,
@@ -592,6 +594,62 @@ describe('table CSVs of a workflow note', () => {
       { from: '002_WT020_C.labnote_table1.csv', to: '001_WT020_C.labnote_table1.csv' },
       { from: '002_WT020_C.labnote_table12.csv', to: '001_WT020_C.labnote_table12.csv' },
     ]);
+    expect(planTableCsvMoves('002_WT020_C.labnote.md', '001_WT020_C.labnote.md', ['002_WT020_C.labnote_table01.csv'])).toEqual([
+      { from: '002_WT020_C.labnote_table01.csv', to: '001_WT020_C.labnote_table01.csv' },
+    ]);
+  });
+});
+
+// #217: `table10` sorted before `table2` by name.
+describe('table CSV numbering', () => {
+  const note = '002_WT020_C.labnote.md';
+  const csv = (n: string) => `002_WT020_C.labnote_table${n}.csv`;
+
+  it('pads the number to the digits of the table count', () => {
+    expect(tableCsvName(note, 1, 9)).toBe(csv('1'));
+    expect(tableCsvName(note, 1, 11)).toBe(csv('01'));
+    expect(tableCsvName(note, 11, 11)).toBe(csv('11'));
+    expect(tableCsvName(note, 7, 100)).toBe(csv('007'));
+  });
+
+  it('renames the CSVs of a note that now has ten tables or more', () => {
+    const files = [note, csv('1'), csv('2'), csv('9'), csv('10')];
+    expect(planTableCsvNames(note, files, 11)).toEqual({
+      names: ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11'].map(csv),
+      renames: [
+        { from: csv('1'), to: csv('01') },
+        { from: csv('2'), to: csv('02') },
+        { from: csv('9'), to: csv('09') },
+      ],
+      stale: [],
+    });
+  });
+
+  it('renames back when the note goes below ten tables, and leaves the rest for the trash', () => {
+    const files = [csv('01'), csv('02'), csv('10'), csv('11')];
+    expect(planTableCsvNames(note, files, 2)).toEqual({
+      names: [csv('1'), csv('2')],
+      renames: [
+        { from: csv('01'), to: csv('1') },
+        { from: csv('02'), to: csv('2') },
+      ],
+      stale: [csv('10'), csv('11')],
+    });
+  });
+
+  it('does not rename onto an existing file, and offers the old name for the trash instead', () => {
+    const files = [csv('1'), csv('01'), csv('2')];
+    expect(planTableCsvNames(note, files, 10)).toEqual({
+      names: expect.any(Array),
+      renames: [{ from: csv('2'), to: csv('02') }],
+      stale: [csv('1')],
+    });
+    expect(staleTableCsvs(note, files, 10)).toEqual([csv('1')]);
+  });
+
+  it('changes nothing for a note with nine tables or fewer', () => {
+    const files = [csv('1'), csv('2'), csv('3')];
+    expect(planTableCsvNames(note, files, 3)).toEqual({ names: files, renames: [], stale: [] });
   });
 });
 
