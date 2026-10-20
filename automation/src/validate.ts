@@ -20,6 +20,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { isValidStatus, EXPERIMENT_STATUSES } from '@labnoteo/core/lib/experimentStatus';
 import { parseFrontMatterYaml, parseIssueMarkers } from '@labnoteo/core';
+import { unrecognizedDiscussValue } from '@labnoteo/core/lib/discussFlag';
 import { run as runLargeFileCheck } from './lib/largeFiles';
 import { isVaultRoot, vaultRootFromScript } from './lib/vaultRoot';
 import {
@@ -109,6 +110,26 @@ export function validateExperiments(notes: ValidatedNote[]): string[] {
 }
 
 /**
+ * Warnings that do not fail the check: a `discuss` value that reads as neither
+ * on nor off (#208), which opens no issue although the researcher may think
+ * the experiment is flagged.
+ */
+export function validationWarnings(notes: ValidatedNote[]): string[] {
+  const warnings: string[] = [];
+  for (const note of notes) {
+    if (note.parseError || readStringField(note.frontMatter, 'experiment_type') !== 'labnote') continue;
+    const discuss = unrecognizedDiscussValue(note.frontMatter);
+    if (discuss !== undefined) {
+      warnings.push(
+        `${note.path}: \`discuss: ${discuss}\` is not read as a discussion flag, so no issue is opened ` +
+          '(use `true`, `yes` or `예` to flag, or remove the line).'
+      );
+    }
+  }
+  return warnings;
+}
+
+/**
  * Errors for one experiment's `@issue` markers: malformed ones, and IDs reused
  * within the experiment (which would collapse two discussions into one issue).
  *
@@ -178,6 +199,9 @@ export function run(argv: string[] = process.argv.slice(2)): number {
   const notes = loadNotes();
   const errors = validateExperiments(notes);
 
+  for (const warning of validationWarnings(notes)) {
+    console.warn(`⚠ ${warning}`);
+  }
   for (const err of errors) {
     console.error(`❌ ${err}`);
   }

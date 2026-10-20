@@ -8,7 +8,7 @@
 import { App, Modal, Notice, Platform, Setting } from 'obsidian';
 import * as posix from '@labnoteo/core/posix';
 import type LabnotePlugin from './main';
-import { isSameSampleFolder, noteLabsamplesFolder } from '@labnoteo/core/lib/sampleStorage';
+import { isSameSampleFolder, noteLocalSampleFolder } from '@labnoteo/core/lib/sampleStorage';
 import {
   editSampleInteractive,
   deleteSampleInteractive,
@@ -51,8 +51,11 @@ class SampleDefinitionModal extends Modal {
   private moveTarget(): { toFolder: string; label: string } | undefined {
     const { scope, folder } = this.resolved;
     const globalFolder = this.plugin.settings.globalSampleFolder;
-    if (scope === 'local') return { toFolder: globalFolder, label: this.plugin.t('Move to Global') };
-    const local = this.docPath ? noteLabsamplesFolder(this.docPath, globalFolder) : '';
+    if (scope === 'local') {
+      if (!globalFolder || isSameSampleFolder(folder, globalFolder)) return undefined;
+      return { toFolder: globalFolder, label: this.plugin.t('Move to Global') };
+    }
+    const local = this.docPath ? noteLocalSampleFolder(this.docPath, globalFolder) : undefined;
     if (!local || isSameSampleFolder(local, folder)) return undefined;
     return { toFolder: local, label: this.plugin.t('Move to Local') };
   }

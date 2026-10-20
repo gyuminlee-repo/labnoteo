@@ -5,7 +5,7 @@
 const largeFileCheck = vi.hoisted(() => vi.fn(() => 0));
 vi.mock('./lib/largeFiles', () => ({ run: largeFileCheck }));
 
-import { run, validateExperiments, type ValidatedNote } from './validate';
+import { run, validateExperiments, validationWarnings, type ValidatedNote } from './validate';
 
 const note = (
   path: string,
@@ -211,5 +211,21 @@ describe('run --notes-only', () => {
     } finally {
       log.mockRestore();
     }
+  });
+});
+
+// #208: `discuss: maybe` opened no issue and nothing said so.
+describe('validationWarnings', () => {
+  it('warns about a discuss value that reads as neither on nor off, without failing', () => {
+    const notes = [
+      note('labnote/001_A/README.labnote.md', { status: 'in-progress', discuss: 'maybe' }),
+      note('labnote/002_B/README.labnote.md', { status: 'in-progress', discuss: 'yes' }),
+      note('labnote/003_C/README.labnote.md', { status: 'in-progress' }),
+    ];
+    const warnings = validationWarnings(notes);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('labnote/001_A/README.labnote.md');
+    expect(warnings[0]).toContain('discuss: maybe');
+    expect(validateExperiments(notes)).toEqual([]);
   });
 });

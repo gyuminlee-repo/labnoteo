@@ -6,8 +6,8 @@
  * the end of the line, which is the only thing to click while the value is
  * still empty. Clicking opens the platform's native date/time picker via
  * `<input type="datetime-local">` and writes the chosen value back through
- * editor transactions, so undo/redo and Obsidian's own save pipeline keep
- * working normally.
+ * editor transactions, so Obsidian's own save pipeline keeps working and one
+ * use of the picker is one undo step (#85).
  *
  * Line parsing lives in `@labnoteo/core/lib/dateUtils` ({@link findMetaDateFieldInLine})
  * so it stays unit-tested and shared with any other consumer.
@@ -23,13 +23,24 @@ import {
   type DecorationSet,
   type ViewUpdate,
 } from '@codemirror/view';
-import { Prec, RangeSetBuilder } from '@codemirror/state';
+import { Prec, RangeSetBuilder, Transaction } from '@codemirror/state';
+import { Notice } from 'obsidian';
 import {
   findMetaDateFieldInLine,
+  findPairedMetaDate,
   fromDateTimeLocalValue,
   getSeoulDateTimeString,
+  isEndBeforeStart,
   toDateTimeLocalValue,
 } from '@labnoteo/core/lib/dateUtils';
+
+/** Localized strings the picker shows. */
+export interface MetaDatePickerLabels {
+  /** Tooltip of the calendar affordance. */
+  pick: string;
+  /** Notice for an End_date earlier than its Start_date (#192). */
+  endBeforeStart: (end: string, start: string) => string;
+}
 
 const VALUE_CLASS = 'labnote-date-value';
 const ICON_CLASS = 'labnote-date-pick';
@@ -41,21 +52,22 @@ let openPicker: { commit: () => void; cancel: () => void; close: () => void } | 
 /** Calendar affordance rendered at the end of every date field line. */
 class DatePickIconWidget extends WidgetType {
   constructor(
-    private readonly label: string,
+    private readonly labels: MetaDatePickerLabels,
     private readonly lineNumber: number
   ) {
     super();
   }
 
   eq(other: DatePickIconWidget): boolean {
-    return other.label === this.label && other.lineNumber === this.lineNumber;
+    return other.labels === this.labels && other.lineNumber === this.lineNumber;
   }
 
   toDOM(view: EditorView): HTMLElement {
-    const el = document.createElement('span');
+    // The editor's own document: a popout window has another one (#191).
+    const el = view.dom.ownerDocument.createElement('span');
     el.className = ICON_CLASS;
     el.textContent = '📅';
-    el.setAttribute('aria-label', this.label);
+    el.setAttribute('aria-label', this.labels.pick);
     // mousedown only suppresses the caret jump; the field opens on click, once
     // the editor has settled, so nothing steals focus from it afterwards.
     el.addEventListener('mousedown', event => {
@@ -63,17 +75,14 @@ class DatePickIconWidget extends WidgetType {
       event.stopPropagation();
     });
     el.addEventListener('click', event => {
-      openPickerOnLine(view, this.lineNumber, event.clientX, event.clientY);
+      openPickerOnLine(view, this.labels, this.lineNumber, event.clientX, event.clientY);
     });
     return el;
   }
 }
 
-/**
- * Editor extension enabling the click-to-pick behaviour. `label` is the
- * localized tooltip for the calendar affordance.
- */
-export function createMetaDatePickerExtension(label: string) {
+/** Editor extension enabling the click-to-pick behaviour. */
+export function createMetaDatePickerExtension(labels: MetaDatePickerLabels) {
   const plugin = ViewPlugin.fromClass(
     class {
       decorations: DecorationSet;
@@ -109,7 +118,7 @@ export function createMetaDatePickerExtension(label: string) {
                 line.to,
                 line.to,
                 Decoration.widget({
-                  widget: new DatePickIconWidget(label, line.number),
+                  widget: new DatePickIconWidget(labels, line.number),
                   side: 1,
                 })
               );
@@ -148,15 +157,27 @@ export function createMetaDatePickerExtension(label: string) {
         if (!target?.closest(`.${VALUE_CLASS}`)) return false;
         const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
         if (pos === null) return false;
-        openPickerOnLine(view, view.state.doc.lineAt(pos).number, event.clientX, event.clientY);
+        openPickerOnLine(view, labels, view.state.doc.lineAt(pos).number, event.clientX, event.clientY);
         return false;
       },
     }),
   ];
 }
 
-/** Open the picker for the Meta date field on the given line. */
-function openPickerOnLine(view: EditorView, lineNumber: number, x: number, y: number): void {
+/**
+ * Open the picker for the Meta date field on the given line.
+ *
+ * Values written while it is open stay out of the undo history; on closing,
+ * the line goes back to how it was and the final value is written once, so a
+ * single Ctrl+Z undoes the whole pick (#85). Escape only goes back.
+ */
+function openPickerOnLine(
+  view: EditorView,
+  labels: MetaDatePickerLabels,
+  lineNumber: number,
+  x: number,
+  y: number
+): void {
   if (lineNumber > view.state.doc.lines) return;
   const line = view.state.doc.line(lineNumber);
   const match = findMetaDateFieldInLine(line.text);
@@ -166,6 +187,9 @@ function openPickerOnLine(view: EditorView, lineNumber: number, x: number, y: nu
     toDateTimeLocalValue(match.value) || toDateTimeLocalValue(getSeoulDateTimeString());
   const originalLine = line.text;
   let written = false;
+  // The other date of the block bounds this one; no bound while it is empty (#192).
+  const paired = findPairedMetaDate(view.state.doc.toJSON(), lineNumber - 1);
+  const bound = paired ? toDateTimeLocalValue(paired.value) : '';
 
   // The document may have changed while the picker was open, so the target
   // line is resolved again on every write instead of trusting captured offsets.
@@ -176,10 +200,32 @@ function openPickerOnLine(view: EditorView, lineNumber: number, x: number, y: nu
     return target && target.field === match.field ? { current, target } : null;
   };
 
+  const replaceLine = (text: string, record: boolean): void => {
+    const found = currentLine();
+    if (!found || found.current.text === text) return;
+    view.dispatch({
+      changes: { from: found.current.from, to: found.current.to, insert: text },
+      userEvent: 'input.date',
+      ...(record ? {} : { annotations: Transaction.addToHistory.of(false) }),
+    });
+  };
+
+  /** Say once, on closing, when the block's End_date is now before its Start_date. */
+  const warnIfOutOfOrder = (): void => {
+    const found = currentLine();
+    const other = findPairedMetaDate(view.state.doc.toJSON(), lineNumber - 1);
+    if (!found || !other) return;
+    const [start, end] =
+      match.field === 'End_date' ? [other.value, found.target.value] : [found.target.value, other.value];
+    if (isEndBeforeStart(start, end)) new Notice(labels.endBeforeStart(end, start), 8000);
+  };
+
   openDateTimePicker({
+    doc: view.dom.ownerDocument,
     x,
     y,
     initial,
+    ...(bound ? (match.field === 'End_date' ? { min: bound } : { max: bound }) : {}),
     onPick: picked => {
       const value = fromDateTimeLocalValue(picked);
       const found = value ? currentLine() : null;
@@ -192,23 +238,23 @@ function openPickerOnLine(view: EditorView, lineNumber: number, x: number, y: nu
           insert: target.quote ? value : `'${value}'`,
         },
         userEvent: 'input.date',
+        annotations: Transaction.addToHistory.of(false),
       });
       written = true;
     },
     onClose: reason => {
-      if (reason === 'cancel' && written) {
-        const found = currentLine();
-        if (found) {
-          view.dispatch({
-            changes: { from: found.current.from, to: found.current.to, insert: originalLine },
-            userEvent: 'input.date',
-          });
+      if (written) {
+        const picked = currentLine()?.current.text;
+        replaceLine(originalLine, false);
+        if (reason !== 'cancel' && picked !== undefined) {
+          replaceLine(picked, true);
+          warnIfOutOfOrder();
         }
       }
       // Deferred so the key that closed the field has finished before the
       // editor takes focus; otherwise its default action lands there (#85).
       // A click elsewhere decides focus by itself.
-      if (reason !== 'outside') window.setTimeout(() => view.focus(), 0);
+      if (reason !== 'outside') view.dom.ownerDocument.defaultView?.setTimeout(() => view.focus(), 0);
     },
   });
 }
@@ -217,10 +263,15 @@ function openPickerOnLine(view: EditorView, lineNumber: number, x: number, y: nu
 type PickerCloseReason = 'commit' | 'cancel' | 'outside';
 
 interface DateTimePickerOptions {
+  /** The document of the editor's window, which may be a popout (#191). */
+  doc: Document;
   x: number;
   y: number;
   /** `YYYY-MM-DDTHH:mm`, the value shape `datetime-local` expects. */
   initial: string;
+  /** Earliest / latest value the native calendar offers, same shape (#192). */
+  min?: string;
+  max?: string;
   /** Write a chosen value into the note. May run more than once per field. */
   onPick: (value: string) => void;
   onClose: (reason: PickerCloseReason) => void;
@@ -247,22 +298,26 @@ interface DateTimePickerOptions {
 function openDateTimePicker(opts: DateTimePickerOptions): void {
   // Never leave a second field behind if one is somehow still open.
   openPicker?.close();
-  document.querySelectorAll(`.${PICKER_CLASS}`).forEach(el => el.remove());
+  const { doc } = opts;
+  const win = doc.defaultView ?? window;
+  doc.querySelectorAll(`.${PICKER_CLASS}`).forEach(el => el.remove());
 
-  const input = document.createElement('input');
+  const input = doc.createElement('input');
   input.type = 'datetime-local';
   input.className = PICKER_CLASS;
+  if (opts.min) input.min = opts.min;
+  if (opts.max) input.max = opts.max;
   input.value = opts.initial;
   input.style.left = `${opts.x}px`;
   input.style.top = `${opts.y + 12}px`;
-  document.body.appendChild(input);
+  doc.body.appendChild(input);
 
   let closed = false;
   const finish = (reason: PickerCloseReason): void => {
     if (closed) return;
     closed = true;
     if (openPicker === handle) openPicker = null;
-    document.removeEventListener('pointerdown', onOutsidePointerDown, true);
+    doc.removeEventListener('pointerdown', onOutsidePointerDown, true);
     input.remove();
     opts.onClose(reason);
   };
@@ -294,13 +349,13 @@ function openDateTimePicker(opts: DateTimePickerOptions): void {
     else handle.cancel();
   });
   // Armed a tick later so the very click that opened the field cannot close it.
-  window.setTimeout(() => {
-    if (!closed) document.addEventListener('pointerdown', onOutsidePointerDown, true);
+  win.setTimeout(() => {
+    if (!closed) doc.addEventListener('pointerdown', onOutsidePointerDown, true);
   }, 0);
 
   // Also a tick later: focusing now loses to the editor, which takes focus
   // back once the click that opened the field has been handled (#85).
-  window.setTimeout(() => {
+  win.setTimeout(() => {
     if (!closed) input.focus();
   }, 0);
   const withPicker = input as HTMLInputElement & { showPicker?: () => void };

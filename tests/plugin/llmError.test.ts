@@ -27,6 +27,17 @@ describe('describeLlmError', () => {
     expect(describeLlmError(new Error('Request timed out'), settings(), t)).toContain('Cannot connect to Ollama');
   });
 
+  // #203: an endpoint that is not http(s) showed the raw ClientRequest error.
+  it('says how to write the endpoint when it is not an http(s) address', () => {
+    const err = new Error('ClientRequest only supports http: and https: protocols');
+    expect(describeLlmError(err, settings({ llmEndpointOllama: 'htp://localhost:11434' }), t)).toBe(
+      'htp://localhost:11434 is not an http:// or https:// address. Check Settings → Labnote Assistant → AI provider → Ollama endpoint: write it like http://localhost:11434.'
+    );
+    expect(describeLlmError(new TypeError('Invalid URL'), settings({ llmProvider: 'openai' }), t)).toContain(
+      'write it like https://api.openai.com.'
+    );
+  });
+
   it('points 401 and 403 to the API key', () => {
     for (const status of [401, 403]) {
       expect(describeLlmError(new LlmHttpError('OpenAI', status, '{}'), settings({ llmProvider: 'openai' }), t)).toBe(

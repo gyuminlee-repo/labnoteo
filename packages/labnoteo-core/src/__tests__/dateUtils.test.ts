@@ -3,6 +3,8 @@ import {
   getSeoulDateString,
   findDateFieldsInDocument,
   findMetaDateFieldInLine,
+  findPairedMetaDate,
+  isEndBeforeStart,
   fromDateTimeLocalValue,
   readLastUpdatedDate,
   toDateTimeLocalValue,
@@ -114,6 +116,41 @@ describe('datetime-local conversions', () => {
     expect(toDateTimeLocalValue('')).toBe('');
     expect(toDateTimeLocalValue('not a date')).toBe('');
     expect(fromDateTimeLocalValue('2026-09-06')).toBe('');
+  });
+});
+
+// #192: an End_date before its Start_date was saved without a word.
+describe('findPairedMetaDate / isEndBeforeStart', () => {
+  const lines = [
+    '### [UHW010 PCR]',
+    '#### Meta',
+    '- Experimenter: 홍길동',
+    "- Start_date: '2026-10-19 17:17'",
+    "- End_date: ''",
+    '#### Method',
+    '### [UHW020 Gel]',
+    '#### Meta',
+    "- End_date: '2026-10-20 09:00'",
+  ];
+
+  it('finds the other date of the same Meta block', () => {
+    expect(findPairedMetaDate(lines, 4)).toEqual({ field: 'Start_date', value: '2026-10-19 17:17' });
+    expect(findPairedMetaDate(lines, 3)).toEqual({ field: 'End_date', value: '' });
+  });
+
+  it('does not look past a heading or off a date line', () => {
+    expect(findPairedMetaDate(lines, 8)).toBeUndefined();
+    expect(findPairedMetaDate(lines, 2)).toBeUndefined();
+    expect(findPairedMetaDate(lines, 99)).toBeUndefined();
+  });
+
+  it('compares dates with or without a time, ignoring empty values', () => {
+    expect(isEndBeforeStart('2026-10-19 17:17', '2025-10-19 17:21')).toBe(true);
+    expect(isEndBeforeStart('2026-10-19 17:17', '2026-10-19 17:16')).toBe(true);
+    expect(isEndBeforeStart('2026-10-19 17:17', '2026-10-19 17:17')).toBe(false);
+    expect(isEndBeforeStart('2026-10-19', '2026-10-19 08:00')).toBe(false);
+    expect(isEndBeforeStart('', '2026-10-19 08:00')).toBe(false);
+    expect(isEndBeforeStart('2026-10-19 08:00', '')).toBe(false);
   });
 });
 

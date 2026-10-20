@@ -25,6 +25,14 @@ describe('joinUrl', () => {
   it('leaves slashes inside the path alone', () => {
     expect(joinUrl('http://h:1', '/v1/chat/completions')).toBe('http://h:1/v1/chat/completions');
   });
+
+  // #203: 'localhost:11434' without a scheme failed with a raw "ClientRequest only supports http:" error.
+  it('adds http:// to a base without a scheme and keeps an existing one', () => {
+    expect(joinUrl('localhost:11434', '/api/chat')).toBe('http://localhost:11434/api/chat');
+    expect(joinUrl(' 127.0.0.1:11434/ ', 'api/chat')).toBe('http://127.0.0.1:11434/api/chat');
+    expect(joinUrl('https://api.openai.com', '/v1/chat/completions')).toBe('https://api.openai.com/v1/chat/completions');
+    expect(joinUrl('HTTP://h:1', '/x')).toBe('HTTP://h:1/x');
+  });
 });
 
 describe('createLlmProvider', () => {
@@ -114,6 +122,20 @@ describe('provider.chat', () => {
     respond(200, { choices: [] });
     const openai = createLlmProvider(settings({ llmProvider: 'openai' }));
     expect((await openai!.chat([])).content).toBe('');
+  });
+
+  // #195: a thinking model that answers with reasoning only is marked so.
+  it('marks a reply with reasoning but no content as thinking-only', async () => {
+    respond(200, { message: { content: '', thinking: 'Let me think…' } });
+    const ollama = createLlmProvider(settings({ llmProvider: 'ollama' }));
+    expect(await ollama!.chat([])).toEqual({ content: '', toolCalls: [], thinkingOnly: true });
+
+    respond(200, { choices: [{ message: { content: null, reasoning_content: 'hmm' } }] });
+    const openai = createLlmProvider(settings({ llmProvider: 'openai' }));
+    expect((await openai!.chat([])).thinkingOnly).toBe(true);
+
+    respond(200, { message: { content: 'answer', thinking: 'Let me think…' } });
+    expect((await ollama!.chat([])).thinkingOnly).toBeUndefined();
   });
 
   it('throws with the status and body on an error response', async () => {

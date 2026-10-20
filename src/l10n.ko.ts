@@ -19,6 +19,7 @@ const obsidianKo: Record<string, string> = {
   'Insert unit operation': '유닛 오퍼레이션 삽입',
   'Insert date': '날짜 삽입',
   'Insert date and time': '날짜 및 시간 삽입',
+  'End_date {0} is earlier than Start_date {1}.': 'End_date({0})가 Start_date({1})보다 이릅니다.',
   'Pick date and time': '날짜 및 시간 선택',
   'Export tables to CSV': '표를 CSV로 내보내기',
   'Open workflow view': '워크플로 뷰 열기',
@@ -37,9 +38,20 @@ const obsidianKo: Record<string, string> = {
     '예: PCR 조건을 설명하는 Method 섹션 추가',
   'Allow AI tool "{0}" to modify the vault?': 'AI 툴 "{0}"이(가) 보관함을 수정하도록 허용할까요?',
   'AI stopped after too many steps.': 'AI가 너무 많은 단계를 거쳐 중단되었습니다.',
-  'AI ran {0} tool call(s).': 'AI가 툴을 {0}회 호출했습니다.',
   'The assistant gave no answer. What you asked may be outside the tools it can use.':
     '어시스턴트가 답을 주지 않았습니다. 요청한 일이 쓸 수 있는 도구 밖일 수 있습니다.',
+  'The assistant gave no answer.': '어시스턴트가 답을 주지 않았습니다.',
+  'The model gave no answer (it only thought). Try again or choose another model.':
+    '모델이 답을 주지 않았습니다(생각만 하고 끝남). 다시 시도하거나 다른 모델을 고르세요.',
+  'The model gave no answer. Try again or choose another model.':
+    '모델이 답을 주지 않았습니다. 다시 시도하거나 다른 모델을 고르세요.',
+  'The AI used no tools; nothing in the vault changed.': 'AI가 도구를 쓰지 않았습니다. 보관함은 바뀌지 않았습니다.',
+  'AI tool calls: {0}.': 'AI 도구 호출: {0}.',
+  '{0} change(s) made': '변경 {0}건',
+  '{0} lookup(s)': '조회 {0}건',
+  '{0} denied by you': '거절 {0}건',
+  '{0} failed': '실패 {0}건',
+  'Nothing in the vault changed.': '보관함은 바뀌지 않았습니다.',
   'AI answer': 'AI 답변',
   'Insert into note': '노트에 넣기',
   'Copy': '복사',
@@ -467,6 +479,10 @@ const obsidianKo: Record<string, string> = {
   'Settings': '설정',
   'Cannot connect to {0} ({1}). Check that it is running and that {2} is right.':
     '{0}에 연결할 수 없습니다({1}). 실행 중인지, {2} 값이 맞는지 확인하세요.',
+  '{0} is not an http:// or https:// address. Check {1}: write it like {2}.':
+    '{0}은(는) http:// 또는 https:// 주소가 아닙니다. {1} 값을 {2}처럼 적으세요.',
+  'Without http:// or https://, http:// is added when connecting.':
+    'http:// 또는 https://를 빼고 적으면 접속할 때 http://를 붙입니다.',
   'The API key is missing or wrong. Check {0}.': 'API 키가 없거나 잘못되었습니다. {0} 값을 확인하세요.',
   'Model {0} was not found. Check {1}.': '모델 {0}을(를) 찾을 수 없습니다. {1} 값을 확인하세요.',
   '{0} has no such address (404). Check {1}: enter only the server address, without a path such as /v1 or /api.':
@@ -523,6 +539,8 @@ const obsidianKo: Record<string, string> = {
     '아래 노트의 실험자(experimenter)가 README의 author와 다릅니다. 노트를 고칠까요?',
   '{0} unit operation line(s)': '유닛 오퍼레이션 {0}줄',
   '{0} kept because the unit operation has an End_date': '{0}줄은 End_date가 있는 유닛 오퍼레이션이라 유지',
+  '{0} left empty because the unit operation is finished; fill it in yourself':
+    '{0}줄은 끝난 유닛 오퍼레이션이라 비어 있는 채로 둠(직접 채우세요)',
   '(empty)': '(비어 있음)',
   '{0} note(s) updated.': '노트 {0}개를 고쳤습니다.',
   'Name this copy of the workflow': '복제한 워크플로의 이름',
@@ -530,9 +548,14 @@ const obsidianKo: Record<string, string> = {
     '복제본의 이슈 마커 {0}개에 새 ID를 붙였습니다(원본의 이슈와 섞이지 않게).',
   '{0} table CSV file(s) kept their old name: the new name was taken or the rename failed.':
     '표 CSV 파일 {0}개는 옛 이름 그대로 두었습니다. 새 이름의 파일이 이미 있거나 이름 변경에 실패했습니다.',
+  'Moved {0} table CSV file(s) to {1} with the note.': '노트와 함께 표 CSV 파일 {0}개를 {1}(으)로 옮겼습니다.',
+  '{0} table CSV file(s) stayed in {1}: a file with the same name is already in {2}, or the move failed.':
+    '표 CSV 파일 {0}개는 {1}에 남았습니다. {2}에 같은 이름의 파일이 이미 있거나 옮기지 못했습니다.',
   '{0} got a new ID because theirs did not match <Type>-<number>.':
     '{0}개는 ID가 <타입>-<숫자> 형식이 아니어서 새 ID를 만들었습니다.',
   '{0} skipped: unknown sample type.': '{0}개는 알 수 없는 샘플 타입이라 건너뛰었습니다.',
+  '{0} have no storage location; add it with Edit sample in the Samples view.':
+    "{0}개는 보관 위치가 없습니다. 샘플 뷰에서 '샘플 편집'으로 넣으세요.",
   'This note is outside an experiment folder, so they were added to Global samples.':
     '이 노트는 실험 폴더 밖에 있어 전역 샘플에 추가했습니다.',
 

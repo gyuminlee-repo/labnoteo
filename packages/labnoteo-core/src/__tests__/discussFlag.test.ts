@@ -6,7 +6,7 @@
  * coverage of the shapes a note's front matter can actually carry.
  */
 import { describe, it, expect } from 'vitest';
-import { DISCUSS_FLAG_KEY, isDiscussFlagged, setDiscussFlag } from '../lib/discussFlag';
+import { DISCUSS_FLAG_KEY, isDiscussFlagged, setDiscussFlag, unrecognizedDiscussValue } from '../lib/discussFlag';
 
 describe('isDiscussFlagged', () => {
   it('accepts the boolean written by the toggle command', () => {
@@ -19,12 +19,37 @@ describe('isDiscussFlagged', () => {
     expect(isDiscussFlagged({ discuss: ' true ' })).toBe(true);
   });
 
+  // Changed expectation (#208): `yes` used to read as not flagged, like the
+  // same README's `sample_tracking: yes` suggests it should not.
+  it('accepts yes, y, on, 1, 예 and 네', () => {
+    for (const v of ['yes', 'Yes', 'y', 'on', '1', '예', ' 네 ']) {
+      expect(isDiscussFlagged({ discuss: v })).toBe(true);
+    }
+    expect(isDiscussFlagged({ discuss: 1 })).toBe(true);
+  });
+
   it('is false when absent, false, or any other value', () => {
     expect(isDiscussFlagged({})).toBe(false);
     expect(isDiscussFlagged({ discuss: false })).toBe(false);
     expect(isDiscussFlagged({ discuss: 'false' })).toBe(false);
-    expect(isDiscussFlagged({ discuss: 'yes' })).toBe(false);
+    expect(isDiscussFlagged({ discuss: 'no' })).toBe(false);
+    expect(isDiscussFlagged({ discuss: 'maybe' })).toBe(false);
+    expect(isDiscussFlagged({ discuss: null })).toBe(false);
     expect(isDiscussFlagged({ status: 'in-progress' })).toBe(false);
+  });
+});
+
+describe('unrecognizedDiscussValue (#208)', () => {
+  it('returns a value that reads as neither on nor off', () => {
+    expect(unrecognizedDiscussValue({ discuss: 'maybe' })).toBe('maybe');
+    expect(unrecognizedDiscussValue({ discuss: '논의' })).toBe('논의');
+  });
+
+  it('is undefined for on, off, empty or absent values', () => {
+    for (const v of [true, false, null, 'yes', 'no', '예', '아니오', '', 'TRUE', 0]) {
+      expect(unrecognizedDiscussValue({ discuss: v })).toBeUndefined();
+    }
+    expect(unrecognizedDiscussValue({})).toBeUndefined();
   });
 });
 

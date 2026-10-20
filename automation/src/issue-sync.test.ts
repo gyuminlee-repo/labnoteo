@@ -17,6 +17,10 @@ describe('shouldPromote', () => {
     expect(shouldPromote({ discuss: true })).toBe(true);
     expect(shouldPromote({ discuss: 'true' })).toBe(true);
   });
+  it('promotes on discuss: yes or 예, as the plugin reads them (#208)', () => {
+    expect(shouldPromote({ discuss: 'yes' })).toBe(true);
+    expect(shouldPromote({ discuss: '예' })).toBe(true);
+  });
   it('promotes on status: needs-review', () => {
     expect(shouldPromote({ status: 'needs-review' })).toBe(true);
   });

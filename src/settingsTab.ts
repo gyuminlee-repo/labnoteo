@@ -230,6 +230,7 @@ export class LabnoteSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName(this.plugin.t('Ollama endpoint'))
+      .setDesc(this.plugin.t('Without http:// or https://, http:// is added when connecting.'))
       .addText(t =>
         t.setValue(s.llmEndpointOllama).onChange(v => {
           s.llmEndpointOllama = v.trim();
@@ -239,6 +240,7 @@ export class LabnoteSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName(this.plugin.t('OpenAI endpoint'))
+      .setDesc(this.plugin.t('Without http:// or https://, http:// is added when connecting.'))
       .addText(t =>
         t.setValue(s.llmEndpointOpenai).onChange(v => {
           s.llmEndpointOpenai = v.trim();

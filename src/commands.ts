@@ -942,7 +942,7 @@ export async function renumberWorkflowsCommand(
       moved.push(move);
       names.delete(move.from);
       names.add(move.to);
-      csvSkipped += await moveTableCsvs(app, labnoteDir, move, names);
+      csvSkipped += (await moveTableCsvs(app, { from: labnoteDir, to: labnoteDir }, move, names)).skipped;
     }
   } finally {
     try {
@@ -1000,34 +1000,39 @@ export function netRenames(moves: readonly WorkflowRename[]): Map<string, string
 
 /**
  * Move a workflow note's `<note>_tableN.csv` exports along with it (#60), so
- * they keep the note's name and number. `names` is the folder's current
- * listing (base names) and is updated as files move. A CSV whose new name is
- * taken, or whose rename fails, stays put; returns how many did.
+ * they keep the note's name and number, from `dirs.from` to `dirs.to` (the
+ * same folder for a rename, another one for a move, #206). `names` and
+ * `toNames` are the two folders' current listings (base names; one set for a
+ * rename) and are updated as files move. A CSV whose new name is taken, or
+ * whose rename fails, stays put and counts as skipped.
  */
 export async function moveTableCsvs(
   app: App,
-  dir: string,
+  dirs: { from: string; to: string },
   note: WorkflowRename,
-  names: Set<string>
-): Promise<number> {
+  names: Set<string>,
+  toNames: Set<string> = names
+): Promise<{ moved: number; skipped: number }> {
+  let moved = 0;
   let skipped = 0;
-  if (note.from === note.to) return 0;
+  if (dirs.from === dirs.to && note.from === note.to) return { moved, skipped };
   for (const csv of planTableCsvMoves(note.from, note.to, [...names])) {
-    const file = app.vault.getFileByPath(posix.join(dir, csv.from));
-    if (!(file instanceof TFile) || names.has(csv.to)) {
+    const file = app.vault.getFileByPath(posix.join(dirs.from, csv.from));
+    if (!(file instanceof TFile) || toNames.has(csv.to)) {
       skipped++;
       continue;
     }
     try {
-      await app.fileManager.renameFile(file, posix.join(dir, csv.to));
+      await app.fileManager.renameFile(file, posix.join(dirs.to, csv.to));
       names.delete(csv.from);
-      names.add(csv.to);
+      toNames.add(csv.to);
+      moved++;
     } catch (err) {
       console.warn('[labnoteo] could not move table CSV:', err);
       skipped++;
     }
   }
-  return skipped;
+  return { moved, skipped };
 }
 
 /**
@@ -1334,8 +1339,11 @@ export async function syncWorkflowChecklistCommand(
       .map(e => {
         const counts = [
           host.t('{0} unit operation line(s)', String(e.unitOpLines)),
-          ...(e.skippedLines > 0
-            ? [host.t('{0} kept because the unit operation has an End_date', String(e.skippedLines))]
+          ...(e.skippedLines > e.skippedEmptyLines
+            ? [host.t('{0} kept because the unit operation has an End_date', String(e.skippedLines - e.skippedEmptyLines))]
+            : []),
+          ...(e.skippedEmptyLines > 0
+            ? [host.t('{0} left empty because the unit operation is finished; fill it in yourself', String(e.skippedEmptyLines))]
             : []),
         ].join(', ');
         return `- ${e.name}: ${e.from || host.t('(empty)')} → ${e.to} (${counts})`;
