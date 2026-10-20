@@ -20,6 +20,7 @@ import type {
 } from '@labnoteo/core';
 import {
   insertUnitOperation,
+  workflowPathProblem,
   rebuildUnitOpToc,
   locateInsertedUnitOpHeading,
   unitOpInsertPointAtCursor,
@@ -801,6 +802,17 @@ export async function insertUnitOpAndUpdateToc(
 
 /** Insert a unit-operation block after the one the cursor is in + update the workflow TOC. */
 export async function insertUnitOperationCommand(app: App, host: LabnoteHost): Promise<void> {
+  const opened = host.editTarget();
+  if (!opened) {
+    host.notify('warn', host.t('Please open a workflow file.'));
+    return;
+  }
+  const problem = workflowPathProblem(host, opened.path);
+  if (problem) {
+    host.notify('warn', problem);
+    return;
+  }
+
   await ensureWorkflowResources(host.fs, VAULT_ROOT);
   const hw = await loadUnitOperations(host.fs, VAULT_ROOT, 'hw');
   const sw = await loadUnitOperations(host.fs, VAULT_ROOT, 'sw');

@@ -134,6 +134,13 @@ body > input.labnote-datetime-picker {
 }
 
 /* --- Pickers / suggestions ---------------------------------------------- */
+.labnote-pick-title {
+  padding: var(--size-4-2) var(--size-4-3) 0;
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
 .labnote-pick-desc,
 .labnote-pick-detail,
 .labnote-suggest-detail {

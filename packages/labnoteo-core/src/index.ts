@@ -131,6 +131,7 @@ export type {
 export {
   insertUnitOperation,
   unitOpInsertPointAtCursor,
+  workflowPathProblem,
   type InsertUnitOperationInput,
 } from './commands/insertUnitOperation';
 

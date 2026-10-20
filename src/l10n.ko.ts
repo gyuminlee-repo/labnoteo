@@ -253,6 +253,10 @@ const obsidianKo: Record<string, string> = {
   'Please open a workflow file.': '워크플로 파일을 열어주세요.',
   'Please run this command on a workflow file inside the labnote folder.':
     'labnote 폴더 내의 워크플로 파일에서 실행해주세요.',
+  'README.labnote.md is the experiment overview and holds no unit operations. Open one of its workflow notes (###_….labnote.md), or make one with "{0}".':
+    'README.labnote.md는 실험 개요 노트라 유닛 오퍼레이션을 넣지 않습니다. 이 실험의 워크플로 노트(###_….labnote.md)를 열거나 "{0}"으로 새로 만드세요.',
+  '"{0}" is not a workflow note: unit operations go into a ###_….labnote.md note directly in the experiment folder. Open one, or make one with "{1}".':
+    '"{0}"은(는) 워크플로 노트가 아닙니다. 유닛 오퍼레이션은 실험 폴더 바로 아래의 ###_….labnote.md 노트에 넣습니다. 그런 노트를 열거나 "{1}"으로 새로 만드세요.',
   'Missing unit operation info.': '유닛 오퍼레이션 정보가 없습니다.',
 
   // Sample view context menu

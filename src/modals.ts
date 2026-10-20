@@ -26,6 +26,9 @@ class PickModal<T> extends SuggestModal<PickItem<T>> {
   ) {
     super(app);
     if (opts?.placeholder) this.setPlaceholder(opts.placeholder);
+    // A SuggestModal has no title bar; without this the picker never says
+    // what is being chosen or for which note (#141).
+    if (opts?.title) this.modalEl.prepend(createDiv({ cls: 'labnote-pick-title', text: opts.title }));
   }
 
   getSuggestions(query: string): PickItem<T>[] {

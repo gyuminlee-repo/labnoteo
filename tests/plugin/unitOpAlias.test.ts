@@ -5,7 +5,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { EditTarget, LabnoteHost } from '@labnoteo/core';
 import { MemFileSystem } from '../../packages/labnoteo-core/src/fs/memFileSystem';
-import { insertUnitOpAndUpdateToc } from '../../src/commands';
+import type { App } from 'obsidian';
+import { insertUnitOpAndUpdateToc, insertUnitOperationCommand } from '../../src/commands';
 
 const WORKFLOW = [
   '## [WD010 Design]',
@@ -66,6 +67,26 @@ describe('insertUnitOpAndUpdateToc with an alias prompt', () => {
 
     expect(ask).not.toHaveBeenCalled();
     expect(doc()).toBe(WORKFLOW);
-    expect(notes).toEqual(['Please run this command on a workflow file inside the labnote folder.']);
+    expect(notes).toEqual([
+      'README.labnote.md is the experiment overview and holds no unit operations. Open one of its workflow notes (###_….labnote.md), or make one with "Create workflow".',
+    ]);
+  });
+});
+
+describe('insertUnitOperationCommand on a note that is no workflow (#201, #166)', () => {
+  it.each([
+    ['labnote/001_E/README.labnote.md', 'README.labnote.md is the experiment overview'],
+    ['labnote/Group/001_E/001_W.labnote.md', '"001_E" is not recognized as an experiment'],
+    ['labnote/001_E/notes.md', '"notes.md" is not a workflow note'],
+  ])('warns about %s before the picker opens', async (path, message) => {
+    const { host, notes } = makeHost(path);
+    const pick = vi.fn();
+    Object.assign(host, { pick });
+
+    await insertUnitOperationCommand({} as App, host);
+
+    expect(pick).not.toHaveBeenCalled();
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toContain(message);
   });
 });

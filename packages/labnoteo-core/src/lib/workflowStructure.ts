@@ -9,6 +9,7 @@ import { parseFrontMatterYaml, serializeFrontMatterEntry } from '../sections/fro
 import { stepFence, type OpenFence } from '../sections/sectionEdit';
 import {
   commandName,
+  diagnoseExperimentPath,
   getExperimentDir,
   KO_COMMAND_NAMES,
   type TemplateHintOptions,
@@ -62,6 +63,38 @@ export function isValidWorkflowPath(filePath: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** {@link diagnoseWorkflowPath} result. */
+export type WorkflowPathDiagnosis =
+  /** A workflow note: `labnote/###_Experiment/###_….labnote.md`. */
+  | { kind: 'ok' }
+  /** The experiment's `README.labnote.md`, which holds no unit operations (#201). */
+  | { kind: 'readme'; folder: string }
+  /** In an experiment, but not a workflow note (no `###_`, not `.labnote.md`, or in a subfolder). */
+  | { kind: 'notWorkflow'; folder: string }
+  /** In a `###_` folder deeper than directly under `labnote/` (#166); `folder` is that folder. */
+  | { kind: 'nested'; folder: string }
+  /** In a folder under `labnote/` whose name lacks `###_`; `folder` is that folder. */
+  | { kind: 'noPrefix'; folder: string }
+  /** Not under `labnote/` at all. */
+  | { kind: 'outside' };
+
+/**
+ * Why `filePath` is or is not a workflow note, so a command that needs one
+ * can say what is wrong before asking for anything else (#201, #166). Uses
+ * {@link isValidWorkflowPath} for the positive case and
+ * {@link diagnoseExperimentPath} for where the note sits.
+ */
+export function diagnoseWorkflowPath(filePath: string): WorkflowPathDiagnosis {
+  if (isValidWorkflowPath(filePath)) return { kind: 'ok' };
+  const where = diagnoseExperimentPath(filePath);
+  if (where.kind !== 'ok') return where;
+  const normalized = filePath.replace(/\\/g, '/');
+  if (path.dirname(normalized) === where.folder && path.basename(normalized).toLowerCase() === 'readme.labnote.md') {
+    return { kind: 'readme', folder: where.folder };
+  }
+  return { kind: 'notWorkflow', folder: where.folder };
 }
 
 /**
