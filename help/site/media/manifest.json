@@ -3,434 +3,434 @@
     {
       "id": "ai-ask-agent",
       "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 48.4,
-      "bytes": 684895,
-      "recordedAt": "2026-10-20T10:10:47.753Z"
+      "version": "0.108.0",
+      "durationSec": 40.4,
+      "bytes": 589031,
+      "recordedAt": "2026-10-20T16:51:25.082Z"
     },
     {
       "id": "ai-ask-agent",
       "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 45.4,
-      "bytes": 592093,
-      "recordedAt": "2026-10-20T10:08:59.985Z"
+      "version": "0.108.0",
+      "durationSec": 38.9,
+      "bytes": 625769,
+      "recordedAt": "2026-10-20T16:49:57.876Z"
     },
     {
       "id": "ai-draft-method",
       "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 29,
-      "bytes": 452762,
-      "recordedAt": "2026-10-20T08:09:11.104Z"
+      "version": "0.108.0",
+      "durationSec": 24.9,
+      "bytes": 412465,
+      "recordedAt": "2026-10-20T16:51:27.737Z"
     },
     {
       "id": "ai-draft-method",
       "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 31.4,
-      "bytes": 477868,
-      "recordedAt": "2026-10-20T07:42:55.379Z"
+      "version": "0.108.0",
+      "durationSec": 23.9,
+      "bytes": 414418,
+      "recordedAt": "2026-10-20T16:49:59.467Z"
     },
     {
       "id": "ai-extract-samples",
       "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 41.6,
-      "bytes": 543371,
-      "recordedAt": "2026-10-20T09:46:20.885Z"
+      "version": "0.108.0",
+      "durationSec": 33.1,
+      "bytes": 483071,
+      "recordedAt": "2026-10-20T16:51:30.878Z"
     },
     {
       "id": "ai-extract-samples",
       "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 42.8,
-      "bytes": 555631,
-      "recordedAt": "2026-10-20T09:34:58.890Z"
+      "version": "0.108.0",
+      "durationSec": 31.5,
+      "bytes": 524939,
+      "recordedAt": "2026-10-20T16:50:01.407Z"
     },
     {
       "id": "ai-settings",
       "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 27.6,
-      "bytes": 385963,
-      "recordedAt": "2026-10-20T08:07:47.906Z"
-    },
-    {
-      "id": "ai-settings",
-      "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 27.6,
-      "bytes": 385940,
-      "recordedAt": "2026-10-20T06:34:34.473Z"
-    },
-    {
-      "id": "ai-summarize-results",
-      "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 25.4,
-      "bytes": 414565,
-      "recordedAt": "2026-10-20T08:09:58.296Z"
-    },
-    {
-      "id": "ai-summarize-results",
-      "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 25.8,
-      "bytes": 409396,
-      "recordedAt": "2026-10-20T07:44:09.744Z"
-    },
-    {
-      "id": "change-experiment-status",
-      "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 24.6,
-      "bytes": 461915,
-      "recordedAt": "2026-10-20T07:56:01.445Z"
-    },
-    {
-      "id": "change-experiment-status",
-      "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 22.6,
-      "bytes": 355923,
-      "recordedAt": "2026-10-20T06:24:15.900Z"
-    },
-    {
-      "id": "context-menu-only",
-      "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 62,
-      "bytes": 1343536,
-      "recordedAt": "2026-10-20T08:00:41.431Z"
-    },
-    {
-      "id": "context-menu-only",
-      "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 60.8,
-      "bytes": 1185427,
-      "recordedAt": "2026-10-20T07:38:02.712Z"
-    },
-    {
-      "id": "create-experiment",
-      "lang": "en",
-      "version": "0.105.0",
+      "version": "0.108.0",
       "durationSec": 27.1,
-      "bytes": 266081,
-      "recordedAt": "2026-10-20T07:55:33.826Z"
+      "bytes": 386704,
+      "recordedAt": "2026-10-20T16:51:34.549Z"
+    },
+    {
+      "id": "ai-settings",
+      "lang": "ko",
+      "version": "0.108.0",
+      "durationSec": 28.5,
+      "bytes": 378546,
+      "recordedAt": "2026-10-20T16:50:03.379Z"
+    },
+    {
+      "id": "ai-summarize-results",
+      "lang": "en",
+      "version": "0.108.0",
+      "durationSec": 22.8,
+      "bytes": 381348,
+      "recordedAt": "2026-10-20T16:51:36.373Z"
+    },
+    {
+      "id": "ai-summarize-results",
+      "lang": "ko",
+      "version": "0.108.0",
+      "durationSec": 21.8,
+      "bytes": 429986,
+      "recordedAt": "2026-10-20T16:50:04.869Z"
+    },
+    {
+      "id": "change-experiment-status",
+      "lang": "en",
+      "version": "0.108.0",
+      "durationSec": 22.9,
+      "bytes": 433427,
+      "recordedAt": "2026-10-20T16:51:38.563Z"
+    },
+    {
+      "id": "change-experiment-status",
+      "lang": "ko",
+      "version": "0.108.0",
+      "durationSec": 21.2,
+      "bytes": 361521,
+      "recordedAt": "2026-10-20T16:50:06.312Z"
+    },
+    {
+      "id": "context-menu-only",
+      "lang": "en",
+      "version": "0.108.0",
+      "durationSec": 48,
+      "bytes": 1052881,
+      "recordedAt": "2026-10-20T16:51:43.636Z"
+    },
+    {
+      "id": "context-menu-only",
+      "lang": "ko",
+      "version": "0.108.0",
+      "durationSec": 46.7,
+      "bytes": 1087322,
+      "recordedAt": "2026-10-20T16:50:09.378Z"
+    },
+    {
+      "id": "create-experiment",
+      "lang": "en",
+      "version": "0.108.0",
+      "durationSec": 26.1,
+      "bytes": 294471,
+      "recordedAt": "2026-10-20T16:51:45.724Z"
     },
     {
       "id": "create-experiment",
       "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 25,
-      "bytes": 214272,
-      "recordedAt": "2026-10-20T06:23:50.478Z"
+      "version": "0.108.0",
+      "durationSec": 25.3,
+      "bytes": 251683,
+      "recordedAt": "2026-10-20T16:50:10.862Z"
     },
     {
       "id": "create-workflow",
       "lang": "en",
-      "version": "0.105.0",
+      "version": "0.108.0",
+      "durationSec": 37.7,
+      "bytes": 745195,
+      "recordedAt": "2026-10-20T16:51:48.849Z"
+    },
+    {
+      "id": "create-workflow",
+      "lang": "ko",
+      "version": "0.108.0",
+      "durationSec": 35.8,
+      "bytes": 717060,
+      "recordedAt": "2026-10-20T16:50:13.239Z"
+    },
+    {
+      "id": "custom-sample-type",
+      "lang": "en",
+      "version": "0.108.0",
+      "durationSec": 42.6,
+      "bytes": 520837,
+      "recordedAt": "2026-10-20T16:51:53.090Z"
+    },
+    {
+      "id": "custom-sample-type",
+      "lang": "ko",
+      "version": "0.108.0",
       "durationSec": 41.6,
-      "bytes": 820473,
-      "recordedAt": "2026-10-20T07:58:03.574Z"
-    },
-    {
-      "id": "create-workflow",
-      "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 39.1,
-      "bytes": 759298,
-      "recordedAt": "2026-10-20T06:26:11.117Z"
-    },
-    {
-      "id": "custom-sample-type",
-      "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 49.2,
-      "bytes": 592633,
-      "recordedAt": "2026-10-20T08:07:18.292Z"
-    },
-    {
-      "id": "custom-sample-type",
-      "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 46.6,
-      "bytes": 573767,
-      "recordedAt": "2026-10-20T06:34:04.488Z"
+      "bytes": 511541,
+      "recordedAt": "2026-10-20T16:50:15.824Z"
     },
     {
       "id": "export-tables-csv",
       "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 26.7,
-      "bytes": 826568,
-      "recordedAt": "2026-10-20T08:02:57.648Z"
+      "version": "0.108.0",
+      "durationSec": 24.8,
+      "bytes": 783313,
+      "recordedAt": "2026-10-20T16:51:55.308Z"
     },
     {
       "id": "export-tables-csv",
       "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 26.1,
-      "bytes": 800161,
-      "recordedAt": "2026-10-20T07:38:31.678Z"
+      "version": "0.108.0",
+      "durationSec": 24.4,
+      "bytes": 821472,
+      "recordedAt": "2026-10-20T16:50:17.890Z"
     },
     {
       "id": "insert-date",
       "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 38.7,
-      "bytes": 571711,
-      "recordedAt": "2026-10-20T08:02:28.131Z"
+      "version": "0.108.0",
+      "durationSec": 36,
+      "bytes": 559273,
+      "recordedAt": "2026-10-20T16:51:57.982Z"
     },
     {
       "id": "insert-date",
       "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 36.7,
-      "bytes": 520769,
-      "recordedAt": "2026-10-20T06:30:16.129Z"
+      "version": "0.108.0",
+      "durationSec": 34.2,
+      "bytes": 550666,
+      "recordedAt": "2026-10-20T16:50:20.539Z"
     },
     {
       "id": "insert-experiment-samples-table",
       "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 24.3,
-      "bytes": 390487,
-      "recordedAt": "2026-10-20T08:06:29.812Z"
-    },
-    {
-      "id": "insert-experiment-samples-table",
-      "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 22.2,
-      "bytes": 352619,
-      "recordedAt": "2026-10-20T06:33:18.640Z"
-    },
-    {
-      "id": "insert-unit-operation",
-      "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 33,
-      "bytes": 609264,
-      "recordedAt": "2026-10-20T08:01:16.269Z"
-    },
-    {
-      "id": "insert-unit-operation",
-      "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 30.1,
-      "bytes": 518766,
-      "recordedAt": "2026-10-20T06:29:07.634Z"
-    },
-    {
-      "id": "install",
-      "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 71.1,
-      "bytes": 966180,
-      "recordedAt": "2026-10-20T07:53:39.577Z"
-    },
-    {
-      "id": "install",
-      "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 68.5,
-      "bytes": 914186,
-      "recordedAt": "2026-10-20T06:22:08.657Z"
-    },
-    {
-      "id": "issue-marker-discussion",
-      "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 39,
-      "bytes": 681310,
-      "recordedAt": "2026-10-20T07:57:20.507Z"
-    },
-    {
-      "id": "issue-marker-discussion",
-      "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 36.6,
-      "bytes": 622648,
-      "recordedAt": "2026-10-20T06:25:30.802Z"
-    },
-    {
-      "id": "overview",
-      "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 94.8,
-      "bytes": 1604519,
-      "recordedAt": "2026-10-20T07:55:05.243Z"
-    },
-    {
-      "id": "overview",
-      "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 85.7,
-      "bytes": 1278748,
-      "recordedAt": "2026-10-20T06:23:24.064Z"
-    },
-    {
-      "id": "sample-autocomplete",
-      "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 48,
-      "bytes": 557636,
-      "recordedAt": "2026-10-20T08:03:45.392Z"
-    },
-    {
-      "id": "sample-autocomplete",
-      "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 44.8,
-      "bytes": 493217,
-      "recordedAt": "2026-10-20T07:39:15.812Z"
-    },
-    {
-      "id": "sample-definition",
-      "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 38.6,
-      "bytes": 655657,
-      "recordedAt": "2026-10-20T08:05:17.825Z"
-    },
-    {
-      "id": "sample-definition",
-      "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 38.3,
-      "bytes": 741480,
-      "recordedAt": "2026-10-20T06:32:25.389Z"
-    },
-    {
-      "id": "sample-type-scope",
-      "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 54.4,
-      "bytes": 978330,
-      "recordedAt": "2026-10-20T09:43:54.026Z"
-    },
-    {
-      "id": "sample-type-scope",
-      "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 54.5,
-      "bytes": 951871,
-      "recordedAt": "2026-10-20T09:29:18.144Z"
-    },
-    {
-      "id": "sample-view",
-      "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 73.6,
-      "bytes": 1073671,
-      "recordedAt": "2026-10-20T09:43:03.060Z"
-    },
-    {
-      "id": "sample-view",
-      "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 70.9,
-      "bytes": 1027315,
-      "recordedAt": "2026-10-20T09:28:27.291Z"
-    },
-    {
-      "id": "setup-research-automation",
-      "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 24.7,
-      "bytes": 244493,
-      "recordedAt": "2026-10-20T08:14:35.243Z"
-    },
-    {
-      "id": "setup-research-automation",
-      "lang": "ko",
-      "version": "0.105.0",
+      "version": "0.108.0",
       "durationSec": 23.4,
-      "bytes": 221895,
-      "recordedAt": "2026-10-20T06:42:13.858Z"
+      "bytes": 353396,
+      "recordedAt": "2026-10-20T16:52:00.002Z"
     },
     {
-      "id": "uo-reorder",
+      "id": "insert-experiment-samples-table",
+      "lang": "ko",
+      "version": "0.108.0",
+      "durationSec": 21.4,
+      "bytes": 359172,
+      "recordedAt": "2026-10-20T16:50:22.229Z"
+    },
+    {
+      "id": "insert-unit-operation",
       "lang": "en",
-      "version": "0.105.0",
+      "version": "0.108.0",
       "durationSec": 29.7,
-      "bytes": 590111,
-      "recordedAt": "2026-10-20T08:01:47.164Z"
+      "bytes": 535349,
+      "recordedAt": "2026-10-20T16:52:02.318Z"
+    },
+    {
+      "id": "insert-unit-operation",
+      "lang": "ko",
+      "version": "0.108.0",
+      "durationSec": 27.2,
+      "bytes": 531683,
+      "recordedAt": "2026-10-20T16:50:24.024Z"
+    },
+    {
+      "id": "install",
+      "lang": "en",
+      "version": "0.108.0",
+      "durationSec": 53.3,
+      "bytes": 817346,
+      "recordedAt": "2026-10-20T16:52:06.430Z"
+    },
+    {
+      "id": "install",
+      "lang": "ko",
+      "version": "0.108.0",
+      "durationSec": 54.4,
+      "bytes": 820065,
+      "recordedAt": "2026-10-20T16:50:28.347Z"
+    },
+    {
+      "id": "issue-marker-discussion",
+      "lang": "en",
+      "version": "0.108.0",
+      "durationSec": 38.4,
+      "bytes": 641969,
+      "recordedAt": "2026-10-20T16:52:09.326Z"
+    },
+    {
+      "id": "issue-marker-discussion",
+      "lang": "ko",
+      "version": "0.108.0",
+      "durationSec": 36.6,
+      "bytes": 681036,
+      "recordedAt": "2026-10-20T16:50:33.116Z"
+    },
+    {
+      "id": "overview",
+      "lang": "en",
+      "version": "0.108.0",
+      "durationSec": 108.6,
+      "bytes": 2071346,
+      "recordedAt": "2026-10-20T16:52:17.905Z"
+    },
+    {
+      "id": "overview",
+      "lang": "ko",
+      "version": "0.108.0",
+      "durationSec": 100.7,
+      "bytes": 1816042,
+      "recordedAt": "2026-10-20T16:50:44.953Z"
+    },
+    {
+      "id": "sample-autocomplete",
+      "lang": "en",
+      "version": "0.108.0",
+      "durationSec": 41.6,
+      "bytes": 513175,
+      "recordedAt": "2026-10-20T16:52:20.712Z"
+    },
+    {
+      "id": "sample-autocomplete",
+      "lang": "ko",
+      "version": "0.108.0",
+      "durationSec": 39.2,
+      "bytes": 477984,
+      "recordedAt": "2026-10-20T16:50:48.241Z"
+    },
+    {
+      "id": "sample-definition",
+      "lang": "en",
+      "version": "0.108.0",
+      "durationSec": 31.5,
+      "bytes": 703838,
+      "recordedAt": "2026-10-20T16:52:23.524Z"
+    },
+    {
+      "id": "sample-definition",
+      "lang": "ko",
+      "version": "0.108.0",
+      "durationSec": 32.3,
+      "bytes": 570750,
+      "recordedAt": "2026-10-20T16:50:51.086Z"
+    },
+    {
+      "id": "sample-type-scope",
+      "lang": "en",
+      "version": "0.108.0",
+      "durationSec": 46.1,
+      "bytes": 886994,
+      "recordedAt": "2026-10-20T16:52:27.525Z"
+    },
+    {
+      "id": "sample-type-scope",
+      "lang": "ko",
+      "version": "0.108.0",
+      "durationSec": 45.6,
+      "bytes": 888014,
+      "recordedAt": "2026-10-20T16:50:55.722Z"
+    },
+    {
+      "id": "sample-view",
+      "lang": "en",
+      "version": "0.108.0",
+      "durationSec": 59.9,
+      "bytes": 958321,
+      "recordedAt": "2026-10-20T16:52:32.697Z"
+    },
+    {
+      "id": "sample-view",
+      "lang": "ko",
+      "version": "0.108.0",
+      "durationSec": 56.3,
+      "bytes": 823184,
+      "recordedAt": "2026-10-20T16:51:05.415Z"
+    },
+    {
+      "id": "setup-research-automation",
+      "lang": "en",
+      "version": "0.108.0",
+      "durationSec": 25.2,
+      "bytes": 237407,
+      "recordedAt": "2026-10-20T16:52:34.587Z"
+    },
+    {
+      "id": "setup-research-automation",
+      "lang": "ko",
+      "version": "0.108.0",
+      "durationSec": 24.9,
+      "bytes": 212440,
+      "recordedAt": "2026-10-20T16:51:08.625Z"
+    },
+    {
+      "id": "uo-reorder",
+      "lang": "en",
+      "version": "0.108.0",
+      "durationSec": 26.2,
+      "bytes": 560334,
+      "recordedAt": "2026-10-20T16:52:37.040Z"
     },
     {
       "id": "uo-reorder",
       "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 28.7,
-      "bytes": 518554,
-      "recordedAt": "2026-10-20T06:29:37.632Z"
+      "version": "0.108.0",
+      "durationSec": 25.6,
+      "bytes": 489498,
+      "recordedAt": "2026-10-20T16:51:11.304Z"
     },
     {
       "id": "workflow-rename-copy",
       "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 44.1,
-      "bytes": 607878,
-      "recordedAt": "2026-10-20T07:58:47.696Z"
+      "version": "0.108.0",
+      "durationSec": 38,
+      "bytes": 520663,
+      "recordedAt": "2026-10-20T16:52:39.934Z"
     },
     {
       "id": "workflow-rename-copy",
       "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 43,
-      "bytes": 537791,
-      "recordedAt": "2026-10-20T06:26:53.194Z"
+      "version": "0.108.0",
+      "durationSec": 37.3,
+      "bytes": 501209,
+      "recordedAt": "2026-10-20T16:51:14.240Z"
     },
     {
       "id": "workflow-renumber",
       "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 26.4,
-      "bytes": 391736,
-      "recordedAt": "2026-10-20T07:59:16.162Z"
+      "version": "0.108.0",
+      "durationSec": 23.9,
+      "bytes": 360972,
+      "recordedAt": "2026-10-20T16:52:41.895Z"
     },
     {
       "id": "workflow-renumber",
       "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 25.9,
-      "bytes": 433117,
-      "recordedAt": "2026-10-20T06:27:21.074Z"
+      "version": "0.108.0",
+      "durationSec": 23.5,
+      "bytes": 372951,
+      "recordedAt": "2026-10-20T16:51:16.297Z"
     },
     {
       "id": "workflow-sync",
       "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 29.5,
-      "bytes": 484134,
-      "recordedAt": "2026-10-20T07:59:47.918Z"
+      "version": "0.108.0",
+      "durationSec": 27.2,
+      "bytes": 499679,
+      "recordedAt": "2026-10-20T16:52:44.038Z"
     },
     {
       "id": "workflow-sync",
       "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 28.2,
-      "bytes": 435704,
-      "recordedAt": "2026-10-20T06:27:51.317Z"
+      "version": "0.108.0",
+      "durationSec": 25.6,
+      "bytes": 420400,
+      "recordedAt": "2026-10-20T16:51:18.523Z"
     },
     {
       "id": "workflow-view",
       "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 38.4,
-      "bytes": 431228,
-      "recordedAt": "2026-10-20T07:56:37.969Z"
+      "version": "0.108.0",
+      "durationSec": 33.9,
+      "bytes": 438783,
+      "recordedAt": "2026-10-20T16:52:46.457Z"
     },
     {
       "id": "workflow-view",
       "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 37.2,
-      "bytes": 456143,
-      "recordedAt": "2026-10-20T06:24:51.094Z"
+      "version": "0.108.0",
+      "durationSec": 31.6,
+      "bytes": 367344,
+      "recordedAt": "2026-10-20T16:51:21.451Z"
     }
   ]
 }

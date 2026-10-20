@@ -1,21 +1,21 @@
 WEBVTT
 
 1
-00:00:00.017 --> 00:00:01.824
+00:00:00.019 --> 00:00:02.530
 AI: Draft Method
 
 2
-00:00:01.824 --> 00:00:09.555
+00:00:02.530 --> 00:00:10.365
 Put the cursor inside a unit operation with an empty Method
 
 3
-00:00:09.555 --> 00:00:14.191
+00:00:10.365 --> 00:00:15.079
 Run AI: Draft Method from the palette
 
 4
-00:00:14.191 --> 00:00:16.191
+00:00:15.079 --> 00:00:17.433
 Waiting for the AI (fast-forward)
 
 5
-00:00:17.994 --> 00:00:24.927
+00:00:17.433 --> 00:00:24.911
 That unit operation's Method is filled in

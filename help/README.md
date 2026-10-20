@@ -35,6 +35,7 @@ npm run demo -- --seeds                     # 시드 만들기 (버전·언어�
 npm run demo -- create-workflow             # 영상 하나 다시 녹화 (한/영 둘 다)
 npm run demo -- create-workflow --lang en   # 한 언어만
 npm run demo -- --all                       # 전부
+npm run demo -- --reencode create-workflow  # 저장된 프레임으로 인코딩만 다시 (Obsidian 없이, 자막 모양을 바꿨을 때)
 ```
 
 녹화가 성공하면 `site/media/<lang>/`에 복사되고 `site/media/manifest.json`이 갱신됩니다.

@@ -37,7 +37,7 @@
     v.preload = 'none';
     v.poster = `${base}.jpg`;
     v.width = 1280;
-    v.height = 860;
+    v.height = 900;
     const src = document.createElement('source');
     src.src = `${base}.mp4`;
     src.type = 'video/mp4';
