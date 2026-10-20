@@ -4,7 +4,7 @@
  * a lookup that returns something other than the key itself.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { getObsidianLanguage, createObsidianTranslator } from '../../src/i18n';
+import { getObsidianLanguage, createObsidianTranslator, bilingualName } from '../../src/i18n';
 import obsidianKo from '../../src/l10n.ko';
 import { __setGetLanguage } from '../stubs/obsidian';
 
@@ -86,6 +86,24 @@ describe('createObsidianTranslator', () => {
   it('defaults its locale from the running Obsidian instance', () => {
     stubLanguage('ko');
     expect(createObsidianTranslator()('Create experiment')).toBe(obsidianKo['Create experiment']);
+  });
+});
+
+describe('bilingualName', () => {
+  it('appends the English key to the Korean name so either language finds the command', () => {
+    expect(bilingualName(createObsidianTranslator('ko'), 'Create experiment')).toBe(
+      `${obsidianKo['Create experiment']} (Create experiment)`
+    );
+  });
+
+  it('shows the English name alone in English', () => {
+    expect(bilingualName(createObsidianTranslator('en'), 'Create experiment')).toBe('Create experiment');
+  });
+
+  it('shows the key alone when Korean has no entry for it', () => {
+    expect(bilingualName(createObsidianTranslator('ko'), 'An untranslated string')).toBe(
+      'An untranslated string'
+    );
   });
 });
 

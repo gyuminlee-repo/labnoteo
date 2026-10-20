@@ -1,6 +1,6 @@
 # Labnote Assistant for Obsidian (labnoteo)
 
-**Version 0.104.0**
+**Version 0.105.0**
 
 [한국어](README.md)
 
@@ -72,6 +72,8 @@ Obsidian reads the release's `versions.json` from the repository, so there is no
 </details>
 
 ## Commands
+
+Under a Korean UI the command palette shows each name as `Korean (English)` (e.g. `실험 생성 (Create experiment)`), so either language finds it; an English UI shows the English name alone.
 
 | Command | Description |
 |---|---|

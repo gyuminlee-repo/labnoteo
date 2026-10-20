@@ -1,6 +1,6 @@
 # Labnote Assistant for Obsidian (labnoteo)
 
-**버전 0.104.0**
+**버전 0.105.0**
 
 [English](README.en.md)
 
@@ -48,7 +48,7 @@ Obsidian 설치와 git·GitHub 계정 준비부터 커뮤니티 플러그인·�
 
 ## 주요 명령어
 
-명령 팔레트에는 영문 이름으로 등록됩니다(괄호 안).
+명령 팔레트에는 한국어 UI에서 `한글 (English)`(예: `실험 생성 (Create experiment)`)로, 영어 UI에서는 영문 이름(괄호 안)만 표시되며, 한국어 UI에서는 한글·영문 어느 쪽으로도 검색됩니다.
 
 
 | 명령어                                                      | 설명                                                                      |

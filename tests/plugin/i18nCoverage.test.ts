@@ -1,6 +1,6 @@
 /**
- * Every literal handed to a translator (`t('…')`, `host.t('…')`, `this.t('…')`)
- * must have a Korean entry: a missing key silently renders the English source
+ * Every literal handed to a translator (`t('…')`, `host.t('…')`, `this.t('…')`,
+ * `this.paletteName('…')`) must have a Korean entry: a missing key silently renders the English source
  * in the Korean UI, which the catalog checks in `i18n.test.ts` cannot see.
  */
 import { describe, it, expect } from 'vitest';
@@ -31,7 +31,7 @@ const unescape = (s: string): string =>
 /** Translator keys written as a single string literal (template literals with `${…}` are skipped). */
 function translatorKeys(source: string): string[] {
   const keys: string[] = [];
-  const re = /\bt\(\s*(['"`])((?:\\.|(?!\1)[^\\])*)\1\s*[,)]/g;
+  const re = /\b(?:t|paletteName)\(\s*(['"`])((?:\\.|(?!\1)[^\\])*)\1\s*[,)]/g;
   for (const m of source.matchAll(re)) {
     if (m[1] === '`' && m[2].includes('${')) continue;
     keys.push(unescape(m[2]));
@@ -41,8 +41,8 @@ function translatorKeys(source: string): string[] {
 
 describe('translatorKeys', () => {
   it('reads plain, escaped and multi-line calls', () => {
-    const src = `host.t('A'); this.t("B {0}", x); t(\n  'C\\'s'\n); t(\`D\`); t(\`E \${x}\`); tt('F');`;
-    expect(translatorKeys(src)).toEqual(['A', 'B {0}', "C's", 'D']);
+    const src = `host.t('A'); this.t("B {0}", x); t(\n  'C\\'s'\n); t(\`D\`); t(\`E \${x}\`); tt('F'); this.paletteName('G');`;
+    expect(translatorKeys(src)).toEqual(['A', 'B {0}', "C's", 'D', 'G']);
   });
 });
 

@@ -48,7 +48,7 @@ import {
   renameSampleSourcesInFolder,
 } from '@labnoteo/core/lib/sampleStorage';
 import { VaultFileSystem } from './vaultFileSystem';
-import { createObsidianTranslator } from './i18n';
+import { bilingualName, createObsidianTranslator } from './i18n';
 import { createObsidianHost } from './obsidianHost';
 import {
   createExperimentCommand,
@@ -291,10 +291,14 @@ export default class LabnotePlugin extends Plugin {
     });
   }
 
+  private paletteName(key: string): string {
+    return bilingualName(this.t, key);
+  }
+
   private registerCommands(): void {
     this.addCommand({
       id: 'insert-date',
-      name: this.t('Insert date'),
+      name: this.paletteName('Insert date'),
       editorCallback: editor => {
         insertDateCommand(editor, this.host, getSeoulDateString());
       },
@@ -302,7 +306,7 @@ export default class LabnotePlugin extends Plugin {
 
     this.addCommand({
       id: 'insert-datetime',
-      name: this.t('Insert date and time'),
+      name: this.paletteName('Insert date and time'),
       editorCallback: editor => {
         insertDateCommand(editor, this.host, getSeoulDateTimeString());
       },
@@ -310,20 +314,20 @@ export default class LabnotePlugin extends Plugin {
 
     this.addCommand({
       id: 'create-experiment',
-      name: this.t('Create experiment'),
+      name: this.paletteName('Create experiment'),
       callback: () => this.run(() => createExperimentCommand(this.app, this.host)),
     });
 
     this.addCommand({
       id: 'change-experiment-status',
-      name: this.t('Change experiment status'),
+      name: this.paletteName('Change experiment status'),
       callback: () =>
         this.run(() => changeExperimentStatusCommand(this.app, this.host, this.stampLastUpdated)),
     });
 
     this.addCommand({
       id: 'insert-issue-marker',
-      name: this.t('Insert issue marker'),
+      name: this.paletteName('Insert issue marker'),
       editorCallback: editor =>
         this.run(async () => {
           if (!(await insertIssueMarkerCommand(editor, this.host)) || this.issueAutomationHintShown) return;
@@ -344,14 +348,14 @@ export default class LabnotePlugin extends Plugin {
 
     this.addCommand({
       id: 'toggle-discussion-flag',
-      name: this.t('Toggle discussion flag'),
+      name: this.paletteName('Toggle discussion flag'),
       callback: () =>
         this.run(() => toggleDiscussionFlagCommand(this.app, this.host, this.stampLastUpdated)),
     });
 
     this.addCommand({
       id: 'setup-research-automation',
-      name: this.t('Setup research automation'),
+      name: this.paletteName('Setup research automation'),
       callback: () =>
         this.run(async () => {
           await setupResearchAutomationCommand(this.host, this.manifest.version);
@@ -361,13 +365,13 @@ export default class LabnotePlugin extends Plugin {
 
     this.addCommand({
       id: 'create-workflow',
-      name: this.t('Create workflow'),
+      name: this.paletteName('Create workflow'),
       callback: () => this.run(() => createWorkflowCommand(this.app, this.host, this.stampLastUpdated)),
     });
 
     this.addCommand({
       id: 'renumber-workflows',
-      name: this.t('Renumber workflows'),
+      name: this.paletteName('Renumber workflows'),
       callback: () =>
         this.run(() =>
           renumberWorkflowsCommand(this.app, this.host, this.readmeSyncControl(), (dir, renames) =>
@@ -378,25 +382,25 @@ export default class LabnotePlugin extends Plugin {
 
     this.addCommand({
       id: 'sync-workflow-checklist',
-      name: this.t('Sync workflow checklist with folder'),
+      name: this.paletteName('Sync workflow checklist with folder'),
       callback: () => this.run(() => this.syncWorkflowChecklist()),
     });
 
     this.addCommand({
       id: 'insert-unit-operation',
-      name: this.t('Insert unit operation'),
+      name: this.paletteName('Insert unit operation'),
       callback: () => this.run(() => insertUnitOperationCommand(this.app, this.host)),
     });
 
     this.addCommand({
       id: 'open-sample-definition',
-      name: this.t('Open sample definition'),
+      name: this.paletteName('Open sample definition'),
       callback: () => this.run(() => this.openSampleDefinitionCommand()),
     });
 
     this.addCommand({
       id: 'insert-experiment-samples-table',
-      name: this.t('Insert sample list of this experiment'),
+      name: this.paletteName('Insert sample list of this experiment'),
       callback: () =>
         this.run(async () => {
           await insertExperimentSamplesTable(this.app, this);
@@ -405,35 +409,35 @@ export default class LabnotePlugin extends Plugin {
 
     this.addCommand({
       id: 'export-tables-csv',
-      name: this.t('Export tables to CSV'),
+      name: this.paletteName('Export tables to CSV'),
       callback: () => this.run(() => exportActiveNoteTablesToCsv(this)),
     });
 
     // --- AI commands ---
     this.addCommand({
       id: 'ai-draft-method',
-      name: this.t('AI: Draft Method section'),
+      name: this.paletteName('AI: Draft Method section'),
       callback: () => this.run(() => draftMethodCommand(this)),
     });
     this.addCommand({
       id: 'ai-summarize-results',
-      name: this.t('AI: Summarize results'),
+      name: this.paletteName('AI: Summarize results'),
       callback: () => this.run(() => summarizeResultsCommand(this)),
     });
     this.addCommand({
       id: 'ai-extract-samples',
-      name: this.t('AI: Extract sample definitions'),
+      name: this.paletteName('AI: Extract sample definitions'),
       callback: () => this.run(() => extractSamplesCommand(this)),
     });
     this.addCommand({
       id: 'ai-ask-agent',
-      name: this.t('AI: Ask assistant (uses tools)'),
+      name: this.paletteName('AI: Ask assistant (uses tools)'),
       callback: () => this.run(() => askAgentCommand(this)),
     });
 
     this.addCommand({
       id: 'toggle-mcp-server',
-      name: this.t('Toggle MCP server'),
+      name: this.paletteName('Toggle MCP server'),
       callback: () =>
         this.run(async () => {
           // Keep the persisted `mcpEnabled` in lock-step with the live server so
@@ -1647,17 +1651,17 @@ export default class LabnotePlugin extends Plugin {
 
     this.addCommand({
       id: 'open-workflow-view',
-      name: this.t('Open workflow view'),
+      name: this.paletteName('Open workflow view'),
       callback: () => void this.activateView(WORKFLOW_VIEW_TYPE),
     });
     this.addCommand({
       id: 'open-sample-view',
-      name: this.t('Open sample view'),
+      name: this.paletteName('Open sample view'),
       callback: () => void this.activateView(SAMPLE_VIEW_TYPE),
     });
     this.addCommand({
       id: 'open-user-guide',
-      name: this.t('Open user guide'),
+      name: this.paletteName('Open user guide'),
       callback: () => void openUserGuide(this.host, this.manifest.version),
     });
   }
