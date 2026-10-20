@@ -28,6 +28,7 @@ import {
   deleteSampleRecord,
   putSampleRecord,
   noteLabsamplesFolder,
+  noteLocalSampleFolder,
   findSampleDefinitionMatch,
   findSampleUsages,
   isSameSampleFolder,
@@ -589,11 +590,13 @@ export async function resolveSampleDefinition(
   opts: { type: string; id: string; docPath: string }
 ): Promise<ResolvedSampleDefinition | undefined> {
   const { type, id, docPath } = opts;
-  const localFolder = noteLabsamplesFolder(docPath, plugin.settings.globalSampleFolder);
   const globalFolder = plugin.settings.globalSampleFolder;
+  const localFolder = noteLocalSampleFolder(docPath, globalFolder);
 
-  const localDb = await loadSamplesByType(plugin.fs, localFolder, type);
-  if (localDb[id]) return { scope: 'local', folder: localFolder, record: localDb[id] };
+  if (localFolder) {
+    const localDb = await loadSamplesByType(plugin.fs, localFolder, type);
+    if (localDb[id]) return { scope: 'local', folder: localFolder, record: localDb[id] };
+  }
 
   if (globalFolder) {
     const globalDb = await loadSamplesByType(plugin.fs, globalFolder, type);
@@ -601,8 +604,10 @@ export async function resolveSampleDefinition(
   }
 
   if (isCatalogSampleType(type)) {
-    const localCat = await loadReferenceSamplesByType(plugin.fs, localFolder, type);
-    if (localCat[id]) return { scope: 'catalog', folder: localFolder, record: localCat[id] };
+    if (localFolder) {
+      const localCat = await loadReferenceSamplesByType(plugin.fs, localFolder, type);
+      if (localCat[id]) return { scope: 'catalog', folder: localFolder, record: localCat[id] };
+    }
     if (globalFolder) {
       const globalCat = await loadReferenceSamplesByType(plugin.fs, globalFolder, type);
       if (globalCat[id]) return { scope: 'catalog', folder: globalFolder, record: globalCat[id] };

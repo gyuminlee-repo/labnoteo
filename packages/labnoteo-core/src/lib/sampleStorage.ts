@@ -775,6 +775,16 @@ export function isSameSampleFolder(a: string, b: string): boolean {
 }
 
 /**
+ * A note's own Local labsamples folder, or undefined when it has none because
+ * {@link noteLabsamplesFolder} gives the Global folder (a vault-root note).
+ * A sample found there is then Global, not Local (#189).
+ */
+export function noteLocalSampleFolder(documentPath: string, globalFolder?: string): string | undefined {
+  const local = noteLabsamplesFolder(documentPath, globalFolder);
+  return globalFolder && isSameSampleFolder(local, globalFolder) ? undefined : local;
+}
+
+/**
  * Load sample database from JSON files for a specific type
  */
 export async function loadSamplesByType(

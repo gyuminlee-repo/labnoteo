@@ -551,6 +551,8 @@ const obsidianKo: Record<string, string> = {
   '{0} got a new ID because theirs did not match <Type>-<number>.':
     '{0}개는 ID가 <타입>-<숫자> 형식이 아니어서 새 ID를 만들었습니다.',
   '{0} skipped: unknown sample type.': '{0}개는 알 수 없는 샘플 타입이라 건너뛰었습니다.',
+  '{0} have no storage location; add it with Edit sample in the Samples view.':
+    "{0}개는 보관 위치가 없습니다. 샘플 뷰에서 '샘플 편집'으로 넣으세요.",
   'This note is outside an experiment folder, so they were added to Global samples.':
     '이 노트는 실험 폴더 밖에 있어 전역 샘플에 추가했습니다.',
 

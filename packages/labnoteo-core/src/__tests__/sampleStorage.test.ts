@@ -22,6 +22,7 @@ import {
   findSampleUsages,
   resolveLocalSampleFolder,
   noteLabsamplesFolder,
+  noteLocalSampleFolder,
   inventorySampleFolder,
   moveSampleFolder,
   planAliasRewrite,
@@ -104,6 +105,16 @@ describe('noteLabsamplesFolder (#101)', () => {
     expect(noteLabsamplesFolder('Welcome.md', 'Samples')).toBe('Samples');
     expect(noteLabsamplesFolder('notes/memo.md', 'Samples')).toBe('notes/resources/labsamples');
     expect(noteLabsamplesFolder('Welcome.md')).toBe('resources/labsamples');
+  });
+
+  // #189: a vault-root note showed a Global sample as Local with "Move to Global".
+  it('gives no Local folder to a note whose folder is the Global one', () => {
+    expect(noteLocalSampleFolder('냉동고 B칸 재고.md', 'resources/labsamples')).toBeUndefined();
+    expect(noteLocalSampleFolder('Welcome.md', './Resources/Labsamples/')).toBeUndefined();
+    expect(noteLocalSampleFolder('labnote/001_GFP/README.labnote.md', 'resources/labsamples')).toBe(
+      'labnote/001_GFP/resources/labsamples'
+    );
+    expect(noteLocalSampleFolder('notes/memo.md', 'resources/labsamples')).toBe('notes/resources/labsamples');
   });
 
   it('saves a vault-root note to the new Global folder', async () => {

@@ -321,6 +321,7 @@ interface ExtractedSample {
   id?: string;
   alias?: string;
   description?: string;
+  location?: string;
 }
 
 /**
@@ -345,11 +346,26 @@ export function parseJsonArray(raw: string): ExtractedSample[] {
 
 /** {@link prepareExtractedSamples} output: what to create, and what was fixed. */
 export interface PreparedSamples {
-  samples: Array<{ type: string; id?: string; alias?: string; description?: string }>;
+  samples: Array<{ type: string; id?: string; alias?: string; description?: string; location?: string }>;
   /** Samples whose model-given id broke the `<Type>-<number>` rule and gets a new one. */
   regenerated: number;
   /** Samples dropped because their type is not a known sample type. */
   unknownType: number;
+}
+
+/**
+ * An alias as `create_sample` will take it: the characters that split a sample
+ * in a note (#98) or that Markdown reads as a tag, link, emphasis or code
+ * (#168) are replaced, since nobody can be asked here.
+ */
+function toAlias(v: string): string | undefined {
+  return (
+    v
+      .replace(/[;:]/g, '-')
+      .replace(/\[\[|\]\]/g, '')
+      .replace(/[#*`]/g, '')
+      .trim() || undefined
+  );
 }
 
 /**
@@ -372,32 +388,32 @@ export function prepareExtractedSamples(
     }
     const rawId = typeof s.id === 'string' && s.id.trim() ? s.id.trim() : undefined;
     const id = rawId === undefined ? undefined : normalizeSampleId(type, rawId);
-    // `create_sample` rejects the characters that split a sample in a note
-    // (#98) or that Markdown reads as a tag, link, emphasis or code (#168);
-    // nobody can be asked here, so replace them instead.
-    const toAlias = (v: string) =>
-      v
-        .replace(/[;:]/g, '-')
-        .replace(/\[\[|\]\]/g, '')
-        .replace(/[#*`]/g, '')
-        .trim() || undefined;
     const alias = typeof s.alias === 'string' && s.alias.trim() ? toAlias(s.alias) : undefined;
     const description = typeof s.description === 'string' ? s.description.replace(/;/g, ',') : undefined;
+    // Free text in the registry, so it goes in as written (#190).
+    const location = typeof s.location === 'string' && s.location.trim() ? s.location.trim() : undefined;
     if (rawId !== undefined && !id) {
       out.regenerated++;
-      out.samples.push({ type, alias: alias ?? toAlias(rawId), description });
+      out.samples.push({ type, alias: alias ?? toAlias(rawId), description, location });
     } else {
-      out.samples.push({ type, id, alias, description });
+      out.samples.push({ type, id, alias, description, location });
     }
   }
   return out;
+}
+
+/** A description compared the way {@link skipKnownSamples} compares them. */
+function descriptionKey(v: string): string {
+  return v.replace(/;/g, ',').replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
 /**
  * Split extracted samples into new ones and ones already there (#153): an id
  * a registry in `registries` (`type → id → record`) holds or the note already
  * references (`referenced`, `type|id`), or the alias of a sample of the same
- * type (case ignored). Running the command again then adds only what is new.
+ * type (case ignored, registry aliases fitted like extracted ones). With no
+ * alias on either side, the same type and description also count as the same
+ * sample. Running the command again then adds only what is new.
  */
 export function skipKnownSamples(
   samples: PreparedSamples['samples'],
@@ -406,20 +422,39 @@ export function skipKnownSamples(
 ): { fresh: PreparedSamples['samples']; skipped: number } {
   const ids = new Set(referenced);
   const aliases = new Set<string>();
+  const descriptions = new Set<string>();
+  const aliasKey = (type: string, alias: string | null | undefined): string | undefined => {
+    const fitted = alias?.trim() ? toAlias(alias) : undefined;
+    return fitted === undefined ? undefined : `${type}|${fitted}`.toLowerCase();
+  };
+  const descKey = (type: string, description: string | undefined): string | undefined => {
+    const key = description ? descriptionKey(description) : '';
+    return key ? `${type.toLowerCase()}|${key}` : undefined;
+  };
   for (const registry of registries) {
     for (const [type, records] of Object.entries(registry)) {
       for (const [id, rec] of Object.entries(records)) {
         ids.add(`${type}|${id}`.toLowerCase());
-        if (rec.alias?.trim()) aliases.add(`${type}|${rec.alias.trim()}`.toLowerCase());
+        const a = aliasKey(type, rec.alias);
+        if (a) aliases.add(a);
+        else {
+          for (const d of rec.descriptions ?? []) {
+            const k = descKey(type, d);
+            if (k) descriptions.add(k);
+          }
+        }
       }
     }
   }
   const fresh: PreparedSamples['samples'] = [];
   let skipped = 0;
   for (const s of samples) {
+    const a = aliasKey(s.type, s.alias);
+    const d = a ? undefined : descKey(s.type, s.description);
     const known =
       (s.id !== undefined && ids.has(`${s.type}|${s.id}`.toLowerCase())) ||
-      (s.alias !== undefined && aliases.has(`${s.type}|${s.alias.trim()}`.toLowerCase()));
+      (a !== undefined && aliases.has(a)) ||
+      (d !== undefined && descriptions.has(d));
     if (known) {
       skipped++;
       continue;
@@ -427,7 +462,8 @@ export function skipKnownSamples(
     fresh.push(s);
     // Two extracted entries for one sample count once.
     if (s.id !== undefined) ids.add(`${s.type}|${s.id}`.toLowerCase());
-    if (s.alias?.trim()) aliases.add(`${s.type}|${s.alias.trim()}`.toLowerCase());
+    if (a) aliases.add(a);
+    if (d) descriptions.add(d);
   }
   return { fresh, skipped };
 }
@@ -451,8 +487,10 @@ export async function extractSamplesCommand(plugin: LabnotePlugin): Promise<void
     {
       role: 'system',
       content:
-        'Extract laboratory sample definitions from the text. Respond with ONLY a JSON array of objects with keys "type", "id" (optional), "alias" (optional), "description" (optional). ' +
+        'Extract laboratory sample definitions from the text. Respond with ONLY a JSON array of objects with keys "type", "id" (optional), "alias" (optional), "description" (optional), "location" (optional). ' +
         `"type" must be one of: ${types.join(', ')}. ` +
+        '"alias" is the short name or code the text gives the sample (e.g. "YE-22"). ' +
+        '"location" is where the text says it is stored (e.g. "4°C fridge shelf 1"); keep it out of "description". ' +
         '"id" must look like "<type>-<number>" (e.g. "DNA-3"); omit it when the text gives no such id — do not use model or catalog numbers as ids. No prose.',
     },
     { role: 'user', content: text.slice(0, 6000) },
@@ -483,11 +521,13 @@ export async function extractSamplesCommand(plugin: LabnotePlugin): Promise<void
   const ctx = toolContext(plugin);
 
   let created = 0;
+  let noLocation = 0;
   let inGlobal = false;
   for (const s of fresh) {
     const res = await runTool(tools, 'create_sample', ctx, { ...s, documentPath: target.path });
     if (res.ok) {
       created++;
+      if (!s.location) noLocation++;
       if ((res.data as { scope?: string } | undefined)?.scope === 'global') inGlobal = true;
     }
   }
@@ -501,6 +541,9 @@ export async function extractSamplesCommand(plugin: LabnotePlugin): Promise<void
   }
   if (prepared.unknownType > 0) {
     parts.push(plugin.t('{0} skipped: unknown sample type.', String(prepared.unknownType)));
+  }
+  if (noLocation > 0) {
+    parts.push(plugin.t('{0} have no storage location; add it with Edit sample in the Samples view.', String(noLocation)));
   }
   if (inGlobal) {
     parts.push(plugin.t('This note is outside an experiment folder, so they were added to Global samples.'));

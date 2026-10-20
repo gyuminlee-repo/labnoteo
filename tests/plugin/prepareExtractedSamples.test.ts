@@ -63,6 +63,22 @@ describe('prepareExtractedSamples', () => {
     expect(out.unknownType).toBe(1);
   });
 
+  // #190: the storage location the note gave was dropped.
+  it('keeps the storage location the model found', () => {
+    expect(
+      prepareExtractedSamples(
+        [
+          { type: 'DNA', alias: 'GLC-40', location: ' 시약장 2번 선반 ' },
+          { type: 'DNA', alias: 'x', location: '  ' },
+        ],
+        TYPES
+      ).samples
+    ).toEqual([
+      { type: 'DNA', alias: 'GLC-40', location: '시약장 2번 선반' },
+      { type: 'DNA', alias: 'x' },
+    ]);
+  });
+
   it('leaves the id out when the model gave none', () => {
     expect(prepareExtractedSamples([{ type: 'DNA', alias: 'insert' }], TYPES).samples).toEqual([
       { type: 'DNA', id: undefined, alias: 'insert', description: undefined },
@@ -91,6 +107,37 @@ describe('skipKnownSamples', () => {
       { type: 'Plasmid', alias: 'pUC19' },
       { type: 'DNA', id: 'DNA-7', alias: 'new' },
     ]);
+  });
+
+  it('compares registry aliases the way extracted ones are fitted', () => {
+    const out = skipKnownSamples(
+      [{ type: 'DNA', alias: 'EXT-01-여름' }],
+      [{ DNA: { 'DNA-2': rec('EXT-01;여름') } }],
+      new Set()
+    );
+    expect(out.skipped).toBe(1);
+  });
+
+  // #153: samples without an alias were created again on every run.
+  it('takes the same type and description as the same sample only when neither has an alias', () => {
+    const noAlias = { type: 'DNA', alias: null, descriptions: ['정제 카트리지  키트 RX-96'], sources: [], location: null };
+    const out = skipKnownSamples(
+      [
+        { type: 'DNA', description: '정제 카트리지 키트 rx-96' },
+        { type: 'DNA', alias: 'kit', description: '정제 카트리지 키트 RX-96' },
+        { type: 'Plasmid', description: '정제 카트리지 키트 RX-96' },
+        { type: 'DNA', description: 'PCR 산물' },
+        { type: 'DNA', description: 'PCR 산물' },
+      ],
+      [{ DNA: { 'DNA-1': noAlias, 'DNA-3': { ...rec('named'), descriptions: ['PCR 산물 A'] } } }],
+      new Set()
+    );
+    expect(out.fresh).toEqual([
+      { type: 'DNA', alias: 'kit', description: '정제 카트리지 키트 RX-96' },
+      { type: 'Plasmid', description: '정제 카트리지 키트 RX-96' },
+      { type: 'DNA', description: 'PCR 산물' },
+    ]);
+    expect(out.skipped).toBe(2);
   });
 
   it('keeps only the first of two extracted entries for one sample', () => {
