@@ -73,6 +73,8 @@ Obsidian reads the release's `versions.json` from the repository, so there is no
 
 ## Commands
 
+Under a Korean UI the command palette shows each name as `Korean (English)` (e.g. `실험 생성 (Create experiment)`), so either language finds it; an English UI shows the English name alone.
+
 | Command | Description |
 |---|---|
 | Insert date | Insert the current date. Inside the front matter it only fills a line with an empty value such as `end_date: ''`; on a line that has a value it inserts nothing and warns. On an empty `Start_date`/`End_date` line of a unit operation's `#### Meta` it fills that value (with a value already there, it points to the 📅 picker) |

@@ -31,3 +31,9 @@ export function createObsidianTranslator(lang = getObsidianLanguage()): Translat
   }
   return createTranslator();
 }
+
+/** Command-palette label: the translation with the English key appended, so either language matches the search. */
+export function bilingualName(t: Translator, key: string): string {
+  const local = t(key);
+  return local === key ? key : `${local} (${key})`;
+}
