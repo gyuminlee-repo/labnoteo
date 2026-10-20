@@ -118,9 +118,23 @@ export class MarkdownView {
   file: TFile | null = null;
   editor: unknown = null;
   mode: 'source' | 'preview' = 'source';
+  /** The note's text as the view holds it (`getViewData`). */
+  data = '';
 
   getMode(): 'source' | 'preview' {
     return this.mode;
+  }
+
+  getViewData(): string {
+    return this.data;
+  }
+
+  getState(): Record<string, unknown> {
+    return { mode: this.mode };
+  }
+
+  async setState(state: { mode?: 'source' | 'preview' }, _result: unknown): Promise<void> {
+    if (state.mode) this.mode = state.mode;
   }
 }
 

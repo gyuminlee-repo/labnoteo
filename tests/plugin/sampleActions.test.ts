@@ -18,6 +18,7 @@ import {
   validateAlias,
 } from '../../src/sampleActions';
 import { confirmModal, pickModal, promptModal } from '../../src/modals';
+import { createObsidianHost } from '../../src/obsidianHost';
 import type { EditTarget } from '@labnoteo/core';
 import type LabnotePlugin from '../../src/main';
 
@@ -251,13 +252,15 @@ describe('editSampleInteractive alias rewrite', () => {
   const RECORD = { type: 'RNA', alias: 'si KIF', descriptions: ['kd'], sources: [], location: null };
   const format = (key: string, ...args: string[]) => key.replace(/\{(\d)\}/g, (_, i) => args[Number(i)]);
 
-  let open: { path: string; text: string } | undefined;
+  let open: { path: string; text: string; mode?: 'source' | 'preview' } | undefined;
+  let editTarget: () => EditTarget | undefined;
 
   function editPlugin() {
     const view = new MarkdownView();
     if (open) {
       const state = open;
       view.file = new TFile(state.path);
+      view.mode = state.mode ?? 'source';
       view.editor = {
         getValue: () => state.text,
         offsetToPos: (offset: number) => ({ line: 0, ch: offset }),
@@ -283,7 +286,7 @@ describe('editSampleInteractive alias rewrite', () => {
       fs,
       t: format,
       settings: { globalSampleFolder: GLOBAL, customSampleTypes: [] },
-      host: { fs, editTarget: () => undefined },
+      host: { fs, editTarget: () => editTarget() },
       refreshSampleViews: vi.fn(),
     } as unknown as LabnotePlugin;
     return { app, p };
@@ -297,8 +300,44 @@ describe('editSampleInteractive alias rewrite', () => {
 
   beforeEach(() => {
     open = undefined;
+    editTarget = () => undefined;
     Notice.reset();
     vi.mocked(confirmModal).mockReset();
+  });
+
+  // #216: a note shown only in reading view has a hidden editor that is never saved.
+  it('rewrites a note open in reading view through the vault, not its hidden editor', async () => {
+    open = { path: `${A}/002_WD020_Open.labnote.md`, text: 'hidden buffer RNA-1;si KIF\n', mode: 'preview' };
+    await fs.write(open.path, 'RNA-1;si KIF saved\n');
+    vi.mocked(confirmModal).mockResolvedValue(true);
+
+    await edit(FOLDER, 'siKIF');
+
+    expect(await fs.read(open.path)).toBe('RNA-1;siKIF saved\n');
+    expect(open.text).toBe('hidden buffer RNA-1;si KIF\n');
+  });
+
+  it('syncs the definition of a reading-view note through the vault without switching its view', async () => {
+    const path = `${A}/001_WD010_A.labnote.md`;
+    await fs.write(path, '@rna;RNA-1;si KIF;kd\n');
+    const view = new MarkdownView();
+    view.file = new TFile(path);
+    view.mode = 'preview';
+    view.data = '@rna;RNA-1;si KIF;kd\n';
+    view.editor = { getValue: () => 'hidden buffer' };
+    const setState = vi.spyOn(view, 'setState');
+    const host = createObsidianHost(
+      { workspace: { getActiveViewOfType: () => view, getMostRecentLeaf: () => null } } as unknown as App,
+      fs,
+      key => key
+    );
+    editTarget = () => host.editTarget();
+    vi.mocked(confirmModal).mockResolvedValue(false);
+
+    await edit(FOLDER, 'siKIF');
+
+    expect(await fs.read(path)).toBe('@rna;RNA-1;siKIF;kd\n');
+    expect(setState).not.toHaveBeenCalled();
   });
 
   it('rewrites definitions and references in the experiment of a Local sample', async () => {

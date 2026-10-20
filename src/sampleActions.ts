@@ -47,6 +47,7 @@ import { getSeoulDateString } from '@labnoteo/core/lib/dateUtils';
 import type LabnotePlugin from './main';
 import { processNoteThroughVault } from './commands';
 import { promptModal, confirmModal, pickModal } from './modals';
+import { isReadingViewTarget } from './obsidianHost';
 
 export type SampleScope = 'local' | 'global';
 
@@ -506,7 +507,16 @@ export async function editSampleInteractive(
   // Best-effort: keep the active note's `@type;` definition in sync (single
   // file only). Plain `id;alias` references are left as written.
   const target = plugin.host.editTarget();
-  if (target) {
+  if (target && isReadingViewTarget(target)) {
+    await processNoteThroughVault(app, plugin.host, target.path, content => {
+      const match = findSampleDefinitionMatch(content, type, id, record.alias ?? null);
+      return match
+        ? content.slice(0, match.start) +
+            buildSampleDefinitionText(type, id, alias, description) +
+            content.slice(match.start + match.length)
+        : content;
+    });
+  } else if (target) {
     const text = await target.getText();
     const match = findSampleDefinitionMatch(text, type, id, record.alias ?? null);
     if (match) {
@@ -707,14 +717,15 @@ export interface ScopedNote {
 
 /**
  * The notes a sample in `folder` can be used from: its experiment for a Local
- * folder, the whole vault for the Global one. An open note is read from its
- * editor so just-typed, unsaved text counts.
+ * folder, the whole vault for the Global one. A note open for editing is read
+ * from its editor so just-typed, unsaved text counts. One shown only in
+ * reading view is read from the vault: its hidden editor is never saved (#216).
  */
 export async function notesInSampleScope(app: App, folder: string): Promise<ScopedNote[]> {
   const editors = new Map<string, Editor>();
   for (const leaf of app.workspace.getLeavesOfType('markdown')) {
     const view = leaf.view;
-    if (view instanceof MarkdownView && view.file) {
+    if (view instanceof MarkdownView && view.file && view.getMode() === 'source') {
       editors.set(view.file.path, view.editor);
     }
   }
