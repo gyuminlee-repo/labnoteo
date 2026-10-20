@@ -37,6 +37,13 @@ describe('catalogDescriptionFor', () => {
     expect(catalogDescriptionFor('WD010', bundled, undefined)).toBe(bundled);
   });
 
+  it('translates the text an earlier release seeded for a since-updated item', () => {
+    const earlier =
+      'This workflow verifies the size and assesses the integrity of nucleic acid fragments (DNA or RNA) using electrophoretic separation techniques. Methods such as traditional agarose gel electrophoresis or capillary electrophoresis are employed to separate fragments based on size.';
+    expect(catalogDescriptionFor('WT015', earlier, 'ko')).toBe(CATALOG_KO_DESCRIPTIONS.WT015);
+    expect(catalogDescriptionFor('WT010', earlier, 'ko')).toBe(earlier);
+  });
+
   it("shows a lab's edited description as written", () => {
     expect(catalogDescriptionFor('WD010', 'Our own DoE notes.', 'ko')).toBe('Our own DoE notes.');
   });

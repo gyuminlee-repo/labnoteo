@@ -191,6 +191,7 @@ push하고 잠시 뒤, GitHub 저장소의 **Issues 탭**을 열어 보세요.
 | 워크플로(실험 단계) 추가 | 명령 팔레트 → `Create workflow` (README 체크리스트에 자동 등록) |
 | 옮겨 오거나 복사한 워크플로를 체크리스트에 등록 | 명령 팔레트 → `Sync workflow checklist with folder` (README·실험 폴더 우클릭에도 있음) |
 | 워크플로에 작업 단위 추가 | 워크플로 파일에서 → `Insert unit operation` → 별칭(선택) (README에서는 안 됨) |
+| 바뀐 카탈로그 받기 | 명령 팔레트 → `Update catalogs` → 목록 확인 → 커밋 (고친 항목은 그대로) |
 | 샘플 참조 넣기 | 본문에 `@dna` 입력 → 자동완성 |
 | 샘플 목록 보기 | 왼쪽 리본의 시험관 아이콘, 또는 `Open sample view` |
 | 샘플 정의 확인·편집 | 샘플 ID 위에서 **우클릭** → `Go to definition`, 또는 명령 팔레트 → `Open sample definition` (커서 위 샘플, 아니면 검색) |
@@ -231,6 +232,7 @@ push하고 잠시 뒤, GitHub 저장소의 **Issues 탭**을 열어 보세요.
 | Renumber workflows | 워크플로 번호 다시 매기기 |
 | Sync workflow checklist with folder | 폴더와 워크플로 체크리스트 맞추기 |
 | Insert unit operation | 유닛 오퍼레이션 삽입 |
+| Update catalogs | 카탈로그 업데이트 |
 | Insert date / Insert date and time | 날짜 삽입 / 날짜 및 시간 삽입 |
 | Export tables to CSV | 표를 CSV로 내보내기 |
 | Open workflow view / Open sample view | 워크플로 뷰 열기 / 샘플 뷰 열기 |
@@ -312,6 +314,9 @@ README frontmatter:
 한국어 UI에서는 카탈로그를 `조립`·`클로닝`처럼 한국어로도 검색할 수 있고, 목록의 설명도 한국어로 나옵니다
 (`Insert unit operation`과 워크플로 뷰 툴팁도 같음, 영어 설명의 낱말로도 검색됨). 연구실이 `resources/workflows/`의
 카탈로그 설명을 고쳤거나 직접 추가한 항목은 고친 영어 설명이 그대로 나옵니다.
+플러그인 업데이트로 내장 카탈로그가 바뀌면 앱을 열 때 한 번 알림이 뜹니다. 명령 팔레트 →
+`Update catalogs`를 실행하면 새 항목이 추가되고, 연구실이 손대지 않은 이름·설명이 새 값으로 바뀝니다
+(바뀔 목록을 확인한 뒤 반영, 고친 값과 지운 항목은 그대로). 팀에서는 한 사람이 실행해 커밋하면 됩니다.
 별칭 입력 창에는 워크플로가 무엇인지와 고른 항목의 설명이 나오고, 칠 때마다 파일 이름 기준 글자 수
 (`n/남은 칸`)를 알려 줍니다. 남은 칸은 `ID_카탈로그이름_` 뒤에 남는 자리라 워크플로마다 다르며,
 넘으면 경고 색으로 바뀌지만 저장은 막지 않습니다.

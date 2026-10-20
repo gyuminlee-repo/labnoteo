@@ -114,6 +114,7 @@ import { WorkflowTreeView, WORKFLOW_VIEW_TYPE } from './views/workflowView';
 import { SampleTreeView, SAMPLE_VIEW_TYPE } from './views/sampleView';
 import { exportTablesToCsv, exportActiveNoteTablesToCsv } from './exportCsv';
 import { openUserGuide } from './userGuide';
+import { catalogUpdateNotice, updateCatalogsCommand } from './catalogUpdate';
 import { LabnoteSettingTab } from './settingsTab';
 import { SETUP_DOC_PATH } from './scaffold/assets';
 import { refreshAutomationFiles } from './scaffold/scaffold';
@@ -219,6 +220,14 @@ export default class LabnotePlugin extends Plugin {
     this.app.workspace.onLayoutReady(() =>
       this.run(async () => {
         await refreshAutomationFiles(this.host, this.manifest.version);
+      })
+    );
+    this.app.workspace.onLayoutReady(() =>
+      this.run(async () => {
+        const hash = await catalogUpdateNotice(this.host, this.settings.catalogNoticeHash);
+        if (hash === this.settings.catalogNoticeHash) return;
+        this.settings.catalogNoticeHash = hash;
+        await this.saveSettings();
       })
     );
 
@@ -392,6 +401,15 @@ export default class LabnotePlugin extends Plugin {
       id: 'insert-unit-operation',
       name: this.paletteName('Insert unit operation'),
       callback: () => this.run(() => insertUnitOperationCommand(this.app, this.host)),
+    });
+
+    this.addCommand({
+      id: 'update-catalogs',
+      name: this.paletteName('Update catalogs'),
+      callback: () =>
+        this.run(async () => {
+          if (await updateCatalogsCommand(this.host)) this.refreshWorkflowViews();
+        }),
     });
 
     this.addCommand({
@@ -1853,6 +1871,13 @@ export default class LabnotePlugin extends Plugin {
       if (leaf.view instanceof SampleTreeView) void leaf.view.refresh();
     }
     this.sampleIds?.invalidate();
+  }
+
+  /** Refresh any open workflow view(s), which read the catalogs only when refreshed. */
+  refreshWorkflowViews(): void {
+    for (const leaf of this.app.workspace.getLeavesOfType(WORKFLOW_VIEW_TYPE)) {
+      if (leaf.view instanceof WorkflowTreeView) void leaf.view.refresh();
+    }
   }
 
   /**

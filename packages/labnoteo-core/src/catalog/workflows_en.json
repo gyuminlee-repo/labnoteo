@@ -173,7 +173,7 @@
     },
     {
       "id": "WB125",
-      "name": "Colony Picking",
+      "name": "Colony Selection",
       "description": "This workflow isolates single bacterial colonies from solid media after transformation or screening and transfers them to liquid media or fresh plates using automated colony pickers or manual pipetting. It supports 96/384-well array formats, barcode/sample tracking, and rule- or image-based selection (e.g., size, color, fluorescence). Outputs are clonal cultures suitable for downstream verification (e.g., genotyping, sequencing) and protein expression analysis.",
       "category": "Build"
     },
@@ -196,21 +196,33 @@
       "category": "Build"
     },
     {
+      "id": "WB155",
+      "name": "RCA-based Target Amplification",
+      "description": "This workflow employs designed or random primers in combination with rolling circle amplification (RCA), an isothermal amplification method, to selectively amplify target gene sequences from complex templates such as genomic or metagenomic DNA, enabling efficient gene screening and retrieval.",
+      "category": "Build"
+    },
+    {
+      "id": "WB160",
+      "name": "CRISPR-based Genome Editing",
+      "description": "This workflow introduces targeted genetic modifications using CRISPR-based genome engineering systems, including base editing (BE) for precise nucleotide substitutions and CRISPR-associated transposase (CAST) systems for programmable DNA insertion. It enables the construction of edited strains, targeted variant libraries, or genome-integrated genetic elements for downstream screening and characterization.",
+      "category": "Build"
+    },
+    {
       "id": "WT010",
       "name": "Nucleotide Sequencing",
-      "description": "This workflow runs next-generation sequencing (NGS) instruments to generate raw data (e.g., fastq files) from sequencing-ready libraries. It covers flow cell/chip loading, run setup, on-instrument QC/monitoring, and data offloading/demultiplexing. Transcriptome-scale assays (e.g., RNA-seq) are executed here once libraries have been prepared in the dedicated library preparation workflow. For Sanger sequencing, this involves preparing DNA templates and primers, performing cycle sequencing reactions, and basecalling on capillary electrophoresis equipment to generate .ab1 chromatogram files.",
+      "description": "This workflow runs next-generation sequencing (NGS) instruments to generate raw data (e.g., fastq files) from sequencing-ready libraries. It covers flow cell/chip loading, run setup, on-instrument QC/monitoring, and data offloading/demultiplexing. Transcriptome-scale assays (e.g., RNA-seq) are executed here once libraries have been prepared in the dedicated library preparation workflow. For Sanger sequencing, this involves preparing DNA templates and primers, performing cycle sequencing reactions, and basecalling on capillary electrophoresis equipment to generate .ab1 chromatogram files. Typical applications include targeted gene/plasmid verification and small-scale sequencing; transcriptome-scale RNA sequencing is performed via NGS workflows (e.g., RNA-seq).",
       "category": "Test"
     },
     {
       "id": "WT012",
       "name": "Targeted mRNA Expression Measurement",
-      "description": "This workflow measures specific transcript levels from RNA samples using targeted assays such as RT-qPCR, qPCR, and digital PCR (ddPCR). It supports absolute (standard curve/copy number) and relative (ΔΔCt) quantification with appropriate reference genes, and enables high-throughput measurements in 96/384-well plates with automated liquid handling.",
+      "description": "This workflow measures specific transcript levels from RNA samples using targeted assays such as RT-qPCR, qPCR, and digital PCR (ddPCR). It supports absolute (standard curve/copy number) and relative (ΔΔCt) quantification with appropriate reference genes, and enables high-throughput measurements in 96/384-well plates with automated liquid handling. Outputs include per-gene expression levels, fold-changes across conditions, and QC metrics such as amplification efficiency and melt-curve specificity, complementing NGS-based transcriptome profiling.",
       "category": "Test"
     },
     {
       "id": "WT015",
       "name": "Nucleic Acid Size Verification",
-      "description": "This workflow verifies the size and assesses the integrity of nucleic acid fragments (DNA or RNA) using electrophoretic separation techniques. Methods such as traditional agarose gel electrophoresis or capillary electrophoresis are employed to separate fragments based on size.",
+      "description": "This workflow verifies the size and assesses the integrity of nucleic acid fragments (DNA or RNA) using electrophoretic separation techniques. Methods such as traditional agarose gel electrophoresis or capillary electrophoresis are employed to separate fragments based on size. Common applications include verifying PCR product sizes, confirming plasmid construction/linearization, checking restriction digest completeness, and assessing RNA quality.",
       "category": "Test"
     },
     {
@@ -234,13 +246,13 @@
     {
       "id": "WT045",
       "name": "Mammalian Cell Cytotoxicity Assay",
-      "description": "This workflow quantifies viability and cytotoxic effects in mammalian/eukaryotic cells induced by proteins, small molecules, or gene perturbations using colorimetric/fluorometric/luminescent assays (e.g., MTT/MTS/Resazurin, LDH release, ATP-based luminescence) and imaging-based markers (e.g., Annexin V/PI, caspase activity, live/dead staining).",
+      "description": "This workflow quantifies viability and cytotoxic effects in mammalian/eukaryotic cells induced by proteins, small molecules, or gene perturbations using colorimetric/fluorometric/luminescent assays (e.g., MTT/MTS/Resazurin, LDH release, ATP-based luminescence) and imaging-based markers (e.g., Annexin V/PI, caspase activity, live/dead staining). It supports endpoint or kinetic measurements in 96/384-well formats with appropriate positive/negative controls and normalization, reporting viability percentage, apoptosis/necrosis markers, and dose–response metrics such as IC50 with QC parameters (e.g., Z'-factor).",
       "category": "Test"
     },
     {
       "id": "WT046",
       "name": "Microbial Viability and Cytotoxicity Assay",
-      "description": "This workflow measures growth inhibition and viability of microbial cells (e.g., bacteria, yeast) under treatment with compounds, proteins, or genetic perturbations. It includes OD600 growth curves/kinetics, broth microdilution for MIC/MBC determination, CFU enumeration, resazurin/ATP-based viability assays, membrane integrity dyes (e.g., PI/SYTOX), and time-kill/biofilm susceptibility when applicable.",
+      "description": "This workflow measures growth inhibition and viability of microbial cells (e.g., bacteria, yeast) under treatment with compounds, proteins, or genetic perturbations. It includes OD600 growth curves/kinetics, broth microdilution for MIC/MBC determination, CFU enumeration, resazurin/ATP-based viability assays, membrane integrity dyes (e.g., PI/SYTOX), and time-kill/biofilm susceptibility when applicable. It supports 96/384-well high-throughput formats and automated liquid handling, reporting MIC/MBC, percent inhibition/viability, growth rate or area-under-the-curve, and dose–response parameters (e.g., IC50) with assay QC (e.g., Z'-factor).",
       "category": "Test"
     },
     {
@@ -270,7 +282,7 @@
     {
       "id": "WT085",
       "name": "Mycoplasma Contamination Test",
-      "description": "This workflow screens mammalian cell cultures for mycoplasma contamination using rapid biochemical assays (e.g., ATP-based luminescence), targeted PCR/qPCR of mycoplasmal DNA, and culture-based confirmation when required. It supports routine high-throughput screening in 96/384-well formats with appropriate positive/negative controls.",
+      "description": "This workflow screens mammalian cell cultures for mycoplasma contamination using rapid biochemical assays (e.g., ATP-based luminescence), targeted PCR/qPCR of mycoplasmal DNA, and culture-based confirmation when required. It supports routine high-throughput screening in 96/384-well formats with appropriate positive/negative controls, and reports qualitative/quantitative results with action thresholds for quarantine, decontamination, or discard prior to critical downstream experiments.",
       "category": "Test"
     },
     {
@@ -354,7 +366,7 @@
     {
       "id": "WL055",
       "name": "Single Cell Analysis",
-      "description": "This workflow focuses on analyzing individual cells to understand cellular heterogeneity and functional characteristics. It includes techniques such as single-cell RNA sequencing, single-cell ATAC-seq, and other omics approaches. The workflow supports the identification of rare cell populations, lineage tracing, and the study of cellular responses to various stimuli.",
+      "description": "This workflow focuses on analyzing individual cells to understand cellular heterogeneity and functional characteristics. It includes techniques such as single-cell RNA sequencing, single-cell ATAC-seq, and other omics approaches. The workflow supports the identification of rare cell populations, lineage tracing, and the study of cellular responses to various stimuli. Advanced data analysis tools and machine learning algorithms are employed to interpret complex single-cell data.",
       "category": "Learn"
     },
     {
@@ -372,7 +384,7 @@
     {
       "id": "WL080",
       "name": "Protein/Enzyme Optimization Model Development",
-      "description": "This workflow is aimed at developing models to optimize characteristics (such as activity, solubility) of target proteins by utilizing phenotypic and sequence data obtained from protein/enzyme expression and activity measurements. It includes protein structure and function analysis, leveraging pre-trained models or publicly available models (e.g., Alphafold2, Rosettafold, MPNN).",
+      "description": "This workflow is aimed at developing models to optimize characteristics (such as activity, solubility) of target proteins by utilizing phenotypic and sequence data obtained from protein/enzyme expression and activity measurements. It includes protein structure and function analysis, leveraging pre-trained models or publicly available models (e.g., Alphafold2, Rosettafold, MPNN), and can be used for designing libraries of new functional proteins. Models include statistical, machine leanring, and AI models.",
       "category": "Learn"
     },
     {

@@ -104,6 +104,12 @@ describe('migrateSettings', () => {
     expect(migrateSettings({ workflowViewGroupBy: 'owner' }).workflowViewGroupBy).toBe('status');
   });
 
+  it('keeps the catalog notice hash only when it is a string', () => {
+    expect(migrateSettings({}).catalogNoticeHash).toBe('');
+    expect(migrateSettings({ catalogNoticeHash: 'abc123' }).catalogNoticeHash).toBe('abc123');
+    expect(migrateSettings({ catalogNoticeHash: 42 }).catalogNoticeHash).toBe('');
+  });
+
   it('defaults autoUpdateLastUpdated to on and keeps a stored boolean', () => {
     expect(migrateSettings({}).autoUpdateLastUpdated).toBe(true);
     expect(migrateSettings({ autoUpdateLastUpdated: false }).autoUpdateLastUpdated).toBe(false);

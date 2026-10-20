@@ -7,6 +7,7 @@
  */
 import { UNIT_OPERATIONS_HW_CATALOG, UNIT_OPERATIONS_SW_CATALOG, WORKFLOWS_CATALOG } from './index';
 import { CATALOG_KO_DESCRIPTIONS } from './catalogKoDescriptions';
+import { EARLIER_BUNDLED } from './earlierBundled';
 
 export interface CatalogKoEntry {
   name: string;
@@ -45,10 +46,12 @@ export const CATALOG_KO: Readonly<Record<string, CatalogKoEntry>> = {
   WB100: { name: '배지 제조 및 멸균', keywords: ['오토클레이브', '고압멸균'] },
   WB110: { name: '컴피턴트 세포 제작' },
   WB120: { name: '생물학적 DNA 전달', keywords: ['형질전환', '형질도입', '접합', '전기천공', '열충격'] },
-  WB125: { name: '콜로니 피킹' },
+  WB125: { name: '콜로니 선별', keywords: ['콜로니 피킹'] },
   WB130: { name: '고체 배지 세포 배양', keywords: ['플레이트'] },
   WB140: { name: '액체 배지 세포 배양' },
   WB150: { name: 'PCR 기반 표적 증폭', keywords: ['중합효소 연쇄반응'] },
+  WB155: { name: 'RCA 기반 표적 증폭', keywords: ['롤링서클 증폭', '등온 증폭'] },
+  WB160: { name: 'CRISPR 기반 유전체 편집', keywords: ['크리스퍼', '게놈', '염기 편집', 'CAST'] },
   // Workflows — Test
   WT010: { name: '핵산 서열 분석', keywords: ['시퀀싱'] },
   WT012: { name: '표적 mRNA 발현 측정', keywords: ['qPCR', 'RT-qPCR'] },
@@ -184,13 +187,15 @@ const BUNDLED_DESCRIPTIONS = new Map<string, string>(
 /**
  * The description to show for a catalog item (#213): its Korean translation
  * when `locale` is Korean and the vault's copy still has the bundled English
- * text, otherwise `description` as it is. The vault's catalog files are
- * editable copies, so a lab's edit or its own item shows as written rather
- * than hidden behind a translation of the original.
+ * text (current or earlier), otherwise `description` as it is. The vault's
+ * catalog files are editable copies, so a lab's edit or its own item shows as
+ * written rather than hidden behind a translation of the original.
  */
 export function catalogDescriptionFor(id: string, description: string, locale: string | undefined): string {
   if (!locale?.toLowerCase().startsWith('ko')) return description;
   const ko = CATALOG_KO_DESCRIPTIONS[id];
-  if (!ko || BUNDLED_DESCRIPTIONS.get(id) !== description.trim()) return description;
+  const text = description.trim();
+  const bundled = BUNDLED_DESCRIPTIONS.get(id) === text || !!EARLIER_BUNDLED[id]?.description?.includes(text);
+  if (!ko || !bundled) return description;
   return ko;
 }

@@ -7,6 +7,12 @@
  * `main.js` / `manifest.json` / `styles.css` and cannot rely on loose files
  * on disk. The extension seeds an editable workspace copy from these
  * constants (see `ensureWorkflowResources`).
+ *
+ * Vault copies are seeded once and brought up to date only by "Update
+ * catalogs", which tells an unedited field by its earlier bundled value. So
+ * when a name or description here changes, add the old value to
+ * `EARLIER_BUNDLED`, and add a new id to `ADDED_BUNDLED_IDS`
+ * (`./earlierBundled`).
  */
 import workflowsJson from './workflows_en.json';
 import unitOperationsHwJson from './unitoperations_hw_en.json';
