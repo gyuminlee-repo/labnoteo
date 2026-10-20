@@ -92,15 +92,32 @@ function sanitizeSegment(input: string): string {
     .replace(/\uE001/g, '.');
 }
 
-/** Code points a generated name part keeps; long titles otherwise exceed OS path limits (#148). */
-export const PATH_SEGMENT_MAX = 100;
+/**
+ * Code points the title part of an experiment folder name keeps; `NNN_` comes
+ * on top (#148). With {@link WORKFLOW_FILE_NAME_MAX} this keeps a workflow's
+ * path inside the vault near 170 characters, so a vault folder of up to about
+ * 85 characters stays within Windows' 260.
+ */
+export const EXPERIMENT_FOLDER_TITLE_MAX = 60;
+
+/**
+ * Code points the `ID_name_alias` part of a workflow file name keeps; `NNN_`
+ * and `.labnote.md` come on top (#148).
+ */
+export const WORKFLOW_FILE_NAME_MAX = 80;
+
+/** The longest file or folder name the common file systems take. */
+export const FS_NAME_MAX = 255;
+
+/** Windows' classic path limit: a path this long or longer fails there. */
+export const WINDOWS_PATH_MAX = 260;
 
 /**
  * Cut a sanitized name part to `max` code points (never splitting a surrogate
  * pair) and drop the separators the cut leaves at its end. Shorter input is
  * returned unchanged.
  */
-export function capPathSegment(segment: string, max: number = PATH_SEGMENT_MAX): string {
+export function capPathSegment(segment: string, max: number): string {
   const chars = Array.from(segment);
   if (chars.length <= max) return segment;
   return chars.slice(0, max).join('').replace(/[_.-]+$/, '');
@@ -109,7 +126,9 @@ export function capPathSegment(segment: string, max: number = PATH_SEGMENT_MAX):
 /**
  * Whether a file-system error comes from a name or path that is too long
  * (#148): `ENAMETOOLONG`, or — as Windows reports it — `ENOENT` for a path
- * past its 260-character limit or with a part longer than {@link PATH_SEGMENT_MAX}.
+ * past {@link WINDOWS_PATH_MAX} or with a part longer than {@link FS_NAME_MAX}.
+ * Judged by the file-system limits, not the shorter caps names are made with,
+ * so a missing file with an older, longer name is not reported as too long.
  */
 export function isPathTooLongError(err: unknown): boolean {
   if (typeof err !== 'object' || err === null) return false;
@@ -117,5 +136,14 @@ export function isPathTooLongError(err: unknown): boolean {
   if (code === 'ENAMETOOLONG') return true;
   if (code !== 'ENOENT') return false;
   const p = typeof path === 'string' ? path : (/'([^']+)'/.exec(String(message ?? ''))?.[1] ?? '');
-  return p.length >= 260 || p.split(/[\\/]/).some(part => Array.from(part).length > PATH_SEGMENT_MAX);
+  return p.length >= WINDOWS_PATH_MAX || p.split(/[\\/]/).some(part => Array.from(part).length > FS_NAME_MAX);
+}
+
+/**
+ * Length of `vaultPath` on disk once the vault's own folder `basePath` is put
+ * in front, in UTF-16 units as Windows counts them (#148).
+ */
+export function fullPathLength(basePath: string, vaultPath: string): number {
+  const base = basePath.replace(/[\\/]+$/, '');
+  return base ? base.length + 1 + vaultPath.length : vaultPath.length;
 }

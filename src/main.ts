@@ -7,7 +7,7 @@
  * highlighting, sidebar views, the settings tab and the LLM/MCP layer are added
  * by subsequent modules that all consume the same `LabnoteHost` built here.
  */
-import { MarkdownView, Plugin, Notice, TFile, TFolder, editorInfoField } from 'obsidian';
+import { MarkdownView, Plugin, Notice, TFile, TFolder, editorInfoField, type WorkspaceLeaf } from 'obsidian';
 import type { LabnoteHost, Translator } from '@labnoteo/core';
 import {
   findSampleReferenceAt,
@@ -22,7 +22,7 @@ import {
   touchLastUpdatedDate,
 } from '@labnoteo/core/lib/dateUtils';
 import { getSampleDisplayMeta, isCatalogSampleType } from '@labnoteo/core/lib/sampleUtils';
-import { isPathTooLongError, PATH_SEGMENT_MAX } from '@labnoteo/core/lib/regexUtils';
+import { isPathTooLongError, WINDOWS_PATH_MAX } from '@labnoteo/core/lib/regexUtils';
 import {
   classifyWorkflowMoveOut,
   classifyWorkflowRename,
@@ -69,8 +69,12 @@ import {
   syncReadmeAndSamplesOnDelete,
   offerTableCsvCleanupOnDelete,
   setupResearchAutomationCommand,
+  catalogDescription,
+  workflowAliasHint,
+  workflowConcept,
   type ReadmeSyncControl,
 } from './commands';
+import { loadWorkflows } from '@labnoteo/core/lib/workflowDataLoader';
 import * as posix from '@labnoteo/core/posix';
 import {
   diagnoseExperimentPath,
@@ -276,8 +280,8 @@ export default class LabnotePlugin extends Plugin {
         this.host.notify(
           'error',
           this.t(
-            'Command failed: the name is too long for the file system. Shorten the title or alias to {0} characters or fewer.',
-            String(PATH_SEGMENT_MAX)
+            'Command failed: the path is too long for the file system (Windows allows {0} characters including the vault folder). Move the vault to a shorter folder path, or shorten the title or alias.',
+            String(WINDOWS_PATH_MAX - 1)
           )
         );
         return;
@@ -1155,12 +1159,22 @@ export default class LabnotePlugin extends Plugin {
         ? title.trim().slice(prefix.length).trim()
         : heading.alias;
 
+    let description: string | undefined;
+    try {
+      const wf = (await loadWorkflows(this.fs, '.')).workflows.find(w => w.id === heading.id);
+      if (wf?.description) description = catalogDescription(wf.id, wf.description);
+    } catch {
+      description = undefined;
+    }
     const alias = await workflowAliasModal(this.app, {
       id: heading.id,
       catalogName: heading.name,
       title: this.t('Name this copy of the workflow'),
       placeholder: this.t('Enter a name for this workflow'),
       value: originalAlias,
+      about: workflowConcept(this.host),
+      description,
+      hint: workflowAliasHint(this.host, heading.id, heading.name),
     });
     if (alias === undefined || this.unloaded) return;
     if (!this.copiedWorkflows.has(copyPath) || file.path !== copyPath) return;
@@ -1651,16 +1665,16 @@ export default class LabnotePlugin extends Plugin {
   /** Reveal (or create) a sidebar leaf hosting the given view type. */
   private async activateView(viewType: string): Promise<void> {
     const { workspace } = this.app;
-    const existing = workspace.getLeavesOfType(viewType);
-    if (existing.length > 0) {
-      await workspace.revealLeaf(existing[0]);
-      return;
-    }
-    const leaf = workspace.getRightLeaf(false);
-    if (leaf) {
+    let leaf: WorkspaceLeaf | null = workspace.getLeavesOfType(viewType)[0] ?? null;
+    if (!leaf) {
+      leaf = workspace.getRightLeaf(false);
+      if (!leaf) return;
       await leaf.setViewState({ type: viewType, active: true });
-      await workspace.revealLeaf(leaf);
     }
+    await workspace.revealLeaf(leaf);
+    // Arrow keys should move in the tree right away, not in the editor (#197).
+    const view = leaf.view;
+    if (view instanceof WorkflowTreeView || view instanceof SampleTreeView) view.focusTree();
   }
 
   /** Sample autocomplete, live/reading-mode highlighting, and save-time sync. */

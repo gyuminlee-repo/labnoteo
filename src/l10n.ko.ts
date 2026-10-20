@@ -85,6 +85,12 @@ const obsidianKo: Record<string, string> = {
   'Status': '상태',
   'Workflows done': '완료한 워크플로',
   'Last updated': '마지막 수정',
+  'Project': '과제',
+  '(no project)': '(과제 없음)',
+  'Search experiments': '실험 검색',
+  'Group experiments by': '실험 묶는 기준',
+  'By status': '상태별',
+  'By project': '과제별',
   'Type @dna (or another type) in a note, or right-click → "{0}" to register a sample.':
     '노트에서 @dna처럼 입력하거나 우클릭 → "{0}"(으)로 샘플을 등록합니다.',
 
@@ -105,6 +111,19 @@ const obsidianKo: Record<string, string> = {
   'Workflow name': '워크플로 이름',
   'Enter a name for this workflow': '이 워크플로의 상세 별칭을 입력하세요',
   'Unit operation alias': '유닛 오퍼레이션 별칭',
+  '{0}/{1} characters in the folder name. Anything longer is cut from the folder name only; the experiment title keeps it all.':
+    '폴더 이름 기준 {0}/{1}자. 넘는 부분은 폴더 이름에서만 잘리고, 실험 제목에는 전체가 남습니다.',
+  '{0}/{1} characters in the file name. Anything longer is cut from the file name only; the workflow title and checklist keep it all.':
+    '파일 이름 기준 {0}/{1}자. 넘는 부분은 파일 이름에서만 잘리고, 워크플로 제목과 체크리스트에는 전체가 남습니다.',
+  "This workflow's name is long, so the alias won't fit in the file name. The title and checklist still keep it.":
+    '이 워크플로는 이름이 길어 별칭이 파일 이름에 들어가지 않습니다. 제목과 체크리스트에는 남습니다.',
+  '{0} characters · no limit (not used in a file name)': '{0}자 · 글자 수 제한 없음 (파일 이름에 쓰이지 않음)',
+  'A workflow is a note for one design, build, test or learn stage of the experiment. The alias tells uses of the same workflow apart and also goes into the file name and the README checklist. You can leave it empty.':
+    '워크플로는 실험을 이루는 설계·구축·시험·학습 단계 가운데 하나를 기록하는 노트입니다. 별칭은 같은 워크플로를 여러 번 쓸 때 서로 구분하는 이름으로, 파일 이름과 README 체크리스트에 함께 쓰입니다. 비워 두어도 됩니다.',
+  'A unit operation is a single task within a workflow (one step using a piece of equipment or software). The alias tells repeats of the same task apart by run or condition and appears in its heading and the table of contents. You can leave it empty.':
+    '유닛 오퍼레이션은 워크플로 안에서 수행하는 개별 작업(장비나 소프트웨어를 쓰는 한 단계)입니다. 별칭은 같은 작업을 여러 번 할 때 회차나 조건을 구분하는 이름으로, 제목 줄과 목차에 쓰입니다. 비워 두어도 됩니다.',
+  'Equipment': '장비',
+  'Software': '소프트웨어',
   'Run or condition of this step (optional)': '이 공정의 회차·조건 별칭(선택)',
 
   // Notices / results
@@ -240,8 +259,10 @@ const obsidianKo: Record<string, string> = {
   '{0} rows → {1} rows': '{0}행 → {1}행',
   'row {0}: {1} → {2}': '{0}번째 행: {1} → {2}',
   'Command failed: {0}': '명령 실행 실패: {0}',
-  'Command failed: the name is too long for the file system. Shorten the title or alias to {0} characters or fewer.':
-    '명령 실행 실패: 이름이 너무 길어 파일을 만들 수 없습니다. 제목이나 별칭을 {0}자 이하로 줄이세요.',
+  'Command failed: the path is too long for the file system (Windows allows {0} characters including the vault folder). Move the vault to a shorter folder path, or shorten the title or alias.':
+    '명령 실행 실패: 경로가 너무 길어 파일을 만들 수 없습니다(Windows는 보관함 폴더를 포함해 {0}자까지 허용). 보관함을 더 짧은 경로의 폴더로 옮기거나 제목·별칭을 줄이세요.',
+  '"{0}" is {1} characters long including the vault folder, past the {2} Windows allows. Opening it on Windows (including git clones) may fail; move the vault to a shorter folder path or shorten the name.':
+    '"{0}"은(는) 보관함 폴더를 포함한 경로가 {1}자로, Windows가 허용하는 {2}자를 넘습니다. Windows에서 열거나 git으로 받을 때 실패할 수 있으니 보관함을 더 짧은 경로의 폴더로 옮기거나 이름을 줄이세요.',
   'Yes': '예',
   'Workflow created: {0}': '워크플로가 생성되었습니다: {0}',
   'This experiment has no README.labnote.md, so the workflow was not added to a checklist.':
@@ -253,6 +274,10 @@ const obsidianKo: Record<string, string> = {
   'Please open a workflow file.': '워크플로 파일을 열어주세요.',
   'Please run this command on a workflow file inside the labnote folder.':
     'labnote 폴더 내의 워크플로 파일에서 실행해주세요.',
+  'README.labnote.md is the experiment overview and holds no unit operations. Open one of its workflow notes (###_….labnote.md), or make one with "{0}".':
+    'README.labnote.md는 실험 개요 노트라 유닛 오퍼레이션을 넣지 않습니다. 이 실험의 워크플로 노트(###_….labnote.md)를 열거나 "{0}"으로 새로 만드세요.',
+  '"{0}" is not a workflow note: unit operations go into a ###_….labnote.md note directly in the experiment folder. Open one, or make one with "{1}".':
+    '"{0}"은(는) 워크플로 노트가 아닙니다. 유닛 오퍼레이션은 실험 폴더 바로 아래의 ###_….labnote.md 노트에 넣습니다. 그런 노트를 열거나 "{1}"으로 새로 만드세요.',
   'Missing unit operation info.': '유닛 오퍼레이션 정보가 없습니다.',
 
   // Sample view context menu

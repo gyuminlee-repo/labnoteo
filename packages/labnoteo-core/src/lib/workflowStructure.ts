@@ -4,11 +4,18 @@
 
 import * as path from '../util/posixPath';
 import { getSeoulDateString, findMetaDateFieldInLine } from './dateUtils';
-import { sanitizePathSegment, legacySanitizePathSegment, capPathSegment, escapeRegExp } from './regexUtils';
+import {
+  sanitizePathSegment,
+  legacySanitizePathSegment,
+  capPathSegment,
+  escapeRegExp,
+  WORKFLOW_FILE_NAME_MAX,
+} from './regexUtils';
 import { parseFrontMatterYaml, serializeFrontMatterEntry } from '../sections/frontMatter';
 import { stepFence, type OpenFence } from '../sections/sectionEdit';
 import {
   commandName,
+  diagnoseExperimentPath,
   getExperimentDir,
   KO_COMMAND_NAMES,
   type TemplateHintOptions,
@@ -62,6 +69,38 @@ export function isValidWorkflowPath(filePath: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** {@link diagnoseWorkflowPath} result. */
+export type WorkflowPathDiagnosis =
+  /** A workflow note: `labnote/###_Experiment/###_….labnote.md`. */
+  | { kind: 'ok' }
+  /** The experiment's `README.labnote.md`, which holds no unit operations (#201). */
+  | { kind: 'readme'; folder: string }
+  /** In an experiment, but not a workflow note (no `###_`, not `.labnote.md`, or in a subfolder). */
+  | { kind: 'notWorkflow'; folder: string }
+  /** In a `###_` folder deeper than directly under `labnote/` (#166); `folder` is that folder. */
+  | { kind: 'nested'; folder: string }
+  /** In a folder under `labnote/` whose name lacks `###_`; `folder` is that folder. */
+  | { kind: 'noPrefix'; folder: string }
+  /** Not under `labnote/` at all. */
+  | { kind: 'outside' };
+
+/**
+ * Why `filePath` is or is not a workflow note, so a command that needs one
+ * can say what is wrong before asking for anything else (#201, #166). Uses
+ * {@link isValidWorkflowPath} for the positive case and
+ * {@link diagnoseExperimentPath} for where the note sits.
+ */
+export function diagnoseWorkflowPath(filePath: string): WorkflowPathDiagnosis {
+  if (isValidWorkflowPath(filePath)) return { kind: 'ok' };
+  const where = diagnoseExperimentPath(filePath);
+  if (where.kind !== 'ok') return where;
+  const normalized = filePath.replace(/\\/g, '/');
+  if (path.dirname(normalized) === where.folder && path.basename(normalized).toLowerCase() === 'readme.labnote.md') {
+    return { kind: 'readme', folder: where.folder };
+  }
+  return { kind: 'notWorkflow', folder: where.folder };
 }
 
 /**
@@ -225,6 +264,20 @@ ${frontMatter}
 }
 
 /**
+ * Room left for an alias in the `ID_name_alias` part of a workflow file name
+ * once `ID_name_` is in, never below 0; {@link createWorkflowFileName} cuts the
+ * alias there.
+ */
+export function workflowAliasBudget(id: string, name: string): number {
+  return Math.max(0, WORKFLOW_FILE_NAME_MAX - Array.from(`${id}_${sanitizeWorkflowName(name)}_`).length);
+}
+
+/** Code points of `alias` that go into a workflow file name, counted after sanitizing. */
+export function workflowAliasLength(alias: string): number {
+  return Array.from(sanitizeWorkflowName(alias.trim())).length;
+}
+
+/**
  * Create workflow filename with .md extension
  * @param sequence 3-digit sequence number (e.g., '001')
  * @param workflow Workflow information
@@ -241,7 +294,7 @@ export function createWorkflowFileName(
   const safeAlias = aliasSegment ? `_${aliasSegment}` : '';
 
   // The title and alias stay whole in the note; only the file name is capped (#148).
-  return `${sequence}_${capPathSegment(`${workflow.id}_${safeName}${safeAlias}`)}.labnote.md`;
+  return `${sequence}_${capPathSegment(`${workflow.id}_${safeName}${safeAlias}`, WORKFLOW_FILE_NAME_MAX)}.labnote.md`;
 }
 
 /**
@@ -850,14 +903,17 @@ export function defaultWorkflowTitle(fileName: string): string {
  * sanitizer, so `WT020 Protein/Enzyme Expression` matches
  * `002_WT020_ProteinEnzyme_Expression.labnote.md`. A file named before the
  * current rules (#148 length cap, #165 `_plus`/`_minus`) matches under the
- * rules it was named with, so `IND+` still matches `..._IND.labnote.md`.
+ * rules it was named with, so `IND+` still matches `..._IND.labnote.md`. Both
+ * sides are cut to the current cap, so a file cut at the longer cap of 0.101.0
+ * still matches its label.
  */
 export function labelMatchesFileName(label: string, fileName: string): boolean {
   const parts = parseWorkflowFileName(fileName);
   if (!parts) return false;
   const file = `${parts.id}_${parts.safeName}`;
   return (
-    capPathSegment(sanitizePathSegment(label)) === capPathSegment(sanitizePathSegment(file)) ||
+    capPathSegment(sanitizePathSegment(label), WORKFLOW_FILE_NAME_MAX) ===
+      capPathSegment(sanitizePathSegment(file), WORKFLOW_FILE_NAME_MAX) ||
     legacySanitizePathSegment(label) === legacySanitizePathSegment(file)
   );
 }

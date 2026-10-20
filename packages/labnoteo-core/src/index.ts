@@ -124,6 +124,7 @@ export type {
   EditTarget,
   PickItem,
   PromptOpts,
+  PromptHint,
   NotifyKind,
 } from './host';
 
@@ -131,6 +132,7 @@ export type {
 export {
   insertUnitOperation,
   unitOpInsertPointAtCursor,
+  workflowPathProblem,
   type InsertUnitOperationInput,
 } from './commands/insertUnitOperation';
 
@@ -175,11 +177,14 @@ export {
   buildWorkflowTree,
   buildSampleTree,
   filterSampleTree,
+  filterExperiments,
+  type ExperimentGrouping,
   type TreeNode,
   type TreeNodeKind,
   type ExperimentEntry,
   type ExperimentTreeLabels,
   type WorkflowTreeData,
+  type WorkflowTreeLabels,
   type SampleScope,
   type SampleTreeRoots,
   type SampleTreeLabels,
@@ -197,7 +202,8 @@ export {
   UNIT_OPERATIONS_SW_CATALOG,
   CATALOG_FILE_NAMES,
 } from './catalog';
-export { CATALOG_KO, type CatalogKoEntry } from './catalog/catalogKo';
+export { CATALOG_KO, catalogDescriptionFor, type CatalogKoEntry } from './catalog/catalogKo';
+export { CATALOG_KO_DESCRIPTIONS } from './catalog/catalogKoDescriptions';
 export type {
   WorkflowItem,
   WorkflowJson,

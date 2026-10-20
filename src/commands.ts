@@ -10,22 +10,25 @@
  * `join('', 'labnote', ...)` yields vault-relative `labnote/...` paths that the
  * adapter understands.
  */
-import { TFile, type App, type Editor } from 'obsidian';
+import { Platform, TFile, type App, type Editor } from 'obsidian';
 import type {
   LabnoteHost,
   WorkflowItem,
   UnitOperationItem,
   PickItem,
+  PromptHint,
   InsertUnitOperationInput,
 } from '@labnoteo/core';
 import {
   insertUnitOperation,
+  workflowPathProblem,
   rebuildUnitOpToc,
   locateInsertedUnitOpHeading,
   unitOpInsertPointAtCursor,
   EXPERIMENT_STATUSES,
   isValidStatus,
   CATALOG_KO,
+  catalogDescriptionFor,
   generateIssueMarkerId,
   isDiscussFlagged,
   parseFrontMatterYaml,
@@ -43,9 +46,12 @@ import { getObsidianLanguage } from './i18n';
 import {
   createLabnoteStructure,
   diagnoseExperimentPath,
+  experimentTitleBudget,
+  experimentTitleLength,
   getExperimentDir,
   sanitizeTitle,
 } from '@labnoteo/core/lib/labnoteStructure';
+import { fullPathLength, WINDOWS_PATH_MAX } from '@labnoteo/core/lib/regexUtils';
 import {
   ensureWorkflowResources,
   loadWorkflows,
@@ -53,6 +59,8 @@ import {
 } from '@labnoteo/core/lib/workflowDataLoader';
 import {
   getNextWorkflowNumber,
+  workflowAliasBudget,
+  workflowAliasLength,
   createWorkflowFileName,
   createWorkflowContent,
   parseWorkflowChecklistFromReadme,
@@ -142,6 +150,98 @@ async function experimentFolderNames(host: LabnoteHost): Promise<string[]> {
   return [...names, ...nested];
 }
 
+/**
+ * Warn, without stopping, when a file just made is past Windows' path limit
+ * once the vault's own folder is counted (#148): names are capped, but a vault
+ * deep in the disk can still push the whole path over.
+ */
+function warnIfWindowsPathTooLong(app: App, host: LabnoteHost, vaultPath: string): void {
+  if (!Platform.isWin) return;
+  const basePath = (app.vault.adapter as { getBasePath?: () => string }).getBasePath?.();
+  if (!basePath) return;
+  const length = fullPathLength(basePath, vaultPath);
+  if (length < WINDOWS_PATH_MAX) return;
+  host.notify(
+    'warn',
+    host.t(
+      '"{0}" is {1} characters long including the vault folder, past the {2} Windows allows. Opening it on Windows (including git clones) may fail; move the vault to a shorter folder path or shorten the name.',
+      posix.basename(vaultPath),
+      String(length),
+      String(WINDOWS_PATH_MAX - 1)
+    )
+  );
+}
+
+/**
+ * How much of a new experiment's title fits in its folder name (#213). Never
+ * blocks: past the cap only the folder name is cut.
+ */
+export function experimentTitleHint(host: Pick<LabnoteHost, 't'>): (value: string) => PromptHint {
+  const budget = experimentTitleBudget();
+  return value => {
+    const length = experimentTitleLength(value);
+    return {
+      text: host.t(
+        '{0}/{1} characters in the folder name. Anything longer is cut from the folder name only; the experiment title keeps it all.',
+        String(length),
+        String(budget)
+      ),
+      warn: length > budget,
+    };
+  };
+}
+
+/**
+ * How much of a workflow alias fits in the file name after `ID_name_` (#213);
+ * the room differs per workflow. Never blocks: past it only the file name is cut.
+ */
+export function workflowAliasHint(
+  host: Pick<LabnoteHost, 't'>,
+  id: string,
+  name: string
+): (value: string) => PromptHint {
+  const budget = workflowAliasBudget(id, name);
+  return value => {
+    const length = workflowAliasLength(value);
+    if (budget === 0) {
+      return {
+        text: host.t(
+          "This workflow's name is long, so the alias won't fit in the file name. The title and checklist still keep it."
+        ),
+        warn: length > 0,
+      };
+    }
+    return {
+      text: host.t(
+        '{0}/{1} characters in the file name. Anything longer is cut from the file name only; the workflow title and checklist keep it all.',
+        String(length),
+        String(budget)
+      ),
+      warn: length > budget,
+    };
+  };
+}
+
+/** A unit-operation alias goes into no file name, so it has no limit (#213). */
+export function unitOpAliasHint(host: Pick<LabnoteHost, 't'>): (value: string) => PromptHint {
+  return value =>
+    ({
+      text: host.t('{0} characters · no limit (not used in a file name)', String(Array.from(value.trim()).length)),
+    });
+}
+
+/** What a workflow is, for the workflow name prompts (#213). */
+export function workflowConcept(host: Pick<LabnoteHost, 't'>): string {
+  return host.t(
+    'A workflow is a note for one design, build, test or learn stage of the experiment. The alias tells uses of the same workflow apart and also goes into the file name and the README checklist. You can leave it empty.'
+  );
+}
+
+/** A catalog item's description in the UI language, when the vault's copy still has the bundled text (#213). */
+export function catalogDescription(id: string, description: string): string {
+  return catalogDescriptionFor(id, description, getObsidianLanguage());
+}
+
 /** Create a new experiment folder (labnote/###_Title) + README scaffold. */
 export async function createExperimentCommand(app: App, host: LabnoteHost): Promise<void> {
   const title = await host.prompt({
@@ -154,6 +254,7 @@ export async function createExperimentCommand(app: App, host: LabnoteHost): Prom
       }
       return null;
     },
+    hint: experimentTitleHint(host),
   });
   if (!title) return;
 
@@ -169,6 +270,7 @@ export async function createExperimentCommand(app: App, host: LabnoteHost): Prom
 
   await host.openFile(structure.readmePath);
   host.notify('info', host.t('Experiment created: {0}', posix.basename(structure.labnoteFolder)));
+  warnIfWindowsPathTooLong(app, host, structure.readmePath);
 }
 
 /**
@@ -584,6 +686,9 @@ async function createWorkflowFile(
     catalogName: chosen.name,
     title: host.t('Workflow name'),
     placeholder: host.t('Enter a name for this workflow'),
+    about: workflowConcept(host),
+    description: chosen.description ? catalogDescription(chosen.id, chosen.description) : undefined,
+    hint: workflowAliasHint(host, chosen.id, chosen.name),
   });
   if (alias === undefined) return undefined; // cancelled
   const cleanAlias = alias.trim();
@@ -606,6 +711,7 @@ async function createWorkflowFile(
       locale: getObsidianLanguage(),
     })
   );
+  warnIfWindowsPathTooLong(app, host, workflowPath);
 
   const displayTitle = cleanAlias
     ? `${chosen.id} ${chosen.name} ${cleanAlias}`
@@ -647,13 +753,24 @@ export async function registerWorkflowInReadme(
 }
 
 /**
- * In the Korean UI, a bundled catalog item's Korean name for the picker's
- * description line and its search words (#163); nothing for items a lab added.
+ * A catalog item's picker lines: in the Korean UI its Korean name before the
+ * category, with its search words (#163), and its description translated
+ * (#213). The English description then stays searchable as a keyword.
+ * Nothing Korean for items a lab added or descriptions a lab edited.
  */
-function catalogKoFields(id: string, description: string): { description: string; keywords?: readonly string[] } {
+function catalogKoFields(
+  id: string,
+  category: string,
+  description: string
+): { description: string; detail: string; keywords?: readonly string[] } {
   const ko = getObsidianLanguage().toLowerCase().startsWith('ko') ? CATALOG_KO[id] : undefined;
-  if (!ko) return { description };
-  return { description: `${ko.name} · ${description}`, keywords: [ko.name, ...(ko.keywords ?? [])] };
+  const detail = catalogDescription(id, description);
+  const keywords = [...(ko ? [ko.name, ...(ko.keywords ?? [])] : []), ...(detail !== description ? [description] : [])];
+  return {
+    description: ko ? `${ko.name} · ${category}` : category,
+    detail,
+    ...(keywords.length > 0 ? { keywords } : {}),
+  };
 }
 
 /** Present the workflow catalog picker (seeding catalog resources first). */
@@ -663,8 +780,7 @@ async function pickWorkflow(host: LabnoteHost): Promise<WorkflowItem | undefined
   return host.pick(
     catalog.workflows.map<PickItem<WorkflowItem>>(wf => ({
       label: `${wf.id}: ${wf.name}`,
-      ...catalogKoFields(wf.id, wf.category),
-      detail: wf.description,
+      ...catalogKoFields(wf.id, wf.category, wf.description),
       value: wf,
     })),
     { title: host.t('Select workflow'), placeholder: host.t('Search workflows') }
@@ -801,6 +917,17 @@ export async function insertUnitOpAndUpdateToc(
 
 /** Insert a unit-operation block after the one the cursor is in + update the workflow TOC. */
 export async function insertUnitOperationCommand(app: App, host: LabnoteHost): Promise<void> {
+  const opened = host.editTarget();
+  if (!opened) {
+    host.notify('warn', host.t('Please open a workflow file.'));
+    return;
+  }
+  const problem = workflowPathProblem(host, opened.path);
+  if (problem) {
+    host.notify('warn', problem);
+    return;
+  }
+
   await ensureWorkflowResources(host.fs, VAULT_ROOT);
   const hw = await loadUnitOperations(host.fs, VAULT_ROOT, 'hw');
   const sw = await loadUnitOperations(host.fs, VAULT_ROOT, 'sw');
@@ -808,14 +935,12 @@ export async function insertUnitOperationCommand(app: App, host: LabnoteHost): P
   const items: PickItem<{ op: UnitOperationItem; kind: 'hw' | 'sw' }>[] = [
     ...hw.unitOperations.map(op => ({
       label: `${op.id}: ${op.name}`,
-      ...catalogKoFields(op.id, 'HW'),
-      detail: op.description,
+      ...catalogKoFields(op.id, 'HW', op.description),
       value: { op, kind: 'hw' as const },
     })),
     ...sw.unitOperations.map(op => ({
       label: `${op.id}: ${op.name}`,
-      ...catalogKoFields(op.id, 'SW'),
-      detail: op.description,
+      ...catalogKoFields(op.id, 'SW', op.description),
       value: { op, kind: 'sw' as const },
     })),
   ];
@@ -856,6 +981,11 @@ export function unitOpAliasPrompt(
       catalogName: input.opName,
       title: host.t('Unit operation alias'),
       placeholder: host.t('Run or condition of this step (optional)'),
+      about: host.t(
+        'A unit operation is a single task within a workflow (one step using a piece of equipment or software). The alias tells repeats of the same task apart by run or condition and appears in its heading and the table of contents. You can leave it empty.'
+      ),
+      description: input.opDescription ? catalogDescription(input.opId, input.opDescription) : undefined,
+      hint: unitOpAliasHint(host),
     });
 }
 

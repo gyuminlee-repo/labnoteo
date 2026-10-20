@@ -8,7 +8,7 @@
  */
 import type { EditTarget, LabnoteHost } from '../host';
 import { findUnitOpInsertPointAt, type UnitOpInsertPoint } from '../sections/workflowSectionParser';
-import { isValidWorkflowPath, parseExperimenterFromReadme } from '../lib/workflowStructure';
+import { diagnoseWorkflowPath, parseExperimenterFromReadme } from '../lib/workflowStructure';
 import { getSeoulDateTimeString } from '../lib/dateUtils';
 import { buildSwUnitOpMarkdown, buildHwUnitOpMarkdown } from '../lib/unitOpTemplate';
 import * as posix from '../util/posixPath';
@@ -35,6 +35,42 @@ export interface InsertUnitOperationInput {
 }
 
 /**
+ * What keeps `filePath` from taking a unit operation, in the user's words, or
+ * undefined for a workflow note. Lets a command say so before its picker
+ * opens rather than after a choice was made (#201, #166).
+ */
+export function workflowPathProblem(host: Pick<LabnoteHost, 't'>, filePath: string): string | undefined {
+  const found = diagnoseWorkflowPath(filePath);
+  switch (found.kind) {
+    case 'ok':
+      return undefined;
+    case 'readme':
+      return host.t(
+        'README.labnote.md is the experiment overview and holds no unit operations. Open one of its workflow notes (###_….labnote.md), or make one with "{0}".',
+        host.t('Create workflow')
+      );
+    case 'notWorkflow':
+      return host.t(
+        '"{0}" is not a workflow note: unit operations go into a ###_….labnote.md note directly in the experiment folder. Open one, or make one with "{1}".',
+        posix.basename(filePath),
+        host.t('Create workflow')
+      );
+    case 'nested':
+      return host.t(
+        '"{0}" is not recognized as an experiment: experiment folders must be directly under labnote/. Move it back to labnote/.',
+        posix.basename(found.folder)
+      );
+    case 'noPrefix':
+      return host.t(
+        '"{0}" is not an experiment folder: its name must start with ###_ (e.g. 001_Name).',
+        posix.basename(found.folder)
+      );
+    case 'outside':
+      return host.t('Please run this command on a workflow file inside the labnote folder.');
+  }
+}
+
+/**
  * Insert a unit-operation template into the workflow's
  * `## Related Unit Operations` section, following the cursor (#103): right
  * after the block the cursor is in, before the first block when the cursor is
@@ -54,11 +90,9 @@ export async function insertUnitOperation(
     return false;
   }
 
-  if (!isValidWorkflowPath(target.path)) {
-    host.notify(
-      'warn',
-      host.t('Please run this command on a workflow file inside the labnote folder.')
-    );
+  const problem = workflowPathProblem(host, target.path);
+  if (problem) {
+    host.notify('warn', problem);
     return false;
   }
 

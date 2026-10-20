@@ -6,7 +6,7 @@
  * ordinary `await` control flow, exactly as it does with the VS Code host.
  */
 import { App, Component, MarkdownRenderer, Modal, Notice, SuggestModal, Setting } from 'obsidian';
-import type { PickItem, PromptOpts } from '@labnoteo/core';
+import type { PickItem, PromptHint, PromptOpts } from '@labnoteo/core';
 import { createObsidianTranslator } from './i18n';
 
 // Module-level translator for the generic button labels ('OK'/'Cancel') these
@@ -26,6 +26,9 @@ class PickModal<T> extends SuggestModal<PickItem<T>> {
   ) {
     super(app);
     if (opts?.placeholder) this.setPlaceholder(opts.placeholder);
+    // A SuggestModal has no title bar; without this the picker never says
+    // what is being chosen or for which note (#141).
+    if (opts?.title) this.modalEl.prepend(createDiv({ cls: 'labnote-pick-title', text: opts.title }));
   }
 
   getSuggestions(query: string): PickItem<T>[] {
@@ -153,6 +156,11 @@ class PromptModal extends Modal {
     if (this.opts.prompt) contentEl.createEl('p', { text: this.opts.prompt });
 
     const errorEl = contentEl.createEl('div', { cls: 'labnote-prompt-error' });
+    // Its own line under the input: the change handler clears the error line.
+    let hintEl: HTMLElement | undefined;
+    const showHint = () => {
+      if (hintEl && this.opts.hint) renderHint(hintEl, this.opts.hint(this.value));
+    };
 
     const submit = async () => {
       if (this.opts.validate) {
@@ -173,6 +181,7 @@ class PromptModal extends Modal {
       t.setValue(this.value).onChange(v => {
         this.value = v;
         errorEl.setText('');
+        showHint();
       });
       if (this.opts.placeholder) t.setPlaceholder(this.opts.placeholder);
       t.inputEl.addEventListener('keydown', ev => {
@@ -184,6 +193,10 @@ class PromptModal extends Modal {
       // Focus the input on open.
       window.setTimeout(() => t.inputEl.focus(), 0);
     });
+    if (this.opts.hint) {
+      hintEl = contentEl.createDiv({ cls: 'labnote-input-hint' });
+      showHint();
+    }
 
     new Setting(contentEl).addButton(b =>
       b.setButtonText(t('OK')).setCta().onClick(() => void submit())
@@ -194,6 +207,12 @@ class PromptModal extends Modal {
     this.contentEl.empty();
     if (!this.resolved) this.resolve(undefined);
   }
+}
+
+/** Show a {@link PromptHint} in `el`; nothing clears it. */
+function renderHint(el: HTMLElement, hint: PromptHint | undefined): void {
+  el.setText(hint?.text ?? '');
+  el.toggleClass('is-warning', !!hint?.warn);
 }
 
 export function promptModal(app: App, opts: PromptOpts): Promise<string | undefined> {
@@ -351,6 +370,12 @@ export interface WorkflowAliasOpts {
   placeholder?: string;
   /** Initial alias, selected so typing replaces it. */
   value?: string;
+  /** What this kind of item is, shown under the title. */
+  about?: string;
+  /** The chosen catalog item's description, under {@link about}. */
+  description?: string;
+  /** A note under the input, worked out again on every change; never blocks the submit. */
+  hint?: (value: string) => PromptHint | undefined;
 }
 
 /**
@@ -384,6 +409,10 @@ class WorkflowAliasModal extends Modal {
     // Layout: the fixed `[id catalogName]` prefix on the left with a wide
     // alias input flowing immediately to its right (fills the remaining width).
     // Styling lives in styles.css under the `labnote-alias-*` classes.
+    if (this.opts.about) contentEl.createDiv({ cls: 'labnote-alias-about', text: this.opts.about });
+    if (this.opts.description) {
+      contentEl.createDiv({ cls: 'labnote-alias-description', text: this.opts.description });
+    }
     const row = contentEl.createDiv({ cls: 'labnote-alias-row' });
 
     row.createSpan({
@@ -397,8 +426,14 @@ class WorkflowAliasModal extends Modal {
       input.value = this.opts.value;
       this.value = this.opts.value;
     }
+    const hintEl = this.opts.hint ? contentEl.createDiv({ cls: 'labnote-input-hint' }) : undefined;
+    const showHint = () => {
+      if (hintEl && this.opts.hint) renderHint(hintEl, this.opts.hint(this.value));
+    };
+    showHint();
     input.addEventListener('input', () => {
       this.value = input.value;
+      showHint();
     });
     input.addEventListener('keydown', ev => {
       if (ev.key === 'Enter') {

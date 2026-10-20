@@ -97,6 +97,13 @@ describe('migrateSettings', () => {
     expect(out.mcpEnabled).toBe(DEFAULT_SETTINGS.mcpEnabled);
   });
 
+  // #204
+  it('keeps the workflow view grouping and defaults to status', () => {
+    expect(migrateSettings({}).workflowViewGroupBy).toBe('status');
+    expect(migrateSettings({ workflowViewGroupBy: 'project' }).workflowViewGroupBy).toBe('project');
+    expect(migrateSettings({ workflowViewGroupBy: 'owner' }).workflowViewGroupBy).toBe('status');
+  });
+
   it('defaults autoUpdateLastUpdated to on and keeps a stored boolean', () => {
     expect(migrateSettings({}).autoUpdateLastUpdated).toBe(true);
     expect(migrateSettings({ autoUpdateLastUpdated: false }).autoUpdateLastUpdated).toBe(false);

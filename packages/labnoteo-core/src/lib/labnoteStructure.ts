@@ -4,7 +4,7 @@
 
 import * as path from '../util/posixPath';
 import { getSeoulDateString } from './dateUtils';
-import { sanitizePathSegment, capPathSegment } from './regexUtils';
+import { sanitizePathSegment, capPathSegment, EXPERIMENT_FOLDER_TITLE_MAX } from './regexUtils';
 import { serializeFrontMatterEntry } from '../sections/frontMatter';
 
 /**
@@ -119,6 +119,21 @@ export function getNextLabnoteNumber(existingFolders: string[]): string {
  */
 export function sanitizeTitle(title: string): string {
   return sanitizePathSegment(title);
+}
+
+/**
+ * Code points of `title` that go into the experiment folder name, which
+ * {@link createLabnoteStructure} cuts at {@link experimentTitleBudget}. Counted
+ * after sanitizing, so spaces become `_`, symbols drop out and a word-ending
+ * `+` is spelled out: the count can differ from what was typed.
+ */
+export function experimentTitleLength(title: string): number {
+  return Array.from(sanitizeTitle(title.trim())).length;
+}
+
+/** Room for the title in an experiment folder name (`NNN_` comes on top). */
+export function experimentTitleBudget(): number {
+  return EXPERIMENT_FOLDER_TITLE_MAX;
 }
 
 /** Options for the note templates' command-palette hints. */
@@ -240,7 +255,7 @@ export function createLabnoteStructure(
 ): LabnoteStructure {
   const number = getNextLabnoteNumber(existingFolders);
   // The README keeps the whole title; only the folder name is capped (#148).
-  const sanitizedTitle = capPathSegment(sanitizeTitle(title));
+  const sanitizedTitle = capPathSegment(sanitizeTitle(title), EXPERIMENT_FOLDER_TITLE_MAX);
   const folderName = `${number}_${sanitizedTitle}`;
   
   const labnoteFolder = path.join(workspaceRoot, 'labnote', folderName);

@@ -5,6 +5,9 @@
  * the Korean UI reads these alongside them. Items a lab adds to its copy have
  * no entry and show in English only.
  */
+import { UNIT_OPERATIONS_HW_CATALOG, UNIT_OPERATIONS_SW_CATALOG, WORKFLOWS_CATALOG } from './index';
+import { CATALOG_KO_DESCRIPTIONS } from './catalogKoDescriptions';
+
 export interface CatalogKoEntry {
   name: string;
   /** Other words a researcher may type for it (abbreviations, everyday terms). */
@@ -169,3 +172,25 @@ export const CATALOG_KO: Readonly<Record<string, CatalogKoEntry>> = {
   USW330: { name: '웰 플레이트 매핑' },
   USW340: { name: '계산' },
 };
+
+const BUNDLED_DESCRIPTIONS = new Map<string, string>(
+  [
+    ...WORKFLOWS_CATALOG.workflows,
+    ...UNIT_OPERATIONS_HW_CATALOG.unitOperations,
+    ...UNIT_OPERATIONS_SW_CATALOG.unitOperations,
+  ].map(item => [item.id, item.description.trim()])
+);
+
+/**
+ * The description to show for a catalog item (#213): its Korean translation
+ * when `locale` is Korean and the vault's copy still has the bundled English
+ * text, otherwise `description` as it is. The vault's catalog files are
+ * editable copies, so a lab's edit or its own item shows as written rather
+ * than hidden behind a translation of the original.
+ */
+export function catalogDescriptionFor(id: string, description: string, locale: string | undefined): string {
+  if (!locale?.toLowerCase().startsWith('ko')) return description;
+  const ko = CATALOG_KO_DESCRIPTIONS[id];
+  if (!ko || BUNDLED_DESCRIPTIONS.get(id) !== description.trim()) return description;
+  return ko;
+}

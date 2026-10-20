@@ -4,6 +4,8 @@ import {
   buildWorkflowTree,
   buildSampleTree,
   filterSampleTree,
+  filterExperiments,
+  type ExperimentEntry,
   type WorkflowTreeData,
 } from '../tree/treeModel';
 import { MemFileSystem } from '../fs/memFileSystem';
@@ -30,6 +32,19 @@ describe('buildWorkflowTree', () => {
     expect(hw.label).toBe('HW Unit Operations [1]');
     expect(sw.label).toBe('SW Unit Operations [1]');
     expect(wf.kind).toBe('workflowRoot');
+  });
+
+  // #213
+  it('words tooltips through the host', () => {
+    const [wf, hw, sw] = buildWorkflowTree(data, {
+      describe: (id, description) => `${id}:${description}`,
+      equipment: '장비',
+      software: '소프트웨어',
+    });
+    expect(wf.children![0].children![0].tooltip).toBe('WD010:d');
+    expect(hw.children![0].tooltip).toBe('UHW010:x\n장비: Centrifuge');
+    expect(sw.children![0].tooltip).toBe('USW010:y\n소프트웨어: BWA');
+    expect(buildWorkflowTree(data)[1].children![0].tooltip).toBe('x\nEquipment: Centrifuge');
   });
 
   it('orders categories by DBTL and nests workflows', () => {
@@ -282,5 +297,46 @@ describe('buildExperimentTree', () => {
       '나노자임 비색 센서\nlabnote/067_나노자임_비색_센서\nStatus: in-progress\nWorkflows done: 1/6\nLast updated: 2026-10-19'
     );
     expect(b.label).toBe('068 · B');
+  });
+});
+
+// #204
+describe('experiments by project', () => {
+  const entries: ExperimentEntry[] = [
+    { folder: 'labnote/074_B', title: 'CRISPR 2차', status: 'in-progress', project: 'CRISPR-다중편집' },
+    { folder: 'labnote/052_A', title: 'CRISPR 1차', status: 'failed', project: ' CRISPR-다중편집 ' },
+    { folder: 'labnote/010_C', title: 'GFP', status: 'completed', project: 'Biosensor' },
+    { folder: 'labnote/003_D', title: 'Misc', status: 'planned' },
+  ];
+
+  it('groups one project together whatever the status, without a project last', () => {
+    const t = buildExperimentTree(entries, { noProject: '(과제 없음)' }, 'project');
+    expect(t.label).toBe('Experiments [4]');
+    expect(t.children!.map(g => g.label)).toEqual(['Biosensor [1]', 'CRISPR-다중편집 [2]', '(과제 없음) [1]']);
+    expect(t.children![1]).toMatchObject({ id: 'experimentProject:CRISPR-다중편집', kind: 'experimentProject' });
+    expect(t.children![1].children!.map(e => e.label)).toEqual(['052 · CRISPR 1차', '074 · CRISPR 2차']);
+  });
+
+  it('names the project in the tooltip', () => {
+    const t = buildExperimentTree(entries.slice(0, 1), { project: '과제' });
+    expect(t.children![0].children![0].tooltip).toBe('CRISPR 2차\nlabnote/074_B\nStatus: in-progress\n과제: CRISPR-다중편집');
+  });
+
+  it('keeps grouping by status by default', () => {
+    expect(buildExperimentTree(entries).children!.map(g => g.id)).toEqual([
+      'experimentStatus:planned',
+      'experimentStatus:in-progress',
+      'experimentStatus:completed',
+      'experimentStatus:failed',
+    ]);
+  });
+
+  it('filters by folder, title, project or status, every word, any case', () => {
+    expect(filterExperiments(entries, '  ')).toBe(entries);
+    expect(filterExperiments(entries, 'crispr').map(e => e.folder)).toEqual(['labnote/074_B', 'labnote/052_A']);
+    expect(filterExperiments(entries, 'crispr failed').map(e => e.folder)).toEqual(['labnote/052_A']);
+    expect(filterExperiments(entries, '010').map(e => e.folder)).toEqual(['labnote/010_C']);
+    expect(filterExperiments(entries, 'biosensor').map(e => e.folder)).toEqual(['labnote/010_C']);
+    expect(filterExperiments(entries, 'nothing')).toEqual([]);
   });
 });

@@ -39,6 +39,7 @@ import {
   resetCopiedWorkflowDates,
 } from '../lib/workflowStructure';
 import { sanitizeTitle } from '../lib/labnoteStructure';
+import { WORKFLOW_FILE_NAME_MAX } from '../lib/regexUtils';
 
 // #38: the unit-operation hint names the command as the palette shows it.
 describe('createWorkflowContent command hint', () => {
@@ -614,6 +615,9 @@ describe('labelMatchesFileName', () => {
     const long = `WD030 Design ${'가'.repeat(150)}`;
     expect(labelMatchesFileName(long, createWorkflowFileName('003', { id: 'WD030', name: 'Design', description: '' }, '가'.repeat(150)))).toBe(true);
     expect(labelMatchesFileName(long, `003_WD030_Design_${'가'.repeat(150)}.labnote.md`)).toBe(true);
+    // Cut at 0.101.0's 100 code points, before the cap went down to 80.
+    expect(labelMatchesFileName(long, `003_WD030_Design_${'가'.repeat(87)}.labnote.md`)).toBe(true);
+    expect(labelMatchesFileName(`WD030 Design ${'가'.repeat(80)} 나`, `003_WD030_Design_${'가'.repeat(80)}.labnote.md`)).toBe(true);
   });
 });
 
@@ -1398,12 +1402,13 @@ describe('createWorkflowFileName', () => {
   });
 
   // #148
-  it('caps the ID_name_alias part at 100 code points', () => {
-    const name = createWorkflowFileName('002', wf, `${'가'.repeat(98)} 나다`);
-    expect(name).toBe(`002_WD010_Design_${'가'.repeat(87)}.labnote.md`);
-    expect(Array.from(name.slice(4, -'.labnote.md'.length))).toHaveLength(100);
+  it('caps the ID_name_alias part at WORKFLOW_FILE_NAME_MAX code points', () => {
+    expect(WORKFLOW_FILE_NAME_MAX).toBe(80);
+    const name = createWorkflowFileName('002', wf, `${'가'.repeat(78)} 나다`);
+    expect(name).toBe(`002_WD010_Design_${'가'.repeat(67)}.labnote.md`);
+    expect(Array.from(name.slice(4, -'.labnote.md'.length))).toHaveLength(80);
     // The cut lands right after a separator, which is dropped.
-    expect(createWorkflowFileName('002', wf, `${'가'.repeat(86)} 나`)).toBe(`002_WD010_Design_${'가'.repeat(86)}.labnote.md`);
+    expect(createWorkflowFileName('002', wf, `${'가'.repeat(66)} 나`)).toBe(`002_WD010_Design_${'가'.repeat(66)}.labnote.md`);
   });
 
   // #53: an emoji-only alias used to leave `002_WD010_Design_.labnote.md`.
