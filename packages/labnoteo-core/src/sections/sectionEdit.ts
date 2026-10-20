@@ -217,6 +217,40 @@ export function sectionBodyAt(md: string, line: number): SectionBody | undefined
   return summarizeBody(lines.slice(line + 1, sectionBodyEnd(lines, line, m[1].length)));
 }
 
+/**
+ * The non-blank lines only `before` has (`removed`) and only `after` has
+ * (`added`), each in its own order. A line repeated in both counts as many
+ * times as it occurs, so dropping one of two identical lines shows. Used to
+ * show what an `update_section` call would erase: it always sends the whole
+ * body, so even an appended line arrives as old body + new line (#187).
+ */
+export function diffBodyLines(before: string, after: string): { removed: string[]; added: string[] } {
+  const lines = (s: string): string[] =>
+    s
+      .split(/\r?\n/)
+      .map(l => l.trimEnd())
+      .filter(l => l.trim() !== '');
+  const left = lines(before);
+  const right = lines(after);
+  const remaining = new Map<string, number>();
+  for (const l of right) remaining.set(l, (remaining.get(l) ?? 0) + 1);
+  const removed: string[] = [];
+  for (const l of left) {
+    const n = remaining.get(l) ?? 0;
+    if (n > 0) remaining.set(l, n - 1);
+    else removed.push(l);
+  }
+  const kept = new Map<string, number>();
+  for (const l of left) kept.set(l, (kept.get(l) ?? 0) + 1);
+  const added: string[] = [];
+  for (const l of right) {
+    const n = kept.get(l) ?? 0;
+    if (n > 0) kept.set(l, n - 1);
+    else added.push(l);
+  }
+  return { removed, added };
+}
+
 function summarizeBody(body: readonly string[]): SectionBody {
   let subheadings = 0;
   let fence: OpenFence | null = null;

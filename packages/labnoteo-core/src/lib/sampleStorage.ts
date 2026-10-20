@@ -900,7 +900,9 @@ export async function saveSamplesByType(
  *  - omit `sources` to preserve whatever the existing record had (sidebar edit),
  *  - pass an explicit array to set them (tool create binds the note as source).
  * `location` follows the same preserve-when-omitted rule (pass `null` to clear).
- * `alias`/`descriptions` are overwritten from the given fields.
+ * `alias` is overwritten; `description` replaces only the first description
+ * (the one the edit prompt shows), keeping those other notes added. Every other
+ * field — `discarded`, `descriptionSources` — is kept (#188).
  */
 export async function upsertSampleRecord(
   fs: LabnoteFs,
@@ -918,12 +920,17 @@ export async function upsertSampleRecord(
   const filePath = path.join(labsamplesFolder, `${type}.json`);
   await fs.modify(filePath, (raw) => {
     const records = parseSampleRecords(raw);
+    const existing = records[id];
+    const others = (existing?.descriptions ?? []).slice(1);
     records[id] = {
+      ...existing,
       type,
       alias: fields.alias,
-      descriptions: fields.description ? [fields.description] : [],
-      sources: fields.sources ?? records[id]?.sources ?? [],
-      location: fields.location !== undefined ? fields.location : (records[id]?.location ?? null),
+      descriptions: fields.description
+        ? [fields.description, ...others.filter(d => d !== fields.description)]
+        : others,
+      sources: fields.sources ?? existing?.sources ?? [],
+      location: fields.location !== undefined ? fields.location : (existing?.location ?? null),
     };
     return JSON.stringify(records, null, 2);
   });
@@ -936,7 +943,9 @@ export async function upsertSampleRecord(
  *  - `description` goes first and the earlier ones stay (no duplicates),
  *  - `sources` are added to the stored ones.
  * Used by the MCP `create_sample` tool, which an agent may call again for an
- * existing id without knowing what is already recorded.
+ * existing id without knowing what is already recorded. Other fields, such as
+ * a `discarded` date, are kept (#188); the stored record's `discarded` value is
+ * returned so the caller can say so.
  */
 export async function mergeSampleRecord(
   fs: LabnoteFs,
@@ -949,15 +958,18 @@ export async function mergeSampleRecord(
     sources?: string[];
     location?: string;
   }
-): Promise<void> {
+): Promise<{ discarded: string | null }> {
   assertSafeSampleType(type);
   const filePath = path.join(labsamplesFolder, `${type}.json`);
+  let discarded: string | null = null;
   await fs.modify(filePath, (raw) => {
     const records = parseSampleRecords(raw);
     const existing = records[id];
+    discarded = existing?.discarded ?? null;
     const descriptions = existing?.descriptions ?? [];
     const sources = existing?.sources ?? [];
     records[id] = {
+      ...existing,
       type,
       alias: fields.alias !== undefined ? fields.alias : (existing?.alias ?? null),
       descriptions: fields.description
@@ -968,6 +980,7 @@ export async function mergeSampleRecord(
     };
     return JSON.stringify(records, null, 2);
   });
+  return { discarded };
 }
 
 /**

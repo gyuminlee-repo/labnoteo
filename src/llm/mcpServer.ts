@@ -33,7 +33,7 @@ import {
 } from '@labnoteo/core';
 import type LabnotePlugin from '../main';
 import { getObsidianLanguage } from '../i18n';
-import { buildApprovalMessage } from './approvalMessage';
+import { buildApprovalMessage, erasesRecordedLines } from './approvalMessage';
 import { sampleUsages } from '../sampleActions';
 
 // Available in the CommonJS bundle at runtime (desktop/Electron).
@@ -176,10 +176,12 @@ export class LabnoteMcpServer {
     // name alone (an LLM could target any note/sample path).
     const target =
       typeof args.documentPath === 'string' && args.documentPath.length > 0 ? args.documentPath : null;
+    let destructive = false;
     const compose = async (): Promise<{ message: string } | { error: string }> => {
       // A call the tool would reject anyway is not put to the user (#69).
       const preview = tool.describe ? await tool.describe(this.context(), args) : undefined;
       if (preview && 'error' in preview) return { error: preview.error };
+      destructive = erasesRecordedLines(preview);
       return {
         message: buildApprovalMessage(
           this.plugin.t,
@@ -192,7 +194,7 @@ export class LabnoteMcpServer {
     const outcome = await approveStable(compose, message => {
       notifyIfUnfocused(message);
       return awaitApproval(
-        s => this.plugin.host.confirm(message, { confirmLabel: this.plugin.t('Allow'), signal: s }),
+        s => this.plugin.host.confirm(message, { confirmLabel: this.plugin.t('Allow'), signal: s, destructive }),
         { timeoutMs: APPROVAL_TIMEOUT_MS, signal }
       );
     });

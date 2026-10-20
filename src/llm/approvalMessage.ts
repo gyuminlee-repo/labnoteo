@@ -29,6 +29,11 @@ export function buildApprovalMessage(
   return parts.join('\n\n');
 }
 
+/** Whether the write erases recorded lines, so Cancel should be the default answer (#187, #198). */
+export function erasesRecordedLines(preview?: ToolPreview): boolean {
+  return !!preview && 'kind' in preview && preview.kind === 'sectionEdit' && preview.removedText.length > 0;
+}
+
 // Two calls on one experiment otherwise read the same (#124).
 function describeWorkflowCreate(t: Translator, p: WorkflowCreatePreview): string {
   return t(
@@ -56,7 +61,20 @@ function describeSectionEdit(t: Translator, p: SectionEditPreview): string {
       t('It is occurrence {0} of {1}, with its heading on line {2}.', String(p.occurrence), String(p.total), String(p.line))
     );
   }
-  return parts.join(' ');
+  // The lines themselves, so a note or sample reference about to go is seen
+  // before allowing, not after (#187).
+  const block = (title: string, lines: string[], more: number): string => {
+    const rows = lines.map(l => `  ${l}`);
+    if (more > 0) rows.push(`  ${t('(+{0} more line(s))', String(more))}`);
+    return [title, ...rows].join('\n');
+  };
+  const blocks = [
+    p.removedText.length > 0
+      ? block(t('Lines removed:'), p.removedText, p.removedMore)
+      : t('No recorded lines are removed.'),
+  ];
+  if (p.addedText.length > 0) blocks.push(block(t('Lines added:'), p.addedText, p.addedMore));
+  return [parts.join(' '), ...blocks].join('\n\n');
 }
 
 function describeSampleCreate(t: Translator, p: SampleCreatePreview): string {

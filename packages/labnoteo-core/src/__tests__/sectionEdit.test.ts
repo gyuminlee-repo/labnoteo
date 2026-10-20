@@ -5,6 +5,7 @@ import {
   replaceSectionBodyAt,
   normalizeHeadingText,
   stripRepeatedHeading,
+  diffBodyLines,
 } from '../sections/sectionEdit';
 
 const doc = [
@@ -271,5 +272,23 @@ describe('heading fallback (#145) and repeated heading (#162)', () => {
     expect(stripRepeatedHeading('\n### 🧪 Results\n\nbody\n', 'Results')).toBe('body\n');
     expect(stripRepeatedHeading('### Other\n\nbody', 'Results')).toBe('### Other\n\nbody');
     expect(stripRepeatedHeading('body', 'Results')).toBe('body');
+  });
+});
+
+// #187
+describe('diffBodyLines', () => {
+  it('ignores blank lines and lines kept in place', () => {
+    expect(diffBodyLines('a\n\nb\n', 'a\nb\nc')).toEqual({ removed: [], added: ['c'] });
+  });
+
+  it('counts repeated lines', () => {
+    expect(diffBodyLines('x\nx\ny', 'x\ny')).toEqual({ removed: ['x'], added: [] });
+  });
+
+  it('lists everything when the body is rewritten', () => {
+    expect(diffBodyLines('> guide\nmemo\nDNA-1;a', '> new')).toEqual({
+      removed: ['> guide', 'memo', 'DNA-1;a'],
+      added: ['> new'],
+    });
   });
 });

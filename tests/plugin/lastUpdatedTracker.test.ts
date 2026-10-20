@@ -12,33 +12,46 @@ describe('LastUpdatedTracker', () => {
     const t = new LastUpdatedTracker();
     t.record(P, typed);
     t.record(P, reload);
-    expect(t.consume(P)).toBe(true);
-    expect(t.consume(P)).toBe(false);
+    expect(t.consume(P)).toBe('stamp');
+    expect(t.consume(P)).toBe('skip');
   });
 
   it('does not stamp without a user edit or without any record', () => {
     const t = new LastUpdatedTracker();
     t.record(P, reload);
-    expect(t.consume(P)).toBe(false);
-    expect(t.consume('labnote/001_Exp/README.labnote.md')).toBe(false);
+    expect(t.consume(P)).toBe('skip');
+    expect(t.consume('labnote/001_Exp/README.labnote.md')).toBe('skip');
   });
 
   it('does not stamp when the last change was undo/redo', () => {
     const t = new LastUpdatedTracker();
     t.record(P, typed);
     t.record(P, undo);
-    expect(t.consume(P)).toBe(false);
+    expect(t.consume(P)).toBe('skip');
   });
 
-  it('leaves a hand-set date alone for later edits too', () => {
-    const t = new LastUpdatedTracker();
+  // #202
+  it('keeps a hand-set date for that day, reports it once, and stamps again the next day', () => {
+    let day = '2026-10-20';
+    const t = new LastUpdatedTracker(() => day);
     t.record(P, dateTyped);
-    expect(t.consume(P)).toBe(false);
+    expect(t.consume(P)).toBe('handSet');
     t.record(P, typed);
-    expect(t.consume(P)).toBe(false);
+    expect(t.consume(P)).toBe('skip');
+    day = '2026-10-21';
+    t.record(P, typed);
+    expect(t.consume(P)).toBe('stamp');
+    t.record(P, typed);
+    expect(t.consume(P)).toBe('stamp');
+  });
+
+  it('forgets hand-set dates on clear (the setting was toggled)', () => {
+    const t = new LastUpdatedTracker(() => '2026-10-20');
+    t.record(P, dateTyped);
+    expect(t.consume(P)).toBe('handSet');
     t.clear();
     t.record(P, typed);
-    expect(t.consume(P)).toBe(true);
+    expect(t.consume(P)).toBe('stamp');
   });
 
   it('tracks notes independently', () => {
@@ -46,6 +59,6 @@ describe('LastUpdatedTracker', () => {
     const other = 'labnote/002_Other/README.labnote.md';
     t.record(P, dateTyped);
     t.record(other, typed);
-    expect(t.consume(other)).toBe(true);
+    expect(t.consume(other)).toBe('stamp');
   });
 });

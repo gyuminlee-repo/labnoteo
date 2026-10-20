@@ -71,6 +71,7 @@ class SampleDefinitionModal extends Modal {
       [t('Alias'), record.alias ?? '-'],
       [t('Description'), record.descriptions?.[0] ?? '-'],
       [t('Location'), record.location ?? '-'],
+      ...(record.discarded ? [[t('Discarded'), record.discarded] as [string, string]] : []),
       [t('Scope'), scope],
       [t('File'), jsonPath],
     ];

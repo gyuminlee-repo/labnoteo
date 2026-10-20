@@ -237,11 +237,16 @@ describe('buildApprovalMessage', () => {
     removedLines: 12,
     removedSubheadings: 0,
     clearing: false,
+    removedText: [] as string[],
+    removedMore: 0,
+    addedText: [] as string[],
+    addedMore: 0,
   };
+  const NONE_REMOVED = 'No recorded lines are removed.';
 
   it('adds the target and what the section holds now', () => {
     expect(buildApprovalMessage(t, 'Allow?', 'n.md', preview)).toBe(
-      'Allow?\n\nTarget: n.md\n\nThis replaces section "[UHW100 PCR] > Results", which now has 12 line(s).'
+      `Allow?\n\nTarget: n.md\n\nThis replaces section "[UHW100 PCR] > Results", which now has 12 line(s).\n\n${NONE_REMOVED}`
     );
   });
 
@@ -249,8 +254,21 @@ describe('buildApprovalMessage', () => {
     expect(
       buildApprovalMessage(t, 'Allow?', null, { ...preview, parentHeading: '', clearing: true, removedSubheadings: 2 })
     ).toBe(
-      'Allow?\n\nThis empties section "Results", which now has 12 line(s). Its 2 nested heading(s) are replaced too.'
+      `Allow?\n\nThis empties section "Results", which now has 12 line(s). Its 2 nested heading(s) are replaced too.\n\n${NONE_REMOVED}`
     );
+  });
+
+  // #187
+  it('lists the lines removed and added', () => {
+    const msg = buildApprovalMessage(t, 'Allow?', null, {
+      ...preview,
+      removedText: ['memo', 'DNA-1;frag'],
+      removedMore: 3,
+      addedText: ['new line'],
+    });
+    expect(msg).toContain('Lines removed:\n  memo\n  DNA-1;frag\n  (+3 more line(s))');
+    expect(msg).toContain('Lines added:\n  new line');
+    expect(msg).not.toContain(NONE_REMOVED);
   });
 
   it('is just the prompt and target without a preview', () => {
@@ -260,7 +278,7 @@ describe('buildApprovalMessage', () => {
   // #114
   it('says which repeated section it is', () => {
     expect(buildApprovalMessage(t, 'Allow?', null, { ...preview, occurrence: 2, total: 3, line: 83 })).toBe(
-      'Allow?\n\nThis replaces section "[UHW100 PCR] > Results", which now has 12 line(s). It is occurrence 2 of 3, with its heading on line 83.'
+      `Allow?\n\nThis replaces section "[UHW100 PCR] > Results", which now has 12 line(s). It is occurrence 2 of 3, with its heading on line 83.\n\n${NONE_REMOVED}`
     );
   });
 

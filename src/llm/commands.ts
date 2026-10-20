@@ -38,7 +38,7 @@ import type LabnotePlugin from '../main';
 import { createLlmProvider, type ChatMessage } from './provider';
 import { describeLlmError } from './llmError';
 import { runAgent } from './agent';
-import { buildApprovalMessage } from './approvalMessage';
+import { buildApprovalMessage, erasesRecordedLines } from './approvalMessage';
 import { getObsidianLanguage } from '../i18n';
 import { getSeoulDateString } from '@labnoteo/core/lib/dateUtils';
 import { aiAnswerModal } from '../modals';
@@ -536,6 +536,7 @@ export async function askAgentCommand(plugin: LabnotePlugin): Promise<void> {
           const prompt = plugin.t('Allow AI tool "{0}" to modify the vault?', tool.name);
           return plugin.host.confirm(buildApprovalMessage(plugin.t, prompt, path, preview), {
             confirmLabel: plugin.t('Allow'),
+            destructive: erasesRecordedLines(preview),
           });
         },
       }

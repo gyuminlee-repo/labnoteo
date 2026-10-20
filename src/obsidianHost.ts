@@ -23,6 +23,7 @@ import type {
   Translator,
 } from '@labnoteo/core';
 import { pickModal, pickManyModal, promptModal, confirmModal } from './modals';
+import { noteTargetBelowTable, tableCellHostView } from './tableCellTarget';
 
 export function createObsidianHost(
   app: App,
@@ -43,6 +44,11 @@ export function createObsidianHost(
     const file = view?.file;
     if (!view || !file) return undefined;
     const editor = view.editor;
+    const noteView = tableCellHostView(editor);
+    if (noteView) {
+      const cell = (editor as unknown as { cm: { dom: HTMLElement } }).cm.dom;
+      return noteTargetBelowTable(file.path, noteView, cell);
+    }
     return {
       path: file.path,
       async getText() {
@@ -82,8 +88,11 @@ export function createObsidianHost(
       return promptModal(app, opts);
     },
 
-    confirm(message: string, opts?: { confirmLabel?: string; signal?: AbortSignal }) {
-      return confirmModal(app, message, opts?.confirmLabel ?? t('Yes'), opts?.signal);
+    confirm(message: string, opts?: { confirmLabel?: string; signal?: AbortSignal; destructive?: boolean }) {
+      return confirmModal(app, message, opts?.confirmLabel ?? t('Yes'), {
+        signal: opts?.signal,
+        destructive: opts?.destructive,
+      });
     },
 
     notify(kind: NotifyKind, message: string) {

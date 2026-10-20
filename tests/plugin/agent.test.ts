@@ -181,6 +181,10 @@ describe('runAgent', () => {
       removedLines: 4,
       removedSubheadings: 0,
       clearing: false,
+      removedText: [],
+      removedMore: 0,
+      addedText: [],
+      addedMore: 0,
     };
 
     it('passes the preview to confirm', async () => {

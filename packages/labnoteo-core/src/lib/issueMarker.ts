@@ -305,7 +305,18 @@ export function planIssueMarkerInsertion(
   // A selection that swallowed its line break (triple-click) ends on that line.
   while (to > from && doc[to - 1] === '\n') to--;
 
-  const title = (topic ?? doc.slice(from, to)).trim().replace(/\s*\n\s*/g, ' ');
+  const selected = doc.slice(from, to);
+  // A multi-line selection is never replaced: that would fold a list or a
+  // paragraph into the marker line (#200). Its lines, without their list and
+  // quote marks, make the topic.
+  const multiLine = topic === undefined && selected.includes('\n');
+  const title = multiLine
+    ? selected
+        .split('\n')
+        .map(l => l.replace(/^\s*(?:>\s*)*(?:(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?)?/, '').trim())
+        .filter(Boolean)
+        .join(' ')
+    : (topic ?? selected).trim().replace(/\s*\n\s*/g, ' ');
   const marker = renderIssueMarker({ id, title });
   const lineStartOf = (i: number): number => (i === 0 ? 0 : doc.lastIndexOf('\n', i - 1) + 1);
   const lineEndOf = (i: number): number => {
@@ -317,7 +328,8 @@ export function planIssueMarkerInsertion(
 
   const toLineEnd = lineEndOf(to);
   const sentence = issueSentenceRange(doc, from);
-  const appendAtEnd = doc.slice(to, toLineEnd).trim() !== '' || (sentence !== undefined && from > sentence.from);
+  const appendAtEnd =
+    multiLine || doc.slice(to, toLineEnd).trim() !== '' || (sentence !== undefined && from > sentence.from);
   const anchor = appendAtEnd ? to : from;
   const lineStart = lineStartOf(anchor);
   const lineEnd = lineEndOf(anchor);

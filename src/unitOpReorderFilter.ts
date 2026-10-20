@@ -4,8 +4,8 @@
  * re-ordered and the `---` separators restored, so the move and the cleanup are
  * one undo step with no intermediate state.
  *
- * Only reorders are handled here (`onlyOnReorder`); added, removed or renamed
- * headings are left to the debounced TOC sync in `main.ts`. The pure edit
+ * Reorders and whole-block deletions are handled here; other added, removed or
+ * renamed headings are left to the debounced TOC sync in `main.ts`. The pure edit
  * computation lives in `@labnoteo/core` and is unit-tested there.
  *
  * An Outline drag is NOT an editor edit: Obsidian rewrites the file and mirrors
@@ -26,7 +26,7 @@ export interface UnitOpReorderFilterOptions {
   isEnabled: () => boolean;
   /** Vault path of the note being edited, or null (canvas embeds, hover previews, …). */
   getFilePath: (state: EditorState) => string | null;
-  /** Called for every document change of a file-backed editor, before any skip. */
+  /** Called for every document change of a file-backed editor, undo/redo included. */
   onDocChange?: (path: string, fromHistory: boolean, kind: DocChangeKind) => void;
 }
 
@@ -72,6 +72,27 @@ function classify(tr: Transaction): DocChangeKind {
   return { userEdit, dateEdited };
 }
 
+/**
+ * A user deletion that took at least one whole `### [` heading line with it
+ * (deleting or cutting a unit-op block). Its TOC entry is dropped in the same
+ * transaction, so one undo brings the block and the entry back (#207). Deleting
+ * a heading character by character is left to the debounced sync, since the
+ * heading is usually being retyped.
+ */
+function deletesWholeUnitOpHeading(tr: Transaction): boolean {
+  if (!tr.isUserEvent('delete')) return false;
+  const doc = tr.startState.doc;
+  let hit = false;
+  tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+    if (hit || inserted.length > 0 || toA === fromA) return;
+    const removed = doc.sliceString(fromA, toA);
+    if (!removed.includes('\n')) return;
+    const atLineStart = doc.lineAt(fromA).from === fromA;
+    hit = (atLineStart && removed.startsWith(UNIT_OP_HEADING_MARK)) || removed.includes(`\n${UNIT_OP_HEADING_MARK}`);
+  });
+  return hit;
+}
+
 /** Cheap pre-check: a block move always inserts or deletes a `### [` heading. */
 function touchesUnitOpHeading(tr: Transaction): boolean {
   let hit = false;
@@ -85,12 +106,25 @@ function touchesUnitOpHeading(tr: Transaction): boolean {
 }
 
 export function createUnitOpReorderFilter(opts: UnitOpReorderFilterOptions): Extension {
-  return EditorState.transactionFilter.of(tr => {
+  // Undo/redo are dispatched with `filter: false`, so only an extender sees
+  // them; reporting from the filter left the last user edit's flag in place
+  // and the debounced TOC sync re-applied the change being undone (#207).
+  const report = EditorState.transactionExtender.of(tr => {
+    try {
+      if (!tr.docChanged || !opts.onDocChange) return null;
+      const path = opts.getFilePath(tr.startState);
+      if (path) opts.onDocChange(path, tr.isUserEvent('undo') || tr.isUserEvent('redo'), classify(tr));
+    } catch (err) {
+      console.warn('[labnoteo] document change report failed:', err);
+    }
+    return null;
+  });
+
+  const filter = EditorState.transactionFilter.of(tr => {
     try {
       if (!tr.docChanged) return tr;
       const path = opts.getFilePath(tr.startState);
       const fromHistory = tr.isUserEvent('undo') || tr.isUserEvent('redo');
-      if (path && opts.onDocChange) opts.onDocChange(path, fromHistory, classify(tr));
       if (!opts.isEnabled()) return tr;
       // Never interfere with IME composition or file reloads (`set`). Undo/redo
       // already restore a tidy document, because the move and its cleanup were
@@ -100,7 +134,9 @@ export function createUnitOpReorderFilter(opts: UnitOpReorderFilterOptions): Ext
       if (!touchesUnitOpHeading(tr)) return tr;
 
       // CodeMirror documents are `\n`-only, so string offsets map 1:1 to positions.
-      const edits = computeUnitOpSyncEdits(tr.newDoc.toString(), { onlyOnReorder: true });
+      const edits = computeUnitOpSyncEdits(tr.newDoc.toString(), {
+        onlyOnReorder: !deletesWholeUnitOpHeading(tr),
+      });
       if (edits.length === 0) return tr;
       return [tr, { changes: edits, sequential: true }];
     } catch (err) {
@@ -108,4 +144,6 @@ export function createUnitOpReorderFilter(opts: UnitOpReorderFilterOptions): Ext
       return tr;
     }
   });
+
+  return [report, filter];
 }

@@ -38,7 +38,8 @@ async function offerStaleCsvCleanup(plugin: LabnotePlugin, file: TFile, tableCou
       'These table CSV files no longer match a table in the note. Move them to the trash?\n\n{0}',
       listFileNames(plugin, stale)
     ),
-    plugin.t('Move to trash')
+    plugin.t('Move to trash'),
+    { destructive: true }
   );
   if (!ok) return plugin.t('{0} old CSV file(s) kept.', String(stale.length));
   const kept = await trashTableCsvs(plugin.app, dir, stale);
@@ -111,7 +112,7 @@ export async function exportTablesToCsv(plugin: LabnotePlugin, file: TFile): Pro
     sections.push(plugin.t('The header of these CSV files changed. Overwrite them?\n\n{0}', headerChanged));
   }
   if (sections.length > 0) {
-    const ok = await confirmModal(plugin.app, sections.join('\n\n'), plugin.t('Overwrite'));
+    const ok = await confirmModal(plugin.app, sections.join('\n\n'), plugin.t('Overwrite'), { destructive: true });
     if (!ok) {
       new Notice(plugin.t('No changes made.'));
       return;
