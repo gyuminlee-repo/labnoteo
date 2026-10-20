@@ -204,6 +204,22 @@ export {
 } from './catalog';
 export { CATALOG_KO, catalogDescriptionFor, type CatalogKoEntry } from './catalog/catalogKo';
 export { CATALOG_KO_DESCRIPTIONS } from './catalog/catalogKoDescriptions';
+export { EARLIER_BUNDLED, ADDED_BUNDLED_IDS } from './catalog/earlierBundled';
+export {
+  CATALOG_FILE_SPECS,
+  BUNDLED_CATALOG_HISTORY,
+  parseCatalogFile,
+  planCatalogUpdate,
+  applyCatalogUpdate,
+  isCatalogPlanEmpty,
+  type CatalogField,
+  type CatalogListKey,
+  type CatalogFileSpec,
+  type CatalogHistory,
+  type CatalogUpdatePlan,
+  type BundledCatalogItem,
+  type ParsedCatalogFile,
+} from './catalog/catalogUpdate';
 export type {
   WorkflowItem,
   WorkflowJson,

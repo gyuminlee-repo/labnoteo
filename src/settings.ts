@@ -33,6 +33,8 @@ export interface LabnoteSettings {
   globalSampleFolder: string;
   /** What the workflow view groups experiments by (#204). */
   workflowViewGroupBy: ExperimentGrouping;
+  /** Bundled-catalog hash the "Update catalogs" startup notice last checked; '' until then. */
+  catalogNoticeHash: string;
 
   // --- LLM ---
   llmProvider: LlmProviderKind;
@@ -63,6 +65,7 @@ export const DEFAULT_SETTINGS: LabnoteSettings = {
   customSampleTypes: [],
   globalSampleFolder: 'resources/labsamples',
   workflowViewGroupBy: 'status',
+  catalogNoticeHash: '',
   llmProvider: 'none',
   llmEndpointOllama: 'http://localhost:11434',
   llmEndpointOpenai: 'https://api.openai.com',
@@ -161,6 +164,7 @@ export function migrateSettings(raw: unknown): LabnoteSettings {
   if (data.workflowViewGroupBy === 'status' || data.workflowViewGroupBy === 'project') {
     out.workflowViewGroupBy = data.workflowViewGroupBy;
   }
+  if (typeof data.catalogNoticeHash === 'string') out.catalogNoticeHash = data.catalogNoticeHash;
   if (data.llmProvider === 'none' || data.llmProvider === 'ollama' || data.llmProvider === 'openai') {
     out.llmProvider = data.llmProvider;
   }

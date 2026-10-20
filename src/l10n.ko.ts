@@ -17,6 +17,28 @@ const obsidianKo: Record<string, string> = {
   'Sync workflow checklist with folder': '폴더와 워크플로 체크리스트 맞추기',
   'Insert workflow': '워크플로 삽입',
   'Insert unit operation': '유닛 오퍼레이션 삽입',
+  'Update catalogs': '카탈로그 업데이트',
+  'Update': '업데이트',
+  'Update the catalogs in {0} to this plugin version? Fields edited in this vault are kept.':
+    '{0}의 카탈로그를 이 플러그인 버전에 맞게 업데이트할까요? 이 보관함에서 고친 값은 그대로 둡니다.',
+  '+ Add {0}': '+ 추가: {0}',
+  '{0}: name "{1}" → "{2}"': '{0}: 이름 "{1}" → "{2}"',
+  '{0}: new {1}': '{0}: {1} 갱신',
+  '{0}: {1} kept (edited in this vault)': '{0}: {1} 그대로 둠(이 보관함에서 고친 값)',
+  'name': '이름',
+  'description': '설명',
+  'category': '분류',
+  'equipment': '장비',
+  'software': '소프트웨어',
+  'The catalogs are up to date.': '카탈로그가 이미 최신입니다.',
+  'The catalogs are up to date. {0} field(s) edited in this vault were kept.':
+    '카탈로그가 이미 최신입니다. 이 보관함에서 고친 값 {0}개는 그대로 두었습니다.',
+  'Updated the catalogs: {0} added, {1} changed. Commit the changed files in {2}.':
+    '카탈로그를 업데이트했습니다: {0}개 추가, {1}개 갱신. {2}의 바뀐 파일을 커밋하세요.',
+  '{0} could not be read as a catalog, so it was left as it is. Fix its JSON and run "{1}" again.':
+    '{0}을(를) 카탈로그로 읽을 수 없어 그대로 두었습니다. JSON을 고친 뒤 "{1}"을(를) 다시 실행하세요.',
+  'Catalog update available: {0} new, {1} changed. Run "{2}" from the command palette.':
+    '카탈로그에 새 항목 {0}개, 바뀐 항목 {1}개가 있습니다. 명령 팔레트에서 "{2}"을(를) 실행하세요.',
   'Insert date': '날짜 삽입',
   'Insert date and time': '날짜 및 시간 삽입',
   'End_date {0} is earlier than Start_date {1}.': 'End_date({0})가 Start_date({1})보다 이릅니다.',
