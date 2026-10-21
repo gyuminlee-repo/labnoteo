@@ -40,6 +40,7 @@ import {
   listExperimentSampleFolders,
   extractSampleInfoFromText,
   type AliasRewriteEdit,
+  type SampleInfo,
   type SampleRecord,
 } from '@labnoteo/core/lib/sampleStorage';
 import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
@@ -143,11 +144,18 @@ export async function insertExperimentSamplesTable(app: App, plugin: LabnotePlug
 
   const types = getSampleDisplayMeta(plugin.settings.customSampleTypes).types;
   const used = new Set<string>();
+  const references: SampleInfo[] = [];
   for (const note of await notesInSampleScope(app, local)) {
     for (const s of extractSampleInfoFromText(note.text, plugin.settings.customSampleTypes)) {
       used.add(`${s.type}\u0000${s.id}`);
+      references.push(s);
     }
   }
+  // The same sources as the editor's "not in the registry" mark (#238).
+  const known = new Set<string>();
+  const remember = (db: Record<string, unknown>): void => {
+    for (const id of Object.keys(db)) known.add(id.toLowerCase());
+  };
   const rows: string[][] = [];
   const row = (id: string, rec: SampleRecord, scope: string): string[] => [
     id,
@@ -159,14 +167,28 @@ export async function insertExperimentSamplesTable(app: App, plugin: LabnotePlug
   ];
   for (const type of types) {
     const localDb = await loadSamplesByType(plugin.fs, local, type);
+    remember(localDb);
+    if (isCatalogSampleType(type)) remember(await loadReferenceSamplesByType(plugin.fs, local, type));
     for (const [id, rec] of Object.entries(localDb)) rows.push(row(id, rec, plugin.t('Local')));
     if (!globalFolder) continue;
-    for (const [id, rec] of Object.entries(await loadSamplesByType(plugin.fs, globalFolder, type))) {
+    const globalDb = await loadSamplesByType(plugin.fs, globalFolder, type);
+    remember(globalDb);
+    if (isCatalogSampleType(type)) remember(await loadReferenceSamplesByType(plugin.fs, globalFolder, type));
+    for (const [id, rec] of Object.entries(globalDb)) {
       if (!localDb[id] && used.has(`${type}\u0000${id}`)) rows.push(row(id, rec, plugin.t('Global')));
     }
   }
+  const unregistered = unregisteredReferences(references, known);
+  const leftOut =
+    unregistered.length === 0
+      ? ''
+      : ` ${plugin.t(
+          "{0} sample reference(s) in this experiment's notes are not in the sample registry, so they are not in the table: {1}",
+          String(unregistered.length),
+          listSome(unregistered)
+        )}`;
   if (rows.length === 0) {
-    new Notice(plugin.t('This experiment has no samples yet.'));
+    new Notice(`${plugin.t('This experiment has no samples yet.')}${leftOut}`);
     return false;
   }
 
@@ -190,8 +212,28 @@ export async function insertExperimentSamplesTable(app: App, plugin: LabnotePlug
   // not land inside this table (#196).
   await target.revealOffset?.(at + before.length + table.length + after.length);
   plugin.markUserEdit(target.path);
-  new Notice(plugin.t('Inserted {0} sample(s).', String(rows.length)));
+  new Notice(`${plugin.t('Inserted {0} sample(s).', String(rows.length))}${leftOut}`);
   return true;
+}
+
+/**
+ * The references of `references` whose ID is not in `known` (lower-cased),
+ * once each, as `ID;alias` (#238).
+ */
+export function unregisteredReferences(references: readonly SampleInfo[], known: ReadonlySet<string>): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const s of references) {
+    const key = s.id.toLowerCase();
+    if (known.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    out.push(buildSampleReferenceText(s.id, s.alias));
+  }
+  return out;
+}
+
+function listSome(items: readonly string[], max = 5): string {
+  return items.length > max ? `${items.slice(0, max).join(', ')}, …` : items.join(', ');
 }
 
 export interface CreatedSample {

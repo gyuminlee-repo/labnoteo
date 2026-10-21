@@ -348,6 +348,8 @@ const obsidianKo: Record<string, string> = {
   'Open a note of an experiment to list its samples.': '시료 목록을 넣으려면 실험 안의 노트를 여세요.',
   'This experiment has no samples yet.': '이 실험에는 아직 시료가 없습니다.',
   'Inserted {0} sample(s).': '시료 {0}개를 표로 넣었습니다.',
+  "{0} sample reference(s) in this experiment's notes are not in the sample registry, so they are not in the table: {1}":
+    '이 실험의 노트에 있는 참조 중 {0}개는 시료 대장에 없어 표에 넣지 않았습니다: {1}',
   'Local': '로컬',
   'Global': '전역',
   'Open a note first to add a local sample.': '로컬 샘플을 추가하려면 먼저 노트를 여세요.',
