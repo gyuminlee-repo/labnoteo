@@ -58,3 +58,42 @@ export function treeKeyAction(
       return undefined;
   }
 }
+
+/** Every rendered row, shown or not, in render order, for {@link resolveFocusRow}. */
+export interface FocusRow {
+  /** Ids from the root down. */
+  key: string;
+  id: string;
+  /** Index of the parent row, or -1 at the top level. */
+  parent: number;
+  shown: boolean;
+}
+
+/**
+ * Which row gets the tab stop after a redraw: the row that had it, by path;
+ * else the row with the same node id somewhere else — a status change moves
+ * an experiment to another group (#227) — with its closed ancestors to open;
+ * else the nearest shown ancestor of the old row; else the first shown row.
+ */
+export function resolveFocusRow(
+  rows: readonly FocusRow[],
+  focusedKey: string | undefined,
+  focusedId: string | undefined
+): { index: number; expand: number[] } | undefined {
+  const firstShown = rows.findIndex(r => r.shown);
+  if (firstShown === -1) return undefined;
+  const byKey = focusedKey === undefined ? -1 : rows.findIndex(r => r.key === focusedKey);
+  if (byKey !== -1 && rows[byKey].shown) return { index: byKey, expand: [] };
+  if (byKey === -1 && focusedId !== undefined) {
+    const byId = rows.findIndex(r => r.id === focusedId);
+    if (byId !== -1) {
+      const expand: number[] = [];
+      if (!rows[byId].shown) for (let p = rows[byId].parent; p >= 0; p = rows[p].parent) expand.unshift(p);
+      return { index: byId, expand };
+    }
+  }
+  if (byKey !== -1) {
+    for (let p = rows[byKey].parent; p >= 0; p = rows[p].parent) if (rows[p].shown) return { index: p, expand: [] };
+  }
+  return { index: firstShown, expand: [] };
+}

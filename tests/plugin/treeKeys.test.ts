@@ -2,7 +2,7 @@
  * #197: the sidebar trees follow the WAI-ARIA tree keys.
  */
 import { describe, it, expect } from 'vitest';
-import { treeKeyAction, type KeyRow } from '../../src/views/treeKeys';
+import { resolveFocusRow, treeKeyAction, type KeyRow } from '../../src/views/treeKeys';
 
 // Experiments (open) > planned (open) > 001; Workflows (closed)
 const rows: KeyRow[] = [
@@ -48,5 +48,38 @@ describe('treeKeyAction', () => {
     expect(press(-1, 'ArrowDown')).toEqual({ kind: 'focus', index: 0 });
     expect(press(-1, 'a')).toBeUndefined();
     expect(treeKeyAction([], -1, { key: 'ArrowDown' })).toBeUndefined();
+  });
+});
+
+// #227: a status change moves an experiment to another group; its tab stop follows it.
+describe('resolveFocusRow', () => {
+  // Experiments > planned > 001, Experiments > in-progress (closed) > 002
+  const tree = (moved: boolean) => [
+    { key: '/experiments', id: 'experiments', parent: -1, shown: true },
+    { key: '/experiments/status:planned', id: 'status:planned', parent: 0, shown: true },
+    ...(moved ? [] : [{ key: '/experiments/status:planned/exp:001', id: 'exp:001', parent: 1, shown: true }]),
+    { key: '/experiments/status:in-progress', id: 'status:in-progress', parent: 0, shown: true },
+    ...(moved ? [{ key: '/experiments/status:in-progress/exp:001', id: 'exp:001', parent: 2, shown: false }] : []),
+  ];
+
+  it('keeps the row that had the tab stop', () => {
+    expect(resolveFocusRow(tree(false), '/experiments/status:planned/exp:001', 'exp:001')).toEqual({ index: 2, expand: [] });
+  });
+
+  it('finds the row by its id in its new group, opening the closed groups above it', () => {
+    expect(resolveFocusRow(tree(true), '/experiments/status:planned/exp:001', 'exp:001')).toEqual({
+      index: 3,
+      expand: [0, 2],
+    });
+  });
+
+  it('falls back to the nearest shown ancestor, then to the first row', () => {
+    const rows = [
+      { key: '/a', id: 'a', parent: -1, shown: true },
+      { key: '/a/b', id: 'b', parent: 0, shown: false },
+    ];
+    expect(resolveFocusRow(rows, '/a/b', 'b')).toEqual({ index: 0, expand: [] });
+    expect(resolveFocusRow(rows, '/gone', 'gone')).toEqual({ index: 0, expand: [] });
+    expect(resolveFocusRow([], undefined, undefined)).toBeUndefined();
   });
 });
