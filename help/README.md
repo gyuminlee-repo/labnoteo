@@ -12,13 +12,18 @@ help/
 │   └── media/
 │       ├── ko/<id>.mp4|.vtt|.jpg   영상, 자막(접근성용), 포스터
 │       ├── en/<id>.mp4|.vtt|.jpg
-│       ├── screens/<name>.png      GitHub 쪽 흐름 화면 사진
+│       ├── screens/<name>.png      Obsidian 밖 화면 사진(GitHub, Copilot, Slack)
 │       └── manifest.json           영상별 녹화 버전·길이 (녹화기가 갱신)
 ├── demos/<id>.yaml            영상 대본 (한 파일 = 한 영상, 한/영 자막을 함께 적음)
 └── seeds/
     ├── <seed>.yaml            시드(영상의 시작 상태) 만드는 순서
-    └── {ko,en}/*.md           (선택) 대본의 fs.write `from:`으로 넣는 긴 노트 본문. 지금 시드는 본문을 yaml에 직접 적음
+    └── {ko,en}/               (선택) 대본의 fs.write `from:`으로 넣는 긴 노트 본문(지금 시드는 본문을 yaml에 직접 적음)과
+                               labnoteo_scan_import `files:`로 넣는 기록지 사진(worksheet-scan.jpg)
 ```
+
+`screens/`의 사진은 언어 구분 없이 한 폴더에 둡니다. 화면 글자가 언어마다 다른 사진은
+`slack-settings-ko.png`·`slack-settings-en.png`처럼 이름 끝에 언어를 붙이고, 각 페이지의
+`data-screen`에 그 이름을 적습니다. 사람 이름과 프로필 사진은 가린 뒤 커밋합니다.
 
 ## 영상 녹화
 
@@ -39,6 +44,8 @@ npm run demo -- --reencode create-workflow  # 저장된 프레임으로 인코�
 ```
 
 녹화가 성공하면 `site/media/<lang>/`에 복사되고 `site/media/manifest.json`이 갱신됩니다.
+`--reencode`는 `--version`을 주지 않으면 manifest에 있던 그 영상의 `version`과 `recordedAt`을
+그대로 둡니다(다시 인코딩해도 녹화한 버전은 바뀌지 않음).
 `--no-publish`를 붙이면 testpilotO `artifacts/demos/`에만 남깁니다(시험 녹화용).
 
 ## 갱신 규칙

@@ -1,5 +1,5 @@
 id: sample-type-scope
-order: 19
+order: 20
 section: samples
 title: { ko: 타입 변경·전역으로 이동, en: Change type and Move to Global }
 seed: samples

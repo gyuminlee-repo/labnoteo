@@ -1,5 +1,5 @@
 id: workflow-sync
-order: 10
+order: 11
 section: record
 title: { ko: 폴더와 워크플로 체크리스트 맞추기, en: Sync folder and workflow checklist }
 seed: workflow-mess

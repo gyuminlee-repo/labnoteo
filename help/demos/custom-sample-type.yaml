@@ -1,5 +1,5 @@
 id: custom-sample-type
-order: 21
+order: 22
 section: samples
 title: { ko: 사용자 정의 샘플 타입, en: Custom sample types }
 seed: basic

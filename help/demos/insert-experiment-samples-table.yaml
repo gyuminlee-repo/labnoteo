@@ -1,5 +1,5 @@
 id: insert-experiment-samples-table
-order: 20
+order: 21
 section: samples
 title: { ko: 이 실험의 샘플 목록 넣기, en: Insert sample list of this experiment }
 seed: samples

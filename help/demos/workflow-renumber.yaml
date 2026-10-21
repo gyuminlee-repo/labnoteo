@@ -1,5 +1,5 @@
 id: workflow-renumber
-order: 9
+order: 10
 section: record
 title: { ko: 워크플로 번호 다시 매기기, en: Renumber workflows }
 seed: workflow-mess

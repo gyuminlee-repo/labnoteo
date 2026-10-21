@@ -1,29 +1,33 @@
 WEBVTT
 
 1
-00:00:00.008 --> 00:00:02.512
+00:00:00.233 --> 00:00:02.737
 Workflow view
 
 2
-00:00:02.512 --> 00:00:06.114
+00:00:02.737 --> 00:00:06.337
 Open the workflow view from the box icon in the ribbon
 
 3
-00:00:06.114 --> 00:00:08.314
+00:00:06.337 --> 00:00:08.553
 Experiments are grouped by status
 
 4
-00:00:08.314 --> 00:00:15.246
+00:00:08.553 --> 00:00:16.748
 Filter with the Search experiments box
 
 5
-00:00:15.246 --> 00:00:19.717
+00:00:16.748 --> 00:00:21.215
 Switch grouping to By project (the drop-down is not shown in video)
 
 6
-00:00:19.717 --> 00:00:28.579
-Right-click an experiment → Change experiment status
+00:00:21.215 --> 00:00:23.290
+Grouped by the README's project
 
 7
-00:00:28.579 --> 00:00:33.900
+00:00:23.290 --> 00:00:25.090
+Back to By status
+
+8
+00:00:25.090 --> 00:00:30.402
 Click an experiment to open its README

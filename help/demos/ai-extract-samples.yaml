@@ -1,5 +1,5 @@
 id: ai-extract-samples
-order: 25
+order: 28
 section: ai
 title: { ko: "AI: 샘플 추출", en: "AI: Extract samples" }
 seed: basic

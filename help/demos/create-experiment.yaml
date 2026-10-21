@@ -1,5 +1,5 @@
 id: create-experiment
-order: 3
+order: 4
 section: quick
 title: { ko: 실험 생성, en: Create experiment }
 seed: empty

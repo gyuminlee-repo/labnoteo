@@ -1,5 +1,5 @@
 id: change-experiment-status
-order: 4
+order: 6
 section: quick
 title: { ko: 실험 상태 변경, en: Change experiment status }
 seed: multi
@@ -8,6 +8,11 @@ steps:
     tool: open_file
     args: { path: { ko: labnote/002_RFP_프로모터_비교/README.labnote.md, en: labnote/002_RFP_promoter_comparison/README.labnote.md } }
     hold: 800
+  - caption: { ko: 워크플로 뷰에서도 planned 묶음에 있습니다, en: The workflow view lists it under planned }
+    tool: ribbon_click
+    args: { label: $t(Workflows) }
+    hold: 800
+  - highlight: { selector: .labnote-tree-row, text: { ko: RFP 프로모터 비교, en: RFP promoter comparison } }
   - caption: { ko: 팔레트에서 실험 상태 변경을 실행합니다, en: Run Change experiment status from the palette }
     palette: change-experiment-status
   - caption: { ko: 목록에서 in-progress를 고릅니다, en: Pick in-progress from the list }
@@ -15,5 +20,20 @@ steps:
     args: { text: in-progress }
   - caption: { ko: README의 status가 바뀌었습니다, en: The README status has changed }
     highlight: { selector: '.metadata-property[data-property-key="status"]' }
+  - caption: { ko: 워크플로 뷰에서 in-progress로 옮겨졌습니다, en: In the workflow view it moved to in-progress }
+    tool: ui_wait
+    args: { selector: .labnote-tree-row, text: "in-progress [3]" }
+  - highlight: { selector: .labnote-tree-row, text: { ko: RFP 프로모터 비교, en: RFP promoter comparison } }
     poster: true
+  - caption: { ko: 워크플로 뷰에서 우클릭해도 바꿀 수 있습니다, en: Or right-click it in the workflow view }
+    tool: labnoteo_tree_click
+    args: { view: workflow, label: { ko: RFP 프로모터 비교, en: RFP promoter comparison }, button: right }
+  - tool: ui_click
+    args: { selector: .menu-item, text: $t(Change experiment status) }
+  - tool: modal_pick
+    args: { text: completed }
+  - caption: { ko: completed 묶음으로 옮겨졌습니다, en: It moved to the completed group }
+    tool: ui_wait
+    args: { selector: .labnote-tree-row, text: "completed [2]" }
+  - highlight: { selector: .labnote-tree-row, text: { ko: RFP 프로모터 비교, en: RFP promoter comparison } }
     hold: 1500

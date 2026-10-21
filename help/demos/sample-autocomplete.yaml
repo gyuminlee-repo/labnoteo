@@ -1,5 +1,5 @@
 id: sample-autocomplete
-order: 16
+order: 17
 section: samples
 title: { ko: 샘플 자동완성, en: Sample autocomplete }
 seed: basic

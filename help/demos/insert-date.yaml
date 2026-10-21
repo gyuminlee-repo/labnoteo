@@ -1,5 +1,5 @@
 id: insert-date
-order: 14
+order: 15
 section: record
 title: { ko: 날짜 삽입, en: Insert date }
 seed: basic

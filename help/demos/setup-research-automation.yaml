@@ -1,6 +1,6 @@
 id: setup-research-automation
-order: 27
-section: automation
+order: 2
+section: start
 title: { ko: 연구노트 자동화 설정, en: Setup research automation }
 seed: basic
 steps:

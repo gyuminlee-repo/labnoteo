@@ -29,11 +29,11 @@
     <li><a href="#start">시작하기</a></li>
     <li><a href="#find-commands">명령 찾는 법</a></li>
     <li><a href="#quick">5분 따라하기</a></li>
-    <li><a href="#wiki">Wiki에 결과 쌓기</a></li>
     <li><a href="#record">기록하기</a></li>
     <li><a href="#samples">샘플 다루기</a></li>
+    <li><a href="#scan">출력본 스캔</a></li>
+    <li><a href="#wiki">Wiki에 결과 쌓기</a></li>
     <li><a href="#ai">AI 도우미</a></li>
-    <li><a href="#automation">연구노트 자동화</a></li>
     <li><a href="#more">그 밖의 설정</a></li>
     <li><a href="#trouble">자주 겪는 문제</a></li>
   </ol>
@@ -54,6 +54,12 @@
     <p>설정에서 제한 모드를 끄고, 커뮤니티 플러그인에서 <strong>BRAT</strong>를 설치한 뒤, BRAT의 <code>Add beta plugin</code>에 <code>sblabkribb/labnoteo</code>를 넣습니다. 설치가 끝나면 왼쪽 리본에 워크플로·샘플 아이콘이 생깁니다. BRAT 화면은 Obsidian 언어와 상관없이 영어로 나옵니다.</p>
     <figure class="clip" data-clip="install"><figcaption>설치: 제한 모드 해제 → BRAT → labnoteo 추가</figcaption></figure>
     <p class="more">단계별 안내: <a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/INSTALL.md#4-labnote-assistant-설치">설치 가이드 4. Labnote Assistant 설치</a></p>
+  </article>
+  <article class="feature" id="setup-research-automation">
+    <h3>연구노트 자동화 설정</h3>
+    <p><code>연구노트 자동화 설정 (Setup research automation)</code>은 노트 검증, 실험과 GitHub Issue 연결, Wiki 발행에 쓰는 GitHub Actions·스크립트·AI 에이전트 규칙을 보관함에 설치합니다. 탐색기에는 <code>AGENTS.md</code>와 <code>QUICKSTART.md</code>가 보이고, <code>.github/</code>·<code>.labnoteo/</code> 같은 점 폴더는 Obsidian에 보이지 않습니다.</p>
+    <figure class="clip" data-clip="setup-research-automation"><figcaption>자동화 설정 → 첨부 파일 위치 → 설치된 파일</figcaption></figure>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/README.md#연구노트-자동화">README · 연구노트 자동화</a> · <a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/INSTALL.md#6-연구노트-자동화-설정">설치 가이드 6</a></p>
   </article>
   <article class="feature" id="overview">
     <h3>한눈에 보기</h3>
@@ -84,17 +90,17 @@
     <figure class="clip" data-clip="create-experiment"><figcaption>실험 생성과 author 채우기</figcaption></figure>
     <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#1-실험-만들기">QUICKSTART · 1. 실험 만들기</a> (폴더 이름 규칙)</p>
   </article>
-  <article class="feature" id="change-experiment-status">
-    <h3>진행 상태 바꾸기</h3>
-    <p>명령 팔레트 → <code>실험 상태 변경 (Change experiment status)</code> → 상태 선택. 상태는 어느 실험 노트에서 실행해도 그 실험의 README에 들어갑니다.</p>
-    <figure class="clip" data-clip="change-experiment-status"><figcaption>planned → in-progress</figcaption></figure>
-    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#2-진행-상태-바꾸기">QUICKSTART · 2. 진행 상태 바꾸기</a></p>
-  </article>
   <article class="feature" id="workflow-view">
     <h3>워크플로 뷰에서 실험 보기</h3>
-    <p>리본의 상자 아이콘으로 여는 <strong>워크플로 뷰</strong> 맨 위 <code>실험</code> 칸에 보관함의 실험이 묶여 보입니다. <code>실험 검색</code> 칸으로 거르고, 옆의 전환으로 <code>상태별</code>과 <code>과제별</code>(README의 <code>project</code>)을 오갑니다. 실험을 우클릭하면 <code>실험 상태 변경</code>으로 그 실험의 상태를 바로 바꿉니다.</p>
-    <figure class="clip" data-clip="workflow-view"><figcaption>실험 검색 → 과제별 묶음 → 우클릭으로 상태 변경</figcaption></figure>
+    <p>리본의 상자 아이콘으로 여는 <strong>워크플로 뷰</strong> 맨 위 <code>실험</code> 칸에 보관함의 실험이 묶여 보입니다. <code>실험 검색</code> 칸으로 거르고, 옆의 전환으로 <code>상태별</code>과 <code>과제별</code>(README의 <code>project</code>)을 오갑니다.</p>
+    <figure class="clip" data-clip="workflow-view"><figcaption>상태별 묶음 → 실험 검색 → 과제별 묶음</figcaption></figure>
     <p class="hint">묶음 전환은 운영체제의 목록 상자라 영상에는 펼쳐진 목록이 찍히지 않습니다. 자막으로 고른 항목을 알려 줍니다.</p>
+  </article>
+  <article class="feature" id="change-experiment-status">
+    <h3>진행 상태 바꾸기</h3>
+    <p>명령 팔레트 → <code>실험 상태 변경 (Change experiment status)</code> → 상태 선택. 상태는 어느 실험 노트에서 실행해도 그 실험의 README에 들어갑니다. 워크플로 뷰에서 실험을 우클릭 → <code>실험 상태 변경</code>으로도 바꿀 수 있고, 바뀐 상태는 워크플로 뷰의 묶음에 바로 나타납니다.</p>
+    <figure class="clip" data-clip="change-experiment-status"><figcaption>팔레트로 planned → in-progress, 우클릭으로 in-progress → completed</figcaption></figure>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#2-진행-상태-바꾸기">QUICKSTART · 2. 진행 상태 바꾸기</a></p>
   </article>
   <article class="feature" id="issue-marker-discussion">
     <h3>논의가 필요한 곳 표시하기</h3>
@@ -111,15 +117,6 @@
     </div>
     <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#4-커밋푸시하기">QUICKSTART · 4. 커밋·푸시하기</a> · <a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#5-이슈-자동-생성-확인하기">5. 이슈 자동 생성 확인하기</a> · <a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/COPILOT.md">Copilot 에이전트 가이드</a></p>
   </article>
-</section>
-
-<section id="wiki">
-  <h2>Wiki에 결과 쌓기</h2>
-  <p>실험이 마무리되면 AI 에이전트에게 "이 실험에서 확인된 객관적 사실을 wiki-staging에 정리해줘"라고 요청합니다. 초안을 검토한 뒤 <code>main</code>에 머지하면 GitHub Wiki로 발행됩니다.</p>
-  <div class="screens">
-    <figure class="screen" data-screen="github-wiki"><figcaption>발행된 Wiki 페이지</figcaption></figure>
-  </div>
-  <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#wiki에-결과-쌓기-실험이-마무리되면">QUICKSTART · Wiki에 결과 쌓기</a></p>
 </section>
 
 <section id="record">
@@ -212,6 +209,46 @@
   </article>
 </section>
 
+<section id="scan">
+  <h2>출력본 스캔</h2>
+  <p>워크플로 노트를 실험 기록지로 출력해 실험실에서 손으로 적고, 사진이나 스캔을 PC로 보내면 종이의 QR을 읽어 원래 노트의 그 유닛 오퍼레이션 아래에 붙입니다. 서버 없이 PC의 Obsidian 안에서 처리하며, 데스크톱 Obsidian 전용입니다.</p>
+  <article class="feature" id="worksheet-print">
+    <h3>기록지 출력</h3>
+    <p>워크플로 노트에서 명령 팔레트 → <code>실험 기록지 출력 (Print experiment worksheet)</code>. 노트 위쪽 QR 아이콘(<code>노트 바코드 보기</code>)을 누르면 노트 ID와 QR을 볼 수 있고, 그 창에서도 출력할 수 있습니다. 출력 창에서 유닛 오퍼레이션을 고르고(실험실(HW) 유닛 오퍼레이션은 미리 켜져 있음) <code>용지 크기</code>를 정한 뒤 <code>출력</code>을 누릅니다.</p>
+    <p>페이지마다 노트 ID가 담긴 QR이 두 곳에 찍힙니다. 기록지에는 적힌 내용만 인쇄되고, 비어 있는 절은 제목만, 비어 있는 Meta 값은 빈칸으로 나옵니다. 인쇄 배율은 100%(실제 크기)로 두세요.</p>
+    <figure class="clip" data-clip="worksheet-print"><figcaption>노트 바코드 보기 → 실험 기록지 출력 창</figcaption></figure>
+    <p class="hint">인쇄 창은 운영체제가 그리는 창이라 영상은 출력 창까지만 보여 줍니다. 인쇄 창이 뜨지 않으면 <code>브라우저에서 열기</code>로 시스템 브라우저에서 인쇄합니다.</p>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/SCAN.md#2-기록지-출력">출력본 스캔 가이드 · 2. 기록지 출력</a></p>
+  </article>
+  <article class="feature" id="scan-import">
+    <h3>스캔 붙이기</h3>
+    <p>리본의 스캔 아이콘이나 명령 팔레트 → <code>스캔 가져오기 (Import scanned pages)</code>로 창을 열고 사진·PDF·zip을 끌어다 놓습니다. 끝나면 <code>스캔 결과</code> 창이 "1쪽: 1쪽 붙임"처럼 알려 주고, 페이지마다 <code>노트 열기</code>와 <code>되돌리기</code>가 있습니다. 노트에는 그 유닛 오퍼레이션 끝의 <code>#### Worksheet scans</code>에 폭 200px 썸네일로 붙고, 설명 끝의 <code>원본 보기</code>로 원본 크기를 엽니다.</p>
+    <p>매번 끌어다 놓지 않으려면 설정 → <code>바코드와 스캔</code>의 <code>스캔 폴더</code>에 PC 폴더(Google Drive 폴더, 복합기 폴더, 카카오톡 받은 파일 등)를 지정합니다. 스캔만 넣는 폴더는 <code>전용 폴더</code>, 다른 파일과 섞인 폴더는 <code>공유 폴더</code>로 고릅니다. QR을 읽지 못한 페이지는 <code>미인식 스캔 할당</code>으로 직접 붙입니다.</p>
+    <figure class="clip" data-clip="scan-import"><figcaption>스캔 가져오기 → 스캔 결과 → Worksheet scans의 썸네일</figcaption></figure>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/SCAN.md#3-스캔-폴더-지정">출력본 스캔 가이드 · 3. 스캔 폴더 지정</a> · <a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/SCAN.md#6-끌어다-놓기">6. 끌어다 놓기</a> · <a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/SCAN.md#7-결과-확인과-되돌리기">7. 결과 확인과 되돌리기</a> · <a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/SCAN.md#8-미인식-스캔-할당">8. 미인식 스캔 할당</a></p>
+  </article>
+  <article class="feature" id="scan-slack">
+    <h3>Slack으로 보내기</h3>
+    <p>Slack을 쓰면 휴대폰으로 찍은 기록지 사진을 내 Slack 봇에게 DM으로 보내 붙일 수 있습니다. 출력본 스캔 가이드의 매니페스트를 붙여 넣어 Slack 앱을 만들고 <code>xoxb-</code>로 시작하는 봇 토큰을 복사합니다. 설정 → <code>바코드와 스캔</code> → <code>Slack으로 스캔 받기(선택)</code>에 <code>Slack 봇 토큰</code>을 넣고 <code>봇에게 DM</code>을 고른 채 <code>연결</code>을 누릅니다. 화면에 나온 <code>labnote-123456</code> 같은 연결 코드를 봇에게 DM으로 보내면 봇이 스레드에 "연결되었습니다"라고 답합니다.</p>
+    <p>그다음 사진은 스레드가 아니라 대화창에 <strong>새 메시지로</strong> 보냅니다. 이 PC의 Obsidian이 켜져 있으면 약 90초마다 확인해 👀 반응을 달고, 결과를 그 메시지의 스레드 답글로 알려 줍니다. 연결은 PC 한 대에만 하고, 끊을 때는 같은 곳의 <code>연결 해제</code>를 누릅니다. Slack 앱 화면이라 영상 대신 화면 사진으로 보여 줍니다.</p>
+    <div class="screens">
+      <figure class="screen" data-screen="slack-settings-ko"><figcaption>설정의 Slack으로 스캔 받기(선택)</figcaption></figure>
+      <figure class="screen" data-screen="slack-link-ko"><figcaption>연결 코드와 봇의 답글</figcaption></figure>
+      <figure class="screen" data-screen="slack-thread-ko"><figcaption>보낸 사진, 👀 반응, 결과 답글</figcaption></figure>
+    </div>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/SCAN.md#9-slack으로-보내기-선택">출력본 스캔 가이드 · 9. Slack으로 보내기</a> (앱 만들기 매니페스트)</p>
+  </article>
+</section>
+
+<section id="wiki">
+  <h2>Wiki에 결과 쌓기</h2>
+  <p>실험이 마무리되면 AI 에이전트에게 "이 실험에서 확인된 객관적 사실을 wiki-staging에 정리해줘"라고 요청합니다. 초안을 검토한 뒤 <code>main</code>에 머지하면 GitHub Wiki로 발행됩니다.</p>
+  <div class="screens">
+    <figure class="screen" data-screen="github-wiki"><figcaption>발행된 Wiki 페이지</figcaption></figure>
+  </div>
+  <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#wiki에-결과-쌓기-실험이-마무리되면">QUICKSTART · Wiki에 결과 쌓기</a></p>
+</section>
+
 <section id="ai">
   <h2>AI 도우미</h2>
   <p>Obsidian 안에서 쓰는 보조 기능입니다. 영상은 로컬 Ollama의 <code>qwen3.5:9b</code> 모델로 녹화했고, 응답을 기다리는 구간은 빨리 감았습니다. 모델과 언어에 따라 결과 글은 달라집니다.</p>
@@ -241,16 +278,6 @@
     <figure class="clip" data-clip="ai-ask-agent"><figcaption>목표 입력 → 도구 실행 허용 → 노트에 바로 반영</figcaption></figure>
   </article>
   <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#ai-도우미">QUICKSTART · AI 도우미</a></p>
-</section>
-
-<section id="automation">
-  <h2>연구노트 자동화</h2>
-  <article class="feature" id="setup-research-automation">
-    <h3>연구노트 자동화 설정</h3>
-    <p><code>연구노트 자동화 설정 (Setup research automation)</code>은 노트 검증, 실험과 GitHub Issue 연결, Wiki 발행에 쓰는 GitHub Actions·스크립트·AI 에이전트 규칙을 보관함에 설치합니다. 탐색기에는 <code>AGENTS.md</code>와 <code>QUICKSTART.md</code>가 보이고, <code>.github/</code>·<code>.labnoteo/</code> 같은 점 폴더는 Obsidian에 보이지 않습니다.</p>
-    <figure class="clip" data-clip="setup-research-automation"><figcaption>자동화 설정 → 첨부 파일 위치 → 설치된 파일</figcaption></figure>
-    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/README.md#연구노트-자동화">README · 연구노트 자동화</a> · <a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/INSTALL.md#6-연구노트-자동화-설정">설치 가이드 6</a></p>
-  </article>
 </section>
 
 <section id="more">

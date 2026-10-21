@@ -1,5 +1,5 @@
 id: uo-reorder
-order: 13
+order: 14
 section: record
 title: { ko: 유닛 오퍼레이션 순서 바꾸기, en: Reorder unit operations }
 seed: basic

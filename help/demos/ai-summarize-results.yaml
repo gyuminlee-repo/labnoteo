@@ -1,5 +1,5 @@
 id: ai-summarize-results
-order: 24
+order: 27
 section: ai
 title: { ko: "AI: 결과 요약", en: "AI: Summarize results" }
 seed: basic
