@@ -64,6 +64,8 @@ describe('worksheetPrintPages', () => {
       expect(p.header).not.toContain('<Handling>');
     });
     expect(printed[0].header).toContain('Liquid &lt;Handling&gt;');
+    expect(printed[0].body).toContain('<div class="sec"><h3>Reagent</h3></div>');
+    expect(printed.map(p => p.body).join('')).not.toContain('ruled');
   });
 
   it('reduces inline markdown to its text', () => {

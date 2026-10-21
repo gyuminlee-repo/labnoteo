@@ -80,7 +80,6 @@ body { font-family: "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sa
 .steps li { display: flex; gap: 2mm; margin: 0.8mm 0; }
 .steps .box { flex: none; width: 3.6mm; height: 3.6mm; margin-top: 0.9mm; border: 0.3mm solid #000; }
 .steps .n { flex: none; min-width: 5mm; }
-.ruled { background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(7mm - 0.2mm), #aaa calc(7mm - 0.2mm), #aaa 7mm); }
 .text p { margin: 0; white-space: pre-wrap; }
 .note-body img { max-width: 100%; }
 .note-body table { border-collapse: collapse; }
