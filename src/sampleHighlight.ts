@@ -26,6 +26,7 @@ import {
   codeBlockRanges,
   findIssueMarkerRanges,
   findSampleIdRanges,
+  staleSampleAliasEnd,
   type IssueMarkerRange,
 } from '@labnoteo/core';
 import { findDefinedSampleIds } from '@labnoteo/core/lib/sampleStorage';
@@ -46,10 +47,15 @@ export interface HighlightState {
   sampleVersion?: number;
   /** Tooltip of a sample ID the registry does not have. */
   missingTitle?: string;
+  /** Registry aliases by lower-cased ID, read with `knownIds` (#239). */
+  knownAliases?: ReadonlyMap<string, string>;
+  /** Tooltip of a reference whose alias differs from the registry's `alias`. */
+  staleAliasTitle?: (alias: string) => string;
 }
 
 const SAMPLE_ID_CLASS = 'labnote-sample-id';
 const MISSING_SAMPLE_CLASS = 'labnote-sample-id-missing';
+const STALE_ALIAS_CLASS = 'labnote-sample-alias-stale';
 const ISSUE_MARKER_CLASS = 'labnote-issue-marker';
 const DUPLICATE_MARKER_CLASS = 'labnote-issue-marker-duplicate';
 const MARKER_ID_RE = /^@issue[;:]([A-Za-z0-9-]+)/i;
@@ -71,6 +77,8 @@ interface MarkerOptions {
   duplicate?: (id: string) => string | undefined;
   /** Tooltip for a sample ID the note cannot resolve, undefined otherwise (#210). */
   missing?: (id: string) => string | undefined;
+  /** The registry alias of a sample ID to hold its references to, with the tooltip for one that differs (#239). */
+  staleAlias?: (id: string) => { alias: string; title: string } | undefined;
 }
 
 /**
@@ -87,6 +95,22 @@ export function missingSampleCheck(
   return id => {
     const key = id.toLowerCase();
     return known.has(key) || definedIds.has(key) ? undefined : title;
+  };
+}
+
+/**
+ * The registry alias that a note's references to a sample should carry. Not
+ * for the samples the note defines itself: the sample sync writes their alias
+ * to the registry on save.
+ */
+export function staleAliasCheck(state: HighlightState, definedIds: ReadonlySet<string>): MarkerOptions['staleAlias'] {
+  const aliases = state.knownAliases;
+  if (!aliases) return undefined;
+  return id => {
+    const key = id.toLowerCase();
+    const alias = aliases.get(key);
+    if (!alias || definedIds.has(key)) return undefined;
+    return { alias, title: state.staleAliasTitle?.(alias) ?? '' };
   };
 }
 
@@ -116,15 +140,30 @@ export function collectTokenRanges(
   for (const r of findSampleIdRanges(text, types)) {
     if (markers.some(m => r.start < m.end && r.end > m.start)) continue;
     const color = colors[r.type] ?? '';
-    const title = opts.missing?.(text.slice(r.start, r.end));
+    const id = text.slice(r.start, r.end);
+    const title = opts.missing?.(id);
+    if (title !== undefined) {
+      ranges.push({ start: r.start, end: r.end, cls: `${SAMPLE_ID_CLASS} ${MISSING_SAMPLE_CLASS}`, color, title });
+      continue;
+    }
+    const stale = opts.staleAlias?.(id);
+    const end = stale ? staleSampleAliasEnd(text, r.end, stale.alias) : undefined;
     ranges.push(
-      title === undefined
-        ? { start: r.start, end: r.end, cls: SAMPLE_ID_CLASS, color }
-        : { start: r.start, end: r.end, cls: `${SAMPLE_ID_CLASS} ${MISSING_SAMPLE_CLASS}`, color, title }
+      stale && end !== undefined
+        ? { start: r.start, end, cls: `${SAMPLE_ID_CLASS} ${STALE_ALIAS_CLASS}`, color, title: stale.title }
+        : { start: r.start, end: r.end, cls: SAMPLE_ID_CLASS, color }
     );
   }
 
-  return ranges.sort((a, b) => a.start - b.start);
+  // A stale alias's mark reaches past its ID and may cover the next one.
+  let last = 0;
+  return ranges
+    .sort((a, b) => a.start - b.start)
+    .filter(r => {
+      if (r.start < last) return false;
+      last = r.end;
+      return true;
+    });
 }
 
 /**
@@ -210,6 +249,7 @@ export function createSampleHighlightPlugin(getState: (path: string | undefined)
           this.definedTypes = typesKey;
         }
         const missing = missingSampleCheck(state, this.definedIds);
+        const staleAlias = staleAliasCheck(state, this.definedIds);
         const { fenced, ownIds } = this;
         // The open note counts as typed, the others as last saved.
         const duplicate = (id: string): string | undefined => {
@@ -224,7 +264,7 @@ export function createSampleHighlightPlugin(getState: (path: string | undefined)
           const text = doc.sliceString(from, to);
           const inCode = (start: number, end: number): boolean =>
             fenced.some(f => from + start < f.end && from + end > f.start);
-          for (const r of collectTokenRanges(text, types, colors, { inCode, duplicate, missing })) {
+          for (const r of collectTokenRanges(text, types, colors, { inCode, duplicate, missing, staleAlias })) {
             const styleVar = sampleColorVar(r.color ?? '');
             const attributes: Record<string, string> = {};
             if (styleVar) attributes.style = styleVar;
@@ -258,6 +298,7 @@ export function createSampleReadingHighlighter(
     const state = getState(ctx.sourcePath);
     const { types, colors } = state;
     let missing: MarkerOptions['missing'];
+    let staleAlias: MarkerOptions['staleAlias'];
     if (state.knownIds) {
       const text = ctx.getSectionInfo?.(el)?.text ?? '';
       if (text !== definedText) {
@@ -265,8 +306,9 @@ export function createSampleReadingHighlighter(
         definedText = text;
       }
       missing = missingSampleCheck(state, definedIds);
+      staleAlias = staleAliasCheck(state, definedIds);
     }
-    highlightTextNodes(el, types, colors, { missing });
+    highlightTextNodes(el, types, colors, { missing, staleAlias });
   };
 }
 

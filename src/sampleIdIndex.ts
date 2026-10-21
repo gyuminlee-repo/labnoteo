@@ -14,7 +14,7 @@ import type { LabnoteFs } from '@labnoteo/core';
 import {
   isSameSampleFolder,
   loadReferenceSamplesByType,
-  loadSampleIds,
+  loadSampleAliases,
   noteLabsamplesFolder,
 } from '@labnoteo/core/lib/sampleStorage';
 import { isCatalogSampleType } from '@labnoteo/core/lib/sampleUtils';
@@ -25,8 +25,19 @@ const LABNOTE_SUFFIX = '.labnote.md';
 /** The IDs a note can resolve, lower-cased. */
 export interface KnownSampleIds {
   ids: ReadonlySet<string>;
+  /**
+   * Registry aliases by lower-cased ID ('' without one), the Local registry's
+   * first (#239). Catalog products are not in it.
+   */
+  aliases: ReadonlyMap<string, string>;
   /** Changes whenever `ids` may have. */
   version: number;
+}
+
+/** A folder's registry IDs with their aliases, and its catalog IDs. */
+interface FolderSamples {
+  aliases: ReadonlyMap<string, string>;
+  catalog: ReadonlySet<string>;
 }
 
 export interface SampleIdIndexOptions {
@@ -39,8 +50,8 @@ export interface SampleIdIndexOptions {
 }
 
 export class SampleIdIndex {
-  /** Folder → its IDs, or null when one of its registries could not be read. */
-  private readonly folders = new Map<string, ReadonlySet<string> | null>();
+  /** Folder → its samples, or null when one of its registries could not be read. */
+  private readonly folders = new Map<string, FolderSamples | null>();
   private readonly loading = new Set<string>();
   private readonly stale = new Set<string>();
   private readonly cache = new Map<string, KnownSampleIds>();
@@ -75,8 +86,17 @@ export class SampleIdIndex {
     const cached = this.cache.get(key);
     if (cached?.version === this.version) return cached;
     const ids = new Set<string>();
-    for (const folder of folders) for (const id of this.folders.get(folder) ?? []) ids.add(id);
-    const entry = { ids, version: this.version };
+    const aliases = new Map<string, string>();
+    for (const folder of folders) {
+      const samples = this.folders.get(folder);
+      if (!samples) continue;
+      for (const [id, alias] of samples.aliases) {
+        ids.add(id);
+        if (!aliases.has(id)) aliases.set(id, alias);
+      }
+      for (const id of samples.catalog) ids.add(id);
+    }
+    const entry = { ids, aliases, version: this.version };
     this.cache.set(key, entry);
     return entry;
   }
@@ -128,22 +148,23 @@ export class SampleIdIndex {
   private async read(folder: string): Promise<void> {
     this.loading.add(folder);
     try {
-      const ids = new Set<string>();
+      const aliases = new Map<string, string>();
+      const catalog = new Set<string>();
       let readable = true;
       for (const type of this.opts.types()) {
-        const own = await loadSampleIds(this.fs, folder, type);
+        const own = await loadSampleAliases(this.fs, folder, type);
         if (!own) {
           readable = false;
           break;
         }
-        for (const id of own) ids.add(id);
+        for (const [id, alias] of own) aliases.set(id, alias);
         if (isCatalogSampleType(type)) {
           for (const id of Object.keys(await loadReferenceSamplesByType(this.fs, folder, type))) {
-            ids.add(id.toLowerCase());
+            catalog.add(id.toLowerCase());
           }
         }
       }
-      this.folders.set(folder, readable ? ids : null);
+      this.folders.set(folder, readable ? { aliases, catalog } : null);
     } catch (err) {
       console.warn('[labnoteo] reading sample IDs failed:', err);
       // Not retried on every keystroke; the next sample write reads it again.

@@ -168,6 +168,7 @@ export {
   buildSampleInsertText,
   findSampleIdRanges,
   findSampleReferenceAt,
+  staleSampleAliasEnd,
   type SampleTrigger,
   type SampleCandidate,
   type SampleCompletionEntry,

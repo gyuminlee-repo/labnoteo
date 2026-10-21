@@ -155,6 +155,25 @@ export function findSampleIdRanges(text: string, types: readonly string[]): Samp
   return ranges.sort((a, b) => a.start - b.start);
 }
 
+/**
+ * Where to end the mark on a reference whose alias differs from the
+ * registry's `alias` (#239): `ID;COL-001b` when the registry says `COL-001`.
+ * `idEnd` is where the ID ends in `text`. Nothing marks where a plain
+ * reference's alias ends, so the registry alias only has to start the text
+ * after `;` as a whole word, and the mark covers the first word written
+ * there. Undefined when the reference gives no alias, the registry has none,
+ * or the two agree.
+ */
+export function staleSampleAliasEnd(text: string, idEnd: number, alias: string | null | undefined): number | undefined {
+  const registry = alias?.trim();
+  if (!registry || text[idEnd] !== ';') return undefined;
+  const rest = text.slice(idEnd + 1);
+  const written = escapeSamplePipes(registry);
+  if (rest.startsWith(written) && !/^[\p{L}\p{N}_-]/u.test(rest.slice(written.length))) return undefined;
+  const word = /^(?:\\\||[^\s|;])+/.exec(rest)?.[0];
+  return word ? idEnd + 1 + word.length : undefined;
+}
+
 /** A sample reference located at a specific column of a line. */
 export interface SampleReferenceAt {
   type: string;

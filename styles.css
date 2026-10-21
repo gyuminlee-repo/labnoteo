@@ -96,6 +96,13 @@
   text-underline-offset: 3px;
 }
 
+/* A reference whose alias differs from the registry's (#239); the title
+   gives the registry's alias. */
+.labnote-sample-alias-stale {
+  text-decoration: dotted underline var(--text-warning);
+  text-underline-offset: 3px;
+}
+
 /* --- @issue markers (editor + reading mode) ------------------------------
    Only well-formed markers get this class, so the styling is also the signal
    that a marker will actually open an issue. The opaque error background hides

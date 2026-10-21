@@ -1938,6 +1938,7 @@ export default class LabnotePlugin extends Plugin {
     });
     this.sampleIds = sampleIds;
     const missingTitle = this.t('Not in the sample registry');
+    const staleAliasTitle = (alias: string): string => this.t('The registry calls this sample {0}', alias);
     const getState = (path: string | undefined): HighlightState => {
       const tracked = this.sampleTrackingFor(path);
       const base: HighlightState = tracked
@@ -1945,7 +1946,14 @@ export default class LabnotePlugin extends Plugin {
         : { types: [], colors: {} };
       const known = tracked ? sampleIds.knownFor(path) : undefined;
       const samples: HighlightState = known
-        ? { ...base, knownIds: known.ids, sampleVersion: known.version, missingTitle }
+        ? {
+            ...base,
+            knownIds: known.ids,
+            sampleVersion: known.version,
+            missingTitle,
+            knownAliases: known.aliases,
+            staleAliasTitle,
+          }
         : base;
       const others = markers.othersFor(path);
       return others

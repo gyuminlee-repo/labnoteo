@@ -382,6 +382,7 @@ const obsidianKo: Record<string, string> = {
   'No definition found for {0}. It is not in the sample registry: it may have been deleted or moved to another experiment, or the Global sample folder setting changed.':
     '{0}의 정의를 찾을 수 없습니다. 시료 대장에 없는 시료입니다. 대장에서 지웠거나 다른 실험으로 옮겼거나, 전역 샘플 폴더 설정을 바꿨을 수 있습니다.',
   'Not in the sample registry': '시료 대장에 없는 시료',
+  'The registry calls this sample {0}': '대장의 별칭: {0}',
   'Close': '닫기',
   'Enter the {0} sample ID': '{0} 샘플 ID를 입력하세요',
   'e.g. {0}-12345': '예: {0}-12345',

@@ -40,6 +40,7 @@ import {
   listExperimentSampleFolders,
   findDefinedSampleIds,
   loadSampleIds,
+  loadSampleAliases,
   type SampleDatabase,
   type SampleRecord,
 } from '../lib/sampleStorage';
@@ -80,6 +81,27 @@ describe('loadSampleIds', () => {
     const fs = new MemFileSystem({ [`${FOLDER}/RNA.json`]: '<<<<<<< HEAD\n{}\n=======\n{}\n>>>>>>> x\n' });
     expect(await loadSampleIds(fs, FOLDER, 'DNA')).toEqual(new Set());
     expect(await loadSampleIds(fs, FOLDER, 'RNA')).toBeUndefined();
+  });
+});
+
+describe('loadSampleAliases (#239)', () => {
+  const FOLDER = 'labnote/001_Test/resources/labsamples';
+
+  it('reads each lower-cased ID with its trimmed alias, the first of colliding keys', async () => {
+    const raw = JSON.stringify({ 'DNA-55': { alias: ' a ' }, 'dna-55': { alias: 'b' }, 'DNA-1': { alias: null } });
+    const fs = new MemFileSystem({ [`${FOLDER}/DNA.json`]: raw });
+    expect(await loadSampleAliases(fs, FOLDER, 'DNA')).toEqual(
+      new Map([
+        ['dna-55', 'a'],
+        ['dna-1', ''],
+      ])
+    );
+  });
+
+  it('gives an empty map without a registry and undefined for one it cannot read', async () => {
+    const fs = new MemFileSystem({ [`${FOLDER}/RNA.json`]: '[]' });
+    expect(await loadSampleAliases(fs, FOLDER, 'DNA')).toEqual(new Map());
+    expect(await loadSampleAliases(fs, FOLDER, 'RNA')).toBeUndefined();
   });
 });
 
