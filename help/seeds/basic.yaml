@@ -25,6 +25,8 @@ steps:
     args: { query: UHW100, alias: { ko: GFP 증폭, en: GFP amplification } }
   - tool: labnoteo_insert_unit_operation
     args: { query: UHW230, alias: { ko: 전기영동 확인, en: Gel check } }
+  # 편집기는 약 2초 뒤에 디스크에 쓴다. 그 전에 끄면 노트가 빈 파일로 남는다
+  - wait: 3000
   - quit: true
   # 첫 유닛 오퍼레이션(열 순환): 자리표시 글은 두 블록에 같으므로 처음 것만 바뀐다
   - fs.patch:

@@ -1,5 +1,5 @@
 id: sample-definition
-order: 18
+order: 19
 section: samples
 title: { ko: 정의로 이동·사용처 보기, en: Go to definition and View usages }
 seed: samples

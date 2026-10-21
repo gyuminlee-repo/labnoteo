@@ -3,7 +3,7 @@
     {
       "id": "ai-ask-agent",
       "lang": "en",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 40.4,
       "bytes": 589031,
       "recordedAt": "2026-10-20T16:51:25.082Z"
@@ -11,7 +11,7 @@
     {
       "id": "ai-ask-agent",
       "lang": "ko",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 38.9,
       "bytes": 625769,
       "recordedAt": "2026-10-20T16:49:57.876Z"
@@ -19,7 +19,7 @@
     {
       "id": "ai-draft-method",
       "lang": "en",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 24.9,
       "bytes": 412465,
       "recordedAt": "2026-10-20T16:51:27.737Z"
@@ -27,7 +27,7 @@
     {
       "id": "ai-draft-method",
       "lang": "ko",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 23.9,
       "bytes": 414418,
       "recordedAt": "2026-10-20T16:49:59.467Z"
@@ -35,7 +35,7 @@
     {
       "id": "ai-extract-samples",
       "lang": "en",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 33.1,
       "bytes": 483071,
       "recordedAt": "2026-10-20T16:51:30.878Z"
@@ -43,7 +43,7 @@
     {
       "id": "ai-extract-samples",
       "lang": "ko",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 31.5,
       "bytes": 524939,
       "recordedAt": "2026-10-20T16:50:01.407Z"
@@ -51,7 +51,7 @@
     {
       "id": "ai-settings",
       "lang": "en",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 27.1,
       "bytes": 386704,
       "recordedAt": "2026-10-20T16:51:34.549Z"
@@ -59,7 +59,7 @@
     {
       "id": "ai-settings",
       "lang": "ko",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 28.5,
       "bytes": 378546,
       "recordedAt": "2026-10-20T16:50:03.379Z"
@@ -67,7 +67,7 @@
     {
       "id": "ai-summarize-results",
       "lang": "en",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 22.8,
       "bytes": 381348,
       "recordedAt": "2026-10-20T16:51:36.373Z"
@@ -75,7 +75,7 @@
     {
       "id": "ai-summarize-results",
       "lang": "ko",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 21.8,
       "bytes": 429986,
       "recordedAt": "2026-10-20T16:50:04.869Z"
@@ -83,23 +83,23 @@
     {
       "id": "change-experiment-status",
       "lang": "en",
-      "version": "0.108.0",
-      "durationSec": 22.9,
-      "bytes": 433427,
-      "recordedAt": "2026-10-20T16:51:38.563Z"
+      "version": "0.111.0",
+      "durationSec": 40.6,
+      "bytes": 850241,
+      "recordedAt": "2026-10-21T09:59:04.902Z"
     },
     {
       "id": "change-experiment-status",
       "lang": "ko",
-      "version": "0.108.0",
-      "durationSec": 21.2,
-      "bytes": 361521,
-      "recordedAt": "2026-10-20T16:50:06.312Z"
+      "version": "0.111.0",
+      "durationSec": 40.2,
+      "bytes": 811836,
+      "recordedAt": "2026-10-21T09:51:07.793Z"
     },
     {
       "id": "context-menu-only",
       "lang": "en",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 48,
       "bytes": 1052881,
       "recordedAt": "2026-10-20T16:51:43.636Z"
@@ -107,7 +107,7 @@
     {
       "id": "context-menu-only",
       "lang": "ko",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 46.7,
       "bytes": 1087322,
       "recordedAt": "2026-10-20T16:50:09.378Z"
@@ -115,7 +115,7 @@
     {
       "id": "create-experiment",
       "lang": "en",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 26.1,
       "bytes": 294471,
       "recordedAt": "2026-10-20T16:51:45.724Z"
@@ -123,7 +123,7 @@
     {
       "id": "create-experiment",
       "lang": "ko",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 25.3,
       "bytes": 251683,
       "recordedAt": "2026-10-20T16:50:10.862Z"
@@ -131,7 +131,7 @@
     {
       "id": "create-workflow",
       "lang": "en",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 37.7,
       "bytes": 745195,
       "recordedAt": "2026-10-20T16:51:48.849Z"
@@ -139,7 +139,7 @@
     {
       "id": "create-workflow",
       "lang": "ko",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 35.8,
       "bytes": 717060,
       "recordedAt": "2026-10-20T16:50:13.239Z"
@@ -147,7 +147,7 @@
     {
       "id": "custom-sample-type",
       "lang": "en",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 42.6,
       "bytes": 520837,
       "recordedAt": "2026-10-20T16:51:53.090Z"
@@ -155,7 +155,7 @@
     {
       "id": "custom-sample-type",
       "lang": "ko",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 41.6,
       "bytes": 511541,
       "recordedAt": "2026-10-20T16:50:15.824Z"
@@ -163,7 +163,7 @@
     {
       "id": "export-tables-csv",
       "lang": "en",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 24.8,
       "bytes": 783313,
       "recordedAt": "2026-10-20T16:51:55.308Z"
@@ -171,7 +171,7 @@
     {
       "id": "export-tables-csv",
       "lang": "ko",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 24.4,
       "bytes": 821472,
       "recordedAt": "2026-10-20T16:50:17.890Z"
@@ -179,7 +179,7 @@
     {
       "id": "insert-date",
       "lang": "en",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 36,
       "bytes": 559273,
       "recordedAt": "2026-10-20T16:51:57.982Z"
@@ -187,7 +187,7 @@
     {
       "id": "insert-date",
       "lang": "ko",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 34.2,
       "bytes": 550666,
       "recordedAt": "2026-10-20T16:50:20.539Z"
@@ -195,7 +195,7 @@
     {
       "id": "insert-experiment-samples-table",
       "lang": "en",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 23.4,
       "bytes": 353396,
       "recordedAt": "2026-10-20T16:52:00.002Z"
@@ -203,7 +203,7 @@
     {
       "id": "insert-experiment-samples-table",
       "lang": "ko",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 21.4,
       "bytes": 359172,
       "recordedAt": "2026-10-20T16:50:22.229Z"
@@ -211,7 +211,7 @@
     {
       "id": "insert-unit-operation",
       "lang": "en",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 29.7,
       "bytes": 535349,
       "recordedAt": "2026-10-20T16:52:02.318Z"
@@ -219,7 +219,7 @@
     {
       "id": "insert-unit-operation",
       "lang": "ko",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 27.2,
       "bytes": 531683,
       "recordedAt": "2026-10-20T16:50:24.024Z"
@@ -227,7 +227,7 @@
     {
       "id": "install",
       "lang": "en",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 53.3,
       "bytes": 817346,
       "recordedAt": "2026-10-20T16:52:06.430Z"
@@ -235,7 +235,7 @@
     {
       "id": "install",
       "lang": "ko",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 54.4,
       "bytes": 820065,
       "recordedAt": "2026-10-20T16:50:28.347Z"
@@ -243,7 +243,7 @@
     {
       "id": "issue-marker-discussion",
       "lang": "en",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 38.4,
       "bytes": 641969,
       "recordedAt": "2026-10-20T16:52:09.326Z"
@@ -251,7 +251,7 @@
     {
       "id": "issue-marker-discussion",
       "lang": "ko",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 36.6,
       "bytes": 681036,
       "recordedAt": "2026-10-20T16:50:33.116Z"
@@ -259,7 +259,7 @@
     {
       "id": "overview",
       "lang": "en",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 108.6,
       "bytes": 2071346,
       "recordedAt": "2026-10-20T16:52:17.905Z"
@@ -267,7 +267,7 @@
     {
       "id": "overview",
       "lang": "ko",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 100.7,
       "bytes": 1816042,
       "recordedAt": "2026-10-20T16:50:44.953Z"
@@ -275,7 +275,7 @@
     {
       "id": "sample-autocomplete",
       "lang": "en",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 41.6,
       "bytes": 513175,
       "recordedAt": "2026-10-20T16:52:20.712Z"
@@ -283,7 +283,7 @@
     {
       "id": "sample-autocomplete",
       "lang": "ko",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 39.2,
       "bytes": 477984,
       "recordedAt": "2026-10-20T16:50:48.241Z"
@@ -291,7 +291,7 @@
     {
       "id": "sample-definition",
       "lang": "en",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 31.5,
       "bytes": 703838,
       "recordedAt": "2026-10-20T16:52:23.524Z"
@@ -299,7 +299,7 @@
     {
       "id": "sample-definition",
       "lang": "ko",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 32.3,
       "bytes": 570750,
       "recordedAt": "2026-10-20T16:50:51.086Z"
@@ -307,7 +307,7 @@
     {
       "id": "sample-type-scope",
       "lang": "en",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 46.1,
       "bytes": 886994,
       "recordedAt": "2026-10-20T16:52:27.525Z"
@@ -315,7 +315,7 @@
     {
       "id": "sample-type-scope",
       "lang": "ko",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 45.6,
       "bytes": 888014,
       "recordedAt": "2026-10-20T16:50:55.722Z"
@@ -323,7 +323,7 @@
     {
       "id": "sample-view",
       "lang": "en",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 59.9,
       "bytes": 958321,
       "recordedAt": "2026-10-20T16:52:32.697Z"
@@ -331,15 +331,31 @@
     {
       "id": "sample-view",
       "lang": "ko",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 56.3,
       "bytes": 823184,
       "recordedAt": "2026-10-20T16:51:05.415Z"
     },
     {
+      "id": "scan-import",
+      "lang": "en",
+      "version": "0.111.0",
+      "durationSec": 32.9,
+      "bytes": 326640,
+      "recordedAt": "2026-10-21T10:00:28.929Z"
+    },
+    {
+      "id": "scan-import",
+      "lang": "ko",
+      "version": "0.111.0",
+      "durationSec": 32.5,
+      "bytes": 352653,
+      "recordedAt": "2026-10-21T09:55:13.822Z"
+    },
+    {
       "id": "setup-research-automation",
       "lang": "en",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 25.2,
       "bytes": 237407,
       "recordedAt": "2026-10-20T16:52:34.587Z"
@@ -347,7 +363,7 @@
     {
       "id": "setup-research-automation",
       "lang": "ko",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 24.9,
       "bytes": 212440,
       "recordedAt": "2026-10-20T16:51:08.625Z"
@@ -355,7 +371,7 @@
     {
       "id": "uo-reorder",
       "lang": "en",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 26.2,
       "bytes": 560334,
       "recordedAt": "2026-10-20T16:52:37.040Z"
@@ -363,7 +379,7 @@
     {
       "id": "uo-reorder",
       "lang": "ko",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 25.6,
       "bytes": 489498,
       "recordedAt": "2026-10-20T16:51:11.304Z"
@@ -371,7 +387,7 @@
     {
       "id": "workflow-rename-copy",
       "lang": "en",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 38,
       "bytes": 520663,
       "recordedAt": "2026-10-20T16:52:39.934Z"
@@ -379,7 +395,7 @@
     {
       "id": "workflow-rename-copy",
       "lang": "ko",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 37.3,
       "bytes": 501209,
       "recordedAt": "2026-10-20T16:51:14.240Z"
@@ -387,7 +403,7 @@
     {
       "id": "workflow-renumber",
       "lang": "en",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 23.9,
       "bytes": 360972,
       "recordedAt": "2026-10-20T16:52:41.895Z"
@@ -395,7 +411,7 @@
     {
       "id": "workflow-renumber",
       "lang": "ko",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 23.5,
       "bytes": 372951,
       "recordedAt": "2026-10-20T16:51:16.297Z"
@@ -403,7 +419,7 @@
     {
       "id": "workflow-sync",
       "lang": "en",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 27.2,
       "bytes": 499679,
       "recordedAt": "2026-10-20T16:52:44.038Z"
@@ -411,7 +427,7 @@
     {
       "id": "workflow-sync",
       "lang": "ko",
-      "version": "0.108.0",
+      "version": "0.105.0",
       "durationSec": 25.6,
       "bytes": 420400,
       "recordedAt": "2026-10-20T16:51:18.523Z"
@@ -419,18 +435,34 @@
     {
       "id": "workflow-view",
       "lang": "en",
-      "version": "0.108.0",
-      "durationSec": 33.9,
-      "bytes": 438783,
-      "recordedAt": "2026-10-20T16:52:46.457Z"
+      "version": "0.111.0",
+      "durationSec": 30.4,
+      "bytes": 339815,
+      "recordedAt": "2026-10-21T09:58:16.085Z"
     },
     {
       "id": "workflow-view",
       "lang": "ko",
-      "version": "0.108.0",
-      "durationSec": 31.6,
-      "bytes": 367344,
-      "recordedAt": "2026-10-20T16:51:21.451Z"
+      "version": "0.111.0",
+      "durationSec": 28.6,
+      "bytes": 357374,
+      "recordedAt": "2026-10-21T09:50:19.006Z"
+    },
+    {
+      "id": "worksheet-print",
+      "lang": "en",
+      "version": "0.111.0",
+      "durationSec": 36.8,
+      "bytes": 554789,
+      "recordedAt": "2026-10-21T09:59:49.054Z"
+    },
+    {
+      "id": "worksheet-print",
+      "lang": "ko",
+      "version": "0.111.0",
+      "durationSec": 35.7,
+      "bytes": 503382,
+      "recordedAt": "2026-10-21T09:51:50.844Z"
     }
   ]
 }

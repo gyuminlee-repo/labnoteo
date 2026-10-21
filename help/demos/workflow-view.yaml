@@ -9,7 +9,7 @@ steps:
     args: { label: $t(Workflows) }
     hold: 1200
   - caption: { ko: 실험이 상태별로 묶여 보입니다, en: Experiments are grouped by status }
-    highlight: { selector: .labnote-workflow-controls }
+    highlight: { selector: .labnote-tree-row, text: planned }
   - caption: { ko: 실험 검색 칸에 낱말을 넣어 거릅니다, en: Filter with the Search experiments box }
     tool: ui_click
     args: { selector: .labnote-workflow-search }
@@ -18,21 +18,22 @@ steps:
     hold: 1500
   - tool: ui_type
     args: { text: '', clear: true }
+  - tool: ui_press
+    args: { keys: Backspace }
     hold: 600
   - caption: { ko: 묶음을 과제별로 바꿉니다(목록 창은 영상에 안 보임), en: Switch grouping to By project (the drop-down is not shown in video) }
     highlight: { selector: .labnote-workflow-group-by }
   - tool: eval
     args:
       expression: "(() => { const s = document.querySelector('.labnote-workflow-group-by'); s.value = 'project'; s.dispatchEvent(new Event('change')); return s.value; })()"
-    hold: 1500
-  - caption: { ko: 실험을 우클릭해 실험 상태 변경을 고릅니다, en: Right-click an experiment → Change experiment status }
-    tool: labnoteo_tree_click
-    args: { view: workflow, label: { ko: RFP 프로모터 비교, en: RFP promoter comparison }, button: right }
-  - tool: ui_click
-    args: { selector: .menu-item, text: $t(Change experiment status) }
-  - tool: modal_pick
-    args: { text: in-progress }
     hold: 1000
+  - caption: { ko: README의 project로 묶입니다, en: Grouped by the README's project }
+    highlight: { selector: .labnote-tree-row, text: { ko: 형광 리포터, en: Fluorescent reporters } }
+  - caption: { ko: 다시 상태별로 봅니다, en: Back to By status }
+    tool: eval
+    args:
+      expression: "(() => { const s = document.querySelector('.labnote-workflow-group-by'); s.value = 'status'; s.dispatchEvent(new Event('change')); return s.value; })()"
+    hold: 1200
   - caption: { ko: 실험을 누르면 README가 열립니다, en: Click an experiment to open its README }
     tool: labnoteo_tree_click
     args: { view: workflow, label: { ko: RFP 프로모터 비교, en: RFP promoter comparison } }

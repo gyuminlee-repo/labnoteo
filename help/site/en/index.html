@@ -29,11 +29,11 @@
     <li><a href="#start">Getting started</a></li>
     <li><a href="#find-commands">Finding commands</a></li>
     <li><a href="#quick">5-minute walkthrough</a></li>
-    <li><a href="#wiki">Building the Wiki</a></li>
     <li><a href="#record">Recording</a></li>
     <li><a href="#samples">Working with samples</a></li>
+    <li><a href="#scan">Printed worksheets and scans</a></li>
+    <li><a href="#wiki">Building the Wiki</a></li>
     <li><a href="#ai">AI assistant</a></li>
-    <li><a href="#automation">Research automation</a></li>
     <li><a href="#more">Other settings</a></li>
     <li><a href="#trouble">Troubleshooting</a></li>
   </ol>
@@ -54,6 +54,12 @@
     <p>Turn off Restricted mode in Settings, install <strong>BRAT</strong> from Community plugins, then enter <code>sblabkribb/labnoteo</code> in BRAT's <code>Add beta plugin</code>. Once it is installed, workflow and sample icons appear in the left ribbon.</p>
     <figure class="clip" data-clip="install"><figcaption>Installation: Restricted mode off → BRAT → add labnoteo</figcaption></figure>
     <p class="more">Step by step: <a href="https://github.com/sblabkribb/labnoteo/blob/main/README.en.md#installation">README · Installation</a></p>
+  </article>
+  <article class="feature" id="setup-research-automation">
+    <h3>Setup research automation</h3>
+    <p><code>Setup research automation</code> installs the GitHub Actions, scripts and AI agent rules for note validation, Experiment ↔ Issue links and Wiki publishing into the vault. <code>AGENTS.md</code> and <code>QUICKSTART.md</code> appear in the explorer; dot folders such as <code>.github/</code> and <code>.labnoteo/</code> are hidden in Obsidian.</p>
+    <figure class="clip" data-clip="setup-research-automation"><figcaption>Setup → attachment location → installed files</figcaption></figure>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/README.en.md#research-automation">README · Research automation</a></p>
   </article>
   <article class="feature" id="overview">
     <h3>Overview</h3>
@@ -84,16 +90,16 @@
     <figure class="clip" data-clip="create-experiment"><figcaption>Create an experiment and fill in author</figcaption></figure>
     <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/README.en.md#commands">README · Commands</a> (folder name rules)</p>
   </article>
-  <article class="feature" id="change-experiment-status">
-    <h3>Change the status</h3>
-    <p>Command palette → <code>Change experiment status</code> → pick a status. Run from any note of an experiment, it updates that experiment's README.</p>
-    <figure class="clip" data-clip="change-experiment-status"><figcaption>planned → in-progress</figcaption></figure>
-  </article>
   <article class="feature" id="workflow-view">
     <h3>Experiments in the workflow view</h3>
-    <p>The <strong>workflow view</strong>, opened with the box icon in the ribbon, groups the vault's experiments under <code>Experiments</code> at the top. Filter them with <code>Search experiments</code> and switch between <code>By status</code> and <code>By project</code> (the README's <code>project</code>). Right-click an experiment and choose <code>Change experiment status</code> to change it in place.</p>
-    <figure class="clip" data-clip="workflow-view"><figcaption>Search experiments → By project → right-click to change status</figcaption></figure>
+    <p>The <strong>workflow view</strong>, opened with the box icon in the ribbon, groups the vault's experiments under <code>Experiments</code> at the top. Filter them with <code>Search experiments</code> and switch between <code>By status</code> and <code>By project</code> (the README's <code>project</code>).</p>
+    <figure class="clip" data-clip="workflow-view"><figcaption>By status → Search experiments → By project</figcaption></figure>
     <p class="hint">The grouping switch is a system list box, so its open list does not show in the clip; the caption says which item is picked.</p>
+  </article>
+  <article class="feature" id="change-experiment-status">
+    <h3>Change the status</h3>
+    <p>Command palette → <code>Change experiment status</code> → pick a status. Run from any note of an experiment, it updates that experiment's README. You can also right-click an experiment in the workflow view and choose <code>Change experiment status</code>; the new status shows in the view's groups at once.</p>
+    <figure class="clip" data-clip="change-experiment-status"><figcaption>planned → in-progress from the palette, in-progress → completed by right-click</figcaption></figure>
   </article>
   <article class="feature" id="issue-marker-discussion">
     <h3>Flag what needs discussion</h3>
@@ -110,15 +116,6 @@
     </div>
     <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/COPILOT.md">Copilot agents guide</a> (Korean)</p>
   </article>
-</section>
-
-<section id="wiki">
-  <h2>Building the Wiki</h2>
-  <p>When an experiment wraps up, ask the AI agent to "summarize the objective facts this experiment established into wiki-staging". After you review the draft and merge it into <code>main</code>, it is published to the GitHub Wiki.</p>
-  <div class="screens">
-    <figure class="screen" data-screen="github-wiki"><figcaption>A published Wiki page</figcaption></figure>
-  </div>
-  <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/README.en.md#research-automation">README · Research automation</a></p>
 </section>
 
 <section id="record">
@@ -208,6 +205,46 @@
   </article>
 </section>
 
+<section id="scan">
+  <h2>Printed worksheets and scans</h2>
+  <p>Print a workflow note as an experiment worksheet, write on it at the bench, then send a photo or scan to your PC: the plugin reads the QR code on the paper and files the image under that unit operation in the original note. Everything runs inside Obsidian on your PC, with no server, on desktop Obsidian only.</p>
+  <article class="feature" id="worksheet-print">
+    <h3>Print a worksheet</h3>
+    <p>In a workflow note, command palette → <code>Print experiment worksheet</code>. The QR icon at the top of the note (<code>Show note barcode</code>) shows the note ID and its QR code, and you can print from there too. In the print dialog, pick the unit operations (lab (HW) unit operations are already on), set the <code>Paper size</code> and press <code>Print</code>.</p>
+    <p>Each page carries the note ID's QR code in two corners. Only what is written is printed: an empty section prints its title only, and an empty Meta value prints as a blank. Print at 100% (actual size).</p>
+    <figure class="clip" data-clip="worksheet-print"><figcaption>Show note barcode → Print experiment worksheet dialog</figcaption></figure>
+    <p class="hint">The print window is drawn by the operating system, so the clip stops at the print dialog. If no print window appears, use <code>Open in browser</code> to print from your system browser.</p>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/SCAN.md#2-기록지-출력">Scan guide · 2. Printing worksheets</a> (Korean)</p>
+  </article>
+  <article class="feature" id="scan-import">
+    <h3>File scans in notes</h3>
+    <p>Open the dialog with the scan icon in the ribbon or command palette → <code>Import scanned pages</code>, and drop in photos, PDFs or a zip. When it finishes, the <code>Scan results</code> dialog reports something like "1 page(s): 1 filed", with <code>Open note</code> and <code>Undo</code> for each page. In the note, the scan goes into <code>#### Worksheet scans</code> at the end of that unit operation as a 200px-wide thumbnail; <code>Open full size</code> at the end of its caption opens the original.</p>
+    <p>To skip the dragging, set a PC folder (a Google Drive folder, a scanner folder, KakaoTalk downloads, …) as the <code>Scan folder</code> under Settings → <code>Barcode &amp; scans</code>. Choose <code>Dedicated folder</code> for a folder that holds only scans and <code>Shared folder</code> for one mixed with other files. Pages whose QR code could not be read are filed by hand with <code>Assign unmatched scans</code>.</p>
+    <figure class="clip" data-clip="scan-import"><figcaption>Import scanned pages → Scan results → thumbnail in Worksheet scans</figcaption></figure>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/SCAN.md#3-스캔-폴더-지정">Scan guide · 3. Scan folder</a> · <a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/SCAN.md#6-끌어다-놓기">6. Drag and drop</a> · <a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/SCAN.md#7-결과-확인과-되돌리기">7. Results and undo</a> · <a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/SCAN.md#8-미인식-스캔-할당">8. Unmatched scans</a> (Korean)</p>
+  </article>
+  <article class="feature" id="scan-slack">
+    <h3>Send scans through Slack</h3>
+    <p>If you use Slack, you can send worksheet photos from your phone as a DM to your own Slack bot. Create a Slack app by pasting the manifest from the scan guide and copy its bot token (starting with <code>xoxb-</code>). Under Settings → <code>Barcode &amp; scans</code> → <code>Slack scans (optional)</code>, paste it into <code>Slack bot token</code>, choose <code>Direct message to the bot</code> and press <code>Connect</code>. Send the link code it shows, such as <code>labnote-123456</code>, to the bot as a DM, and the bot replies "Linked" in the thread.</p>
+    <p>After that, send photos <strong>as new messages</strong> in the conversation, not as replies in the thread. While Obsidian is running on this PC, it checks about every 90 seconds, adds a 👀 reaction and reports the result as a thread reply to that message. Link only one PC; to unlink, press <code>Disconnect</code> in the same place. These are Slack screens, so they are shown as screenshots rather than clips.</p>
+    <div class="screens">
+      <figure class="screen" data-screen="slack-settings-en"><figcaption>Slack scans (optional) in settings</figcaption></figure>
+      <figure class="screen" data-screen="slack-link-en"><figcaption>The link code and the bot's reply</figcaption></figure>
+      <figure class="screen" data-screen="slack-thread-en"><figcaption>The photo sent, the 👀 reaction and the result reply</figcaption></figure>
+    </div>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/SCAN.md#9-slack으로-보내기-선택">Scan guide · 9. Sending through Slack</a> (Korean; includes the app manifest)</p>
+  </article>
+</section>
+
+<section id="wiki">
+  <h2>Building the Wiki</h2>
+  <p>When an experiment wraps up, ask the AI agent to "summarize the objective facts this experiment established into wiki-staging". After you review the draft and merge it into <code>main</code>, it is published to the GitHub Wiki.</p>
+  <div class="screens">
+    <figure class="screen" data-screen="github-wiki"><figcaption>A published Wiki page</figcaption></figure>
+  </div>
+  <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/README.en.md#research-automation">README · Research automation</a></p>
+</section>
+
 <section id="ai">
   <h2>AI assistant</h2>
   <p>Helpers that work inside Obsidian. The clips were recorded with a local Ollama <code>qwen3.5:9b</code> model, with the wait for each reply fast-forwarded. What the model writes varies with the model and the language.</p>
@@ -237,16 +274,6 @@
     <figure class="clip" data-clip="ai-ask-agent"><figcaption>Goal → allow the tool call → the note changes</figcaption></figure>
   </article>
   <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/README.en.md#commands">README · Commands</a></p>
-</section>
-
-<section id="automation">
-  <h2>Research automation</h2>
-  <article class="feature" id="setup-research-automation">
-    <h3>Setup research automation</h3>
-    <p><code>Setup research automation</code> installs the GitHub Actions, scripts and AI agent rules for note validation, Experiment ↔ Issue links and Wiki publishing into the vault. <code>AGENTS.md</code> and <code>QUICKSTART.md</code> appear in the explorer; dot folders such as <code>.github/</code> and <code>.labnoteo/</code> are hidden in Obsidian.</p>
-    <figure class="clip" data-clip="setup-research-automation"><figcaption>Setup → attachment location → installed files</figcaption></figure>
-    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/README.en.md#research-automation">README · Research automation</a></p>
-  </article>
 </section>
 
 <section id="more">

@@ -1,21 +1,37 @@
 WEBVTT
 
 1
-00:00:00.015 --> 00:00:02.525
+00:00:00.008 --> 00:00:02.510
 Change experiment status
 
 2
-00:00:02.525 --> 00:00:09.458
+00:00:02.510 --> 00:00:09.290
 Open the experiment README; it is planned now
 
 3
-00:00:09.458 --> 00:00:14.157
-Run Change experiment status from the palette
+00:00:09.290 --> 00:00:13.087
+The workflow view lists it under planned
 
 4
-00:00:14.157 --> 00:00:17.841
-Pick in-progress from the list
+00:00:13.087 --> 00:00:18.519
+Run Change experiment status from the palette
 
 5
-00:00:17.841 --> 00:00:22.865
+00:00:18.519 --> 00:00:22.142
+Pick in-progress from the list
+
+6
+00:00:22.142 --> 00:00:24.224
 The README status has changed
+
+7
+00:00:24.224 --> 00:00:27.165
+In the workflow view it moved to in-progress
+
+8
+00:00:27.165 --> 00:00:35.050
+Or right-click it in the workflow view
+
+9
+00:00:35.050 --> 00:00:40.575
+It moved to the completed group

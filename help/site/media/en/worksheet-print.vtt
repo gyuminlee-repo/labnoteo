@@ -1,0 +1,37 @@
+WEBVTT
+
+1
+00:00:00.013 --> 00:00:02.515
+Print experiment worksheet
+
+2
+00:00:02.515 --> 00:00:09.210
+Open the workflow note
+
+3
+00:00:09.210 --> 00:00:12.539
+The QR icon at the top of the note shows its ID
+
+4
+00:00:12.539 --> 00:00:16.941
+The worksheet's QR codes bring photos back to this note by this ID
+
+5
+00:00:16.941 --> 00:00:22.996
+Run Print experiment worksheet from the palette
+
+6
+00:00:22.996 --> 00:00:25.730
+Lab unit operations are already turned on
+
+7
+00:00:25.730 --> 00:00:27.841
+Pick A4 or Letter paper
+
+8
+00:00:27.841 --> 00:00:31.118
+Print opens the print dialog (not shown in video)
+
+9
+00:00:31.118 --> 00:00:36.816
+If that fails, open it in the browser. Print at 100% scale
