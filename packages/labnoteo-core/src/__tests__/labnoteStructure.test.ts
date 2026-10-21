@@ -15,8 +15,11 @@ import { parseFrontMatterYaml } from '../sections/frontMatter';
 import { EXPERIMENT_FOLDER_TITLE_MAX } from '../lib/regexUtils';
 import { isValidStatus } from '../lib/experimentStatus';
 import {
+  copiedExperimentOrigin,
   diagnoseExperimentPath,
+  experimentFolderName,
   experimentLosingReadme,
+  resetCopiedExperimentReadme,
   isSampleTrackingOff,
   isSampleTrackingOn,
   suggestExperimentFolderName,
@@ -107,6 +110,51 @@ describe('suggestExperimentFolderName', () => {
   it('gives up without an old number or a name left', () => {
     expect(suggestExperimentFolderName('GFP', 'GFP2')).toBeUndefined();
     expect(suggestExperimentFolderName('020_GFP', '020')).toBeUndefined();
+  });
+});
+
+describe('copied experiment folders (#223)', () => {
+  it('finds the original of a folder copied with "Make a copy"', () => {
+    expect(copiedExperimentOrigin('001_효모_다중자리_삽입_1차 1')).toBe('001_효모_다중자리_삽입_1차');
+    expect(copiedExperimentOrigin('002_GFP 12')).toBe('002_GFP');
+    expect(copiedExperimentOrigin('001_GFP')).toBeUndefined();
+    expect(copiedExperimentOrigin('001_GFP_1')).toBeUndefined();
+    expect(copiedExperimentOrigin('GFP 1')).toBeUndefined();
+  });
+
+  it('names the new experiment like "Create experiment"', () => {
+    expect(experimentFolderName('004', '효모 다중자리 삽입 2차')).toBe('004_효모_다중자리_삽입_2차');
+  });
+
+  it('retitles, redates and unflags the README, leaving the rest', () => {
+    const readme = [
+      '---',
+      'title: 효모 다중자리 삽입 1차',
+      'author: 김연구',
+      'status: in-progress',
+      'discuss: true',
+      'created_date: 2026-10-01',
+      'last_updated_date: 2026-10-10',
+      '---',
+      '',
+      '## 🎯 Experiment Objective',
+      'discuss: 본문은 그대로',
+    ].join('\r\n');
+    expect(resetCopiedExperimentReadme(readme, '효모 다중자리 삽입 2차', '2026-10-21')).toBe(
+      [
+        '---',
+        'title: 효모 다중자리 삽입 2차',
+        'author: 김연구',
+        'status: in-progress',
+        'created_date: 2026-10-21',
+        'last_updated_date: 2026-10-21',
+        '---',
+        '',
+        '## 🎯 Experiment Objective',
+        'discuss: 본문은 그대로',
+      ].join('\r\n')
+    );
+    expect(resetCopiedExperimentReadme('본문만', 'x', '2026-10-21')).toBe('본문만');
   });
 });
 

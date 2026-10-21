@@ -11,6 +11,7 @@ import { MarkdownView, Plugin, Notice, TFile, TFolder, editorInfoField, type Wor
 import type { LabnoteHost, Translator } from '@labnoteo/core';
 import {
   findSampleReferenceAt,
+  isDiscussFlagged,
   rebuildUnitOpToc,
   minimalReplacement,
   parseFrontMatterYaml,
@@ -71,6 +72,7 @@ import {
   offerTableCsvCleanupOnDelete,
   setupResearchAutomationCommand,
   catalogDescription,
+  experimentTitleHint,
   workflowAliasHint,
   workflowConcept,
   type ReadmeSyncControl,
@@ -78,10 +80,15 @@ import {
 import { loadWorkflows } from '@labnoteo/core/lib/workflowDataLoader';
 import * as posix from '@labnoteo/core/posix';
 import {
+  copiedExperimentOrigin,
   diagnoseExperimentPath,
+  experimentFolderName,
   experimentLosingReadme,
   getExperimentDir,
+  getNextLabnoteNumber,
   isSampleTrackingOn,
+  resetCopiedExperimentReadme,
+  sanitizeTitle,
   suggestExperimentFolderName,
 } from '@labnoteo/core/lib/labnoteStructure';
 import { SampleEditorSuggest } from './sampleSuggest';
@@ -169,6 +176,9 @@ export default class LabnotePlugin extends Plugin {
   // Copies of workflow notes ("Make a copy", OS file manager) not yet given a
   // workflow name, so naming one by hand still offers to list it (#44).
   private readonly copiedWorkflows = new Set<string>();
+  // Experiment folders copied with "Make a copy" whose fix is being offered (#223);
+  // the files created along with them are part of that copy, not copies of their own.
+  private readonly copiedExperiments = new Set<string>();
   // Pending "moved in but not listed" notices, coalesced per experiment folder.
   private readonly movedInTimers = new Map<string, number>();
   // Notes moved between experiments whose Local samples may need bringing
@@ -783,8 +793,13 @@ export default class LabnotePlugin extends Plugin {
     this.app.workspace.onLayoutReady(() => {
       this.registerEvent(
         this.app.vault.on('create', file => {
+          if (file instanceof TFolder) {
+            this.onExperimentFolderCopied(file);
+            return;
+          }
           if (!(file instanceof TFile) || !isCopiedWorkflowFileName(file.name)) return;
-          if (getExperimentDir(file.path) !== posix.dirname(file.path)) return;
+          const dir = getExperimentDir(file.path);
+          if (dir !== posix.dirname(file.path) || this.copiedExperiments.has(dir)) return;
           this.copiedWorkflows.add(file.path);
           this.run(() => this.offerCopiedWorkflowFix(file));
         })
@@ -1182,6 +1197,108 @@ export default class LabnotePlugin extends Plugin {
     if (await addWorkflowFileToChecklist(this.app, this.host, dir, suggestion)) {
       this.host.notify('info', this.t('Added "{0}" to the README checklist.', suggestion));
     }
+  }
+
+  /**
+   * An experiment folder was copied (`001_GFP 1` next to `001_GFP`): the copy
+   * has the original's number, title and discussion flag, so the workflow view
+   * shows two identical experiments (#223). Ask for its title and make it the
+   * next experiment.
+   */
+  private onExperimentFolderCopied(folder: TFolder): void {
+    const copyPath = folder.path;
+    if (getExperimentDir(copyPath) !== copyPath) return;
+    const origin = copiedExperimentOrigin(folder.name);
+    if (!origin || !(this.app.vault.getAbstractFileByPath(posix.join(posix.dirname(copyPath), origin)) instanceof TFolder)) {
+      return;
+    }
+    this.copiedExperiments.add(copyPath);
+    this.run(async () => {
+      try {
+        await this.offerCopiedExperimentFix(folder, origin);
+      } finally {
+        this.copiedExperiments.delete(copyPath);
+      }
+    });
+  }
+
+  private async offerCopiedExperimentFix(folder: TFolder, origin: string): Promise<void> {
+    const copyPath = folder.path;
+    const labnoteDir = posix.dirname(copyPath);
+    const warn = (): void =>
+      this.host.notify(
+        'warn',
+        this.t(
+          '"{0}" is a copy of the experiment {1} with its number, title and discussion flag, so the workflow view lists the two alike. Rename the folder to a new number and change its README title to tell them apart.',
+          folder.name,
+          origin
+        )
+      );
+    const settled = await this.waitForNoModal();
+    if (this.unloaded || folder.path !== copyPath) return;
+    const readme = this.app.vault.getAbstractFileByPath(posix.join(copyPath, 'README.labnote.md'));
+    if (!settled || !(readme instanceof TFile)) {
+      warn();
+      return;
+    }
+    let title: unknown;
+    let discussed = false;
+    try {
+      const { frontMatter } = parseFrontMatterYaml((await this.app.vault.read(readme)).replace(/\r\n/g, '\n'));
+      title = frontMatter.title;
+      discussed = isDiscussFlagged(frontMatter);
+    } catch {
+      title = undefined;
+    }
+    const newTitle = (
+      await this.host.prompt({
+        title: this.t('Name this copy of the experiment'),
+        prompt: this.t(
+          '"{0}" is a copy of the experiment {1}. Give the copy its own title: it becomes the next experiment, dated today, without the discussion flag.',
+          folder.name,
+          origin
+        ),
+        value: typeof title === 'string' ? title : '',
+        validate: v => {
+          if (!v.trim()) return this.t('Title is required.');
+          if (!sanitizeTitle(v.trim())) {
+            return this.t('The title has no characters usable in a folder name. Add letters or numbers.');
+          }
+          return null;
+        },
+        hint: experimentTitleHint(this.host),
+      })
+    )?.trim();
+    if (this.unloaded || folder.path !== copyPath) return;
+    const siblings = (await this.fs.list(labnoteDir)).filter(n => n !== folder.name);
+    const target = newTitle ? posix.join(labnoteDir, experimentFolderName(getNextLabnoteNumber(siblings), newTitle)) : '';
+    if (!newTitle || this.app.vault.getAbstractFileByPath(target)) {
+      warn();
+      return;
+    }
+
+    await this.app.vault.process(readme, data => resetCopiedExperimentReadme(data, newTitle, getSeoulDateString()));
+    // Like a copied workflow note: shared issue IDs or note IDs would mix the two experiments.
+    let markers = 0;
+    for (const note of markdownFilesIn(folder)) {
+      const reassigned = reassignIssueMarkerIds(await this.app.vault.read(note));
+      if (reassigned.count > 0) {
+        markers += reassigned.count;
+        await this.app.vault.process(note, data => reassignIssueMarkerIds(data).content);
+      }
+      await this.barcode.reassignCopiedId(note);
+    }
+    await this.app.fileManager.renameFile(folder, target);
+    const done = [
+      this.t('Made the copy the experiment {0}, created today.', posix.basename(target)),
+      ...(markers > 0
+        ? [this.t('Gave the {0} issue marker(s) of the copy new IDs, so they do not merge with the original\'s issues.', String(markers))]
+        : []),
+      ...(discussed
+        ? [this.t('The discussion flag was turned off; run "{0}" if the copy needs its own discussion.', this.t('Toggle discussion flag'))]
+        : []),
+    ];
+    this.host.notify('info', done.join(' '));
   }
 
   /**
@@ -2087,4 +2204,10 @@ export default class LabnotePlugin extends Plugin {
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
   }
+}
+
+function markdownFilesIn(folder: TFolder): TFile[] {
+  return folder.children.flatMap(child =>
+    child instanceof TFolder ? markdownFilesIn(child) : child instanceof TFile && child.extension === 'md' ? [child] : []
+  );
 }
