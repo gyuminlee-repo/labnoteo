@@ -4,10 +4,10 @@
  * only while the starting note is still open; otherwise it opens in the answer
  * dialog, which checks again on "Insert into note".
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { EditTarget } from '@labnoteo/core';
-import { Notice } from '../stubs/obsidian';
-import { draftMethodCommand, summarizeResultsCommand } from '../../src/llm/commands';
+import { Notice, __setGetLanguage } from '../stubs/obsidian';
+import { draftMethodCommand, replyLanguageInstruction, summarizeResultsCommand } from '../../src/llm/commands';
 import { aiAnswerModal, type AiAnswerOpts } from '../../src/modals';
 import type LabnotePlugin from '../../src/main';
 
@@ -180,5 +180,31 @@ describe('empty AI reply (#195)', () => {
     await summarizeResultsCommand(plugin);
     expect(Notice.shown).toContain('The model gave no answer. Try again or choose another model.');
     expect(target.replaceRange).not.toHaveBeenCalled();
+  });
+});
+
+// #237: the reply follows Obsidian's language, not the note's or the prompt's.
+describe('reply language', () => {
+  afterEach(() => __setGetLanguage(undefined));
+
+  it('names the language in words', () => {
+    expect(replyLanguageInstruction('ko')).toContain('Write the answer in Korean.');
+    expect(replyLanguageInstruction('en')).toContain('Write the answer in English.');
+    expect(replyLanguageInstruction('zh-TW')).toContain('Write the answer in Chinese.');
+  });
+
+  it("asks for Korean in the summary and Method prompts of a Korean UI", async () => {
+    __setGetLanguage(() => 'ko');
+    replyAfterSwitch('- 요약');
+    await summarizeResultsCommand(plugin);
+    open = makeTarget(NOTE, BODY.indexOf('#### Method') + '#### Method\n'.length);
+    replyAfterSwitch('1. 원심분리');
+    await draftMethodCommand(plugin);
+    const systems = chat.mock.calls.map(c => (c[0] as { role: string; content: string }[])[0]);
+    expect(systems).toHaveLength(2);
+    for (const s of systems) {
+      expect(s.role).toBe('system');
+      expect(s.content).toContain('Write the answer in Korean.');
+    }
   });
 });

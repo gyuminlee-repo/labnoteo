@@ -63,6 +63,22 @@ function toolContext(plugin: LabnotePlugin): ToolContext {
   };
 }
 
+/**
+ * The system-prompt line telling the model to write in Obsidian's UI
+ * language (#237): the note itself may be in English while the researcher
+ * reads Korean, and models otherwise answer in the language of the prompt.
+ */
+export function replyLanguageInstruction(lang: string = getObsidianLanguage()): string {
+  const code = lang.split('-')[0].toLowerCase() || 'en';
+  let name = code;
+  try {
+    name = new Intl.DisplayNames(['en'], { type: 'language' }).of(code) ?? code;
+  } catch {
+    // An unknown code stays as it is.
+  }
+  return `Write the answer in ${name}. Keep sample IDs, units, numbers and quoted text exactly as they appear in the note.`;
+}
+
 /** The notice for an empty reply (#195), naming a thinking-only one as such. */
 function noAnswerMessage(plugin: LabnotePlugin, thinkingOnly: boolean | undefined): string {
   return thinkingOnly
@@ -251,7 +267,8 @@ export async function draftMethodCommand(plugin: LabnotePlugin): Promise<void> {
       {
         role: 'system',
         content:
-          'You write concise, reproducible **Method** subsections for a scientific lab notebook. Output only the Method body as GitHub-flavored Markdown: no front matter, no headings, no preamble or code fences.',
+          'You write concise, reproducible **Method** subsections for a scientific lab notebook. Output only the Method body as GitHub-flavored Markdown: no front matter, no headings, no preamble or code fences. ' +
+          replyLanguageInstruction(),
       },
       { role: 'user', content: `Draft a Method subsection for this note.\n\nContext:\n${text.slice(0, 6000)}` },
     ]);
@@ -266,7 +283,8 @@ export async function draftMethodCommand(plugin: LabnotePlugin): Promise<void> {
     {
       role: 'system',
       content:
-        'You write the body of the **Method** subsection of one unit operation in a scientific lab notebook: concise, reproducible steps. Output only that body as GitHub-flavored Markdown (for example a numbered list) — no headings, no other subsections, no preamble or code fences.',
+        'You write the body of the **Method** subsection of one unit operation in a scientific lab notebook: concise, reproducible steps. Output only that body as GitHub-flavored Markdown (for example a numbered list) — no headings, no other subsections, no preamble or code fences. ' +
+        replyLanguageInstruction(),
     },
     {
       role: 'user',
@@ -297,7 +315,8 @@ export async function summarizeResultsCommand(plugin: LabnotePlugin): Promise<vo
     {
       role: 'system',
       content:
-        'You summarize experimental Results for a lab notebook as 3–6 concise Markdown bullet points. No preamble, no code fences.',
+        'You summarize experimental Results for a lab notebook as 3–6 concise Markdown bullet points. No preamble, no code fences. ' +
+        replyLanguageInstruction(),
     },
     { role: 'user', content: `Summarize these results:\n\n${text.slice(0, 6000)}` },
   ]);
