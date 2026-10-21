@@ -4,8 +4,8 @@
  *
  * This module only decides *what* goes on which page; the host renders the
  * pages (HTML for printing) and draws the QR codes. Text already written in
- * the note is printed as is, Method steps get a checkbox, and sections still
- * holding the template placeholder become blank space to write in by hand.
+ * the note is printed without its blank lines, Method steps get a checkbox,
+ * and sections still holding the template placeholder print their heading only.
  */
 import { listUnitOpBlocks, WORKSHEET_SCANS_HEADING } from '../sections/scanInsert';
 import { stepFence, type OpenFence } from '../sections/sectionEdit';
@@ -17,8 +17,8 @@ export type WorksheetSection =
   | { type: 'meta'; title: string; fields: { label: string; value: string }[] }
   | { type: 'steps'; title: string; steps: string[] }
   | { type: 'text'; title: string; lines: string[] }
-  /** Space to write in, `lines` ruled lines tall. */
-  | { type: 'blank'; title: string; lines: number };
+  /** Nothing written yet: printed as the heading alone. */
+  | { type: 'blank'; title: string };
 
 export interface WorksheetUnitOp {
   /** 1-based position among the note's unit operations. */
@@ -39,15 +39,6 @@ export interface WorksheetPage {
 }
 
 const PLACEHOLDERS = new Set<string>([...Object.values(HW_PLACEHOLDERS), ...Object.values(SW_PLACEHOLDERS)]);
-
-/** Ruled lines left to write in, by section; others get {@link DEFAULT_BLANK_LINES}. */
-const BLANK_LINES: Record<string, number> = {
-  Method: 10,
-  'Results & Discussions': 10,
-  Discussion: 6,
-  'QC Metrics': 4,
-};
-const DEFAULT_BLANK_LINES = 3;
 
 /** Meta fields printed as a blank to fill in when the note has no value yet. */
 const META_FILL_IN = ['Start_date', 'End_date'];
@@ -116,7 +107,7 @@ function toSection(raw: RawSection): WorksheetSection {
     return { type: 'meta', title: raw.title, fields };
   }
   if (text === '' || PLACEHOLDERS.has(text)) {
-    return { type: 'blank', title: raw.title, lines: BLANK_LINES[raw.title] ?? DEFAULT_BLANK_LINES };
+    return { type: 'blank', title: raw.title };
   }
   if (raw.title === 'Method') {
     const steps: string[] = [];
@@ -128,7 +119,7 @@ function toSection(raw: RawSection): WorksheetSection {
     }
     return { type: 'steps', title: raw.title, steps };
   }
-  return { type: 'text', title: raw.title, lines: body };
+  return { type: 'text', title: raw.title, lines: body.filter(l => l.trim() !== '') };
 }
 
 /** Every unit operation of the note, as worksheet content. */
@@ -170,7 +161,7 @@ export function sectionWeight(section: WorksheetSection): number {
     case 'text':
       return heading + section.lines.reduce((n, l) => n + wrapped(l), 0);
     case 'blank':
-      return heading + Math.ceil(section.lines * 1.3);
+      return heading;
   }
 }
 
@@ -186,8 +177,8 @@ export function paginateWorksheet(
   const pages: WorksheetPage[] = [];
   for (const unitOp of unitOps) {
     const groups: WorksheetSection[][] = [[]];
-    // The title and description take the top of the first page.
-    let used = 3 + (unitOp.description ? wrapped(unitOp.description) : 0);
+    // The title and description are printed in the header band, not the body.
+    let used = 0;
     for (const section of unitOp.sections) {
       const weight = sectionWeight(section);
       const current = groups[groups.length - 1];

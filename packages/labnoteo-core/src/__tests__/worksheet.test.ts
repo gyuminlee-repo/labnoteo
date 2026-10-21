@@ -39,7 +39,7 @@ describe('listWorksheetUnitOps', () => {
       title: 'Method',
       steps: ['Thaw cells', 'Spin at 300 g for 5 min'],
     });
-    expect(lab.sections.find(s => s.title === 'Reagent')).toMatchObject({ type: 'blank' });
+    expect(lab.sections.find(s => s.title === 'Reagent')).toEqual({ type: 'blank', title: 'Reagent' });
     const metaSection = lab.sections.find(s => s.type === 'meta');
     expect(metaSection).toMatchObject({
       fields: [
@@ -47,6 +47,18 @@ describe('listWorksheetUnitOps', () => {
         { label: 'Start_date', value: '2026-10-15 10:00' },
         { label: 'End_date', value: '' },
       ],
+    });
+  });
+
+  it('drops blank lines from written text', () => {
+    const md = buildNote([hw('UHW010')]).replace(
+      '#### Results & Discussions\n- (Any results and discussions. Link file path if needed)',
+      '#### Results & Discussions\nYield was low.\n\n\nRepeat tomorrow.\n'
+    );
+    expect(listWorksheetUnitOps(md)[0].sections.find(s => s.title === 'Results & Discussions')).toEqual({
+      type: 'text',
+      title: 'Results & Discussions',
+      lines: ['Yield was low.', 'Repeat tomorrow.'],
     });
   });
 
@@ -72,10 +84,10 @@ describe('paginateWorksheet', () => {
     expect(pages.filter(p => p.unitOp.index === 2)[0].page).toBe(1);
   });
 
-  it('fits a template lab unit operation, with room to write, on two pages', () => {
+  it('fits a template lab unit operation on one page', () => {
     const [op] = listWorksheetUnitOps(buildNote([hw('UHW010')]));
     const pages = paginateWorksheet([op]);
-    expect(pages.map(p => `${p.page}/${p.pageCount}`)).toEqual(['1/2', '2/2']);
+    expect(pages.map(p => `${p.page}/${p.pageCount}`)).toEqual(['1/1']);
     expect(pages.flatMap(p => p.sections)).toEqual(op.sections);
   });
 });

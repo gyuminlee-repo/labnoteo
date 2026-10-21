@@ -50,7 +50,7 @@ function sectionHtml(section: WorksheetSection): string {
       return `<div class="sec text">${title}${lines}</div>`;
     }
     case 'blank':
-      return `<div class="sec">${title}<div class="ruled" style="height:${section.lines * 7}mm"></div></div>`;
+      return `<div class="sec">${title}</div>`;
   }
 }
 
