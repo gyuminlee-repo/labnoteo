@@ -134,6 +134,14 @@ describe('migrateSettings', () => {
       .toMatchObject({ scanMaxImageEdge: 2400, scanJpegQuality: 0.85, worksheetPaperSize: 'a4' });
   });
 
+  it('keeps the scan embed width when in range or zero and falls back otherwise', () => {
+    expect(migrateSettings({}).scanEmbedWidth).toBe(300);
+    expect(migrateSettings({ scanEmbedWidth: 480.4 }).scanEmbedWidth).toBe(480);
+    expect(migrateSettings({ scanEmbedWidth: 0 }).scanEmbedWidth).toBe(0);
+    expect(migrateSettings({ scanEmbedWidth: 50 }).scanEmbedWidth).toBe(300);
+    expect(migrateSettings({ scanEmbedWidth: 5000 }).scanEmbedWidth).toBe(300);
+  });
+
   it('rejects an unknown provider rather than trusting the string', () => {
     expect(migrateSettings({ llmProvider: 'anthropic' }).llmProvider).toBe('none');
   });

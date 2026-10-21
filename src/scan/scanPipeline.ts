@@ -88,6 +88,8 @@ export interface PipelineDeps {
   t: Translator;
   noteIds: NoteIdService;
   decoder: PageDecoder;
+  /** Width, in pixels, scans are shown at in notes; 0 shows them full size. */
+  embedWidth(): number;
   /** Updates `last_updated_date` of a note (and its README) the scan was filed in. */
   markUserEdit(path: string): void;
 }
@@ -230,18 +232,24 @@ export class ScanPipeline {
         hash: page.hash,
         embed: stored.embed,
         caption: this.caption(payload, page),
+        fullSizeLink: stored.fullSizeLink,
       },
     });
     return result;
   }
 
   private async store(notePath: string, payload: PagePayload, unitOpIndex: number, jpeg: ArrayBuffer) {
-    const { app } = this.deps;
+    const { app, t } = this.deps;
     const dir = getExperimentDir(notePath) ?? posix.dirname(notePath);
     const name = scanFileName(payload.noteId, unitOpIndex, payload.page, getSeoulDateString());
     const file = await saveBinary(app, posix.join(dir, SCANS_SUBFOLDER), name, jpeg);
-    const link = app.fileManager.generateMarkdownLink(file, notePath);
-    return { file, embed: link.startsWith('!') ? link : `!${link}` };
+    const width = this.deps.embedWidth();
+    const alias = width > 0 ? String(width) : undefined;
+    const link = app.fileManager.generateMarkdownLink(file, notePath, undefined, alias);
+    const embed = link.startsWith('!') ? link : `!${link}`;
+    const fullSizeLink =
+      width > 0 ? app.fileManager.generateMarkdownLink(file, notePath, undefined, t('Open full size')).replace(/^!/, '') : undefined;
+    return { file, embed, fullSizeLink };
   }
 
   private caption(payload: PagePayload, page: Pick<DecodedPage, 'source' | 'sourcePage'>): string {

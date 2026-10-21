@@ -42,6 +42,8 @@ export interface ScanEntry {
   embed: string;
   /** One line describing where the image came from. */
   caption: string;
+  /** A link to the image file, shown after the caption when the embed is a thumbnail. */
+  fullSizeLink?: string;
 }
 
 const ANY_HEADING_RE = /^(#{1,6})\s/;
@@ -129,10 +131,11 @@ export function resolveScanTarget(
 }
 
 export function renderScanEntry(entry: ScanEntry): string[] {
+  const caption = entry.caption.replace(/\*/g, '\\*') + (entry.fullSizeLink ? ` · ${entry.fullSizeLink}` : '');
   return [
     `<!-- labnoteo-scan page=${entry.page}/${entry.pageCount} sha=${entry.hash} -->`,
     entry.embed,
-    `*${entry.caption.replace(/\*/g, '\\*')}*`,
+    `*${caption}*`,
   ];
 }
 

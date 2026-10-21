@@ -103,7 +103,13 @@ QR이 **오른쪽 위와 왼쪽 아래 두 곳**에 들어가고, 사람이 읽�
 **스캔 폴더 지금 처리**(`Process scan folder now`)를 실행합니다.
 
 이 밖의 설정: **기록지 용지 크기**, **저장할 스캔 크기**(긴 변 픽셀, 기본 2400),
-**저장할 스캔 화질**(JPEG, 기본 85%).
+**저장할 스캔 화질**(JPEG, 기본 85%), **노트에 보이는 스캔 폭**(기본 300px, 0이면 원본 크기).
+
+노트에 붙는 스캔은 썸네일로 들어가 한 유닛 오퍼레이션에 여러 장이 붙어도 노트가 길어지지
+않습니다. 설명 끝의 **원본 보기**를 누르면 원본 크기로 열립니다. 썸네일은 쪽마다 설명 줄이
+있어 옆으로 나란히 놓이지 않고 세로로 쌓입니다. **노트에 보이는 스캔 폭**은 새로 붙는
+스캔에만 적용됩니다. 이미 들어간 스캔을 줄이려면 이미지 링크 끝에 폭을 손으로 붙이세요
+(예: `![[….jpg]]` → `![[….jpg|300]]`).
 
 **✅ 확인** — 설정 아래에 "이 폴더를 지켜보는 중입니다…"가 보이고, 폴더에 기록지 사진 한 장을
 넣으면 30초 안에 결과 알림이 뜹니다.
@@ -237,23 +243,63 @@ QR을 읽지 못했거나 노트를 찾지 못한 페이지는 보관함 맨 위
 90초마다 확인해 처리하고, 결과를 그 메시지의 **스레드 답글**로 알려 줍니다. Slack
 워크스페이스에 앱을 만들 권한이 필요합니다.
 
-1. [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From scratch**로
-   앱을 만들고 워크스페이스를 고릅니다.
-2. **OAuth & Permissions** → **Bot Token Scopes**에 `im:history`, `im:read`, `files:read`,
-   `chat:write`를 추가합니다. 비공개 채널을 쓸 거라면 `groups:history`도 추가합니다.
-3. **App Home** → **Messages Tab**을 켜고, 사용자가 앱에 메시지를 보낼 수 있게 하는 항목
-   (*Allow users to send Slash commands and messages from the messages tab*)을 체크합니다.
-4. **Install to Workspace**로 설치하고 **Bot User OAuth Token**(`xoxb-…`)을 복사합니다.
-5. Obsidian 설정 → **바코드와 스캔** → **Slack으로 스캔 받기(선택)**에서 **Slack 봇 토큰**을
+### 앱 만들기 (매니페스트 붙여 넣기)
+
+1. [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** →
+   **From a manifest**를 고르고 워크스페이스를 선택한 뒤, 아래를 붙여 넣습니다.
+
+   ```json
+   {
+     "display_information": { "name": "labnote-scans" },
+     "features": {
+       "bot_user": { "display_name": "labnote-scans" },
+       "app_home": {
+         "messages_tab_enabled": true,
+         "messages_tab_read_only_enabled": false
+       }
+     },
+     "oauth_config": {
+       "scopes": {
+         "bot": ["im:history", "im:read", "files:read", "chat:write", "groups:history", "reactions:write"]
+       }
+     },
+     "settings": { "token_rotation_enabled": false }
+   }
+   ```
+
+   `reactions:write`는 봇이 받은 메시지에 👀 반응을 달기 위한 것입니다("받았음" 표시이자,
+   실수로 두 PC를 연결했을 때 같은 사진이 두 번 붙는 일을 막는 잠금). `token_rotation_enabled`는
+   꼭 `false`로 둡니다. 켜면 토큰이 12시간마다 만료되어 연결이 끊어집니다.
+2. **Install to Workspace**로 설치하고 **OAuth & Permissions**의
+   **Bot User OAuth Token**(`xoxb-…`)을 복사합니다.
+
+   (직접 만들려면 **From scratch**로 만들고, **OAuth & Permissions** → **Bot Token Scopes**에
+   위 6개 권한을 추가한 뒤, **App Home** → **Messages Tab**을 켜고 *Allow users to send
+   Slash commands and messages from the messages tab*을 체크하면 같습니다.)
+
+### 연결하기
+
+3. Obsidian 설정 → **바코드와 스캔** → **Slack으로 스캔 받기(선택)**에서 **Slack 봇 토큰**을
    붙여 넣고, **스캔을 보낼 곳**을 **봇에게 DM**(기본) 또는 **비공개 채널**(채널 ID `C…` 입력,
-   채널에서 `/invite @앱이름`)로 고른 뒤 **연결**을 누릅니다.
-6. 화면에 나온 `labnote-123456` 같은 **연결 코드**를 Slack에서 봇에게 DM으로(채널이면 채널에)
+   채널에서 `/invite @labnote-scans`)로 고른 뒤 **연결**을 누릅니다. 이때 토큰이 맞는지,
+   필요한 권한이 다 있는지, (채널이면) 봇이 채널에 초대돼 있는지 바로 확인해 알려 줍니다.
+4. 화면에 나온 `labnote-123456` 같은 **연결 코드**를 Slack에서 봇에게 DM으로(채널이면 채널에)
    보냅니다. 봇이 "연결되었습니다"라고 답하면 끝입니다.
 
+### 알아 둘 점
+
+- **이 PC의 Obsidian이 켜져 있을 때만** 처리됩니다. 꺼 둔 사이에 보낸 사진은 다음에 켤 때
+  밀린 순서대로 처리됩니다.
 - 연결 코드를 보낸 **그 Slack 사용자가 연결 뒤에 보낸 파일만** 처리합니다. 토큰과 연결
   정보는 **이 PC에만** 저장되고 보관함에는 저장되지 않습니다.
+- **연결은 PC 한 대에만** 하세요. 봇이 메시지에 다는 👀 반응이 "이 PC가 받았음" 표시라서,
+  둘째 PC는 👀가 달린 메시지를 건너뜁니다(`reactions:write`가 없으면 이 보호가 빠집니다).
+- 새 사진은 봇 답글의 **스레드가 아니라 대화창에 새 메시지로** 보냅니다. 스레드 답글은 봇이
+  보지 못합니다.
 - 끊으려면 같은 곳의 **연결 해제**를 누릅니다.
 - 아이폰에서 올린 사진이 HEIC로 남으면 처리되지 않으니 카메라 포맷을 **높은 호환성**으로 두세요.
+- 이미 앱을 만들었다면 **OAuth & Permissions**에 `reactions:write`를 추가하고 **Reinstall**
+  하세요. 없어도 동작하지만 위의 두 PC 보호가 빠집니다.
 
 **✅ 확인** — 봇에게 기록지 사진을 보내면 2분 안에 스레드에 "1쪽: 1쪽 붙임" 답글이 달립니다.
 
@@ -326,6 +372,20 @@ to file**(파일 기준 상대 경로)로 두세요(이후 붙는 스캔부터 �
 - Google Drive 스트리밍 폴더는 내려받는 데 시간이 걸릴 수 있습니다. 폴더를 **오프라인으로
   사용 가능**으로 두세요.
 - 하위 폴더 안의 파일은 읽지 않습니다. 스캔 폴더 바로 아래에 두세요.
+
+#### Slack에서 봇에게 메시지를 보낼 수 없습니다
+
+봇의 DM 화면에 입력창이 없거나 "이 앱으로 메시지 보내기가 꺼져 있습니다"류 문구가 보이면,
+[api.slack.com/apps](https://api.slack.com/apps)에서 앱을 열고 **App Home** → **Messages Tab**을
+켠 뒤 *Allow users to send Slash commands and messages from the messages tab*을 체크하세요.
+반영이 안 보이면 Slack 앱을 다시 시작합니다.
+
+#### Slack에 보냈는데 답이 없습니다
+
+- 그 PC의 Obsidian이 켜져 있는지, 설정의 **Slack 연결**이 "연결됨"인지 확인합니다. 마지막
+  확인이 실패했다면 그 오류가 설정에 함께 표시됩니다.
+- 봇 답글의 스레드에 올린 사진은 처리되지 않습니다. 대화창에 새 메시지로 보내세요.
+- 연결 코드를 보낸 Slack 계정과 같은 계정으로 보냈는지 확인합니다.
 
 ---
 
