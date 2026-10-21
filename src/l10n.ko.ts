@@ -572,6 +572,11 @@ const obsidianKo: Record<string, string> = {
     '"{0}"은(는) 더 이상 실험으로 인식되지 않습니다. 실험 폴더는 labnote/ 바로 아래에 있어야 합니다. 워크플로 명령, 실험 목록, 로컬 샘플이 이 폴더를 찾지 못합니다.',
   'Move it back to {0}?': '{0} 아래로 다시 옮길까요?',
   'Move back': '다시 옮기기',
+  'The file name "{0}" says {1}, but the note is the workflow {2}: the README checklist shows {1} with the note\'s name, and the title and heading stay {2}. To use another workflow, create a new note with "{3}" instead.':
+    '파일 이름 "{0}"은(는) {1}이지만 노트는 {2} 워크플로입니다. README 체크리스트에는 {1}에 노트의 이름이 섞여 보이고, 제목과 헤딩은 {2} 그대로입니다. 다른 워크플로를 쓰려면 "{3}"으로 새 노트를 만드세요.',
+  '{0} is not in the workflow catalog.': '{0}은(는) 워크플로 카탈로그에도 없습니다.',
+  'Rename it back to "{0}"?': '"{0}"(으)로 이름을 되돌릴까요?',
+  'Rename back': '이름 되돌리기',
   '"{0}" is no longer an experiment folder: its name must start with ###_ (e.g. 001_Name). Workflow commands and Local samples will not find it.':
     '"{0}"은(는) 더 이상 실험 폴더가 아닙니다. 폴더 이름은 ###_로 시작해야 합니다(예: 001_이름). 워크플로 명령과 로컬 샘플이 이 폴더를 찾지 못합니다.',
   '"{0}" is no longer an experiment folder: its name must start with ###_ (e.g. 001_Name). Workflow commands and Local samples will not find it. Rename it to "{1}"?':

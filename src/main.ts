@@ -36,6 +36,7 @@ import {
   resetCopiedWorkflowDates,
   rewriteWorkflowTitle,
   suggestCopiedWorkflowFileName,
+  workflowIdMismatch,
   type WorkflowHeading,
 } from '@labnoteo/core/lib/workflowStructure';
 import {
@@ -992,7 +993,48 @@ export default class LabnotePlugin extends Plugin {
     const path = file.path;
     const settled = await this.waitForNoModal();
     if (this.unloaded || !settled || file.path !== path) return;
+    const mismatch = workflowIdMismatch(to, await this.app.vault.read(file));
+    if (mismatch) {
+      await this.offerWorkflowIdFix(file, from, mismatch.fileId, mismatch.noteId);
+      return;
+    }
     await retitleWorkflowAfterRename(this.app, this.host, dir, from, to);
+  }
+
+  /**
+   * A workflow note's file name now carries another catalog ID than its
+   * `## [ID name]` heading (#240): the checklist label mixes the new ID with
+   * the old name, and nothing else follows. Say so, and offer the old name
+   * back when it still had the note's ID and is free.
+   */
+  private async offerWorkflowIdFix(file: TFile, from: string, fileId: string, noteId: string): Promise<void> {
+    const path = file.path;
+    let known = true;
+    try {
+      known = (await loadWorkflows(this.fs, '.')).workflows.some(w => w.id === fileId);
+    } catch {
+      known = true;
+    }
+    const warning = [
+      this.t(
+        'The file name "{0}" says {1}, but the note is the workflow {2}: the README checklist shows {1} with the note\'s name, and the title and heading stay {2}. To use another workflow, create a new note with "{3}" instead.',
+        file.name,
+        fileId,
+        noteId,
+        this.t('Create workflow')
+      ),
+      ...(known ? [] : [this.t('{0} is not in the workflow catalog.', fileId)]),
+    ].join(' ');
+    const target = posix.join(posix.dirname(path), from);
+    if (parseWorkflowFileName(from)?.id !== noteId || this.app.vault.getAbstractFileByPath(target)) {
+      this.host.notify('warn', warning);
+      return;
+    }
+    const ok = await this.host.confirm(`${warning} ${this.t('Rename it back to "{0}"?', from)}`, {
+      confirmLabel: this.t('Rename back'),
+    });
+    if (!ok || file.path !== path || this.app.vault.getAbstractFileByPath(target)) return;
+    await this.app.fileManager.renameFile(file, target);
   }
 
   /**
