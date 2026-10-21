@@ -132,6 +132,27 @@ describe('updateCatalogsCommand', () => {
     );
   });
 
+  it('says renamed items keep their old names in the notes already made, with how many use them (#232)', async () => {
+    const note = (heading: string) => `---\ntitle: x\n---\n\n${heading}\n`;
+    const { host, asHost } = makeHost(
+      {
+        ...oldVault(),
+        'labnote/001_GFP/001_WB125_Colony_Picking.labnote.md': note('## [WB125 Colony Picking]'),
+        'labnote/001_GFP/002_WB010_DNA.labnote.md': note('## [WB010 DNA]'),
+        'labnote/001_GFP/README.labnote.md': note('## [WB125 Colony Picking]'),
+      },
+      false
+    );
+    await updateCatalogsCommand(asHost);
+    expect(host.confirm.mock.calls[0][0]).toContain(
+      'keep their old names in the workflow notes and README checklists already made: 1 note(s) use them.'
+    );
+
+    const empty = makeHost(oldVault(), false);
+    await updateCatalogsCommand(empty.asHost);
+    expect(empty.host.confirm.mock.calls[0][0]).toMatch(/README checklists already made\.$/);
+  });
+
   it('names items in Korean in the Korean UI', async () => {
     __setGetLanguage(() => 'ko');
     const { host, asHost } = makeHost(oldVault(), false);
@@ -192,6 +213,8 @@ describe('catalog update strings are translated', () => {
     'Updated the catalogs: {0} added, {1} changed. Commit the changed files in {2}.',
     '{0} could not be read as a catalog, so it was left as it is. Fix its JSON and run "{1}" again.',
     'Catalog update available: {0} new, {1} changed. Run "{2}" from the command palette.',
+    'Renamed items keep their old names in the workflow notes and README checklists already made: {0} note(s) use them. Rename those by hand if needed.',
+    'Renamed items keep their old names in the workflow notes and README checklists already made.',
   ])('%s', key => {
     expect(obsidianKo[key]).toBeTruthy();
   });

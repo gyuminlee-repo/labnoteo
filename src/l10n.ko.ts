@@ -580,6 +580,10 @@ const obsidianKo: Record<string, string> = {
   '{0} is not in the workflow catalog.': '{0}은(는) 워크플로 카탈로그에도 없습니다.',
   'Rename it back to "{0}"?': '"{0}"(으)로 이름을 되돌릴까요?',
   'Rename back': '이름 되돌리기',
+  'Renamed items keep their old names in the workflow notes and README checklists already made: {0} note(s) use them. Rename those by hand if needed.':
+    '이름이 바뀌는 항목도 이미 만든 워크플로 노트와 README 체크리스트에서는 옛 이름 그대로입니다. 그 항목을 쓰는 노트는 {0}개입니다. 필요하면 직접 고치세요.',
+  'Renamed items keep their old names in the workflow notes and README checklists already made.':
+    '이름이 바뀌는 항목도 이미 만든 워크플로 노트와 README 체크리스트에서는 옛 이름 그대로입니다.',
   '"{0}" is a copy of the experiment {1} with its number, title and discussion flag, so the workflow view lists the two alike. Rename the folder to a new number and change its README title to tell them apart.':
     '"{0}"은(는) 실험 {1}의 복사본이라 번호·제목·논의 표시가 같아 워크플로 뷰에 똑같이 보입니다. 구분하려면 폴더 이름을 새 번호로 바꾸고 README 제목을 고치세요.',
   'Name this copy of the experiment': '복제한 실험의 제목',
