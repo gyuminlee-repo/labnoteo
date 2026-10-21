@@ -113,6 +113,8 @@ const obsidianKo: Record<string, string> = {
   'Group experiments by': '실험 묶는 기준',
   'By status': '상태별',
   'By project': '과제별',
+  'By discussion flag': '논의 표시별',
+  'Not flagged for discussion': '논의 표시 없음',
   'Type @dna (or another type) in a note, or right-click → "{0}" to register a sample.':
     '노트에서 @dna처럼 입력하거나 우클릭 → "{0}"(으)로 샘플을 등록합니다.',
 
@@ -270,6 +272,8 @@ const obsidianKo: Record<string, string> = {
   'The file explorer shows CSV files only when Settings → Files and links → Show all file types is on.':
     '파일 탐색기에는 설정 → 파일 및 링크 → 모든 파일 확장명 인식이 켜져 있을 때만 CSV 파일이 보입니다.',
   'No tables found in this note.': '이 노트에서 표를 찾을 수 없습니다.',
+  '{0} table(s) were not exported: with no blank line above, the reading view shows them as text. Add a blank line above a table to export it.':
+    '표 {0}개는 내보내지 않았습니다. 바로 위에 빈 줄이 없어 읽기 화면에서 표가 아닌 글로 보입니다. 내보내려면 표 위에 빈 줄을 넣으세요.',
   'These table CSV files no longer match a table in the note. Move them to the trash?\n\n{0}':
     '다음 표 CSV 파일은 이 노트에 더 이상 해당하는 표가 없습니다. 휴지통으로 옮길까요?\n\n{0}',
   'The table CSV files of the deleted note(s) are still in the folder. Move them to the trash?\n\n{0}':
@@ -346,6 +350,8 @@ const obsidianKo: Record<string, string> = {
   'Open a note of an experiment to list its samples.': '시료 목록을 넣으려면 실험 안의 노트를 여세요.',
   'This experiment has no samples yet.': '이 실험에는 아직 시료가 없습니다.',
   'Inserted {0} sample(s).': '시료 {0}개를 표로 넣었습니다.',
+  "{0} sample reference(s) in this experiment's notes are not in the sample registry, so they are not in the table: {1}":
+    '이 실험의 노트에 있는 참조 중 {0}개는 시료 대장에 없어 표에 넣지 않았습니다: {1}',
   'Local': '로컬',
   'Global': '전역',
   'Open a note first to add a local sample.': '로컬 샘플을 추가하려면 먼저 노트를 여세요.',
@@ -380,6 +386,7 @@ const obsidianKo: Record<string, string> = {
   'No definition found for {0}. It is not in the sample registry: it may have been deleted or moved to another experiment, or the Global sample folder setting changed.':
     '{0}의 정의를 찾을 수 없습니다. 시료 대장에 없는 시료입니다. 대장에서 지웠거나 다른 실험으로 옮겼거나, 전역 샘플 폴더 설정을 바꿨을 수 있습니다.',
   'Not in the sample registry': '시료 대장에 없는 시료',
+  'The registry calls this sample {0}': '대장의 별칭: {0}',
   'Close': '닫기',
   'Enter the {0} sample ID': '{0} 샘플 ID를 입력하세요',
   'e.g. {0}-12345': '예: {0}-12345',
@@ -434,8 +441,8 @@ const obsidianKo: Record<string, string> = {
   'Sample moved: {0}': '샘플을 이동했습니다: {0}',
   'An alias cannot contain ";" or ":", which separate the ID, alias and description in a note. Use "-" or "/" instead (e.g. 1-10).':
     '별칭에는 ";"나 ":"를 쓸 수 없습니다. 노트에서 ID·별칭·설명을 가르는 글자입니다. 대신 "-"나 "/"를 쓰세요(예: 1-10).',
-  'An alias cannot contain #, [[, ]], * or `, which Markdown reads as a tag, link, emphasis or code. Use "-" or "/" instead.':
-    '별칭에는 #, [[, ]], *, `를 쓸 수 없습니다. 마크다운이 태그·링크·강조·코드로 읽는 글자입니다. 대신 "-"나 "/"를 쓰세요.',
+  'An alias cannot contain #, [[, ]], *, _ or `, which Markdown reads as a tag, link, emphasis or code. Use "-" or "/" instead.':
+    '별칭에는 #, [[, ]], *, _, `를 쓸 수 없습니다. 마크다운이 태그·링크·강조(기울임)·코드로 읽는 글자입니다. 대신 "-"나 "/"를 쓰세요.',
   'A description cannot contain ";", which ends the description in a note. Use "," instead.':
     '설명에는 ";"를 쓸 수 없습니다. 노트에서 설명을 끝내는 글자입니다. 대신 ","를 쓰세요.',
   "Notes in {0} use {1} local sample(s) that are still in another experiment's registry, so the notes cannot find them. Bring them into {0}?":
@@ -475,6 +482,10 @@ const obsidianKo: Record<string, string> = {
     '{0}: 공백이나 -가 들어간 타입은 자동완성되지 않아 저장하지 않았습니다. 대신 {1}처럼 쓰세요.',
   '{0} cannot be autocompleted in notes (a space or -). Rename it, e.g. {1}, if you have no samples of it yet.':
     '{0}은(는) 공백이나 -가 있어 노트에서 자동완성되지 않습니다. 아직 그 타입의 샘플이 없다면 {1}처럼 이름을 바꾸세요.',
+  '{0}: differs from {1} only in letter case, so on Windows both would share one {Type}.json and their samples would mix. It was not saved.':
+    '{0}: {1}와(과) 대소문자만 다른 이름이라 Windows에서 두 타입이 같은 {Type}.json을 함께 써 시료가 섞입니다. 저장하지 않았습니다.',
+  '{0} differs from {1} only in letter case: on Windows both share one {Type}.json, so their samples mix. Keep one of them.':
+    '{0}은(는) {1}와(과) 대소문자만 다릅니다. Windows에서 두 타입이 같은 {Type}.json을 함께 써 시료가 섞이니 하나만 남기세요.',
   '{0}: {1} sample(s)': '{0}: 샘플 {1}개',
   'Samples of the removed sample type(s) will no longer show:\n\n{0}\n\nPut the type(s) back in the list?':
     '빠진 타입의 샘플이 더 이상 보이지 않게 됩니다:\n\n{0}\n\n그 타입을 목록에 다시 넣을까요?',
@@ -566,6 +577,25 @@ const obsidianKo: Record<string, string> = {
     '"{0}"은(는) 더 이상 실험으로 인식되지 않습니다. 실험 폴더는 labnote/ 바로 아래에 있어야 합니다. 워크플로 명령, 실험 목록, 로컬 샘플이 이 폴더를 찾지 못합니다.',
   'Move it back to {0}?': '{0} 아래로 다시 옮길까요?',
   'Move back': '다시 옮기기',
+  'The file name "{0}" says {1}, but the note is the workflow {2}: the README checklist shows {1} with the note\'s name, and the title and heading stay {2}. To use another workflow, create a new note with "{3}" instead.':
+    '파일 이름 "{0}"은(는) {1}이지만 노트는 {2} 워크플로입니다. README 체크리스트에는 {1}에 노트의 이름이 섞여 보이고, 제목과 헤딩은 {2} 그대로입니다. 다른 워크플로를 쓰려면 "{3}"으로 새 노트를 만드세요.',
+  '{0} is not in the workflow catalog.': '{0}은(는) 워크플로 카탈로그에도 없습니다.',
+  'Rename it back to "{0}"?': '"{0}"(으)로 이름을 되돌릴까요?',
+  'Rename back': '이름 되돌리기',
+  'Renamed items keep their old names in the workflow notes and README checklists already made: {0} note(s) use them. Rename those by hand if needed.':
+    '이름이 바뀌는 항목도 이미 만든 워크플로 노트와 README 체크리스트에서는 옛 이름 그대로입니다. 그 항목을 쓰는 노트는 {0}개입니다. 필요하면 직접 고치세요.',
+  'Renamed items keep their old names in the workflow notes and README checklists already made.':
+    '이름이 바뀌는 항목도 이미 만든 워크플로 노트와 README 체크리스트에서는 옛 이름 그대로입니다.',
+  '"{0}" is a copy of the experiment {1} with its number, title and discussion flag, so the workflow view lists the two alike. Rename the folder to a new number and change its README title to tell them apart.':
+    '"{0}"은(는) 실험 {1}의 복사본이라 번호·제목·논의 표시가 같아 워크플로 뷰에 똑같이 보입니다. 구분하려면 폴더 이름을 새 번호로 바꾸고 README 제목을 고치세요.',
+  'Name this copy of the experiment': '복제한 실험의 제목',
+  '"{0}" is a copy of the experiment {1}. Give the copy its own title: it becomes the next experiment, dated today, without the discussion flag.':
+    '"{0}"은(는) 실험 {1}의 복사본입니다. 복사본의 제목을 정하세요. 다음 번호의 실험이 되고, 날짜는 오늘로, 논의 표시는 꺼집니다.',
+  'Made the copy the experiment {0}, created today.': '복사본을 실험 {0}(으)로 만들었습니다. 생성일은 오늘입니다.',
+  'The discussion flag was turned off; run "{0}" if the copy needs its own discussion.':
+    '논의 표시를 껐습니다. 복사본에도 논의가 필요하면 "{0}"을 실행하세요.',
+  '"{0}" no longer has README.labnote.md: the experiment list and the workflow checklist will not find this experiment.':
+    '"{0}"에 README.labnote.md가 없어졌습니다. 실험 목록과 워크플로 체크리스트가 이 실험을 찾지 못합니다.',
   '"{0}" is no longer an experiment folder: its name must start with ###_ (e.g. 001_Name). Workflow commands and Local samples will not find it.':
     '"{0}"은(는) 더 이상 실험 폴더가 아닙니다. 폴더 이름은 ###_로 시작해야 합니다(예: 001_이름). 워크플로 명령과 로컬 샘플이 이 폴더를 찾지 못합니다.',
   '"{0}" is no longer an experiment folder: its name must start with ###_ (e.g. 001_Name). Workflow commands and Local samples will not find it. Rename it to "{1}"?':
@@ -667,6 +697,11 @@ const obsidianKo: Record<string, string> = {
   '{0} also has the note ID {1}. Give this note a new ID?':
     '{0}도 노트 ID {1}을(를) 쓰고 있습니다. 이 노트에 새 ID를 발급할까요?',
   'Give a new ID': '새 ID 발급',
+  'This note has no labnote_id, but its scans show it was printed as {0}. Restore that ID? With a new ID, worksheets already printed will not find this note.':
+    '이 노트에는 labnote_id가 없지만, 붙어 있는 스캔을 보면 전에 {0}(으)로 출력되었습니다. 그 ID를 되살릴까요? 새 ID를 쓰면 이미 출력한 기록지는 이 노트를 찾지 못합니다.',
+  'Restore ID': 'ID 되살리기',
+  'The scans in this note are named after the note ID {0}, but {1} has that ID now, so this note gets a new one. Worksheets printed as {0} are filed in {1}.':
+    '이 노트의 스캔은 노트 ID {0}의 이름을 달고 있지만 지금은 {1}이(가) 그 ID를 쓰고 있어 새 ID를 발급합니다. {0}(으)로 출력한 기록지는 {1}에 붙습니다.',
   '{0} now has the note ID {1}.': '{0}에 노트 ID {1}을(를) 발급했습니다.',
   'Gave the copy {0} its own note ID {1}.': '복사본 {0}에 새 노트 ID {1}을(를) 발급했습니다.',
   'Notes {0} share the note ID {1}, probably because one was copied. Scans of either note would be filed in the wrong one. Give {2} a new ID?':
@@ -700,6 +735,11 @@ const obsidianKo: Record<string, string> = {
   '{0} scan image(s) stayed in {1}: a file with the same name is already in {2}, or the move failed.':
     '스캔 이미지 {0}개는 {1}에 남았습니다: {2}에 같은 이름의 파일이 있거나 옮기지 못했습니다.',
   'Printout {0}/{1} · printed {2} · imported {3} · {4}': '출력본 {0}/{1} · {2} 출력 · {3} 가져옴 · {4}',
+  'Printout {0}/{1} · imported {2} · {3}': '출력본 {0}/{1} · {2} 가져옴 · {3}',
+  'Print date': '출력일',
+  'When was this page printed (YYYY-MM-DD)? Leave it empty if you do not know or it was never printed.':
+    '이 페이지를 언제 출력했나요(YYYY-MM-DD)? 모르거나 출력한 적 없는 종이면 비워 두세요.',
+  'Enter a date like 2026-10-15, or leave it empty.': '2026-10-15처럼 날짜를 쓰거나 비워 두세요.',
   'Scan results': '스캔 결과',
   '{0} page(s): {1}': '{0}쪽: {1}',
   '{0} filed': '{0}쪽 붙임',

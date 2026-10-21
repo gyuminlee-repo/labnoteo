@@ -3,9 +3,38 @@ import {
   parseSampleTrigger,
   buildSampleCompletionEntries,
   findSampleIdRanges,
+  staleSampleAliasEnd,
 } from '../sample/sampleSuggest';
 
 const TYPES = ['DNA', 'RNA', 'Plasmid', 'Reagent', 'Primer', 'Protein', 'Equip', 'Labware'];
+
+describe('staleSampleAliasEnd (#239)', () => {
+  const end = (text: string, alias: string | null) => {
+    const at = staleSampleAliasEnd(text, 'DNA-1'.length, alias);
+    return at === undefined ? undefined : text.slice(0, at);
+  };
+
+  it('ends after the first word of an alias the registry does not have', () => {
+    expect(end('DNA-1;COL-001b 확인', 'COL-001')).toBe('DNA-1;COL-001b');
+    expect(end('DNA-1;집락B', 'COL-001')).toBe('DNA-1;집락B');
+    expect(end('DNA-1;COL-001-2|x', 'COL-001')).toBe('DNA-1;COL-001-2');
+    expect(end('DNA-1;M9 최소배지', 'M9 배지')).toBe('DNA-1;M9');
+  });
+
+  it('accepts the registry alias followed by prose or punctuation', () => {
+    expect(end('DNA-1;COL-001 was used', 'COL-001')).toBeUndefined();
+    expect(end('DNA-1;COL-001.', 'COL-001')).toBeUndefined();
+    expect(end('DNA-1;M9 배지 50 mL', ' M9 배지 ')).toBeUndefined();
+    expect(end('DNA-1;a\\|b', 'a|b')).toBeUndefined();
+  });
+
+  it('has nothing to compare without an alias on either side', () => {
+    expect(end('DNA-1 COL-001b', 'COL-001')).toBeUndefined();
+    expect(end('DNA-1;;설명', 'COL-001')).toBeUndefined();
+    expect(end('DNA-1;집락B', '')).toBeUndefined();
+    expect(end('DNA-1;집락B', null)).toBeUndefined();
+  });
+});
 
 describe('parseSampleTrigger', () => {
   it('detects a specific type prefix at end of line', () => {

@@ -11,7 +11,7 @@
  */
 import { setIcon, type Component } from 'obsidian';
 import type { TreeNode } from '@labnoteo/core';
-import { treeKeyAction, type KeyRow } from './treeKeys';
+import { resolveFocusRow, treeKeyAction, type KeyRow } from './treeKeys';
 
 /** Map the core (VS Code codicon) icon names to Obsidian's Lucide set. */
 const ICON_MAP: Record<string, string> = {
@@ -47,6 +47,7 @@ interface TreeState {
   entries: RowEntry[];
   ctx: TreeRenderCtx;
   focusedKey?: string;
+  focusedId?: string;
 }
 
 const states = new WeakMap<HTMLElement, TreeState>();
@@ -60,7 +61,7 @@ export function renderTree(
 ): void {
   const hadFocus = container.contains(container.ownerDocument.activeElement);
   const previous = states.get(container);
-  const state: TreeState = { entries: [], ctx, focusedKey: previous?.focusedKey };
+  const state: TreeState = { entries: [], ctx, focusedKey: previous?.focusedKey, focusedId: previous?.focusedId };
   states.set(container, state);
 
   container.empty();
@@ -71,18 +72,26 @@ export function renderTree(
     component.registerDomEvent(container, 'keydown', evt => onKeyDown(container, evt));
   }
 
-  const visible = visibleEntries(state);
-  const target = visible.find(i => state.entries[i].key === state.focusedKey) ?? visible[0];
-  if (target !== undefined) setTabStop(state, target, hadFocus);
+  restoreTabStop(state, hadFocus);
 }
 
 /** Move keyboard focus into the tree, onto the row that last had it. */
 export function focusTree(container: HTMLElement): void {
   const state = states.get(container);
-  if (!state) return;
-  const visible = visibleEntries(state);
-  const target = visible.find(i => state.entries[i].key === state.focusedKey) ?? visible[0];
-  if (target !== undefined) setTabStop(state, target, true);
+  if (state) restoreTabStop(state, true);
+}
+
+/** Put the tab stop back on the row that had it, wherever it moved (#227). */
+function restoreTabStop(state: TreeState, focus: boolean): void {
+  const shown = new Set(visibleEntries(state));
+  const target = resolveFocusRow(
+    state.entries.map((e, i) => ({ key: e.key, id: e.node.id, parent: e.parent, shown: shown.has(i) })),
+    state.focusedKey,
+    state.focusedId
+  );
+  if (!target) return;
+  for (const i of target.expand) setExpanded(state, i, true);
+  setTabStop(state, target.index, focus);
 }
 
 function renderNode(
@@ -168,6 +177,7 @@ function activate(state: TreeState, index: number, evt: MouseEvent): void {
 function setTabStop(state: TreeState, index: number, focus: boolean): void {
   for (const [i, entry] of state.entries.entries()) entry.row.setAttr('tabindex', i === index ? '0' : '-1');
   state.focusedKey = state.entries[index].key;
+  state.focusedId = state.entries[index].node.id;
   if (focus) state.entries[index].row.focus();
 }
 

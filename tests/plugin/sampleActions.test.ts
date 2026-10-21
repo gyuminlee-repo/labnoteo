@@ -15,6 +15,7 @@ import {
   insertSampleReference,
   listSampleDefinitions,
   sampleUsages,
+  unregisteredReferences,
   validateAlias,
 } from '../../src/sampleActions';
 import { confirmModal, pickModal, promptModal } from '../../src/modals';
@@ -185,6 +186,8 @@ describe('createSampleInteractive with a typed search term', () => {
     expect(check('[[x]]')).toContain('Markdown');
     expect(check('a;b')).toContain('";" or ":"');
     expect(check('pUC19 v2')).toBeNull();
+    // #225: `_` next to Korean turns italic.
+    expect(check('대장균_형질전환')).toContain('Markdown');
   });
 });
 
@@ -589,5 +592,16 @@ describe('insertSampleReference', () => {
     await insertSampleReference(refPlugin(), target, 'RNA-1;siKIF');
 
     expect(state.text).toBe('## Samples\nused RNA-2;siX here RNA-1;siKIF\n');
+  });
+});
+
+// #238: the sample list left out references the registry does not have without a word.
+describe('unregisteredReferences', () => {
+  const ref = (id: string, alias: string | null = null) =>
+    ({ id, type: 'RNA', alias, description: null, definition: false }) as Parameters<typeof unregisteredReferences>[0][number];
+
+  it('lists each reference the registries do not have once, with its alias', () => {
+    const refs = [ref('RNA-1', 'siKIF'), ref('RNA-9', '집락B'), ref('rna-9'), ref('Reagent-1001'), ref('RNA-7')];
+    expect(unregisteredReferences(refs, new Set(['rna-1', 'reagent-1001']))).toEqual(['RNA-9;집락B', 'RNA-7']);
   });
 });

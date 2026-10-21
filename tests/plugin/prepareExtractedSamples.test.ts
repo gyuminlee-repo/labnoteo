@@ -57,6 +57,11 @@ describe('prepareExtractedSamples', () => {
     expect(out.samples.map(s => s.alias)).toEqual(['1 pUC19 v2 x', undefined]);
   });
 
+  it('turns _ into -, as create_sample refuses it (#225)', () => {
+    const out = prepareExtractedSamples([{ type: 'DNA', id: 'DNA-1', alias: '대장균_형질전환' }], TYPES);
+    expect(out.samples[0].alias).toBe('대장균-형질전환');
+  });
+
   it('skips unknown types and accepts custom ones', () => {
     const out = prepareExtractedSamples([{ type: 'Gizmo' }, { type: '배지', id: '배지-1' }], TYPES);
     expect(out.samples).toEqual([{ type: '배지', id: '배지-1', alias: undefined, description: undefined }]);

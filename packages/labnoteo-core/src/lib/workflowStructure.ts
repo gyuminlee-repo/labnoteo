@@ -1037,6 +1037,17 @@ export function workflowAliasFromFileName(fileName: string, heading: WorkflowHea
   return undefined;
 }
 
+/**
+ * The catalog IDs of workflow file `fileName` and of its note's `## [ID name]`
+ * heading when they differ (#240), the one case where
+ * {@link planWorkflowRetitle} gives up without anything to fix.
+ */
+export function workflowIdMismatch(fileName: string, content: string): { fileId: string; noteId: string } | undefined {
+  const fileId = parseWorkflowFileName(fileName)?.id;
+  const noteId = parseWorkflowHeading(content.replace(/\r\n/g, '\n'))?.id;
+  return fileId && noteId && fileId !== noteId ? { fileId, noteId } : undefined;
+}
+
 /** {@link planWorkflowRetitle} result. */
 export interface WorkflowRetitle {
   /** The note's title before (its heading text when it has no title). */

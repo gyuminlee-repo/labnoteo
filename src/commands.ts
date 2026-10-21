@@ -27,7 +27,7 @@ import {
   unitOpInsertPointAtCursor,
   EXPERIMENT_STATUSES,
   isValidStatus,
-  CATALOG_KO,
+  catalogKoEntry,
   catalogDescriptionFor,
   generateIssueMarkerId,
   isDiscussFlagged,
@@ -763,7 +763,7 @@ function catalogKoFields(
   category: string,
   description: string
 ): { description: string; detail: string; keywords?: readonly string[] } {
-  const ko = getObsidianLanguage().toLowerCase().startsWith('ko') ? CATALOG_KO[id] : undefined;
+  const ko = getObsidianLanguage().toLowerCase().startsWith('ko') ? catalogKoEntry(id) : undefined;
   const detail = catalogDescription(id, description);
   const keywords = [...(ko ? [ko.name, ...(ko.keywords ?? [])] : []), ...(detail !== description ? [description] : [])];
   return {

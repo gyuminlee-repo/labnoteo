@@ -81,28 +81,69 @@ const MARKER_START_RE = /@issue(?=[;:])/i;
 
 /** Opening/closing fence of a code block (up to 3 leading spaces, per CommonMark). */
 const FENCE_RE = /^ {0,3}(?:`{3,}|~{3,})/;
+const INDENTED_CODE_RE = /^(?: {4}|\t)/;
+const LIST_ITEM_RE = /^\s*(?:[-*+]|\d+[.)])(?:\s|$)/;
+
+/**
+ * Which of `lines` are code: fenced blocks (fence lines included; a fence
+ * left open runs to the end) and indented code blocks — four spaces or a tab
+ * after a blank line, outside a list, as the CSV export reads them (#209).
+ * Blank lines between indented code lines are not flagged; they hold nothing.
+ * Every reader of markers goes through this, so what the editor styles is
+ * what `issue-sync` and `validate` read (#120, #224).
+ */
+function codeLines(lines: readonly string[]): boolean[] {
+  const code: boolean[] = [];
+  let inFence = false;
+  let inIndented = false;
+  let inList = false;
+  let prevBlank = true;
+  for (const line of lines) {
+    if (FENCE_RE.test(line)) {
+      inFence = !inFence;
+      code.push(true);
+      prevBlank = false;
+      continue;
+    }
+    if (inFence) {
+      code.push(true);
+      continue;
+    }
+    if (line.trim() === '') {
+      code.push(false);
+      prevBlank = true;
+      continue;
+    }
+    if (INDENTED_CODE_RE.test(line)) {
+      // Indented text under a list item continues the item.
+      if (inIndented || (prevBlank && !inList)) inIndented = true;
+    } else {
+      inIndented = false;
+      inList = LIST_ITEM_RE.test(line) || (inList && !prevBlank && /^\s/.test(line));
+    }
+    code.push(inIndented);
+    prevBlank = false;
+  }
+  return code;
+}
 
 /**
  * Find every `@issue` marker in `md`.
  *
- * Fenced code blocks are skipped: a note that documents the marker syntax by
- * example must not open issues for its own examples.
+ * Code blocks, fenced or indented, are skipped: a note that documents the
+ * marker syntax by example must not open issues for its own examples (#224).
  *
  * Expects LF-normalised text, like the other parsers here.
  */
 export function parseIssueMarkers(md: string): IssueMarkerScan {
   const markers: IssueMarker[] = [];
   const malformed: MalformedIssueMarker[] = [];
-  let inFence = false;
 
   const lines = md.split('\n');
+  const code = codeLines(lines);
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (FENCE_RE.test(line)) {
-      inFence = !inFence;
-      continue;
-    }
-    if (inFence) continue;
+    if (code[i]) continue;
 
     // Only the FIRST candidate matters: the marker owns the rest of the line.
     const at = line.search(MARKER_START_RE);
@@ -139,11 +180,11 @@ export interface IssueMarkerRange {
  * Only valid markers are returned, which makes the highlight itself the
  * feedback: a marker that stays unstyled is one that will not open an issue.
  *
- * Unlike {@link parseIssueMarkers} this does not track code fences — the editor
- * hands over arbitrary slices of the document, where a fence may have opened
+ * Unlike {@link parseIssueMarkers} this does not track code blocks — the editor
+ * hands over arbitrary slices of the document, where a block may have opened
  * outside the slice. The editor drops the markers inside
- * {@link fencedCodeRanges} of the whole document instead (#120), and reading
- * mode filters code by DOM.
+ * {@link codeBlockRanges} of the whole document instead (#120, #224), and
+ * reading mode filters code by DOM.
  */
 export function findIssueMarkerRanges(text: string): IssueMarkerRange[] {
   const ranges: IssueMarkerRange[] = [];
@@ -187,6 +228,32 @@ export function fencedCodeRanges(md: string): IssueMarkerRange[] {
   return ranges;
 }
 
+/**
+ * Character ranges of the code blocks in `md` — fenced (fence lines included)
+ * and indented — coded exactly as {@link parseIssueMarkers} skips them (#224),
+ * so a marker the editor styles is one `issue-sync` and `validate` read.
+ */
+export function codeBlockRanges(md: string): IssueMarkerRange[] {
+  const ranges: IssueMarkerRange[] = [];
+  const lines = md.split('\n');
+  const code = codeLines(lines);
+  let offset = 0;
+  let open: IssueMarkerRange | undefined;
+  for (let i = 0; i < lines.length; i++) {
+    const end = offset + lines[i].length;
+    if (code[i]) {
+      if (open) open.end = end;
+      else open = { start: offset, end };
+    } else if (open) {
+      ranges.push(open);
+      open = undefined;
+    }
+    offset = end + 1;
+  }
+  if (open) ranges.push(open);
+  return ranges;
+}
+
 // Same-millisecond guard, mirroring `generateSampleId`: two markers inserted in
 // one burst must not collide.
 let idCounter = 0;
@@ -224,15 +291,12 @@ export function reassignIssueMarkerIds(
   newId: () => string = generateIssueMarkerId
 ): { content: string; count: number } {
   let count = 0;
-  let inFence = false;
-  const lines = md.split('\n').map(raw => {
+  const raws = md.split('\n');
+  const code = codeLines(raws.map(raw => raw.replace(/\r$/, '')));
+  const lines = raws.map((raw, i) => {
     const cr = raw.endsWith('\r') ? '\r' : '';
     const line = cr ? raw.slice(0, -1) : raw;
-    if (FENCE_RE.test(line)) {
-      inFence = !inFence;
-      return raw;
-    }
-    if (inFence) return raw;
+    if (code[i]) return raw;
     const at = line.search(MARKER_START_RE);
     if (at === -1) return raw;
     const m = line.slice(at).match(MARKER_RE);
@@ -287,8 +351,9 @@ const isTableRow = (line: string): boolean => /^\s*\|/.test(line);
  *   the first is read, so the second would merge into its title.
  * - A selection starting in the front matter, its `---` lines included, is
  *   refused (`frontMatter`): a marker there is broken YAML, not an issue (#87).
- * - A line in a fenced code block, fences included, is refused (`codeBlock`):
- *   the automation skips code, so the marker would open no issue (#120).
+ * - A line in a code block, fenced (fences included, #120) or indented (#224),
+ *   is refused (`codeBlock`): the automation skips code, so the marker would
+ *   open no issue.
  *
  * `topic`, when given, is the topic instead of the selected text (#100: typed
  * for a bare caret). Where the marker goes is decided the same way.
@@ -335,7 +400,7 @@ export function planIssueMarkerInsertion(
   const lineEnd = lineEndOf(anchor);
   const line = doc.slice(lineStart, lineEnd);
 
-  if (fencedCodeRanges(doc).some(r => lineStart >= r.start && lineStart <= r.end)) {
+  if (codeBlockRanges(doc).some(r => lineStart >= r.start && lineStart <= r.end)) {
     return { reason: 'codeBlock' };
   }
   if (isTableRow(line)) return { reason: 'table' };
@@ -390,23 +455,14 @@ export function issueSentenceRange(
  * undefined when the marker sits before any heading. Gives the Issue the
  * section it came from (`Results` vs `Methods`) without copying the note.
  *
- * Headings inside fenced code are ignored, for the same reason markers are.
+ * Headings inside code blocks are ignored, for the same reason markers are.
  */
 export function findEnclosingHeading(md: string, line: number): string | undefined {
   const lines = md.split('\n');
-  const fenced = new Set<number>();
-  let inFence = false;
-  for (let i = 0; i < lines.length; i++) {
-    if (FENCE_RE.test(lines[i])) {
-      inFence = !inFence;
-      fenced.add(i);
-      continue;
-    }
-    if (inFence) fenced.add(i);
-  }
+  const code = codeLines(lines);
 
   for (let i = Math.min(line, lines.length) - 1; i >= 0; i--) {
-    if (fenced.has(i)) continue;
+    if (code[i]) continue;
     const m = lines[i].match(/^#{1,6}\s+(.*?)\s*$/);
     if (m && m[1]) return m[1];
   }

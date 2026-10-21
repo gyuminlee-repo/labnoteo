@@ -254,6 +254,15 @@ export class ScanPipeline {
 
   private caption(payload: PagePayload, page: Pick<DecodedPage, 'source' | 'sourcePage'>): string {
     const source = page.sourcePage ? `${page.source} p.${page.sourcePage}` : page.source;
+    if (!payload.printedOn) {
+      return this.deps.t(
+        'Printout {0}/{1} · imported {2} · {3}',
+        String(payload.page),
+        String(payload.pageCount),
+        getSeoulDateString(),
+        source
+      );
+    }
     return this.deps.t(
       'Printout {0}/{1} · printed {2} · imported {3} · {4}',
       String(payload.page),
@@ -302,13 +311,16 @@ export class ScanPipeline {
 
   /**
    * File an image from the unmatched queue by hand into `note`'s
-   * `unitOpIndex`-th unit operation (0: the note-level section).
+   * `unitOpIndex`-th unit operation (0: the note-level section). Without the
+   * QR code the print date is known only if the user gave it (`printedOn`,
+   * `YYYY-MM-DD`); otherwise the caption leaves it out (#234).
    */
   async fileManually(
     image: TFile,
     note: TFile,
     unitOpIndex: number,
-    page: { page: number; pageCount: number }
+    page: { page: number; pageCount: number },
+    printedOn?: string
   ): Promise<ScanResult> {
     const { app } = this.deps;
     const noteId = await this.deps.noteIds.ensureId(note);
@@ -321,7 +333,8 @@ export class ScanPipeline {
       unitOpIndex: block?.index ?? 0,
       opId: block?.opId ?? '',
       ...page,
-      printedOn: getSeoulDateString(),
+      // Never encoded into a QR code, so '' may stand for "not known".
+      printedOn: printedOn ?? '',
     };
     const decoded: DecodedPage = { source: image.name, hash, blank: false, payload, render: async () => bytes };
     const pending: Pending[] = [];

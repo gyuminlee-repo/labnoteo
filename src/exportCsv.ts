@@ -1,7 +1,7 @@
 /**
  * Export every Markdown table in a lab note to sibling `.csv` files.
  *
- * Reuses the pure core helpers ({@link extractMarkdownTables},
+ * Reuses the pure core helpers ({@link scanMarkdownTables},
  * {@link tableToCsv}); this module only handles vault I/O and user feedback.
  */
 import { Notice, TFile } from 'obsidian';
@@ -9,8 +9,8 @@ import * as posix from '@labnoteo/core/posix';
 import {
   classifyCsvOverwrites,
   csvRowCount,
-  extractMarkdownTables,
   firstDifferingRow,
+  scanMarkdownTables,
   tableToCsv,
   type CsvOverwriteKind,
 } from '@labnoteo/core/lib/exportTablesCsv';
@@ -44,10 +44,17 @@ async function offerStaleCsvCleanup(plugin: LabnotePlugin, file: TFile, tableCou
 
 export async function exportTablesToCsv(plugin: LabnotePlugin, file: TFile): Promise<void> {
   const content = await plugin.app.vault.read(file);
-  const tables = extractMarkdownTables(content);
+  const { tables, notRendered } = scanMarkdownTables(content);
+  const skipped =
+    notRendered > 0
+      ? plugin.t(
+          '{0} table(s) were not exported: with no blank line above, the reading view shows them as text. Add a blank line above a table to export it.',
+          String(notRendered)
+        )
+      : '';
   if (tables.length === 0) {
     const cleanup = await offerStaleCsvCleanup(plugin, file, 0);
-    new Notice([plugin.t('No tables found in this note.'), cleanup].filter(Boolean).join(' '));
+    new Notice([plugin.t('No tables found in this note.'), skipped, cleanup].filter(Boolean).join(' '));
     return;
   }
 
@@ -159,7 +166,7 @@ export async function exportTablesToCsv(plugin: LabnotePlugin, file: TFile): Pro
       : '';
   const cleanup = await offerStaleCsvCleanup(plugin, file, tables.length);
   new Notice(
-    [exported, renames, renameFailed, savedIn(plugin, dir, outputs.map(o => o.path)), cleanup, explorerHint(plugin)]
+    [exported, renames, renameFailed, savedIn(plugin, dir, outputs.map(o => o.path)), skipped, cleanup, explorerHint(plugin)]
       .filter(Boolean)
       .join(' ')
   );

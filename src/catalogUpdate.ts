@@ -8,7 +8,7 @@ import * as posix from '@labnoteo/core/posix';
 import {
   BUNDLED_CATALOG_HISTORY,
   CATALOG_FILE_SPECS,
-  CATALOG_KO,
+  catalogKoEntry,
   applyCatalogUpdate,
   isCatalogPlanEmpty,
   parseCatalogFile,
@@ -66,7 +66,7 @@ function counts(files: readonly VaultCatalogFile[]): { added: number; changed: n
 }
 
 function itemLabel(id: string, name: string | undefined): string {
-  const ko = getObsidianLanguage().toLowerCase().startsWith('ko') ? CATALOG_KO[id]?.name : undefined;
+  const ko = getObsidianLanguage().toLowerCase().startsWith('ko') ? catalogKoEntry(id)?.name : undefined;
   const shown = ko ?? name;
   return shown ? `${id} ${shown}` : id;
 }
@@ -105,6 +105,34 @@ function planLines(host: LabnoteHost, file: VaultCatalogFile): string[] {
 }
 
 /**
+ * How many lab notes have a `## [ID name]` workflow or `### [ID name]` unit
+ * operation heading for one of `ids` (#232): an update renames neither them
+ * nor their checklist entries.
+ */
+async function notesUsing(host: LabnoteHost, ids: ReadonlySet<string>): Promise<number> {
+  const root = 'labnote';
+  const pattern = [...ids].filter(id => /^[\w-]+$/.test(id)).join('|');
+  if (!pattern || !(await host.fs.exists(root))) return 0;
+  const heading = new RegExp(`^#{2,3} \\[(?:${pattern}) `, 'm');
+  let count = 0;
+  for (const experiment of await host.fs.list(root)) {
+    if (!/^\d{3}_/.test(experiment)) continue;
+    const dir = posix.join(root, experiment);
+    let names: string[];
+    try {
+      names = await host.fs.list(dir);
+    } catch {
+      continue;
+    }
+    for (const name of names) {
+      if (!name.endsWith('.labnote.md') || name === 'README.labnote.md') continue;
+      if (heading.test(await host.fs.read(posix.join(dir, name)))) count++;
+    }
+  }
+  return count;
+}
+
+/**
  * Run "Update catalogs": list the changes, and write them once confirmed.
  * Resolves true when a catalog file was written.
  */
@@ -136,10 +164,23 @@ export async function updateCatalogsCommand(host: LabnoteHost): Promise<boolean>
     .map(file => ({ file, lines: planLines(host, file) }))
     .filter(b => b.lines.length > 0)
     .map(b => `${b.file.spec.file}\n${b.lines.join('\n')}`);
+  const renamed = new Set(files.flatMap(f => f.plan.updated.filter(u => u.field === 'name').map(u => u.id)));
+  let keptNames = '';
+  if (renamed.size > 0) {
+    const using = await notesUsing(host, renamed);
+    keptNames = `\n\n${
+      using > 0
+        ? host.t(
+            'Renamed items keep their old names in the workflow notes and README checklists already made: {0} note(s) use them. Rename those by hand if needed.',
+            using
+          )
+        : host.t('Renamed items keep their old names in the workflow notes and README checklists already made.')
+    }`;
+  }
   const message = `${host.t(
     'Update the catalogs in {0} to this plugin version? Fields edited in this vault are kept.',
     CATALOG_DIR
-  )}\n\n${blocks.join('\n\n')}`;
+  )}\n\n${blocks.join('\n\n')}${keptNames}`;
   if (!(await host.confirm(message, { confirmLabel: host.t('Update') }))) return false;
 
   for (const file of pending) {

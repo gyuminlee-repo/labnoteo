@@ -6,7 +6,7 @@ import type { LabnoteHost } from '../../packages/labnoteo-core/src';
 import { readNoteId } from '../../packages/labnoteo-core/src/lib/noteId';
 import { encodePagePayload, decodeScanPayload } from '../../packages/labnoteo-core/src/lib/scanPayload';
 import { qrMatrix, qrSvg, QR_QUIET_ZONE } from '../../src/barcode/qr';
-import { NoteIdService } from '../../src/barcode/noteIdService';
+import { NoteIdService, previousNoteIdFromScans } from '../../src/barcode/noteIdService';
 import { planScanMoves } from '../../src/barcode/barcodeFeature';
 import { createPcStore } from '../../src/scan/pcStore';
 import { isScanOfNote, scanFileName, unmatchedFileName, noteIdFromUnmatchedName } from '../../src/scan/imageStore';
@@ -172,6 +172,43 @@ describe('NoteIdService', () => {
     expect(await svc.ensureId(fileOf('a.labnote.md'))).toBeUndefined();
     expect(files.get('a.labnote.md')!.text).toBe(broken);
     expect(notices).toHaveLength(1);
+  });
+
+  // #236: printed worksheets carry the old ID.
+  const scanned = (embed: string) =>
+    `${note()}\n#### Worksheet scans\n\n<!-- labnoteo-scan page=1/1 sha=056ac8eeaf37 -->\n${embed}\n*caption*\n`;
+
+  it('reads the ID a note was printed under from its filed scans', () => {
+    expect(previousNoteIdFromScans(scanned('![[LN-FK5Q8KV0_u1_p1_20261021.jpg|200]]'))).toBe('LN-FK5Q8KV0');
+    expect(previousNoteIdFromScans(scanned('![[images/scans/LN-FK5Q8KV0_u1_p1_20261021_2.jpg]]'))).toBe('LN-FK5Q8KV0');
+    expect(previousNoteIdFromScans(scanned('![200](images/scans/LN-FK5Q8KV0_u0_p1_20261021.jpg)'))).toBe('LN-FK5Q8KV0');
+    expect(previousNoteIdFromScans(scanned('![[photo.jpg]]'))).toBeUndefined();
+    expect(previousNoteIdFromScans(note())).toBeUndefined();
+  });
+
+  it('offers the ID back when the labnote_id line was lost', async () => {
+    const { svc, files, fileOf } = service({
+      'a.labnote.md': { text: scanned('![[LN-FK5Q8KV0_u1_p1_20261021.jpg]]'), ctime: 1 },
+    });
+    expect(await svc.ensureId(fileOf('a.labnote.md'))).toBe('LN-FK5Q8KV0');
+    expect(readNoteId(files.get('a.labnote.md')!.text)).toBe('LN-FK5Q8KV0');
+  });
+
+  it('gives a new ID, with a warning, when another note holds the old one', async () => {
+    const { svc, fileOf, notices } = service({
+      'orig.labnote.md': { text: note('LN-FK5Q8KV0'), ctime: 1 },
+      'copy.labnote.md': { text: scanned('![[LN-FK5Q8KV0_u1_p1_20261021.jpg]]'), ctime: 2 },
+    });
+    const id = await svc.ensureId(fileOf('copy.labnote.md'));
+    expect(id).not.toBe('LN-FK5Q8KV0');
+    expect(notices).toHaveLength(1);
+  });
+
+  it('does not offer the old ID when a new one is asked for', async () => {
+    const { svc, fileOf } = service({
+      'a.labnote.md': { text: scanned('![[LN-FK5Q8KV0_u1_p1_20261021.jpg]]'), ctime: 1 },
+    });
+    expect(await svc.ensureId(fileOf('a.labnote.md'), { reassign: true })).not.toBe('LN-FK5Q8KV0');
   });
 
   it('reports a copied ID once and re-numbers the newer note', async () => {

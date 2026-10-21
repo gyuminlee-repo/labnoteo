@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { CATALOG_KO, catalogDescriptionFor } from '../catalog/catalogKo';
+import { CATALOG_KO, CATALOG_KO_RETIRED, catalogDescriptionFor, catalogKoEntry } from '../catalog/catalogKo';
 import { CATALOG_KO_DESCRIPTIONS } from '../catalog/catalogKoDescriptions';
+import { RETIRED_BUNDLED } from '../catalog/earlierBundled';
 import { UNIT_OPERATIONS_HW_CATALOG, UNIT_OPERATIONS_SW_CATALOG, WORKFLOWS_CATALOG } from '../catalog';
 
 // #163
@@ -20,6 +21,33 @@ describe('CATALOG_KO', () => {
   it('describes every bundled catalog item in Korean, and nothing else', () => {
     expect(Object.keys(CATALOG_KO_DESCRIPTIONS).sort()).toEqual([...ids].sort());
     for (const id of ids) expect(CATALOG_KO_DESCRIPTIONS[id].trim()).not.toBe('');
+  });
+
+  // #235
+  it('keeps retired items apart from the bundled ones, with their earlier English text', () => {
+    for (const id of Object.keys(CATALOG_KO_RETIRED)) {
+      expect(ids).not.toContain(id);
+      expect(RETIRED_BUNDLED[id]?.name?.length).toBeGreaterThan(0);
+      expect(RETIRED_BUNDLED[id]?.description?.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+// #235: vaults seeded before 0.109.0 still list WG010.
+describe('retired catalog items', () => {
+  const earlier = RETIRED_BUNDLED.WG010.description![0];
+
+  it('names and describes WG010 in Korean, pointing to the general workflows', () => {
+    expect(catalogKoEntry('WG010')?.name).toBe('빈 워크플로');
+    expect(catalogKoEntry('WD010')).toBe(CATALOG_KO.WD010);
+    const ko = catalogDescriptionFor('WG010', earlier, 'ko');
+    expect(ko).toBe(CATALOG_KO_RETIRED.WG010.description);
+    expect(ko).toContain('WB001');
+  });
+
+  it("keeps a lab's edited WG010 description as written", () => {
+    expect(catalogDescriptionFor('WG010', 'Our blank template.', 'ko')).toBe('Our blank template.');
+    expect(catalogDescriptionFor('WG010', earlier, 'en')).toBe(earlier);
   });
 });
 

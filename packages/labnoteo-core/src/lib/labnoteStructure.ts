@@ -36,6 +36,22 @@ export function getExperimentDir(p: string): string | undefined {
   return parts.slice(0, idx + 2).join('/');
 }
 
+/** Whether `p` is the `README.labnote.md` of an experiment folder. */
+function isExperimentReadme(p: string): boolean {
+  return path.basename(p) === 'README.labnote.md' && getExperimentDir(p) === path.dirname(path.normalize(p));
+}
+
+/**
+ * The experiment folder that lost its `README.labnote.md` when the file was
+ * renamed or moved from `oldPath` to `newPath` (#226); the experiment list
+ * and the checklist sync no longer see that folder. Undefined when nothing
+ * was lost, e.g. the README moved along with its renamed experiment folder.
+ */
+export function experimentLosingReadme(oldPath: string, newPath: string): string | undefined {
+  if (!isExperimentReadme(oldPath) || isExperimentReadme(newPath)) return undefined;
+  return getExperimentDir(oldPath);
+}
+
 /** {@link diagnoseExperimentPath} result. */
 export type ExperimentPathDiagnosis =
   /** Inside an experiment; `folder` is its `labnote/###_Name` folder. */
@@ -246,6 +262,47 @@ ${frontMatter}
 `;
 }
 
+/**
+ * The experiment folder name for experiment `number` titled `title`. The
+ * README keeps the whole title; only the folder name is capped (#148).
+ */
+export function experimentFolderName(number: string, title: string): string {
+  return `${number}_${capPathSegment(sanitizeTitle(title), EXPERIMENT_FOLDER_TITLE_MAX)}`;
+}
+
+/**
+ * The experiment folder that folder `name` copies, as Obsidian's "Make a copy"
+ * names one (`001_GFP 1` → `001_GFP`), else undefined (#223). Experiment
+ * folder names have `_` for spaces, so a trailing ` N` marks a copy.
+ */
+export function copiedExperimentOrigin(name: string): string | undefined {
+  return /^(\d{3}_\S.*?) \d+$/.exec(name)?.[1];
+}
+
+/**
+ * The README of a copied experiment made the README of a new one (#223):
+ * `title` set, `created_date` and `last_updated_date` today, and the `discuss`
+ * flag dropped so the automation does not open a second discussion of the
+ * original. Only the front matter changes.
+ */
+export function resetCopiedExperimentReadme(content: string, title: string, today: string): string {
+  const newline = content.includes('\r\n') ? '\r\n' : '\n';
+  const lines = content.split(/\r?\n/);
+  const fmEnd = lines[0]?.trim() === '---' ? lines.findIndex((l, i) => i > 0 && l.trim() === '---') : -1;
+  if (fmEnd < 0) return content;
+  const out = [lines[0]];
+  for (let i = 1; i < fmEnd; i++) {
+    const key = /^(title|created_date|last_updated_date|discuss)\s*:/.exec(lines[i])?.[1];
+    if (!key) {
+      out.push(lines[i]);
+      continue;
+    }
+    while (i + 1 < fmEnd && /^\s+\S/.test(lines[i + 1])) i++;
+    if (key !== 'discuss') out.push(serializeFrontMatterEntry(key, key === 'title' ? title : today));
+  }
+  return [...out, ...lines.slice(fmEnd)].join(newline);
+}
+
 export function createLabnoteStructure(
   workspaceRoot: string,
   title: string,
@@ -253,10 +310,7 @@ export function createLabnoteStructure(
   author?: string,
   opts: TemplateHintOptions = {}
 ): LabnoteStructure {
-  const number = getNextLabnoteNumber(existingFolders);
-  // The README keeps the whole title; only the folder name is capped (#148).
-  const sanitizedTitle = capPathSegment(sanitizeTitle(title), EXPERIMENT_FOLDER_TITLE_MAX);
-  const folderName = `${number}_${sanitizedTitle}`;
+  const folderName = experimentFolderName(getNextLabnoteNumber(existingFolders), title);
   
   const labnoteFolder = path.join(workspaceRoot, 'labnote', folderName);
   

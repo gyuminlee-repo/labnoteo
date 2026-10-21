@@ -136,20 +136,35 @@ export class LabnoteSettingTab extends PluginSettingTab {
             this.scheduleSampleTypesRefresh();
           });
         t.inputEl.addEventListener('blur', () => {
-          const { rejected } = partitionCustomSampleTypes(t.getValue(), storedTypes);
-          if (rejected.length === 0) return;
-          new Notice(
-            this.plugin.t(
-              '{0}: a space or - keeps a type from autocompleting, so it was not saved. Use {1} instead.',
-              rejected.map(r => r.name).join(', '),
-              rejected.map(r => r.suggestion).join(', ')
-            ),
-            8000
-          );
+          const { rejected, caseDuplicates } = partitionCustomSampleTypes(t.getValue(), storedTypes);
+          if (rejected.length === 0 && caseDuplicates.length === 0) return;
+          if (rejected.length > 0) {
+            new Notice(
+              this.plugin.t(
+                '{0}: a space or - keeps a type from autocompleting, so it was not saved. Use {1} instead.',
+                rejected.map(r => r.name).join(', '),
+                rejected.map(r => r.suggestion).join(', ')
+              ),
+              8000
+            );
+          }
+          if (caseDuplicates.length > 0) {
+            new Notice(
+              this.plugin.t(
+                '{0}: differs from {1} only in letter case, so on Windows both would share one {Type}.json and their samples would mix. It was not saved.',
+                caseDuplicates.map(d => d.name).join(', '),
+                caseDuplicates.map(d => d.clashesWith).join(', ')
+              ),
+              8000
+            );
+          }
           t.setValue(s.customSampleTypes.join(', '));
         });
       });
-    const { legacyInvalid } = partitionCustomSampleTypes(s.customSampleTypes.join(','), storedTypes);
+    const { legacyInvalid, legacyCaseDuplicates } = partitionCustomSampleTypes(
+      s.customSampleTypes.join(','),
+      storedTypes
+    );
     if (legacyInvalid.length > 0) {
       typesSetting.descEl.createDiv({
         cls: 'mod-warning',
@@ -157,6 +172,16 @@ export class LabnoteSettingTab extends PluginSettingTab {
           '{0} cannot be autocompleted in notes (a space or -). Rename it, e.g. {1}, if you have no samples of it yet.',
           legacyInvalid.join(', '),
           legacyInvalid.map(suggestSampleTypeName).join(', ')
+        ),
+      });
+    }
+    if (legacyCaseDuplicates.length > 0) {
+      typesSetting.descEl.createDiv({
+        cls: 'mod-warning',
+        text: this.plugin.t(
+          '{0} differs from {1} only in letter case: on Windows both share one {Type}.json, so their samples mix. Keep one of them.',
+          legacyCaseDuplicates.map(d => d.name).join(', '),
+          legacyCaseDuplicates.map(d => d.clashesWith).join(', ')
         ),
       });
     }

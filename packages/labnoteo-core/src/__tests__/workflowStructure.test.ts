@@ -37,6 +37,7 @@ import {
   classifyWorkflowMoveOut,
   workflowAliasFromFileName,
   planWorkflowRetitle,
+  workflowIdMismatch,
   planWorkflowExperimenterSync,
   resetCopiedWorkflowDates,
 } from '../lib/workflowStructure';
@@ -865,6 +866,24 @@ describe('planWorkflowRetitle (#71)', () => {
     // A file name cannot hold `/`, so an alias typed with one comes back without it.
     const slash = planWorkflowRetitle(copy, '003_WT100_Micro-scale_Parallel_Cell_Culture_L1_L5.labnote.md');
     expect(slash?.to).toBe('WT100 Micro-scale Parallel Cell Culture L1 L5');
+  });
+});
+
+describe('workflowIdMismatch (#240)', () => {
+  const note = ['---', 'title: WD010 Design 성장곡선', '---', '', '## [WD010 Design] 성장곡선', ''].join('\r\n');
+
+  it('reports the file and note IDs when a rename changed the catalog ID', () => {
+    expect(planWorkflowRetitle(note, '001_WT030_Design_성장곡선.labnote.md')).toBeUndefined();
+    expect(workflowIdMismatch('001_WT030_Design_성장곡선.labnote.md', note)).toEqual({
+      fileId: 'WT030',
+      noteId: 'WD010',
+    });
+  });
+
+  it('is undefined when the IDs agree or either side is not a workflow', () => {
+    expect(workflowIdMismatch('002_WD010_Design_성장곡선.labnote.md', note)).toBeUndefined();
+    expect(workflowIdMismatch('notes.md', note)).toBeUndefined();
+    expect(workflowIdMismatch('001_WT030_Design.labnote.md', '본문만 있음')).toBeUndefined();
   });
 });
 

@@ -41,6 +41,21 @@ describe('SampleIdIndex', () => {
     expect([...(await known(index)).ids].sort()).toEqual(['dna-1', 'dna-2', 'reagent-1001']);
   });
 
+  it('keeps the registry aliases, the Local one first, without the catalogs (#239)', async () => {
+    const { index } = setup({
+      [`${LOCAL}/DNA.json`]: JSON.stringify({ 'DNA-1': { alias: 'local' } }),
+      [`${GLOBAL}/DNA.json`]: JSON.stringify({ 'DNA-1': { alias: 'global' }, 'DNA-2': { alias: null } }),
+      [`${GLOBAL}/Reagent_sigma.json`]: json(['Reagent-1001']),
+    });
+
+    expect((await known(index)).aliases).toEqual(
+      new Map([
+        ['dna-1', 'local'],
+        ['dna-2', ''],
+      ])
+    );
+  });
+
   it('covers lab notes only', async () => {
     const { index, onChange } = setup({ [`${GLOBAL}/DNA.json`]: json(['DNA-1']) });
 

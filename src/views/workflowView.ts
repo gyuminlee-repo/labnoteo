@@ -140,9 +140,11 @@ export class WorkflowTreeView extends ItemView {
     });
     groupBy.createEl('option', { value: 'status', text: this.plugin.t('By status') });
     groupBy.createEl('option', { value: 'project', text: this.plugin.t('By project') });
+    groupBy.createEl('option', { value: 'discuss', text: this.plugin.t('By discussion flag') });
     groupBy.value = this.plugin.settings.workflowViewGroupBy;
     this.registerDomEvent(groupBy, 'change', () => {
-      this.plugin.settings.workflowViewGroupBy = groupBy.value === 'project' ? 'project' : 'status';
+      this.plugin.settings.workflowViewGroupBy =
+        groupBy.value === 'project' || groupBy.value === 'discuss' ? groupBy.value : 'status';
       void this.plugin.saveSettings();
       this.render();
     });
@@ -238,12 +240,14 @@ export class WorkflowTreeView extends ItemView {
 
   /** Re-read the experiments (cheap: metadata cache only) and draw both sections. */
   private render(): void {
+    const discuss = this.plugin.t('Flagged for discussion');
     const experiments = buildExperimentTree(
-      filterExperiments(this.experiments(), this.query),
+      filterExperiments(this.experiments(), this.query, discuss),
       {
         root: this.plugin.t('Experiments'),
         noStatus: this.plugin.t('(none)'),
-        discuss: this.plugin.t('Flagged for discussion'),
+        discuss,
+        noDiscuss: this.plugin.t('Not flagged for discussion'),
         invalidStatus: this.plugin.t('(not an allowed status)'),
         invalidStatusTooltip: this.plugin.t('Validation fails on this status. Allowed statuses: {0}'),
         status: this.plugin.t('Status'),

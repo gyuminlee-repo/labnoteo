@@ -3,6 +3,7 @@ import {
   classifyCsvOverwrites,
   csvRowCount,
   extractMarkdownTables,
+  scanMarkdownTables,
   firstDifferingRow,
   tableToCsv,
   UTF8_BOM,
@@ -225,6 +226,38 @@ describe('extractMarkdownTables', () => {
       { index: 0, rows: [['회차', '기준법'], ['1', '12.4']] },
       { index: 1, rows: [['장비', '보정일'], ['pH', '10-01']] },
     ]);
+  });
+
+  // #221: right under a paragraph the rows only continue it in the reading view.
+  describe('a table must start a block', () => {
+    const table = '| a | b |\n|---|---|\n| 1 | 2 |';
+
+    it('skips rows right under paragraph text, and counts them', () => {
+      const md = `측정값은 다음과 같다\n${table}\n\n${table}\n`;
+      expect(scanMarkdownTables(md)).toEqual({
+        tables: [{ index: 0, rows: [['a', 'b'], ['1', '2']] }],
+        notRendered: 1,
+      });
+    });
+
+    it('skips rows right under a list item or a quote paragraph', () => {
+      expect(scanMarkdownTables(`- 결과\n${table}\n`).notRendered).toBe(1);
+      expect(scanMarkdownTables(`> 설명문\n> ${table.replace(/\n/g, '\n> ')}\n`).notRendered).toBe(1);
+      expect(scanMarkdownTables(`> 설명문\n${table}\n`).notRendered).toBe(1);
+    });
+
+    it('finds a table at the start, after a heading, a thematic break or a code block', () => {
+      for (const before of ['', '## 결과\n', '---\n', '***\n', '```\ncode\n```\n']) {
+        expect(scanMarkdownTables(`${before}${table}\n`), JSON.stringify(before)).toEqual({
+          tables: [{ index: 0, rows: [['a', 'b'], ['1', '2']] }],
+          notRendered: 0,
+        });
+      }
+    });
+
+    it('finds a table that opens a quote under a paragraph', () => {
+      expect(extractMarkdownTables(`설명\n> ${table.replace(/\n/g, '\n> ')}\n`)).toHaveLength(1);
+    });
   });
 
   it('ends a quoted table where the quote depth changes', () => {

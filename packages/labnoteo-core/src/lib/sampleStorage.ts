@@ -862,6 +862,34 @@ export async function loadSampleIds(
   }
 }
 
+/**
+ * {@link loadSampleIds} with each sample's alias ('' without one), for telling
+ * a reference whose alias no longer matches the registry (#239). The first of
+ * case-colliding keys wins.
+ */
+export async function loadSampleAliases(
+  fs: LabnoteFs,
+  labsamplesFolder: string,
+  type: string
+): Promise<Map<string, string> | undefined> {
+  assertSafeSampleType(type);
+  const filePath = path.join(labsamplesFolder, `${type}.json`);
+  if (!(await fs.exists(filePath))) return new Map();
+  try {
+    const data: unknown = JSON.parse(await fs.read(filePath));
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return undefined;
+    const aliases = new Map<string, string>();
+    for (const [id, record] of Object.entries(data as Record<string, unknown>)) {
+      const alias = record && typeof record === 'object' ? (record as { alias?: unknown }).alias : undefined;
+      const key = id.toLowerCase();
+      if (!aliases.has(key)) aliases.set(key, typeof alias === 'string' ? alias.trim() : '');
+    }
+    return aliases;
+  } catch {
+    return undefined;
+  }
+}
+
 const isReferenceCatalogFile = (name: string, type: string): boolean =>
   name.startsWith(`${type}_`) && name.endsWith('.json');
 

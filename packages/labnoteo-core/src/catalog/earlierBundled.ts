@@ -76,6 +76,19 @@ export const EARLIER_BUNDLED: Readonly<Record<string, Partial<Record<CatalogFiel
 };
 
 /**
+ * Items earlier releases bundled that the catalogs no longer have, by id, with
+ * the values they were seeded with. Vaults seeded before keep them (#235).
+ */
+export const RETIRED_BUNDLED: Readonly<Record<string, Partial<Record<CatalogField, readonly string[]>>>> = {
+  WG010: {
+    name: ['Blank Workflow'],
+    description: [
+      'A general-purpose blank workflow template. Use this when the workflow does not fit into Design, Build, Test, or Learn categories.',
+    ],
+  },
+};
+
+/**
  * Ids added to the bundled catalogs after the first release. Only these are
  * added to a vault copy that lacks them; an older id missing from it was
  * deleted by the lab.
