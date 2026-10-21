@@ -1,6 +1,6 @@
 # Labnote Assistant for Obsidian (labnoteo)
 
-**버전 0.112.0**
+**버전 0.113.0**
 
 [English](README.en.md)
 
