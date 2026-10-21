@@ -185,6 +185,8 @@ describe('createSampleInteractive with a typed search term', () => {
     expect(check('[[x]]')).toContain('Markdown');
     expect(check('a;b')).toContain('";" or ":"');
     expect(check('pUC19 v2')).toBeNull();
+    // #225: `_` next to Korean turns italic.
+    expect(check('대장균_형질전환')).toContain('Markdown');
   });
 });
 

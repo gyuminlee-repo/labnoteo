@@ -356,12 +356,12 @@ export interface PreparedSamples {
 /**
  * An alias as `create_sample` will take it: the characters that split a sample
  * in a note (#98) or that Markdown reads as a tag, link, emphasis or code
- * (#168) are replaced, since nobody can be asked here.
+ * (#168, #225) are replaced, since nobody can be asked here.
  */
 function toAlias(v: string): string | undefined {
   return (
     v
-      .replace(/[;:]/g, '-')
+      .replace(/[;:_]/g, '-')
       .replace(/\[\[|\]\]/g, '')
       .replace(/[#*`]/g, '')
       .trim() || undefined

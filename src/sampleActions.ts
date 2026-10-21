@@ -79,7 +79,7 @@ export function validateAlias(plugin: Pick<LabnotePlugin, 't'>): (value: string)
         );
       case 'markdown':
         return plugin.t(
-          'An alias cannot contain #, [[, ]], * or `, which Markdown reads as a tag, link, emphasis or code. Use "-" or "/" instead.'
+          'An alias cannot contain #, [[, ]], *, _ or `, which Markdown reads as a tag, link, emphasis or code. Use "-" or "/" instead.'
         );
       default:
         return null;

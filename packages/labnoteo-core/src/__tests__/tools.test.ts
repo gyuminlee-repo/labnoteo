@@ -115,6 +115,8 @@ describe('create_sample / get_sample / list_samples', () => {
       { alias: '[[pUC19]]' },
       { alias: '*v2*' },
       { alias: '`x`' },
+      // #225
+      { alias: '대장균_형질전환' },
     ]) {
       const res = await tool('create_sample').handler(ctx, {
         type: 'DNA',

@@ -436,8 +436,8 @@ const obsidianKo: Record<string, string> = {
   'Sample moved: {0}': '샘플을 이동했습니다: {0}',
   'An alias cannot contain ";" or ":", which separate the ID, alias and description in a note. Use "-" or "/" instead (e.g. 1-10).':
     '별칭에는 ";"나 ":"를 쓸 수 없습니다. 노트에서 ID·별칭·설명을 가르는 글자입니다. 대신 "-"나 "/"를 쓰세요(예: 1-10).',
-  'An alias cannot contain #, [[, ]], * or `, which Markdown reads as a tag, link, emphasis or code. Use "-" or "/" instead.':
-    '별칭에는 #, [[, ]], *, `를 쓸 수 없습니다. 마크다운이 태그·링크·강조·코드로 읽는 글자입니다. 대신 "-"나 "/"를 쓰세요.',
+  'An alias cannot contain #, [[, ]], *, _ or `, which Markdown reads as a tag, link, emphasis or code. Use "-" or "/" instead.':
+    '별칭에는 #, [[, ]], *, _, `를 쓸 수 없습니다. 마크다운이 태그·링크·강조(기울임)·코드로 읽는 글자입니다. 대신 "-"나 "/"를 쓰세요.',
   'A description cannot contain ";", which ends the description in a note. Use "," instead.':
     '설명에는 ";"를 쓸 수 없습니다. 노트에서 설명을 끝내는 글자입니다. 대신 ","를 쓰세요.',
   "Notes in {0} use {1} local sample(s) that are still in another experiment's registry, so the notes cannot find them. Bring them into {0}?":
