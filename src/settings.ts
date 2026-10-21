@@ -16,7 +16,7 @@ export type LlmProviderKind = 'none' | 'ollama' | 'openai';
  * upgrade older `data.json` files instead of silently `Object.assign`-ing an
  * incompatible blob onto the defaults.
  */
-export const CURRENT_SCHEMA_VERSION = 1;
+export const CURRENT_SCHEMA_VERSION = 2;
 
 export interface LabnoteSettings {
   /** Persisted-shape version (see {@link CURRENT_SCHEMA_VERSION}). */
@@ -87,7 +87,7 @@ export const DEFAULT_SETTINGS: LabnoteSettings = {
   mcpToken: '',
   scanMaxImageEdge: 2400,
   scanJpegQuality: 0.85,
-  scanEmbedWidth: 300,
+  scanEmbedWidth: 200,
   worksheetPaperSize: 'a4',
 };
 
@@ -207,6 +207,9 @@ export function migrateSettings(raw: unknown): LabnoteSettings {
   if (typeof width === 'number' && (width === 0 || (width >= SCAN_EMBED_WIDTH_RANGE.min && width <= SCAN_EMBED_WIDTH_RANGE.max))) {
     out.scanEmbedWidth = Math.round(width);
   }
+  // 0.110.0 (schema 1) saved its 300 px default along with everything else.
+  const storedVersion = typeof data.schemaVersion === 'number' ? data.schemaVersion : 0;
+  if (storedVersion < 2 && out.scanEmbedWidth === 300) out.scanEmbedWidth = DEFAULT_SETTINGS.scanEmbedWidth;
   if (data.worksheetPaperSize === 'a4' || data.worksheetPaperSize === 'letter') {
     out.worksheetPaperSize = data.worksheetPaperSize;
   }

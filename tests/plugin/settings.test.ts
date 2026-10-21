@@ -135,11 +135,17 @@ describe('migrateSettings', () => {
   });
 
   it('keeps the scan embed width when in range or zero and falls back otherwise', () => {
-    expect(migrateSettings({}).scanEmbedWidth).toBe(300);
+    expect(migrateSettings({}).scanEmbedWidth).toBe(200);
     expect(migrateSettings({ scanEmbedWidth: 480.4 }).scanEmbedWidth).toBe(480);
     expect(migrateSettings({ scanEmbedWidth: 0 }).scanEmbedWidth).toBe(0);
-    expect(migrateSettings({ scanEmbedWidth: 50 }).scanEmbedWidth).toBe(300);
-    expect(migrateSettings({ scanEmbedWidth: 5000 }).scanEmbedWidth).toBe(300);
+    expect(migrateSettings({ scanEmbedWidth: 50 }).scanEmbedWidth).toBe(200);
+    expect(migrateSettings({ scanEmbedWidth: 5000 }).scanEmbedWidth).toBe(200);
+  });
+
+  it('moves the 300 px width saved by schema 1 to the new default, but keeps a later choice', () => {
+    expect(migrateSettings({ schemaVersion: 1, scanEmbedWidth: 300 }).scanEmbedWidth).toBe(200);
+    expect(migrateSettings({ schemaVersion: 2, scanEmbedWidth: 300 }).scanEmbedWidth).toBe(300);
+    expect(migrateSettings({ schemaVersion: 1, scanEmbedWidth: 480 }).scanEmbedWidth).toBe(480);
   });
 
   it('rejects an unknown provider rather than trusting the string', () => {
