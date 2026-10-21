@@ -19,6 +19,7 @@ import {
   type PageDecoder,
   type ScanInput,
 } from '../../src/scan/scanPipeline';
+import { isDateInput } from '../../src/scan/unmatchedModal';
 
 const EXP = 'labnote/001_Assay';
 const NOTE = `${EXP}/001_WD010_Design.labnote.md`;
@@ -255,6 +256,43 @@ describe('ScanPipeline.run', () => {
     expect(s.text.get(NOTE)).not.toContain('aaaaaaaaaaaa');
     expect(s.trashed).toEqual([result.imagePath]);
     expect(s.edits).toEqual([NOTE]);
+  });
+});
+
+// #234: a page filed by hand has no QR code to tell when it was printed.
+describe('ScanPipeline.fileManually', () => {
+  const QUEUED = '_labnote-scans/unmatched/20261021-021738_unknown_photo1.jpg';
+  const file = (p: string) => new TFile(p) as unknown as Parameters<ScanPipeline['fileManually']>[0];
+
+  function manualSetup() {
+    const s = setup({ [NOTE]: buildNote(ID, ['UHW010', 'UHW020']) }, {});
+    s.binary.set(QUEUED, new Uint8Array([9, 9, 9]).buffer);
+    return s;
+  }
+
+  it('leaves the print date out of the caption when it is not known', async () => {
+    const s = manualSetup();
+    const result = await s.pipeline.fileManually(file(QUEUED), file(NOTE), 1, { page: 1, pageCount: 1 });
+    expect(result.status).toBe('filed');
+    const text = s.text.get(NOTE)!;
+    expect(text).toMatch(/\*Printout 1\/1 · imported \d{4}-\d{2}-\d{2} · 20261021-021738_unknown_photo1\.jpg\*/);
+    expect(text).not.toContain('printed');
+  });
+
+  it('writes the print date the user gave', async () => {
+    const s = manualSetup();
+    await s.pipeline.fileManually(file(QUEUED), file(NOTE), 1, { page: 1, pageCount: 1 }, '2026-09-30');
+    expect(s.text.get(NOTE)!).toContain('*Printout 1/1 · printed 2026-09-30 · imported ');
+  });
+});
+
+describe('isDateInput', () => {
+  it('takes real YYYY-MM-DD dates only', () => {
+    expect(isDateInput('2026-10-15')).toBe(true);
+    expect(isDateInput(' 2024-02-29 ')).toBe(true);
+    expect(isDateInput('2026-02-30')).toBe(false);
+    expect(isDateInput('2026-1-5')).toBe(false);
+    expect(isDateInput('')).toBe(false);
   });
 });
 

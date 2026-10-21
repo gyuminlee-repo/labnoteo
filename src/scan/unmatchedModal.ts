@@ -30,6 +30,15 @@ export function parsePageInput(value: string): { page: number; pageCount: number
   return page >= 1 && pageCount >= page ? { page, pageCount } : undefined;
 }
 
+/** Whether `value` is a real calendar date written `YYYY-MM-DD`. */
+export function isDateInput(value: string): boolean {
+  const m = /^\s*(\d{4})-(\d{2})-(\d{2})\s*$/.exec(value);
+  if (!m) return false;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const date = new Date(Date.UTC(y, mo - 1, d));
+  return date.getUTCFullYear() === y && date.getUTCMonth() === mo - 1 && date.getUTCDate() === d;
+}
+
 export class UnmatchedModal extends Modal {
   constructor(
     app: App,
@@ -109,7 +118,16 @@ export class UnmatchedModal extends Modal {
     });
     const page = pageText ? parsePageInput(pageText) : undefined;
     if (!page) return;
-    const result = await this.pipeline.fileManually(file, note, unitOp, page);
+    const printedText = await host.prompt({
+      title: t('Print date'),
+      prompt: t('When was this page printed (YYYY-MM-DD)? Leave it empty if you do not know or it was never printed.'),
+      value: '',
+      placeholder: 'YYYY-MM-DD',
+      validate: v => (v.trim() === '' || isDateInput(v) ? null : t('Enter a date like 2026-10-15, or leave it empty.')),
+    });
+    if (printedText === undefined) return;
+    const printedOn = printedText.trim() || undefined;
+    const result = await this.pipeline.fileManually(file, note, unitOp, page, printedOn);
     new Notice(describeResult(t, result));
     this.render();
   }

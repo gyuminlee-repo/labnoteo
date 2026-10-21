@@ -709,6 +709,11 @@ const obsidianKo: Record<string, string> = {
   '{0} scan image(s) stayed in {1}: a file with the same name is already in {2}, or the move failed.':
     '스캔 이미지 {0}개는 {1}에 남았습니다: {2}에 같은 이름의 파일이 있거나 옮기지 못했습니다.',
   'Printout {0}/{1} · printed {2} · imported {3} · {4}': '출력본 {0}/{1} · {2} 출력 · {3} 가져옴 · {4}',
+  'Printout {0}/{1} · imported {2} · {3}': '출력본 {0}/{1} · {2} 가져옴 · {3}',
+  'Print date': '출력일',
+  'When was this page printed (YYYY-MM-DD)? Leave it empty if you do not know or it was never printed.':
+    '이 페이지를 언제 출력했나요(YYYY-MM-DD)? 모르거나 출력한 적 없는 종이면 비워 두세요.',
+  'Enter a date like 2026-10-15, or leave it empty.': '2026-10-15처럼 날짜를 쓰거나 비워 두세요.',
   'Scan results': '스캔 결과',
   '{0} page(s): {1}': '{0}쪽: {1}',
   '{0} filed': '{0}쪽 붙임',
