@@ -104,6 +104,10 @@ export interface CustomSampleTypesInput {
   rejected: { name: string; suggestion: string }[];
   /** Invalid names kept from before, so their `{Type}.json` and ids stay linked. */
   legacyInvalid: string[];
+  /** Newly typed names that differ from a built-in or earlier type only in case. */
+  caseDuplicates: { name: string; clashesWith: string }[];
+  /** Such names kept from before, so their samples stay linked. */
+  legacyCaseDuplicates: { name: string; clashesWith: string }[];
 }
 
 /**
@@ -111,17 +115,40 @@ export interface CustomSampleTypesInput {
  * autocompletion cannot read is not stored when newly typed; one stored by an
  * older release is kept, because renaming it would orphan its `{Type}.json`
  * and every id written with it.
+ *
+ * Names that differ only in case (`dna` next to the built-in `DNA`) are
+ * refused the same way (#222): on a case-insensitive file system both types
+ * read and write the one `dna.json`, and their samples mix.
  */
 export function partitionCustomSampleTypes(
   input: string,
   previouslySaved: readonly string[]
 ): CustomSampleTypesInput {
-  const out: CustomSampleTypesInput = { save: [], rejected: [], legacyInvalid: [] };
+  const out: CustomSampleTypesInput = {
+    save: [],
+    rejected: [],
+    legacyInvalid: [],
+    caseDuplicates: [],
+    legacyCaseDuplicates: [],
+  };
+  const taken = new Map<string, string>(SAMPLE_TYPES.map(t => [t.toLowerCase(), t]));
   const names = input
     .split(',')
     .map(x => x.trim())
     .filter(Boolean);
   for (const name of names) {
+    const clashesWith = taken.get(name.toLowerCase());
+    if (clashesWith !== undefined && clashesWith !== name) {
+      const clash = { name, clashesWith };
+      if (previouslySaved.includes(name)) {
+        out.save.push(name);
+        out.legacyCaseDuplicates.push(clash);
+      } else {
+        out.caseDuplicates.push(clash);
+      }
+      continue;
+    }
+    taken.set(name.toLowerCase(), name);
     if (isValidSampleTypeName(name)) {
       out.save.push(name);
     } else if (previouslySaved.includes(name)) {

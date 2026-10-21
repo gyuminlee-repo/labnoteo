@@ -475,6 +475,10 @@ const obsidianKo: Record<string, string> = {
     '{0}: 공백이나 -가 들어간 타입은 자동완성되지 않아 저장하지 않았습니다. 대신 {1}처럼 쓰세요.',
   '{0} cannot be autocompleted in notes (a space or -). Rename it, e.g. {1}, if you have no samples of it yet.':
     '{0}은(는) 공백이나 -가 있어 노트에서 자동완성되지 않습니다. 아직 그 타입의 샘플이 없다면 {1}처럼 이름을 바꾸세요.',
+  '{0}: differs from {1} only in letter case, so on Windows both would share one {Type}.json and their samples would mix. It was not saved.':
+    '{0}: {1}와(과) 대소문자만 다른 이름이라 Windows에서 두 타입이 같은 {Type}.json을 함께 써 시료가 섞입니다. 저장하지 않았습니다.',
+  '{0} differs from {1} only in letter case: on Windows both share one {Type}.json, so their samples mix. Keep one of them.':
+    '{0}은(는) {1}와(과) 대소문자만 다릅니다. Windows에서 두 타입이 같은 {Type}.json을 함께 써 시료가 섞이니 하나만 남기세요.',
   '{0}: {1} sample(s)': '{0}: 샘플 {1}개',
   'Samples of the removed sample type(s) will no longer show:\n\n{0}\n\nPut the type(s) back in the list?':
     '빠진 타입의 샘플이 더 이상 보이지 않게 됩니다:\n\n{0}\n\n그 타입을 목록에 다시 넣을까요?',

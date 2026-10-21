@@ -24,6 +24,8 @@ describe('partitionCustomSampleTypes', () => {
         { name: 'Strain-A', suggestion: 'Strain_A' },
       ],
       legacyInvalid: [],
+      caseDuplicates: [],
+      legacyCaseDuplicates: [],
     });
   });
 
@@ -36,6 +38,26 @@ describe('partitionCustomSampleTypes', () => {
     expect(out.save).toEqual(['Cell Line']);
     expect(out.legacyInvalid).toEqual(['Cell Line']);
     expect(out.rejected.map(r => r.name)).toEqual(['Strain-A']);
+  });
+
+  // #222: Windows opens dna.json and DNA.json as one file.
+  it('rejects a name that differs from a built-in or an earlier type only in case', () => {
+    const out = partitionCustomSampleTypes('Strain, dna, strain, 배지', []);
+    expect(out.save).toEqual(['Strain', '배지']);
+    expect(out.caseDuplicates).toEqual([
+      { name: 'dna', clashesWith: 'DNA' },
+      { name: 'strain', clashesWith: 'Strain' },
+    ]);
+  });
+
+  it('keeps a case duplicate stored before, so its samples stay linked, and reports it', () => {
+    const out = partitionCustomSampleTypes('Strain, dna, strain', ['Strain', 'dna', 'strain']);
+    expect(out.save).toEqual(['Strain', 'dna', 'strain']);
+    expect(out.caseDuplicates).toEqual([]);
+    expect(out.legacyCaseDuplicates).toEqual([
+      { name: 'dna', clashesWith: 'DNA' },
+      { name: 'strain', clashesWith: 'Strain' },
+    ]);
   });
 });
 
