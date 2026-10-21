@@ -36,6 +36,22 @@ export function getExperimentDir(p: string): string | undefined {
   return parts.slice(0, idx + 2).join('/');
 }
 
+/** Whether `p` is the `README.labnote.md` of an experiment folder. */
+function isExperimentReadme(p: string): boolean {
+  return path.basename(p) === 'README.labnote.md' && getExperimentDir(p) === path.dirname(path.normalize(p));
+}
+
+/**
+ * The experiment folder that lost its `README.labnote.md` when the file was
+ * renamed or moved from `oldPath` to `newPath` (#226); the experiment list
+ * and the checklist sync no longer see that folder. Undefined when nothing
+ * was lost, e.g. the README moved along with its renamed experiment folder.
+ */
+export function experimentLosingReadme(oldPath: string, newPath: string): string | undefined {
+  if (!isExperimentReadme(oldPath) || isExperimentReadme(newPath)) return undefined;
+  return getExperimentDir(oldPath);
+}
+
 /** {@link diagnoseExperimentPath} result. */
 export type ExperimentPathDiagnosis =
   /** Inside an experiment; `folder` is its `labnote/###_Name` folder. */

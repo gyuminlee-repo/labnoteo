@@ -16,6 +16,7 @@ import { EXPERIMENT_FOLDER_TITLE_MAX } from '../lib/regexUtils';
 import { isValidStatus } from '../lib/experimentStatus';
 import {
   diagnoseExperimentPath,
+  experimentLosingReadme,
   isSampleTrackingOff,
   isSampleTrackingOn,
   suggestExperimentFolderName,
@@ -106,6 +107,22 @@ describe('suggestExperimentFolderName', () => {
   it('gives up without an old number or a name left', () => {
     expect(suggestExperimentFolderName('GFP', 'GFP2')).toBeUndefined();
     expect(suggestExperimentFolderName('020_GFP', '020')).toBeUndefined();
+  });
+});
+
+describe('experimentLosingReadme (#226)', () => {
+  const readme = 'labnote/001_GFP/README.labnote.md';
+
+  it('names the experiment whose README was renamed or moved away', () => {
+    expect(experimentLosingReadme(readme, 'labnote/001_GFP/README.md')).toBe('labnote/001_GFP');
+    expect(experimentLosingReadme(readme, 'labnote/001_GFP/archive/README.labnote.md')).toBe('labnote/001_GFP');
+    expect(experimentLosingReadme(readme, 'README.labnote.md')).toBe('labnote/001_GFP');
+  });
+
+  it('ignores a README that moved with its renamed experiment, and other notes', () => {
+    expect(experimentLosingReadme(readme, 'labnote/002_GFP/README.labnote.md')).toBeUndefined();
+    expect(experimentLosingReadme('labnote/001_GFP/notes/README.labnote.md', 'labnote/001_GFP/notes/x.md')).toBeUndefined();
+    expect(experimentLosingReadme('labnote/001_GFP/001_WD010_Design.labnote.md', 'labnote/001_GFP/x.md')).toBeUndefined();
   });
 });
 

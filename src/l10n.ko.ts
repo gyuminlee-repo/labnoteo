@@ -577,6 +577,8 @@ const obsidianKo: Record<string, string> = {
   '{0} is not in the workflow catalog.': '{0}은(는) 워크플로 카탈로그에도 없습니다.',
   'Rename it back to "{0}"?': '"{0}"(으)로 이름을 되돌릴까요?',
   'Rename back': '이름 되돌리기',
+  '"{0}" no longer has README.labnote.md: the experiment list and the workflow checklist will not find this experiment.':
+    '"{0}"에 README.labnote.md가 없어졌습니다. 실험 목록과 워크플로 체크리스트가 이 실험을 찾지 못합니다.',
   '"{0}" is no longer an experiment folder: its name must start with ###_ (e.g. 001_Name). Workflow commands and Local samples will not find it.':
     '"{0}"은(는) 더 이상 실험 폴더가 아닙니다. 폴더 이름은 ###_로 시작해야 합니다(예: 001_이름). 워크플로 명령과 로컬 샘플이 이 폴더를 찾지 못합니다.',
   '"{0}" is no longer an experiment folder: its name must start with ###_ (e.g. 001_Name). Workflow commands and Local samples will not find it. Rename it to "{1}"?':

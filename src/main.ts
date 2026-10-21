@@ -79,6 +79,7 @@ import { loadWorkflows } from '@labnoteo/core/lib/workflowDataLoader';
 import * as posix from '@labnoteo/core/posix';
 import {
   diagnoseExperimentPath,
+  experimentLosingReadme,
   getExperimentDir,
   isSampleTrackingOn,
   suggestExperimentFolderName,
@@ -733,6 +734,8 @@ export default class LabnotePlugin extends Plugin {
         }
         if (!(file instanceof TFile)) return;
         const newPath = file.path;
+        const readmeOf = experimentLosingReadme(oldPath, newPath);
+        if (readmeOf) this.run(() => this.offerExperimentReadmeBack(file, readmeOf, oldPath));
         this.renameLocalSampleSources(oldPath, newPath);
         // Ahead of the copy branch, which returns early: a copy moved to
         // another experiment needs its samples and CSVs too.
@@ -886,6 +889,31 @@ export default class LabnotePlugin extends Plugin {
     });
     if (!ok || folder.path !== movedPath || this.app.vault.getAbstractFileByPath(target)) return;
     await this.app.fileManager.renameFile(folder, target);
+  }
+
+  /**
+   * An experiment's `README.labnote.md` was renamed or moved away (#226): the
+   * experiment drops out of the experiment list without a word. Offer it back.
+   */
+  private async offerExperimentReadmeBack(file: TFile, dir: string, oldPath: string): Promise<void> {
+    const movedPath = file.path;
+    const warning = this.t(
+      '"{0}" no longer has README.labnote.md: the experiment list and the workflow checklist will not find this experiment.',
+      posix.basename(dir)
+    );
+    const settled = await this.waitForNoModal();
+    if (this.unloaded || file.path !== movedPath) return;
+    const free = (): boolean =>
+      this.app.vault.getAbstractFileByPath(dir) instanceof TFolder && !this.app.vault.getAbstractFileByPath(oldPath);
+    if (!settled || !free()) {
+      this.host.notify('warn', warning);
+      return;
+    }
+    const ok = await this.host.confirm(`${warning} ${this.t('Rename it back to "{0}"?', oldPath)}`, {
+      confirmLabel: this.t('Rename back'),
+    });
+    if (!ok || file.path !== movedPath || !free()) return;
+    await this.app.fileManager.renameFile(file, oldPath);
   }
 
   private async offerExperimentFolderNameFix(folder: TFolder, oldName: string): Promise<void> {
