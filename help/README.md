@@ -41,12 +41,16 @@ npm run demo -- create-workflow             # 영상 하나 다시 녹화 (한/�
 npm run demo -- create-workflow --lang en   # 한 언어만
 npm run demo -- --all                       # 전부
 npm run demo -- --reencode create-workflow  # 저장된 프레임으로 인코딩만 다시 (Obsidian 없이, 자막 모양을 바꿨을 때)
+npm run demo -- --posters --all             # 만들어 둔 영상에서 포스터만 다시 (영상·자막·manifest는 그대로)
 ```
 
 녹화가 성공하면 `site/media/<lang>/`에 복사되고 `site/media/manifest.json`이 갱신됩니다.
 `--reencode`는 `--version`을 주지 않으면 manifest에 있던 그 영상의 `version`과 `recordedAt`을
 그대로 둡니다(다시 인코딩해도 녹화한 버전은 바뀌지 않음).
 `--no-publish`를 붙이면 testpilotO `artifacts/demos/`에만 남깁니다(시험 녹화용).
+
+포스터(`<id>.jpg`)는 대본에서 `poster: true`를 적은 단계의 화면에, 자막 띠만 영상 제목으로
+다시 그린 것입니다. 재생 전에 보이는 그림이라 그 단계의 자막은 지웁니다.
 
 ## 갱신 규칙
 
