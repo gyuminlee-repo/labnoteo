@@ -59,6 +59,8 @@ export interface LabnoteSettings {
   scanMaxImageEdge: number;
   /** JPEG quality (0.5–1) of stored scans. */
   scanJpegQuality: number;
+  /** Width, in pixels, scans are shown at in notes; 0 shows them full size. */
+  scanEmbedWidth: number;
   /** Paper the worksheets are laid out for. */
   worksheetPaperSize: WorksheetPaperSize;
 }
@@ -85,11 +87,14 @@ export const DEFAULT_SETTINGS: LabnoteSettings = {
   mcpToken: '',
   scanMaxImageEdge: 2400,
   scanJpegQuality: 0.85,
+  scanEmbedWidth: 300,
   worksheetPaperSize: 'a4',
 };
 
 export const SCAN_IMAGE_EDGE_RANGE = { min: 800, max: 6000 } as const;
 export const SCAN_JPEG_QUALITY_RANGE = { min: 0.5, max: 1 } as const;
+/** Besides this range, 0 is allowed and means full size. */
+export const SCAN_EMBED_WIDTH_RANGE = { min: 100, max: 1600 } as const;
 
 /** {@link partitionCustomSampleTypes} result. */
 export interface CustomSampleTypesInput {
@@ -197,6 +202,10 @@ export function migrateSettings(raw: unknown): LabnoteSettings {
   const quality = data.scanJpegQuality;
   if (typeof quality === 'number' && quality >= SCAN_JPEG_QUALITY_RANGE.min && quality <= SCAN_JPEG_QUALITY_RANGE.max) {
     out.scanJpegQuality = quality;
+  }
+  const width = data.scanEmbedWidth;
+  if (typeof width === 'number' && (width === 0 || (width >= SCAN_EMBED_WIDTH_RANGE.min && width <= SCAN_EMBED_WIDTH_RANGE.max))) {
+    out.scanEmbedWidth = Math.round(width);
   }
   if (data.worksheetPaperSize === 'a4' || data.worksheetPaperSize === 'letter') {
     out.worksheetPaperSize = data.worksheetPaperSize;

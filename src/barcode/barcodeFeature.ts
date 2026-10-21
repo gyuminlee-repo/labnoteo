@@ -65,6 +65,7 @@ export class BarcodeFeature {
         maxEdge: plugin.settings.scanMaxImageEdge,
         quality: plugin.settings.scanJpegQuality,
       })),
+      embedWidth: () => plugin.settings.scanEmbedWidth,
       markUserEdit: path => plugin.markUserEdit(path),
     });
     if (Platform.isDesktopApp) {

@@ -73,7 +73,8 @@ function fakeVault(notes: Record<string, string>) {
       getFileCache: (f: TFile) => ({ frontmatter: { labnote_id: readNoteId(text.get(f.path) ?? '') } }),
     },
     fileManager: {
-      generateMarkdownLink: (f: TFile) => `[[${f.path}]]`,
+      generateMarkdownLink: (f: TFile, _source: string, _subpath?: string, alias?: string) =>
+        alias ? `[[${f.path}|${alias}]]` : `[[${f.path}]]`,
       trashFile: async (f: TFile) => {
         trashed.push(f.path);
         binary.delete(f.path);
@@ -122,7 +123,7 @@ function decoderFor(pages: Record<string, DecodedPage[] | Error>): PageDecoder {
 
 const input = (name: string): ScanInput => ({ name, bytes: new ArrayBuffer(0) });
 
-function setup(notes: Record<string, string>, pages: Record<string, DecodedPage[] | Error>) {
+function setup(notes: Record<string, string>, pages: Record<string, DecodedPage[] | Error>, embedWidth = 0) {
   const v = fakeVault(notes);
   const edits: string[] = [];
   const pipeline = new ScanPipeline({
@@ -131,6 +132,7 @@ function setup(notes: Record<string, string>, pages: Record<string, DecodedPage[
     t: (key, ...args) => formatMessage(key, args),
     noteIds: new NoteIdService(v.app, v.host),
     decoder: decoderFor(pages),
+    embedWidth: () => embedWidth,
     markUserEdit: path => edits.push(path),
   });
   return { ...v, pipeline, edits };
@@ -165,6 +167,15 @@ describe('ScanPipeline.run', () => {
       [2, 2, 'bbbbbbbbbbbb'],
     ]);
     expect(filed[0].embed).toBe(`![[${results[1].imagePath}]]`);
+  });
+
+  it('files pages as thumbnails with a full-size link when a width is set', async () => {
+    const s = setup({ [NOTE]: note }, { 'a.jpg': [page(pagePayload({ page: 1 }), 'aaaaaaaaaaaa')] }, 300);
+    const results = await s.pipeline.run([input('a.jpg')]);
+    expect(results[0].status).toBe('filed');
+    const text = s.text.get(NOTE)!;
+    expect(listFiledScans(text)[0].embed).toBe(`![[${results[0].imagePath}|300]]`);
+    expect(text).toContain(` · [[${results[0].imagePath}|Open full size]]*`);
   });
 
   it('counts blank, unreadable and unknown pages without touching any note', async () => {

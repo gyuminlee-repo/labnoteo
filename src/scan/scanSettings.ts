@@ -1,7 +1,7 @@
 /** The "Barcode & scans" group of the settings tab. */
 import { Notice, Platform, Setting } from 'obsidian';
 import type LabnotePlugin from '../main';
-import { SCAN_IMAGE_EDGE_RANGE, type WorksheetPaperSize } from '../settings';
+import { SCAN_EMBED_WIDTH_RANGE, SCAN_IMAGE_EDGE_RANGE, type WorksheetPaperSize } from '../settings';
 import { isInsideFolder, type ScanFolderMode } from './scanFolderWatcher';
 import type { SlackMode } from './slack';
 
@@ -126,6 +126,20 @@ export function renderScanSettings(containerEl: HTMLElement, plugin: LabnotePlug
           save();
         })
     );
+
+  new Setting(containerEl)
+    .setName(t('Scan width in notes'))
+    .setDesc(t('Width in pixels of scans shown in notes ({0}–{1}); 0 shows them full size. Scans already filed keep their size.', String(SCAN_EMBED_WIDTH_RANGE.min), String(SCAN_EMBED_WIDTH_RANGE.max)))
+    .addText(text => {
+      text.inputEl.type = 'number';
+      text.setValue(String(s.scanEmbedWidth)).onChange(v => {
+        const n = Number(v);
+        if (Number.isFinite(n) && (n === 0 || (n >= SCAN_EMBED_WIDTH_RANGE.min && n <= SCAN_EMBED_WIDTH_RANGE.max))) {
+          s.scanEmbedWidth = Math.round(n);
+          save();
+        }
+      });
+    });
 
   renderSlackSettings(containerEl, plugin, redraw);
 }

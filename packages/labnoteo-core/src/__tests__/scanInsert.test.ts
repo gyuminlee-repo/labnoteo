@@ -97,6 +97,14 @@ describe('insertScanEntries / removeScanEntry', () => {
     expect([...listScanHashes(out)]).toEqual(['aaaa', 'bbbb']);
   });
 
+  it('appends the full-size link to the caption without escaping it', () => {
+    const md = buildNote(['UHW010']);
+    const out = insertScanEntries(md, listUnitOpBlocks(md)[0], [
+      { ...entry(1, 'aaaa'), caption: 'Printout *1/3*', fullSizeLink: '[[LN-7K3M9QX2_u2_p1.jpg|Open full size]]' },
+    ]);
+    expect(out.split('\n')).toContain('*Printout \\*1/3\\* · [[LN-7K3M9QX2_u2_p1.jpg|Open full size]]*');
+  });
+
   it('merges later scans into the section and keeps the earlier scan of a page first', () => {
     const md = buildNote(['UHW010']);
     let out = insertScanEntries(md, listUnitOpBlocks(md)[0], [entry(3, 'cccc'), entry(1, 'aaaa')]);

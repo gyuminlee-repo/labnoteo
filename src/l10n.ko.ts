@@ -781,6 +781,10 @@ const obsidianKo: Record<string, string> = {
     '스캔한 페이지를 저장하기 전에 줄일 긴 변의 픽셀 수입니다({0}–{1}).',
   'Stored scan quality': '저장할 스캔 화질',
   'JPEG quality of stored scans. Lower makes smaller files.': '저장할 스캔의 JPEG 화질입니다. 낮을수록 파일이 작아집니다.',
+  'Scan width in notes': '노트에 보이는 스캔 폭',
+  'Width in pixels of scans shown in notes ({0}–{1}); 0 shows them full size. Scans already filed keep their size.':
+    '노트에 보이는 스캔 이미지의 폭(픽셀, {0}–{1})입니다. 0이면 원본 크기로 보입니다. 이미 들어간 스캔에는 적용되지 않습니다.',
+  'Open full size': '원본 보기',
   'Slack scans (optional)': 'Slack으로 스캔 받기(선택)',
   'Slack connection': 'Slack 연결',
   'Linked. Files you send to the bot ({0}) are filed every 90 seconds.': '연결됨. 봇에게 보낸 파일({0})을 90초마다 확인해 붙입니다.',
