@@ -106,6 +106,29 @@ function unquote(line: string): QuotedLine {
 const isPipeRow = (l: QuotedLine | undefined, depth: number): boolean =>
   !!l && l.depth === depth && l.text.trim().startsWith('|');
 
+const HEADING_RE = /^ {0,3}#{1,6}(?:\s|$)/;
+const THEMATIC_BREAK_RE = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
+const CALLOUT_TITLE_RE = /^ {0,3}\[![^\]\s]+\][+-]?(?:\s|$)/;
+
+/**
+ * Whether a table header on `line` starts a block, so the reading view draws
+ * a table (#221). Right under paragraph text, the same quote depth or a
+ * shallower one, the rows only continue that paragraph. A heading, a
+ * thematic break, a callout title (#205), a code block or the start of a
+ * deeper quote ends the block before it.
+ */
+function startsBlock(prev: QuotedLine | undefined, line: QuotedLine, prevCode: boolean): boolean {
+  if (!prev || prevCode || prev.text.trim() === '' || prev.depth < line.depth) return true;
+  return HEADING_RE.test(prev.text) || THEMATIC_BREAK_RE.test(prev.text) || CALLOUT_TITLE_RE.test(prev.text);
+}
+
+/** {@link scanMarkdownTables} result. */
+export interface MarkdownTableScan {
+  tables: CsvTable[];
+  /** Header and separator rows the reading view shows as text: no blank line above them. */
+  notRendered: number;
+}
+
 /**
  * Finds every GFM pipe table in `markdown` (header row + `---` separator +
  * zero or more data rows). Tables are matched in document order. Data rows
@@ -118,15 +141,28 @@ const isPipeRow = (l: QuotedLine | undefined, depth: number): boolean =>
  *   spaces after a blank line, outside a list (#209) — are code, so they are
  *   neither exported nor counted;
  * - a table inside a blockquote or callout (`> | a |`) is a table (#205); its
- *   rows must share the same quote depth.
+ *   rows must share the same quote depth;
+ * - header rows right under paragraph text only continue the paragraph
+ *   (#221), so they are not a table either (see {@link scanMarkdownTables}).
  */
 export function extractMarkdownTables(markdown: string): CsvTable[] {
+  return scanMarkdownTables(markdown).tables;
+}
+
+/**
+ * {@link extractMarkdownTables}, also counting the pipe tables the reading
+ * view shows as text because nothing separates them from the paragraph above.
+ */
+export function scanMarkdownTables(markdown: string): MarkdownTableScan {
   const lines = markdown.replace(/\r\n/g, '\n').split('\n').map(unquote);
   const tables: CsvTable[] = [];
+  let notRendered = 0;
 
   let fence: OpenFence | null = null;
   let inList = false;
   let inIndentedCode = false;
+  // The line before was code (fenced, a fence line, or indented).
+  let prevCode = false;
   let i = 0;
   while (i < lines.length) {
     const line = lines[i];
@@ -134,6 +170,7 @@ export function extractMarkdownTables(markdown: string): CsvTable[] {
     const next = stepFence(line.text, fence);
     if (next !== fence || fence) {
       fence = next;
+      prevCode = true;
       i++;
       continue;
     }
@@ -146,6 +183,7 @@ export function extractMarkdownTables(markdown: string): CsvTable[] {
     if (INDENTED_CODE_RE.test(line.text)) {
       if (inIndentedCode || (prevBlank && !inList)) {
         inIndentedCode = true;
+        prevCode = true;
         i++;
         continue;
       }
@@ -157,6 +195,7 @@ export function extractMarkdownTables(markdown: string): CsvTable[] {
     const nextIsSeparator =
       i + 1 < lines.length && lines[i + 1].depth === line.depth && SEPARATOR_ROW_RE.test(lines[i + 1].text);
     if (isPipeRow(line, line.depth) && nextIsSeparator) {
+      const rendered = startsBlock(prev, line, prevCode);
       const header = splitTableRow(line.text);
       const rows: string[][] = [header];
       const depth = line.depth;
@@ -165,13 +204,16 @@ export function extractMarkdownTables(markdown: string): CsvTable[] {
         rows.push(fitRow(splitTableRow(lines[i].text), header.length));
         i++;
       }
-      tables.push({ index: tables.length, rows });
+      if (rendered) tables.push({ index: tables.length, rows });
+      else notRendered++;
+      prevCode = false;
       continue;
     }
+    prevCode = false;
     i++;
   }
 
-  return tables;
+  return { tables, notRendered };
 }
 
 /** A leading character Excel reads as the start of a formula (full-width forms included). */
