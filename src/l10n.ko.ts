@@ -798,8 +798,28 @@ const obsidianKo: Record<string, string> = {
   Connect: '연결',
   'Enter the bot token (it starts with xoxb-).': '봇 토큰을 입력하세요(xoxb-로 시작합니다).',
   'Enter the channel ID (it starts with C).': '채널 ID를 입력하세요(C로 시작합니다).',
-  'Send {0} to the bot in Slack to link this PC.': 'Slack에서 봇에게 {0}을(를) 보내면 이 PC와 연결됩니다.',
+  'Connected to the bot {0}. Send {1} to it in Slack to link this PC.':
+    '봇 {0}에 연결했습니다. Slack에서 봇에게 {1}을(를) 보내면 이 PC와 연결됩니다.',
+  'Could not verify the Slack token: {0}': 'Slack 토큰을 확인하지 못했습니다: {0}',
+  'The Slack token is missing permissions: {0}. Add them under OAuth & Permissions and reinstall the app.':
+    'Slack 토큰에 권한이 빠져 있습니다: {0}. OAuth & Permissions에서 추가하고 앱을 다시 설치하세요.',
+  'The bot is not in that channel. In the channel, run /invite @{0} and press Connect again.':
+    '봇이 그 채널에 없습니다. 채널에서 /invite @{0}을(를) 실행한 뒤 다시 연결을 누르세요.',
+  'Tip: the {0} permission lets the bot mark messages with 👀 so two PCs never file the same photo.':
+    '참고: {0} 권한이 있으면 봇이 메시지에 👀를 달아 두 PC가 같은 사진을 겹쳐 붙이는 일을 막습니다.',
+  'Last check failed: {0}': '마지막 확인 실패: {0}',
   'Slack scans are linked. Photos you send to the bot are filed in their notes.': 'Slack 연결이 끝났습니다. 봇에게 보낸 사진은 해당 노트에 붙습니다.',
+  'Send new photos as a new message here, not as a reply in this thread.':
+    '새 사진은 이 스레드의 답글이 아니라 새 메시지로 보내 주세요.',
+  'Slack gave no download link (the file may be deleted, or hidden by the free plan limit).':
+    'Slack이 내려받기 링크를 주지 않았습니다(삭제됐거나 무료 요금제 한도로 숨겨진 파일일 수 있습니다).',
+  'Slack refused the download (check the files:read permission).': 'Slack이 내려받기를 거부했습니다(files:read 권한을 확인하세요).',
+  'Slack had more messages than one check reads; the oldest may have been skipped.':
+    '한 번에 읽는 양보다 Slack 메시지가 많았습니다. 가장 오래된 메시지는 건너뛰었을 수 있습니다.',
+  'The Slack bot cannot add the 👀 reaction (reactions:write). Fine on one PC, but do not link a second one.':
+    'Slack 봇이 👀 반응을 달 수 없습니다(reactions:write). PC 한 대면 문제없지만, 두 번째 PC는 연결하지 마세요.',
+  'Slack scans were filed, but replying in Slack failed ({0}). Check the chat:write permission.':
+    'Slack 스캔은 붙였지만 Slack 답글에 실패했습니다({0}). chat:write 권한을 확인하세요.',
   'Linked. Send photos or scans of printed worksheets here, and they will be filed in their notes.':
     '연결되었습니다. 출력한 기록지의 사진이나 스캔을 여기로 보내면 해당 노트에 붙습니다.',
   'Slack scans: checking failed ({0}). See the Slack section of docs/SCAN.md for the bot permissions.':

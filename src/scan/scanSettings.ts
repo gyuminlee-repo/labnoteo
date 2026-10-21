@@ -138,13 +138,13 @@ function renderSlackSettings(containerEl: HTMLElement, plugin: LabnotePlugin, re
 
   if (cfg) {
     const status = slack.status();
+    const statusDesc =
+      status === 'linked'
+        ? t('Linked. Files you send to the bot ({0}) are filed every 90 seconds.', cfg.mode === 'dm' ? t('direct message') : cfg.channelId ?? '')
+        : t('Waiting for the link code. Send {0} to the bot as a direct message (or post it in the channel).', cfg.linkCode ?? '');
     new Setting(containerEl)
       .setName(t('Slack connection'))
-      .setDesc(
-        status === 'linked'
-          ? t('Linked. Files you send to the bot ({0}) are filed every 90 seconds.', cfg.mode === 'dm' ? t('direct message') : cfg.channelId ?? '')
-          : t('Waiting for the link code. Send {0} to the bot as a direct message (or post it in the channel).', cfg.linkCode ?? '')
-      )
+      .setDesc(slack.lastError ? `${statusDesc} ${t('Last check failed: {0}', slack.lastError)}` : statusDesc)
       .addButton(b =>
         b
           .setButtonText(t('Disconnect'))
@@ -181,8 +181,8 @@ function renderSlackSettings(containerEl: HTMLElement, plugin: LabnotePlugin, re
     b
       .setButtonText(t('Connect'))
       .setCta()
-      .onClick(() => {
-        if (!/^xox[bp]-/.test(token.trim())) {
+      .onClick(async () => {
+        if (!/^xoxb-/.test(token.trim())) {
           new Notice(t('Enter the bot token (it starts with xoxb-).'));
           return;
         }
@@ -190,10 +190,32 @@ function renderSlackSettings(containerEl: HTMLElement, plugin: LabnotePlugin, re
           new Notice(t('Enter the channel ID (it starts with C).'));
           return;
         }
-        const code = slack.beginLink(token, mode, channelId);
-        new Notice(t('Send {0} to the bot in Slack to link this PC.', code), 15000);
-        slack.start();
-        redraw();
+        // Check the token, its permissions and (for a channel) the invite
+        // before making a link code, so a mistake shows up now rather than
+        // as a silent "waiting" state.
+        b.setDisabled(true);
+        try {
+          const check = await slack.verify(token.trim(), mode, channelId.trim());
+          if (check.missingScopes.length) {
+            new Notice(t('The Slack token is missing permissions: {0}. Add them under OAuth & Permissions and reinstall the app.', check.missingScopes.join(', ')), 15000);
+            return;
+          }
+          if (check.notInChannel) {
+            new Notice(t('The bot is not in that channel. In the channel, run /invite @{0} and press Connect again.', check.botName), 15000);
+            return;
+          }
+          if (check.missingRecommended) {
+            new Notice(t('Tip: the {0} permission lets the bot mark messages with 👀 so two PCs never file the same photo.', 'reactions:write'), 15000);
+          }
+          const code = slack.beginLink(token, mode, channelId);
+          new Notice(t('Connected to the bot {0}. Send {1} to it in Slack to link this PC.', check.botName, code), 15000);
+          slack.start();
+          redraw();
+        } catch (err) {
+          new Notice(t('Could not verify the Slack token: {0}', err instanceof Error ? err.message : String(err)), 15000);
+        } finally {
+          b.setDisabled(false);
+        }
       })
   );
 }
