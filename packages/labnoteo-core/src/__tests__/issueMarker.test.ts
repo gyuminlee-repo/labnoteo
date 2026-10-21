@@ -8,6 +8,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   ISSUE_MARKER_ID_PREFIX,
+  codeBlockRanges,
   fencedCodeRanges,
   findEnclosingHeading,
   findIssueMarkerRanges,
@@ -214,6 +215,62 @@ describe('fencedCodeRanges', () => {
     ].join('\n');
     expect(styledLines(md)).toEqual(parseIssueMarkers(md).markers.map(m => m.line));
     expect(parseIssueMarkers(md).markers.map(m => m.id)).toEqual(['ISS-a', 'ISS-d', 'ISS-e']);
+  });
+});
+
+// #224: the reading view shows four-space indented text after a blank line as code.
+describe('indented code blocks', () => {
+  const md = [
+    '마커 예시:',
+    '',
+    '    @issue;ISS-ex1;들여쓴 예시',
+    '',
+    '    @issue;ISS-ex2;빈 줄 뒤에도 같은 코드 블록',
+    '\t@issue;ISS-ex3;탭 들여쓰기',
+    '    malformed @issue;제목만',
+    '본문 @issue;ISS-real;진짜 논의',
+    '이어지는 문단',
+    '    @issue;ISS-lazy;문단에 이어진 줄은 코드가 아님',
+    '',
+    '- 목록 항목',
+    '',
+    '    @issue;ISS-list;목록 항목의 이어진 문단',
+  ].join('\n');
+
+  it('skips markers in them, malformed ones included', () => {
+    const scan = parseIssueMarkers(md);
+    expect(scan.markers.map(m => m.id)).toEqual(['ISS-real', 'ISS-lazy', 'ISS-list']);
+    expect(scan.malformed).toEqual([]);
+  });
+
+  it('gives the editor the same code ranges', () => {
+    const code = codeBlockRanges(md);
+    const lineAt = (offset: number): number => md.slice(0, offset).split('\n').length;
+    const styled = findIssueMarkerRanges(md)
+      .filter(r => !code.some(c => r.start < c.end && r.end > c.start))
+      .map(r => lineAt(r.start));
+    expect(styled).toEqual(parseIssueMarkers(md).markers.map(m => m.line));
+  });
+
+  it('matches fencedCodeRanges on fenced blocks', () => {
+    for (const text of ['a\n```js\nx\n```\nb', 'a\n~~~\nx']) {
+      expect(codeBlockRanges(text)).toEqual(fencedCodeRanges(text));
+    }
+  });
+
+  it('leaves their markers alone when IDs are reassigned', () => {
+    const out = reassignIssueMarkerIds('예시\n\n    @issue;ISS-a;예시\n\n@issue;ISS-b;진짜', () => 'ISS-new');
+    expect(out).toEqual({ content: '예시\n\n    @issue;ISS-a;예시\n\n@issue;ISS-new;진짜', count: 1 });
+  });
+
+  it('refuses to insert a marker into one', () => {
+    const doc = '예시\n\n    코드 줄\n';
+    const at = doc.indexOf('코드');
+    expect(planIssueMarkerInsertion(doc, at, at, 'ISS-x', '주제')).toEqual({ reason: 'codeBlock' });
+  });
+
+  it('ignores headings in them', () => {
+    expect(findEnclosingHeading('## Results\n\n    # not a heading\n\n@issue;ISS-a;x', 5)).toBe('Results');
   });
 });
 

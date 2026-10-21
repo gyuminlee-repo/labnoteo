@@ -106,6 +106,7 @@ export {
   parseIssueMarkers,
   findIssueMarkerRanges,
   fencedCodeRanges,
+  codeBlockRanges,
   generateIssueMarkerId,
   resetIssueMarkerIdCounter,
   renderIssueMarker,

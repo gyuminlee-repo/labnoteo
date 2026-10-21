@@ -23,7 +23,7 @@ import {
 import { RangeSetBuilder, type Text as DocText } from '@codemirror/state';
 import { editorInfoField } from 'obsidian';
 import {
-  fencedCodeRanges,
+  codeBlockRanges,
   findIssueMarkerRanges,
   findSampleIdRanges,
   type IssueMarkerRange,
@@ -198,7 +198,7 @@ export function createSampleHighlightPlugin(getState: (path: string | undefined)
         // Scrolling keeps the same document, so the scan runs once per edit.
         if (this.fencedDoc !== doc) {
           const whole = doc.toString();
-          this.fenced = fencedCodeRanges(whole);
+          this.fenced = codeBlockRanges(whole);
           this.ownIds = new Map();
           for (const id of noteMarkerIds(whole)) this.ownIds.set(id, (this.ownIds.get(id) ?? 0) + 1);
           this.fencedDoc = doc;
