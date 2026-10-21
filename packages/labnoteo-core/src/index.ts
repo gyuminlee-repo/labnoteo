@@ -218,9 +218,15 @@ export {
   UNIT_OPERATIONS_SW_CATALOG,
   CATALOG_FILE_NAMES,
 } from './catalog';
-export { CATALOG_KO, catalogDescriptionFor, type CatalogKoEntry } from './catalog/catalogKo';
+export {
+  CATALOG_KO,
+  CATALOG_KO_RETIRED,
+  catalogDescriptionFor,
+  catalogKoEntry,
+  type CatalogKoEntry,
+} from './catalog/catalogKo';
 export { CATALOG_KO_DESCRIPTIONS } from './catalog/catalogKoDescriptions';
-export { EARLIER_BUNDLED, ADDED_BUNDLED_IDS } from './catalog/earlierBundled';
+export { EARLIER_BUNDLED, RETIRED_BUNDLED, ADDED_BUNDLED_IDS } from './catalog/earlierBundled';
 export {
   CATALOG_FILE_SPECS,
   BUNDLED_CATALOG_HISTORY,

@@ -7,7 +7,7 @@
  */
 import { UNIT_OPERATIONS_HW_CATALOG, UNIT_OPERATIONS_SW_CATALOG, WORKFLOWS_CATALOG } from './index';
 import { CATALOG_KO_DESCRIPTIONS } from './catalogKoDescriptions';
-import { EARLIER_BUNDLED } from './earlierBundled';
+import { EARLIER_BUNDLED, RETIRED_BUNDLED } from './earlierBundled';
 
 export interface CatalogKoEntry {
   name: string;
@@ -178,6 +178,24 @@ export const CATALOG_KO: Readonly<Record<string, CatalogKoEntry>> = {
   USW340: { name: '계산' },
 };
 
+/**
+ * Korean names and descriptions of items the bundled catalogs no longer have
+ * but vaults seeded earlier still list (#235). Kept apart from
+ * {@link CATALOG_KO}, which names exactly the bundled items.
+ */
+export const CATALOG_KO_RETIRED: Readonly<Record<string, CatalogKoEntry & { description: string }>> = {
+  WG010: {
+    name: '빈 워크플로',
+    description:
+      '범용 빈 워크플로 템플릿입니다. 설계(Design)·구축(Build)·시험(Test)·학습(Learn) 분류에 맞지 않는 워크플로일 때 씁니다. 새 보관함의 카탈로그에서는 빠진 항목이니, 새 워크플로는 WB001(일반 구축)·WT001(일반 시험·측정)·WL001(일반 데이터 분석) 중에서 고르세요.',
+  },
+};
+
+/** The Korean name entry of a catalog item, bundled or retired. */
+export function catalogKoEntry(id: string): CatalogKoEntry | undefined {
+  return CATALOG_KO[id] ?? CATALOG_KO_RETIRED[id];
+}
+
 const BUNDLED_DESCRIPTIONS = new Map<string, string>(
   [
     ...WORKFLOWS_CATALOG.workflows,
@@ -195,9 +213,12 @@ const BUNDLED_DESCRIPTIONS = new Map<string, string>(
  */
 export function catalogDescriptionFor(id: string, description: string, locale: string | undefined): string {
   if (!locale?.toLowerCase().startsWith('ko')) return description;
-  const ko = CATALOG_KO_DESCRIPTIONS[id];
+  const ko = CATALOG_KO_DESCRIPTIONS[id] ?? CATALOG_KO_RETIRED[id]?.description;
   const text = description.trim();
-  const bundled = BUNDLED_DESCRIPTIONS.get(id) === text || !!EARLIER_BUNDLED[id]?.description?.includes(text);
+  const bundled =
+    BUNDLED_DESCRIPTIONS.get(id) === text ||
+    !!EARLIER_BUNDLED[id]?.description?.includes(text) ||
+    !!RETIRED_BUNDLED[id]?.description?.includes(text);
   if (!ko || !bundled) return description;
   return ko;
 }

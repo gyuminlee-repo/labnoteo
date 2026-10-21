@@ -8,7 +8,7 @@ import * as posix from '@labnoteo/core/posix';
 import {
   BUNDLED_CATALOG_HISTORY,
   CATALOG_FILE_SPECS,
-  CATALOG_KO,
+  catalogKoEntry,
   applyCatalogUpdate,
   isCatalogPlanEmpty,
   parseCatalogFile,
@@ -66,7 +66,7 @@ function counts(files: readonly VaultCatalogFile[]): { added: number; changed: n
 }
 
 function itemLabel(id: string, name: string | undefined): string {
-  const ko = getObsidianLanguage().toLowerCase().startsWith('ko') ? CATALOG_KO[id]?.name : undefined;
+  const ko = getObsidianLanguage().toLowerCase().startsWith('ko') ? catalogKoEntry(id)?.name : undefined;
   const shown = ko ?? name;
   return shown ? `${id} ${shown}` : id;
 }
