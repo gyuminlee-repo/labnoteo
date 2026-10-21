@@ -113,6 +113,8 @@ const obsidianKo: Record<string, string> = {
   'Group experiments by': '실험 묶는 기준',
   'By status': '상태별',
   'By project': '과제별',
+  'By discussion flag': '논의 표시별',
+  'Not flagged for discussion': '논의 표시 없음',
   'Type @dna (or another type) in a note, or right-click → "{0}" to register a sample.':
     '노트에서 @dna처럼 입력하거나 우클릭 → "{0}"(으)로 샘플을 등록합니다.',
 

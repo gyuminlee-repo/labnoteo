@@ -340,3 +340,32 @@ describe('experiments by project', () => {
     expect(filterExperiments(entries, 'nothing')).toEqual([]);
   });
 });
+
+// #220
+describe('experiments flagged for discussion', () => {
+  const entries: ExperimentEntry[] = [
+    { folder: 'labnote/003_C', title: 'C', status: 'planned' },
+    { folder: 'labnote/002_B', title: 'B', status: 'completed', discuss: true },
+    { folder: 'labnote/001_A', title: 'A', status: 'in-progress', discuss: true },
+  ];
+
+  it('gathers the flagged experiments first, whatever their status', () => {
+    const t = buildExperimentTree(entries, { discuss: '논의 표시됨', noDiscuss: '논의 표시 없음' }, 'discuss');
+    expect(t.children!.map(g => [g.id, g.label, g.kind])).toEqual([
+      ['experimentDiscuss:true', '논의 표시됨 [2]', 'experimentDiscuss'],
+      ['experimentDiscuss:false', '논의 표시 없음 [1]', 'experimentDiscuss'],
+    ]);
+    expect(t.children![0].children!.map(e => e.label)).toEqual(['001 · A', '002 · B']);
+  });
+
+  it('leaves out an empty group', () => {
+    expect(buildExperimentTree(entries.slice(0, 1), {}, 'discuss').children!.map(g => g.label)).toEqual(['Not flagged [1]']);
+  });
+
+  it('finds them by "discuss" or the words of the UI label', () => {
+    const flagged = ['labnote/002_B', 'labnote/001_A'];
+    expect(filterExperiments(entries, 'discuss').map(e => e.folder)).toEqual(flagged);
+    expect(filterExperiments(entries, '논의', '논의 표시됨').map(e => e.folder)).toEqual(flagged);
+    expect(filterExperiments(entries, '논의 completed', '논의 표시됨').map(e => e.folder)).toEqual(['labnote/002_B']);
+  });
+});

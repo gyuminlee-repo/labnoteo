@@ -22,6 +22,7 @@ export type TreeNodeKind =
   | 'experimentRoot'
   | 'experimentStatus'
   | 'experimentProject'
+  | 'experimentDiscuss'
   | 'experiment'
   | 'sampleRoot'
   | 'sampleType'
@@ -68,14 +69,17 @@ export interface ExperimentEntry {
   project?: string;
 }
 
-/** What {@link buildExperimentTree} groups experiments by (#204). */
-export type ExperimentGrouping = 'status' | 'project';
+/** What {@link buildExperimentTree} groups experiments by (#204, #220). */
+export type ExperimentGrouping = 'status' | 'project' | 'discuss';
 
 /** Labels {@link buildExperimentTree} puts into the tree; English defaults. */
 export interface ExperimentTreeLabels {
   root?: string;
   noStatus?: string;
+  /** Tooltip line of a flagged experiment, and the group of those (#220). */
   discuss?: string;
+  /** Group of the experiments not flagged for discussion (#220). */
+  noDiscuss?: string;
   /** Suffix of a group whose status is outside {@link EXPERIMENT_STATUSES} (#143). */
   invalidStatus?: string;
   /** Tooltip of that group; `{0}` is the allowed list. */
@@ -106,7 +110,8 @@ function experimentNumber(name: string): string {
  *
  * Grouped by `project` instead, the experiments of one project sit together
  * whatever their status, projects in name order and those without one last
- * (#204).
+ * (#204). Grouped by `discuss`, the experiments flagged for discussion come
+ * first and the rest after them (#220).
  */
 export function buildExperimentTree(
   experiments: ExperimentEntry[],
@@ -141,6 +146,26 @@ export function buildExperimentTree(
           children: members.map(e => experimentNode(e, labels)),
         };
       }),
+    };
+  }
+
+  if (groupBy === 'discuss') {
+    const flagged = experiments.filter(e => e.discuss);
+    const others = experiments.filter(e => !e.discuss);
+    const group = (discuss: boolean, members: ExperimentEntry[], label: string): TreeNode => ({
+      id: `experimentDiscuss:${discuss}`,
+      label: `${label} [${members.length}]`,
+      kind: 'experimentDiscuss',
+      icon: discuss ? 'comment-discussion' : 'folder',
+      payload: { discuss },
+      children: sortByFolder(members).map(e => experimentNode(e, labels)),
+    });
+    return {
+      ...root,
+      children: [
+        ...(flagged.length > 0 ? [group(true, flagged, labels.discuss ?? 'Flagged for discussion')] : []),
+        ...(others.length > 0 ? [group(false, others, labels.noDiscuss ?? 'Not flagged')] : []),
+      ],
     };
   }
 
@@ -218,12 +243,24 @@ function experimentNode(e: ExperimentEntry, labels: ExperimentTreeLabels): TreeN
 /**
  * The experiments whose folder name, title, project or status contains every
  * word of `query`, ignoring case (#204). A blank query returns the input.
+ * One flagged for discussion also matches `discuss` and the words of
+ * `discussLabel`, e.g. the UI's "Flagged for discussion" (#220).
  */
-export function filterExperiments(experiments: ExperimentEntry[], query: string): ExperimentEntry[] {
+export function filterExperiments(
+  experiments: ExperimentEntry[],
+  query: string,
+  discussLabel?: string
+): ExperimentEntry[] {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (words.length === 0) return experiments;
   return experiments.filter(e => {
-    const haystack = [path.basename(e.folder), e.title ?? '', e.project ?? '', e.status ?? '']
+    const haystack = [
+      path.basename(e.folder),
+      e.title ?? '',
+      e.project ?? '',
+      e.status ?? '',
+      ...(e.discuss ? ['discuss', discussLabel ?? ''] : []),
+    ]
       .join('\u0000')
       .toLowerCase();
     return words.every(w => haystack.includes(w));

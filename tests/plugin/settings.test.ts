@@ -123,6 +123,7 @@ describe('migrateSettings', () => {
   it('keeps the workflow view grouping and defaults to status', () => {
     expect(migrateSettings({}).workflowViewGroupBy).toBe('status');
     expect(migrateSettings({ workflowViewGroupBy: 'project' }).workflowViewGroupBy).toBe('project');
+    expect(migrateSettings({ workflowViewGroupBy: 'discuss' }).workflowViewGroupBy).toBe('discuss');
     expect(migrateSettings({ workflowViewGroupBy: 'owner' }).workflowViewGroupBy).toBe('status');
   });
 

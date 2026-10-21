@@ -209,7 +209,11 @@ export function migrateSettings(raw: unknown): LabnoteSettings {
     );
   }
   if (typeof data.globalSampleFolder === 'string') out.globalSampleFolder = data.globalSampleFolder;
-  if (data.workflowViewGroupBy === 'status' || data.workflowViewGroupBy === 'project') {
+  if (
+    data.workflowViewGroupBy === 'status' ||
+    data.workflowViewGroupBy === 'project' ||
+    data.workflowViewGroupBy === 'discuss'
+  ) {
     out.workflowViewGroupBy = data.workflowViewGroupBy;
   }
   if (typeof data.catalogNoticeHash === 'string') out.catalogNoticeHash = data.catalogNoticeHash;
