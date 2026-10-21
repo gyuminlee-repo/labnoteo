@@ -8,8 +8,24 @@
  */
 import { TFile, type App } from 'obsidian';
 import type { LabnoteHost } from '@labnoteo/core';
-import { parseFrontMatterYaml } from '@labnoteo/core';
+import { listFiledScans, parseFrontMatterYaml } from '@labnoteo/core';
 import { generateNoteId, isValidNoteId, NOTE_ID_KEY, readNoteId, setNoteId } from '@labnoteo/core/lib/noteId';
+import { noteIdFromFiledScanEmbed } from '../scan/imageStore';
+
+/**
+ * The ID a note was printed under before its `labnote_id` line was lost, read
+ * from the names of the scans filed in it; the most frequent when they differ.
+ */
+export function previousNoteIdFromScans(content: string): string | undefined {
+  const counts = new Map<string, number>();
+  for (const scan of listFiledScans(content)) {
+    const id = noteIdFromFiledScanEmbed(scan.embed);
+    if (id && isValidNoteId(id)) counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  let best: string | undefined;
+  for (const [id, n] of counts) if (best === undefined || n > counts.get(best)!) best = id;
+  return best;
+}
 
 export class NoteIdService {
   private readonly reported = new Set<string>();
@@ -66,11 +82,47 @@ export class NoteIdService {
       );
       return undefined;
     }
+    if (!opts.reassign) {
+      const restored = await this.offerPreviousId(file, content);
+      if (restored) return restored;
+    }
     const taken = new Set(this.index().keys());
     let id = generateNoteId();
     while (taken.has(id)) id = generateNoteId();
     await this.app.vault.process(file, data => setNoteId(data, id));
     return id;
+  }
+
+  /**
+   * A note without an ID whose filed scans name the ID it was printed under
+   * (#236): offer that ID back, so worksheets already printed still find the
+   * note. Resolves the restored ID, or undefined when a new one is to be made.
+   */
+  private async offerPreviousId(file: TFile, content: string): Promise<string | undefined> {
+    const previous = previousNoteIdFromScans(content);
+    if (!previous) return undefined;
+    const holder = this.filesWithId(previous).find(f => f.path !== file.path);
+    if (holder) {
+      this.host.notify(
+        'warn',
+        this.host.t(
+          'The scans in this note are named after the note ID {0}, but {1} has that ID now, so this note gets a new one. Worksheets printed as {0} are filed in {1}.',
+          previous,
+          holder.path
+        )
+      );
+      return undefined;
+    }
+    const ok = await this.host.confirm(
+      this.host.t(
+        'This note has no labnote_id, but its scans show it was printed as {0}. Restore that ID? With a new ID, worksheets already printed will not find this note.',
+        previous
+      ),
+      { confirmLabel: this.host.t('Restore ID') }
+    );
+    if (!ok) return undefined;
+    await this.app.vault.process(file, data => setNoteId(data, previous));
+    return previous;
   }
 
   /**
