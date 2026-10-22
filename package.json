@@ -1,44 +1,44 @@
 {
-	"name": "labnoteo",
-	"private": true,
-	"version": "0.114.1",
-	"type": "module",
-	"description": "Markdown-based lab notebook with sample tracking, workflow checklists, and LLM assistance for biology and bioinformatics experiments.",
-	"license": "Apache-2.0",
-	"author": {
-		"name": "Haseong Kim",
-		"url": "https://github.com/sblabkribb/labnoteo"
-	},
-	"homepage": "https://github.com/sblabkribb/labnoteo",
-	"workspaces": [
-		"packages/*"
-	],
-	"scripts": {
-		"build": "node esbuild.config.mjs production",
-		"dev": "node esbuild.config.mjs",
-		"typecheck": "npm run typecheck:core && npm run typecheck:automation && npm run typecheck:plugin",
-		"typecheck:core": "npm run typecheck -w @labnoteo/core",
-		"typecheck:automation": "tsc --noEmit -p automation/tsconfig.json",
-		"typecheck:plugin": "tsc --noEmit -p tsconfig.json",
-		"test": "vitest run",
-		"test:watch": "vitest",
-		"sync:versions": "node scripts/syncVersions.mjs",
-		"gen:legacy-hashes": "node scripts/legacyTemplateHashes.mjs",
-		"record:fixtures": "node scripts/recordLlmFixtures.mjs"
-	},
-	"dependencies": {
-		"@labnoteo/core": "*",
-		"fflate": "^0.8.3",
-		"jsqr": "^1.4.0",
-		"qrcode-generator": "^2.0.4"
-	},
-	"devDependencies": {
-		"@codemirror/commands": "6.10.2",
-		"@types/node": "^20.10.0",
-		"builtin-modules": "^3.3.0",
-		"esbuild": "^0.27.2",
-		"obsidian": "^1.7.2",
-		"typescript": "^5.3.2",
-		"vitest": "4.0.18"
-	}
+  "name": "labnoteo",
+  "private": true,
+  "version": "0.115.0",
+  "type": "module",
+  "description": "Markdown-based lab notebook with sample tracking, workflow checklists, and LLM assistance for biology and bioinformatics experiments.",
+  "license": "Apache-2.0",
+  "author": {
+    "name": "Haseong Kim",
+    "url": "https://github.com/sblabkribb/labnoteo"
+  },
+  "homepage": "https://github.com/sblabkribb/labnoteo",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "node esbuild.config.mjs production",
+    "dev": "node esbuild.config.mjs",
+    "typecheck": "npm run typecheck:core && npm run typecheck:automation && npm run typecheck:plugin",
+    "typecheck:core": "npm run typecheck -w @labnoteo/core",
+    "typecheck:automation": "tsc --noEmit -p automation/tsconfig.json",
+    "typecheck:plugin": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "sync:versions": "node scripts/syncVersions.mjs",
+    "gen:legacy-hashes": "node scripts/legacyTemplateHashes.mjs",
+    "record:fixtures": "node scripts/recordLlmFixtures.mjs"
+  },
+  "dependencies": {
+    "@labnoteo/core": "*",
+    "fflate": "^0.8.3",
+    "jsqr": "^1.4.0",
+    "qrcode-generator": "^2.0.4"
+  },
+  "devDependencies": {
+    "@codemirror/commands": "6.10.2",
+    "@types/node": "^20.10.0",
+    "builtin-modules": "^3.3.0",
+    "esbuild": "^0.27.2",
+    "obsidian": "^1.7.2",
+    "typescript": "^5.3.2",
+    "vitest": "4.0.18"
+  }
 }
