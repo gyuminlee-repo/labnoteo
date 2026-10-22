@@ -2,6 +2,7 @@
 import {
   classifyCsvOverwrites,
   csvRowCount,
+  excelRiskCells,
   extractMarkdownTables,
   scanMarkdownTables,
   firstDifferingRow,
@@ -293,6 +294,18 @@ describe('extractMarkdownTables', () => {
     it('keeps a row that only has a comment in one cell', () => {
       expect(extractMarkdownTables('| a | %%메모%% b |\n|---|---|\n| 1 | 2 |\n')).toHaveLength(1);
     });
+  });
+
+  // #256: the CSV keeps the text as typed; this only warns about what Excel does with it.
+  it('finds the cells Excel would turn into dates or strip leading zeros from', () => {
+    const rows = [
+      ['클론', '비율', 'ID', '날짜'],
+      ['3-1', '1/2', '007', '2026-10-15'],
+      ['SEPT9', 'MARCH1', '0031', '정상'],
+      ['3-1', '0', '0.5', '-80'],
+    ];
+    expect(excelRiskCells(rows)).toEqual(['3-1', '1/2', '007', 'SEPT9', 'MARCH1', '0031']);
+    expect(excelRiskCells([['3-1'], ['정상']])).toEqual([]);
   });
 
   it('ends a quoted table where the quote depth changes', () => {

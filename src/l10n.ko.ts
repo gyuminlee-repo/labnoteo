@@ -276,6 +276,8 @@ const obsidianKo: Record<string, string> = {
     '표 {0}개는 내보내지 않았습니다. 바로 위에 빈 줄이 없어 읽기 화면에서 표가 아닌 글로 보입니다. 내보내려면 표 위에 빈 줄을 넣으세요.',
   '{0} table(s) were not exported: they are inside a comment, so the reading view does not show them at all.':
     '표 {0}개는 내보내지 않았습니다. 주석(`<!-- -->`, `%% %%`) 안에 있어 읽기 화면에 아예 보이지 않습니다.',
+  'Excel would read cells like {0} as dates or drop their leading zeros. Open the CSV with Data → From Text/CSV and set those columns to Text.':
+    '{0} 같은 칸은 엑셀에서 날짜로 바뀌거나 앞자리 0이 사라집니다. 엑셀에서는 데이터 → 텍스트/CSV에서로 열고 그 열의 형식을 텍스트로 지정하세요.',
   'These table CSV files no longer match a table in the note. Move them to the trash?\n\n{0}':
     '다음 표 CSV 파일은 이 노트에 더 이상 해당하는 표가 없습니다. 휴지통으로 옮길까요?\n\n{0}',
   'The table CSV files of the deleted note(s) are still in the folder. Move them to the trash?\n\n{0}':
