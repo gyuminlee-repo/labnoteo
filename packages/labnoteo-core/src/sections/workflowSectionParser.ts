@@ -298,6 +298,8 @@ interface UnitOpTocScan {
   entryIdxs: number[];
   /** TOC lines rebuilt from the `### [..]` headings, in document order. */
   entries: string[];
+  /** The opId of each line in {@link entries}, same order. */
+  entryOpIds: string[];
 }
 
 function scanUnitOpToc(md: string): UnitOpTocScan | null {
@@ -321,10 +323,13 @@ function scanUnitOpToc(md: string): UnitOpTocScan | null {
   // with `- [`, so they never match the `### [` heading pattern.
   const anchors = headingAnchors(lines);
   const entries: string[] = [];
+  const entryOpIds: string[] = [];
   for (let j = headingIdx + 1; j < lines.length; j++) {
     if (lines[j].fenced) continue;
     const m = lines[j].text.match(UNIT_OP_HEADING_PATTERN);
-    if (m) entries.push(buildUnitOpTocLine(m[1], m[2].trim(), m[3]?.trim() || undefined, anchors.get(j)));
+    if (!m) continue;
+    entries.push(buildUnitOpTocLine(m[1], m[2].trim(), m[3]?.trim() || undefined, anchors.get(j)));
+    entryOpIds.push(m[1]);
   }
 
   const entryIdxs: number[] = [];
@@ -332,7 +337,7 @@ function scanUnitOpToc(md: string): UnitOpTocScan | null {
     if (isTocEntry(lines[j])) entryIdxs.push(j);
   }
 
-  return { lines, newline: md.includes('\r\n') ? '\r\n' : '\n', headingIdx, entryIdxs, entries };
+  return { lines, newline: md.includes('\r\n') ? '\r\n' : '\n', headingIdx, entryIdxs, entries, entryOpIds };
 }
 
 /**
@@ -514,6 +519,41 @@ export function rebuildUnitOpToc(md: string): string {
   const scan = scanUnitOpToc(md);
   const edit = scan && tocEdit(md, scan);
   return edit ? applyTextEdits(md, [edit]) : md;
+}
+
+/** The opId a TOC entry line points at: `- [UHW010 Mixing | 완충액](#…)` → `UHW010`. */
+const tocEntryOpId = (text: string): string | undefined => /^\s*- \[([A-Z]+\d+)\s/.exec(text)?.[1];
+
+/**
+ * The TOC entries rewritten from the headings they point at, in the order the
+ * note already has them (#258). Each entry is paired with the nth `### [..]`
+ * heading of the same opId, so a renamed unit operation gets its new name and
+ * anchor; an entry nothing matches is left alone. This is what runs when
+ * "{@link rebuildUnitOpToc}"'s sorting is turned off: names and links stay
+ * right without the order being touched.
+ */
+export function refreshUnitOpTocEntries(md: string): string {
+  const scan = scanUnitOpToc(md);
+  if (!scan) return md;
+  const { lines, entryIdxs, entries, entryOpIds } = scan;
+  const fresh = new Map<string, string[]>();
+  entries.forEach((line, k) => {
+    const list = fresh.get(entryOpIds[k]) ?? [];
+    list.push(line);
+    fresh.set(entryOpIds[k], list);
+  });
+  const used = new Map<string, number>();
+  const edits: TextEdit[] = [];
+  for (const idx of entryIdxs) {
+    const opId = tocEntryOpId(lines[idx].text);
+    if (!opId) continue;
+    const nth = used.get(opId) ?? 0;
+    used.set(opId, nth + 1);
+    const line = fresh.get(opId)?.[nth];
+    if (line === undefined || line === lines[idx].text) continue;
+    edits.push({ from: lines[idx].start, to: lines[idx].end, insert: line });
+  }
+  return applyTextEdits(md, edits);
 }
 
 /**

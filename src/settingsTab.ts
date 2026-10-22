@@ -214,7 +214,7 @@ export class LabnoteSettingTab extends PluginSettingTab {
       .setName(this.plugin.t('Auto-sync unit operation TOC'))
       .setDesc(
         this.plugin.t(
-          "Reorder a workflow note's Related Unit Operations list to match heading order after edits, and tidy the --- separators immediately when a block is moved."
+          "Reorder a workflow note's Related Unit Operations list to match heading order after edits, and tidy the --- separators immediately when a block is moved. Off, the order is left as you arranged it but the names and links still follow the headings."
         )
       )
       .addToggle(t =>

@@ -13,6 +13,7 @@ export {
   buildUnitOpTocLine,
   appendUnitOpToWorkflowToc,
   rebuildUnitOpToc,
+  refreshUnitOpTocEntries,
   locateInsertedUnitOpHeading,
   findUnitOpInsertOffset,
   findUnitOpInsertPointAt,

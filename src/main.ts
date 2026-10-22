@@ -13,6 +13,7 @@ import {
   findSampleReferenceAt,
   isDiscussFlagged,
   rebuildUnitOpToc,
+  refreshUnitOpTocEntries,
   minimalReplacement,
   parseFrontMatterYaml,
   reassignIssueMarkerIds,
@@ -1606,11 +1607,14 @@ export default class LabnotePlugin extends Plugin {
    * Only the changed span is rewritten (via {@link minimalReplacement}) so the
    * caret stays put; a full-document replace would reset it. The rewrite is
    * idempotent, so our own edit settles on the next pass without looping.
+   *
+   * With the setting off the order is left as the researcher arranged it, but
+   * the entries are still matched to their headings so a renamed unit
+   * operation does not leave a wrong name and a dead link behind (#258).
    */
   private registerUnitOpTocAutoSync(): void {
     this.registerEvent(
       this.app.workspace.on('editor-change', (editor, info) => {
-        if (!this.settings.autoSyncUnitOpToc) return;
         const file = info.file;
         if (!(file instanceof TFile) || !isValidWorkflowPath(file.path)) return;
 
@@ -1623,7 +1627,9 @@ export default class LabnotePlugin extends Plugin {
           if (info.file?.path !== path) return;
           if (this.lastChangeFromHistory.get(path)) return;
           const before = editor.getValue();
-          const after = rebuildUnitOpToc(before);
+          const after = this.settings.autoSyncUnitOpToc
+            ? rebuildUnitOpToc(before)
+            : refreshUnitOpTocEntries(before);
           const edit = minimalReplacement(before, after);
           if (!edit) return;
           editor.replaceRange(

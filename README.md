@@ -138,7 +138,7 @@ Obsidian 설치와 git·GitHub 계정 준비부터 커뮤니티 플러그인·�
 
 **워크플로**
 
-- **유닛오퍼레이션 TOC 자동 정렬** (`Auto-sync unit operation TOC`): 편집 후 워크플로 노트의 `Related Unit Operations` 목록을 헤딩 순서에 맞게 자동 정렬합니다. 목차 링크는 GitHub에서 노트를 볼 때 해당 블록으로 이동하도록 GitHub 앵커 규칙을 따릅니다(Obsidian 안에서는 Outline 보기를 쓰세요). 기본 켜짐.
+- **유닛오퍼레이션 TOC 자동 정렬** (`Auto-sync unit operation TOC`): 편집 후 워크플로 노트의 `Related Unit Operations` 목록을 헤딩 순서에 맞게 자동 정렬합니다. 끄면 순서만 그대로 두고 이름·링크는 계속 맞춥니다. 목차 링크는 GitHub에서 노트를 볼 때 해당 블록으로 이동하도록 GitHub 앵커 규칙을 따릅니다(Obsidian 안에서는 Outline 보기를 쓰세요). 기본 켜짐.
 - **마지막 갱신일 자동 기록** (`Auto-update last updated date`): 연구노트(`*.labnote.md`)를 고치면 frontmatter의 `last_updated_date`를 오늘 날짜(서울 기준)로 바꿉니다. 노트마다 하루에 한 번만 바뀌고, 워크플로 노트를 고치면 그 실험의 README 날짜도 함께 바뀝니다. git pull로 받아온 변경과 자동 정리는 반영하지 않습니다. 기본 켜짐.
 
 **바코드와 스캔**

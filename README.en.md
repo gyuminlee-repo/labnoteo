@@ -134,7 +134,7 @@ See [partbank](docs/REFERENCE.en.md#partbank) for the details.
 
 **Workflows**
 
-- **Auto-sync unit operation TOC**: reorders a workflow note's `Related Unit Operations` list to match heading order after edits. The TOC links follow GitHub's anchor rules so they jump to the right block when the note is viewed on GitHub; inside Obsidian, use the Outline view instead. On by default.
+- **Auto-sync unit operation TOC**: reorders a workflow note's `Related Unit Operations` list to match heading order after edits. Turned off, the order is left as you arranged it but the names and links still follow the headings. The TOC links follow GitHub's anchor rules so they jump to the right block when the note is viewed on GitHub; inside Obsidian, use the Outline view instead. On by default.
 - **Auto-update last updated date**: sets a lab note's (`*.labnote.md`) front matter `last_updated_date` to today (Asia/Seoul) when you edit it. Each note changes at most once a day, and editing a workflow note also updates its experiment README. Changes pulled with git and automatic tidying are ignored. On by default.
 
 **Barcode & scans**

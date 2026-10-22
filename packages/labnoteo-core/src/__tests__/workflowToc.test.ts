@@ -3,6 +3,7 @@ import {
   githubHeadingAnchor,
   appendUnitOpToWorkflowToc,
   rebuildUnitOpToc,
+  refreshUnitOpTocEntries,
   locateInsertedUnitOpHeading,
   findUnitOpInsertOffset,
   minimalReplacement,
@@ -755,5 +756,44 @@ describe('minimalReplacement', () => {
     expect(edit).not.toBeNull();
     const { start, end, text } = edit!;
     expect(md.slice(0, start) + text + md.slice(end)).toBe(after);
+  });
+});
+
+// #258: with automatic sorting off, names and links must still follow the headings.
+describe('refreshUnitOpTocEntries', () => {
+  const note = (toc: string[], headings: string[]): string =>
+    ['## Related Unit Operations', '', ...toc, '', '---', '', ...headings, ''].join('\n');
+
+  it('rewrites an entry whose unit operation was renamed, keeping the order', () => {
+    const md = note(
+      ['- [USW020 B](#usw020-b)', '- [UHW010 A](#uhw010-a)'],
+      ['### [USW020 B]', '', '### [UHW010 Aseptic transfer]', '']
+    );
+    expect(refreshUnitOpTocEntries(md)).toBe(
+      note(
+        ['- [USW020 B](#usw020-b)', '- [UHW010 Aseptic transfer](#uhw010-aseptic-transfer)'],
+        ['### [USW020 B]', '', '### [UHW010 Aseptic transfer]', '']
+      )
+    );
+  });
+
+  it('leaves the order alone where rebuildUnitOpToc would sort it', () => {
+    const md = note(['- [USW020 B](#usw020-b)', '- [UHW010 A](#uhw010-a)'], ['### [UHW010 A]', '', '### [USW020 B]', '']);
+    expect(refreshUnitOpTocEntries(md)).toBe(md);
+    expect(rebuildUnitOpToc(md)).not.toBe(md);
+  });
+
+  it('takes the alias along and pairs repeats of one opId in order', () => {
+    const md = note(
+      ['- [UHW010 A](#uhw010-a)', '- [UHW010 A](#uhw010-a-1)'],
+      ['### [UHW010 A] 1차', '', '### [UHW010 A] 2차', '']
+    );
+    expect(refreshUnitOpTocEntries(md)).toContain('- [UHW010 A | 1차](#uhw010-a-1차)');
+    expect(refreshUnitOpTocEntries(md)).toContain('- [UHW010 A | 2차](#uhw010-a-2차)');
+  });
+
+  it('leaves an entry no heading matches as it is', () => {
+    const md = note(['- [UHW010 A](#uhw010-a)', '- [UHW999 Gone](#uhw999-gone)'], ['### [UHW010 A]', '']);
+    expect(refreshUnitOpTocEntries(md)).toContain('- [UHW999 Gone](#uhw999-gone)');
   });
 });

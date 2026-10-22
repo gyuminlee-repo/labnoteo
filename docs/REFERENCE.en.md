@@ -128,6 +128,9 @@ the alias goes into no file name.
   experiment moved into a subfolder of `labnote/`, …), it says what is wrong before the list opens.
 - A HW unit operation whose catalog entry names its equipment lists it in `#### Equipment`, not in
   `#### Meta`.
+- With **Auto-sync unit operation TOC** on, the TOC is reordered to match the headings. Turned
+  off, the order stays as you arranged it, but renaming a unit operation still updates the entry's
+  name and link.
 
 ### Update catalogs
 
