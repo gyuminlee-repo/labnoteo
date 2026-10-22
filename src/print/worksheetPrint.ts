@@ -11,6 +11,7 @@ import {
   listWorksheetUnitOps,
   paginateWorksheet,
   type WorksheetPage,
+  type WorksheetBlock,
   type WorksheetSection,
   type WorksheetUnitOp,
 } from '@labnoteo/core/lib/worksheet';
@@ -30,8 +31,58 @@ export function plainInline(text: string): string {
 
 const inline = (text: string): string => escapeHtml(plainInline(text));
 
+/** A pipe table as a printed table: on paper its `|` marks would be unreadable (#254). */
+function tableHtml(rows: readonly string[][]): string {
+  const [header, ...body] = rows;
+  const cells = (row: readonly string[], tag: 'th' | 'td'): string =>
+    row.map(c => `<${tag}>${inline(c)}</${tag}>`).join('');
+  const head = header ? `<tr>${cells(header, 'th')}</tr>` : '';
+  return `<table class="grid">${head}${body.map(r => `<tr>${cells(r, 'td')}</tr>`).join('')}</table>`;
+}
+
+/**
+ * Section blocks as paper would have them: a list prints with bullets rather
+ * than its `- ` marks (#253), a run of items staying one list.
+ */
+function blocksHtml(blocks: readonly WorksheetBlock[]): string {
+  let html = '';
+  let items: string[] = [];
+  const flush = (): void => {
+    if (items.length === 0) return;
+    html += `<ul class="bul">${items.join('')}</ul>`;
+    items = [];
+  };
+  for (const block of blocks) {
+    if (block.kind === 'item') {
+      items.push(`<li class="d${Math.min(block.level, 3)}">${inline(block.text) || '&nbsp;'}</li>`);
+      continue;
+    }
+    flush();
+    html += block.kind === 'table' ? tableHtml(block.rows) : `<p>${inline(block.text) || '&nbsp;'}</p>`;
+  }
+  flush();
+  return html;
+}
+
+/** The sections that get twice the leftover height: the ones written in by hand the most. */
+const WIDE_SECTIONS = new Set(['Method', 'Results & Discussions']);
+
+/**
+ * How much of the page's leftover height a section takes, in shares (#245).
+ * A section with nothing in it is there to be written in, and Results &
+ * Discussions keeps room under what is already written.
+ */
+function growShares(section: WorksheetSection): number {
+  if (section.type === 'blank') return WIDE_SECTIONS.has(section.title) ? 2 : 1;
+  if (section.type === 'text' && section.title === 'Results & Discussions') return 2;
+  return 0;
+}
+
 function sectionHtml(section: WorksheetSection): string {
   const title = `<h3>${escapeHtml(section.title)}</h3>`;
+  const grow = growShares(section);
+  const growClass = grow > 0 ? ` g${grow}` : '';
+  const fill = grow > 0 ? '<div class="fill"></div>' : '';
   switch (section.type) {
     case 'meta': {
       const rows = section.fields
@@ -41,16 +92,20 @@ function sectionHtml(section: WorksheetSection): string {
     }
     case 'steps': {
       const items = section.steps
-        .map((s, i) => `<li><span class="box"></span><span class="n">${i + 1}.</span><span>${inline(s)}</span></li>`)
+        .map((s, i) => {
+          const sub = s.sub.length > 0 ? `<ul class="sub">${s.sub.map(l => `<li>${inline(l)}</li>`).join('')}</ul>` : '';
+          return (
+            `<li><span class="box"></span><span class="n">${i + 1}.</span>` +
+            `<div class="s">${inline(s.text)}${sub}${s.table ? tableHtml(s.table) : ''}</div></li>`
+          );
+        })
         .join('');
       return `<div class="sec">${title}<ol class="steps">${items}</ol></div>`;
     }
-    case 'text': {
-      const lines = section.lines.map(l => `<p>${inline(l) || '&nbsp;'}</p>`).join('');
-      return `<div class="sec text">${title}${lines}</div>`;
-    }
+    case 'text':
+      return `<div class="sec text${growClass}">${title}${blocksHtml(section.blocks)}${fill}</div>`;
     case 'blank':
-      return `<div class="sec">${title}</div>`;
+      return `<div class="sec${growClass}">${title}${fill}</div>`;
   }
 }
 
@@ -86,7 +141,7 @@ export function worksheetPrintPages(pages: readonly WorksheetPage[], ctx: Worksh
       payload: encodePagePayload(payload),
       label: payloadLabel(payload),
       header,
-      body: p.sections.map(sectionHtml).join(''),
+      body: `<div class="ws">${p.sections.map(sectionHtml).join('')}</div>`,
       footer: escapeHtml(
         ctx.t('Write on this sheet, then photograph or scan it with a QR code visible and put the file in the scan folder.')
       ),

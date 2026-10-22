@@ -37,7 +37,10 @@ describe('listWorksheetUnitOps', () => {
     expect(lab.sections.find(s => s.title === 'Method')).toEqual({
       type: 'steps',
       title: 'Method',
-      steps: ['Thaw cells', 'Spin at 300 g for 5 min'],
+      steps: [
+        { text: 'Thaw cells', sub: [] },
+        { text: 'Spin at 300 g for 5 min', sub: [] },
+      ],
     });
     expect(lab.sections.find(s => s.title === 'Reagent')).toEqual({ type: 'blank', title: 'Reagent' });
     const metaSection = lab.sections.find(s => s.type === 'meta');
@@ -58,7 +61,61 @@ describe('listWorksheetUnitOps', () => {
     expect(listWorksheetUnitOps(md)[0].sections.find(s => s.title === 'Results & Discussions')).toEqual({
       type: 'text',
       title: 'Results & Discussions',
-      lines: ['Yield was low.', 'Repeat tomorrow.'],
+      blocks: [
+        { kind: 'para', text: 'Yield was low.' },
+        { kind: 'para', text: 'Repeat tomorrow.' },
+      ],
+    });
+  });
+
+  it('reads a text section as list items, paragraphs and tables (#253)', () => {
+    const md = buildNote([hw('UHW010')]).replace(
+      '#### Equipment\n- (e.g. centrifuge, spectrophotometer, etc.)',
+      '#### Equipment\n- Acoustic liquid dispenser\n  - 384-well head\n\n뒷정리 필요'
+    );
+    expect(listWorksheetUnitOps(md)[0].sections.find(s => s.title === 'Equipment')).toEqual({
+      type: 'text',
+      title: 'Equipment',
+      blocks: [
+        { kind: 'item', level: 0, text: 'Acoustic liquid dispenser' },
+        { kind: 'item', level: 1, text: '384-well head' },
+        { kind: 'para', text: '뒷정리 필요' },
+      ],
+    });
+  });
+
+  it('keeps the note\'s step numbers, nesting what is indented under a step (#254)', () => {
+    const md = buildNote([hw('UHW090')]).replace(
+      '#### Method\n- (method used in this step)',
+      [
+        '#### Method',
+        '1. 컴피턴트 세포 준비',
+        '    - BL21(DE3) 50 µL',
+        '    - 얼음 위 10분',
+        '2. 전기천공 조건',
+        '',
+        '| 전압 | 큐벳 | 시간상수 |',
+        '| --- | --- | --- |',
+        '| 1.8 kV | 1 mm | 5 ms |',
+        '',
+        '3. 회복 배양 1시간',
+      ].join('\n')
+    );
+    expect(listWorksheetUnitOps(md)[0].sections.find(s => s.title === 'Method')).toEqual({
+      type: 'steps',
+      title: 'Method',
+      steps: [
+        { text: '컴피턴트 세포 준비', sub: ['BL21(DE3) 50 µL', '얼음 위 10분'] },
+        {
+          text: '전기천공 조건',
+          sub: [],
+          table: [
+            ['전압', '큐벳', '시간상수'],
+            ['1.8 kV', '1 mm', '5 ms'],
+          ],
+        },
+        { text: '회복 배양 1시간', sub: [] },
+      ],
     });
   });
 

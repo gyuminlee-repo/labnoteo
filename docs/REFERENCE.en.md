@@ -167,6 +167,10 @@ Export note tables to `<note name>.labnote_tableN.csv` next to the note.
 - A cell starting with `=` or `@`, or with a `+`/`-` that is not part of a number, gets a leading
   tab so Excel shows it as typed instead of evaluating it. Numbers like `-80` are left alone. In a
   column where such a cell appears, like `+/-`, a lone `+` or `-` gets the tab too.
+- Opening the CSV by double-clicking it in Excel turns `3-1`, `1/2` and `SEPT9` into dates and
+  drops the leading zero of `007`. The file holds the text as typed; Excel is what changes it.
+  Open it with Data → From Text/CSV and set those columns to Text. When a table has such cells,
+  the export notice says so with an example.
 
 **Which tables are exported**
 
@@ -176,6 +180,8 @@ Export note tables to `<note name>.labnote_tableN.csv` next to the note.
 - A table written right under a line of text, with no blank line between, shows as text in the
   reading view, so it is skipped too and the notice says how many. A table right under a heading, a
   thematic break or a callout title is exported.
+- A table inside a comment (`<!-- … -->` or `%% … %%`) is not shown in the reading view at all, so
+  it is neither exported nor counted. The notice keeps this apart from the case above.
 
 **Overwriting**
 
@@ -307,8 +313,11 @@ read is left unchanged, with a notice.
 ### Print experiment worksheet
 
 Pick a workflow note's unit operations (lab ones preselected) and print them as worksheets with a
-QR code in two corners of every page; A4 or Letter. When printing from Obsidian does not work, it
-opens in the browser. See the [printout scan guide](./SCAN.md#2-기록지-출력) (Korean).
+QR code in two corners of every page; A4 or Letter. Method steps keep the numbers they have in the
+note, lines indented under a step print below it, and pipe tables print as tables. Sections with
+nothing in them are left as ruled writing space, Method and Results & Discussions widest. When
+printing from Obsidian does not work, it opens in the browser. See the
+[printout scan guide](./SCAN.md#2-기록지-출력) (Korean).
 
 ### Print whole note with barcodes
 

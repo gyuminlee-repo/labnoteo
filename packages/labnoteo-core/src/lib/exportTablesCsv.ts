@@ -11,7 +11,7 @@ export interface CsvTable {
   rows: string[][];
 }
 
-const SEPARATOR_ROW_RE = /^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$/;
+export const SEPARATOR_ROW_RE = /^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$/;
 
 function stripEdgePipes(line: string): string {
   let s = line.trim();
@@ -21,7 +21,7 @@ function stripEdgePipes(line: string): string {
 }
 
 /** Splits a single pipe-table row into cells, honoring `\|` as an escaped literal pipe. */
-function splitTableRow(line: string): string[] {
+export function splitTableRow(line: string): string[] {
   const stripped = stripEdgePipes(line);
   const cells: string[] = [];
   let current = '';
@@ -78,7 +78,7 @@ function stripInlineFormatting(cell: string): string {
 }
 
 /** Fits a data row to the header width the way GFM renders it: extra cells are dropped, missing ones are empty. */
-function fitRow(cells: string[], width: number): string[] {
+export function fitRow(cells: string[], width: number): string[] {
   if (cells.length >= width) return cells.slice(0, width);
   return [...cells, ...Array<string>(width - cells.length).fill('')];
 }
@@ -127,6 +127,57 @@ export interface MarkdownTableScan {
   tables: CsvTable[];
   /** Header and separator rows the reading view shows as text: no blank line above them. */
   notRendered: number;
+  /** Tables the reading view does not show at all, being inside a comment. */
+  hidden: number;
+}
+
+/** An HTML comment opening at the start of a line, as a Markdown HTML block does. */
+const HTML_COMMENT_OPEN = '<!--';
+const HTML_COMMENT_CLOSE = '-->';
+const OBSIDIAN_COMMENT = '%%';
+
+/**
+ * Which lines the reading view hides because they are inside a comment (#246):
+ * an HTML comment `<!-- … -->` or an Obsidian one `%% … %%`, either of which
+ * may run over several lines. A line counts as hidden only when nothing of it
+ * is left outside the comment, so `| a | %%note%% |` stays a table row.
+ * Comment marks inside a fenced code block are text, not comments.
+ */
+export function hiddenCommentLines(lines: readonly string[]): boolean[] {
+  const hidden: boolean[] = [];
+  let fence: OpenFence | null = null;
+  let open: 'html' | 'obsidian' | null = null;
+  for (const line of lines) {
+    const next = stepFence(line, fence);
+    if (next !== fence || fence) {
+      fence = next;
+      hidden.push(false);
+      continue;
+    }
+    let visible = '';
+    let i = 0;
+    while (i < line.length) {
+      if (open) {
+        const close = line.indexOf(open === 'html' ? HTML_COMMENT_CLOSE : OBSIDIAN_COMMENT, i);
+        if (close < 0) break;
+        i = close + (open === 'html' ? HTML_COMMENT_CLOSE.length : OBSIDIAN_COMMENT.length);
+        open = null;
+        continue;
+      }
+      const html = line.indexOf(HTML_COMMENT_OPEN, i);
+      const obsidian = line.indexOf(OBSIDIAN_COMMENT, i);
+      const at = html < 0 ? obsidian : obsidian < 0 ? html : Math.min(html, obsidian);
+      if (at < 0) {
+        visible += line.slice(i);
+        break;
+      }
+      visible += line.slice(i, at);
+      open = at === html ? 'html' : 'obsidian';
+      i = at + (open === 'html' ? HTML_COMMENT_OPEN.length : OBSIDIAN_COMMENT.length);
+    }
+    hidden.push(line.trim() !== '' && visible.trim() === '');
+  }
+  return hidden;
 }
 
 /**
@@ -155,8 +206,10 @@ export function extractMarkdownTables(markdown: string): CsvTable[] {
  */
 export function scanMarkdownTables(markdown: string): MarkdownTableScan {
   const lines = markdown.replace(/\r\n/g, '\n').split('\n').map(unquote);
+  const commented = hiddenCommentLines(lines.map(l => l.text));
   const tables: CsvTable[] = [];
   let notRendered = 0;
+  let hidden = 0;
 
   let fence: OpenFence | null = null;
   let inList = false;
@@ -172,6 +225,16 @@ export function scanMarkdownTables(markdown: string): MarkdownTableScan {
       fence = next;
       prevCode = true;
       i++;
+      continue;
+    }
+    if (commented[i]) {
+      if (isPipeRow(line, line.depth) && isSeparatorAfter(lines, i, line.depth)) {
+        hidden++;
+        for (i += 2; i < lines.length && isPipeRow(lines[i], line.depth); i++);
+      } else i++;
+      // The comment's last line ends the HTML block, so a table right under it
+      // is a table: treat the line like a code block, not like paragraph text.
+      prevCode = true;
       continue;
     }
     const blank = line.text.trim() === '';
@@ -192,9 +255,7 @@ export function scanMarkdownTables(markdown: string): MarkdownTableScan {
       inList = LIST_ITEM_RE.test(line.text) || (inList && !prevBlank && /^\s/.test(line.text));
     }
 
-    const nextIsSeparator =
-      i + 1 < lines.length && lines[i + 1].depth === line.depth && SEPARATOR_ROW_RE.test(lines[i + 1].text);
-    if (isPipeRow(line, line.depth) && nextIsSeparator) {
+    if (isPipeRow(line, line.depth) && isSeparatorAfter(lines, i, line.depth)) {
       const rendered = startsBlock(prev, line, prevCode);
       const header = splitTableRow(line.text);
       const rows: string[][] = [header];
@@ -213,8 +274,12 @@ export function scanMarkdownTables(markdown: string): MarkdownTableScan {
     i++;
   }
 
-  return { tables, notRendered };
+  return { tables, notRendered, hidden };
 }
+
+/** Whether the line after `i` is the `---` row that makes the one at `i` a table header. */
+const isSeparatorAfter = (lines: readonly QuotedLine[], i: number, depth: number): boolean =>
+  i + 1 < lines.length && lines[i + 1].depth === depth && SEPARATOR_ROW_RE.test(lines[i + 1].text);
 
 /** A leading character Excel reads as the start of a formula (full-width forms included). */
 const FORMULA_START_RE = /^[=@+\-＝＠＋－]/;
@@ -261,6 +326,33 @@ function escapeCsvCell(cell: string, guardLoneSign = false): string {
     return `"${cell.replace(/"/g, '""')}"`;
   }
   return cell;
+}
+
+const MONTHS =
+  'jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december';
+/** `3-1`, `1/2`, `4-12`: Excel reads these as March 1, 2 January, 12 April. */
+const DATE_PAIR_RE = /^\d{1,2}[-/]\d{1,2}$/;
+/** `SEPT9`, `MARCH1`, `DEC-1`: a month name next to a number is a date to Excel. */
+const MONTH_NAME_RE = new RegExp(`^(?:${MONTHS})[-/ ]?\\d{1,2}$`, 'i');
+/** `007`, `0031`: Excel reads them as numbers and the zeros are gone. */
+const LEADING_ZERO_RE = /^0\d+$/;
+
+/**
+ * Cells Excel would change when it opens the CSV as a spreadsheet (#256):
+ * clone or well names like `3-1` and `SEPT9` become dates, and IDs like `007`
+ * lose their leading zeros. The file itself holds the text as typed — this is
+ * only to warn about what opening it in Excel does. The header row is left
+ * out, and each distinct value is reported once.
+ */
+export function excelRiskCells(rows: readonly string[][]): string[] {
+  const found = new Set<string>();
+  for (const row of rows.slice(1)) {
+    for (const cell of row) {
+      const text = cell.trim();
+      if (DATE_PAIR_RE.test(text) || MONTH_NAME_RE.test(text) || LEADING_ZERO_RE.test(text)) found.add(text);
+    }
+  }
+  return [...found];
 }
 
 /** UTF-8 byte-order mark. */

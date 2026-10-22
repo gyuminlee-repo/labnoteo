@@ -9,6 +9,7 @@ import * as posix from '@labnoteo/core/posix';
 import {
   classifyCsvOverwrites,
   csvRowCount,
+  excelRiskCells,
   firstDifferingRow,
   scanMarkdownTables,
   tableToCsv,
@@ -44,14 +45,23 @@ async function offerStaleCsvCleanup(plugin: LabnotePlugin, file: TFile, tableCou
 
 export async function exportTablesToCsv(plugin: LabnotePlugin, file: TFile): Promise<void> {
   const content = await plugin.app.vault.read(file);
-  const { tables, notRendered } = scanMarkdownTables(content);
-  const skipped =
+  const { tables, notRendered, hidden } = scanMarkdownTables(content);
+  const skipped = [
     notRendered > 0
       ? plugin.t(
           '{0} table(s) were not exported: with no blank line above, the reading view shows them as text. Add a blank line above a table to export it.',
           String(notRendered)
         )
-      : '';
+      : '',
+    hidden > 0
+      ? plugin.t(
+          '{0} table(s) were not exported: they are inside a comment, so the reading view does not show them at all.',
+          String(hidden)
+        )
+      : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
   if (tables.length === 0) {
     const cleanup = await offerStaleCsvCleanup(plugin, file, 0);
     new Notice([plugin.t('No tables found in this note.'), skipped, cleanup].filter(Boolean).join(' '));
@@ -166,9 +176,31 @@ export async function exportTablesToCsv(plugin: LabnotePlugin, file: TFile): Pro
       : '';
   const cleanup = await offerStaleCsvCleanup(plugin, file, tables.length);
   new Notice(
-    [exported, renames, renameFailed, savedIn(plugin, dir, outputs.map(o => o.path)), skipped, cleanup, explorerHint(plugin)]
+    [
+      exported,
+      renames,
+      renameFailed,
+      savedIn(plugin, dir, outputs.map(o => o.path)),
+      skipped,
+      excelHint(plugin, tables.flatMap(t => excelRiskCells(t.rows))),
+      cleanup,
+      explorerHint(plugin),
+    ]
       .filter(Boolean)
       .join(' ')
+  );
+}
+
+/**
+ * How to open the CSV in Excel without it rewriting cells like `3-1` or `007`
+ * (#256). The file keeps the text as typed; Excel is what changes it.
+ */
+function excelHint(plugin: LabnotePlugin, risky: readonly string[]): string {
+  if (risky.length === 0) return '';
+  const shown = [...new Set(risky)].slice(0, 3).join(', ');
+  return plugin.t(
+    'Excel would read cells like {0} as dates or drop their leading zeros. Open the CSV with Data → From Text/CSV and set those columns to Text.',
+    shown
   );
 }
 

@@ -8,11 +8,13 @@ import {
   FAILED_DIR,
   PROCESSED_DIR,
   ScanFolderWatcher,
+  historyKey,
   isInsideFolder,
   outcomeOf,
   pruneHistory,
   selectReadyFiles,
   type FolderEntry,
+  type ScanFolderConfig,
 } from '../../src/scan/scanFolderWatcher';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -49,6 +51,33 @@ describe('selectReadyFiles', () => {
     expect(ready.map(e => e.name)).toEqual(['a.jpg', 'old.jpg']);
   });
 
+  it('passes over only what the folder already held, whatever the file times say (#247)', () => {
+    const copied = entry('copied.jpg', { mtimeMs: now - 100_000 });
+    const known = entry('was-here.jpg', { mtimeMs: now - 100_000 });
+    const ready = selectReadyFiles([copied, known], {
+      since: now - 50_000,
+      now,
+      baseline: new Set([historyKey(known)]),
+      handled: () => false,
+      lastSizes: new Map(),
+      manual: true,
+    }).ready;
+    expect(ready.map(e => e.name)).toEqual(['copied.jpg']);
+  });
+
+  it('without a baseline, takes a file the file system says appeared after the folder was set (#247)', () => {
+    const copied = entry('copied.jpg', { mtimeMs: now - 100_000, birthtimeMs: now - 10_000 });
+    const old = entry('old.jpg', { mtimeMs: now - 100_000, birthtimeMs: now - 100_000 });
+    const ready = selectReadyFiles([copied, old], {
+      since: now - 50_000,
+      now,
+      handled: () => false,
+      lastSizes: new Map(),
+      manual: true,
+    }).ready;
+    expect(ready.map(e => e.name)).toEqual(['copied.jpg']);
+  });
+
   it('forgets the size of files that left the folder', () => {
     const lastSizes = new Map([['gone.jpg', 5]]);
     selectReadyFiles([], { since: 0, now, handled: () => false, lastSizes });
@@ -81,6 +110,7 @@ describe('ScanFolderWatcher.tick', () => {
   let dir: string;
   let saved: Map<string, unknown>;
   let store: PcStore;
+  const started: ScanFolderWatcher[] = [];
 
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'labnoteo-scans-'));
@@ -90,6 +120,8 @@ describe('ScanFolderWatcher.tick', () => {
   });
 
   afterEach(() => {
+    // setConfig starts an fs.watch; left running it fires after the globals go.
+    while (started.length > 0) started.pop()!.stop();
     vi.unstubAllGlobals();
     fs.rmSync(dir, { recursive: true, force: true });
   });
@@ -105,30 +137,33 @@ describe('ScanFolderWatcher.tick', () => {
   function watcher(statusOf: (name: string) => ScanResult['status']) {
     const runs: { names: string[]; skipNoQr?: boolean }[] = [];
     const reports: boolean[] = [];
+    const notices: string[] = [];
     const w = new ScanFolderWatcher(
       {
         store,
-        t: (s: string) => s,
+        t: (s: string, ...args: Array<string | number | boolean>) =>
+          args.reduce<string>((acc, a, i) => acc.replace(`{${i}}`, String(a)), s),
         run: async (inputs: ScanInput[], opts) => {
           runs.push({ names: inputs.map(i => i.name), skipNoQr: opts.skipNoQr });
           return inputs.map(i => ({ source: i.name, input: i.name, status: statusOf(i.name) }));
         },
         report: (_results, manual) => reports.push(manual),
-        notify: () => undefined,
+        notify: message => void notices.push(message),
       },
       { fs, path }
     );
-    return { w, runs, reports };
+    started.push(w);
+    return { w, runs, reports, notices };
   }
 
   it('dedicated mode: reads new files only and moves each original by its outcome', async () => {
+    const { w, runs, reports } = watcher(name => (name === 'bad.jpg' ? 'unmatched' : 'filed'));
     put('before.jpg', 60_000);
-    saved.set('scanFolder', { path: dir, mode: 'dedicated', since: Date.now() - 30_000 });
+    w.setConfig(dir, 'dedicated');
     put('good.jpg', 10_000);
     put('bad.jpg', 10_000);
     fs.mkdirSync(path.join(dir, 'sub'));
     fs.writeFileSync(path.join(dir, 'sub', 'nested.jpg'), 'x');
-    const { w, runs, reports } = watcher(name => (name === 'bad.jpg' ? 'unmatched' : 'filed'));
 
     await w.tick({ manual: true });
     expect(runs.map(r => ({ ...r, names: [...r.names].sort() }))).toEqual([{ names: ['bad.jpg', 'good.jpg'], skipNoQr: false }]);
@@ -152,12 +187,55 @@ describe('ScanFolderWatcher.tick', () => {
   });
 
   it('reads files that were there before only when asked', async () => {
-    put('before.jpg', 60_000);
-    saved.set('scanFolder', { path: dir, mode: 'shared', since: Date.now() - 30_000 });
     const { w, runs } = watcher(() => 'filed');
+    put('before.jpg', 60_000);
+    w.setConfig(dir, 'shared');
     expect(await w.tick({ manual: true })).toEqual([]);
     await w.tick({ manual: true, includeExisting: true });
     expect(runs.map(r => r.names)).toEqual([['before.jpg']]);
+  });
+
+  it('reads a copied file whose modification time is old, and passes over what was there when the folder was set (#247)', async () => {
+    put('was-here.jpg', 60_000);
+    const { w, runs } = watcher(() => 'filed');
+    w.setConfig(dir, 'shared');
+    put('copied.jpg', 60_000);
+
+    await w.tick({ manual: true });
+    expect(runs.map(r => r.names)).toEqual([['copied.jpg']]);
+  });
+
+  it('reads a file that left the folder and came back (#247)', async () => {
+    put('photo.jpg', 60_000);
+    const { w, runs } = watcher(() => 'skipped');
+    w.setConfig(dir, 'shared');
+    expect(await w.tick({ manual: true })).toEqual([]);
+
+    fs.rmSync(path.join(dir, 'photo.jpg'));
+    expect(await w.tick({ manual: true })).toEqual([]);
+    expect((saved.get('scanFolder') as ScanFolderConfig).baseline).toEqual([]);
+
+    put('photo.jpg', 60_000);
+    await w.tick({ manual: true });
+    expect(runs.map(r => r.names)).toEqual([['photo.jpg']]);
+  });
+
+  it('keeps the baseline when only the mode changes', () => {
+    put('was-here.jpg', 60_000);
+    const { w } = watcher(() => 'filed');
+    w.setConfig(dir, 'shared');
+    const before = saved.get('scanFolder') as ScanFolderConfig;
+    w.setConfig(dir, 'dedicated');
+    expect(saved.get('scanFolder')).toEqual({ ...before, mode: 'dedicated' });
+  });
+
+  it('says how many files it passes over when a manual run finds nothing new (#247)', async () => {
+    put('was-here.jpg', 60_000);
+    const { w, notices } = watcher(() => 'filed');
+    w.setConfig(dir, 'shared');
+
+    await w.tick({ manual: true });
+    expect(notices.join(' ')).toContain('1 file(s) that were already in the folder');
   });
 
   it('does nothing without a folder', async () => {

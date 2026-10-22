@@ -70,6 +70,12 @@ body { font-family: "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sa
 .head .muted, .foot { color: #444; }
 .body { position: absolute; top: ${box.top}mm; left: ${box.left}mm; width: ${box.width}mm; height: ${box.height}mm; overflow: hidden; font-size: 10pt; line-height: 1.5; }
 .foot { position: absolute; bottom: ${QR_INSET_MM + 1}mm; left: ${QR_INSET_MM + QR_SIZE_MM + 6}mm; right: ${box.left}mm; font-size: 8pt; line-height: 1.35; }
+.ws { display: flex; flex-direction: column; min-height: 100%; }
+.ws > .sec.g1, .ws > .sec.g2 { display: flex; flex-direction: column; flex-shrink: 0; }
+.ws > .sec.g1 { flex-grow: 1; }
+.ws > .sec.g2 { flex-grow: 2; }
+/* Faint rules to write on, thin enough to disappear in a photocopy. */
+.ws .fill { flex: 1 1 auto; min-height: 3em; background: repeating-linear-gradient(to bottom, transparent 0, transparent calc(1.5em - 0.2mm), #d8d8d8 calc(1.5em - 0.2mm), #d8d8d8 1.5em); }
 .sec { margin: 0 0 2.5mm; break-inside: avoid; }
 .sec h3 { font-size: 10.5pt; margin: 0 0 1mm; padding-bottom: 0.5mm; border-bottom: 0.3mm solid #000; }
 .meta { border-collapse: collapse; width: 100%; }
@@ -80,6 +86,16 @@ body { font-family: "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sa
 .steps li { display: flex; gap: 2mm; margin: 0.8mm 0; }
 .steps .box { flex: none; width: 3.6mm; height: 3.6mm; margin-top: 0.9mm; border: 0.3mm solid #000; }
 .steps .n { flex: none; min-width: 5mm; }
+.steps .s { flex: 1 1 auto; min-width: 0; }
+.steps .sub { margin: 0.4mm 0 0; padding-left: 5mm; }
+.steps .sub li { display: list-item; margin: 0.2mm 0; }
+.bul { margin: 0; padding-left: 4mm; }
+.bul li { margin: 0.2mm 0; }
+.bul li.d1 { margin-left: 4mm; }
+.bul li.d2 { margin-left: 8mm; }
+.bul li.d3 { margin-left: 12mm; }
+.sec .grid { border-collapse: collapse; margin: 0.8mm 0; }
+.sec .grid th, .sec .grid td { border: 0.2mm solid #999; padding: 0.4mm 1.4mm; text-align: left; }
 .text p { margin: 0; white-space: pre-wrap; }
 .note-body img { max-width: 100%; }
 .note-body table { border-collapse: collapse; }
