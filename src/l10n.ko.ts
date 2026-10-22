@@ -414,10 +414,15 @@ const obsidianKo: Record<string, string> = {
   'Global {0} sample': '전역 {0} 샘플',
   'Global samples already have the alias {0} ({1}). Autocomplete will show both, marked Local and Global.':
     '전역 샘플에 같은 별칭 {0}({1})이 이미 있습니다. 자동완성에는 로컬과 전역으로 구분되어 둘 다 보입니다.',
-  'This experiment already has the alias {0} ({1}). Autocomplete cannot tell the two apart, so picking the existing sample is usually better.':
-    '이 실험에 같은 별칭 {0}({1})이 이미 있습니다. 자동완성에서 둘을 구분할 수 없으니 있는 샘플을 고르는 편이 좋습니다.',
-  'Global samples already have the alias {0} ({1}). Autocomplete cannot tell the two apart, so picking the existing sample is usually better.':
-    '전역 샘플에 같은 별칭 {0}({1})이 이미 있습니다. 자동완성에서 둘을 구분할 수 없으니 있는 샘플을 고르는 편이 좋습니다.',
+  'This experiment already has the alias {0} ({1}).': '이 실험에 같은 별칭 {0}({1})이 이미 있습니다.',
+  'Global samples already have the alias {0} ({1}).': '전역 샘플에 같은 별칭 {0}({1})이 이미 있습니다.',
+  'Use the existing sample {0}': '있는 샘플 {0} 쓰기',
+  'Nothing is registered; its ID goes where this one would have.':
+    '새로 등록하지 않고, 만들려던 자리에 그 샘플의 ID를 넣습니다.',
+  'Create a new sample anyway': '그래도 새로 만들기',
+  'Both keep the alias, and only their descriptions tell them apart.':
+    '두 샘플이 같은 별칭을 쓰게 되어 설명으로만 구분할 수 있습니다.',
+  'Using the existing sample {0} instead of creating one.': '새로 만들지 않고 있는 샘플 {0}을(를) 씁니다.',
   '{0} was added to Global samples because this note is outside an experiment folder.':
     '이 노트는 실험 폴더 밖에 있어 {0}을(를) 전역 샘플에 추가했습니다.',
   'Sample updated: {0}': '샘플이 수정되었습니다: {0}',

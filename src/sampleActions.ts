@@ -264,6 +264,8 @@ export interface CreatedSample {
   definitionText: string;
   /** `id;alias` (or bare `id`) — the registry-first document insert form. */
   referenceText: string;
+  /** An existing same-alias sample picked instead of creating one (#248). */
+  reused?: boolean;
 }
 
 /**
@@ -329,6 +331,55 @@ export async function createSampleInteractive(
     validate: validateAlias(plugin),
   });
   if (aliasRaw === undefined) return undefined;
+  const alias = clean(aliasRaw);
+
+  // A twin in the same folder is worse than a Global one (#125): autocomplete
+  // shows the two with identical text and no Local/Global tag to tell them
+  // apart. Ask before the remaining prompts rather than after the sample is
+  // written (#248); re-entering a known id is the merge flow, which stays.
+  const sibling = alias && !existing ? await sampleWithAliasIn(plugin, type, folder, alias) : undefined;
+  if (sibling) {
+    const reuse = await pickModal<boolean>(
+      app,
+      [
+        {
+          label: plugin.t('Use the existing sample {0}', sibling),
+          value: true,
+          description: plugin.t('Nothing is registered; its ID goes where this one would have.'),
+        },
+        {
+          label: plugin.t('Create a new sample anyway'),
+          value: false,
+          description: plugin.t('Both keep the alias, and only their descriptions tell them apart.'),
+        },
+      ],
+      {
+        title: plugin.t(
+          isSameSampleFolder(folder, plugin.settings.globalSampleFolder)
+            ? 'Global samples already have the alias {0} ({1}).'
+            : 'This experiment already has the alias {0} ({1}).',
+          alias!,
+          sibling
+        ),
+      }
+    );
+    if (reuse === undefined) return undefined;
+    if (reuse) {
+      const record = (await loadSamplesByType(plugin.fs, folder, type))[sibling];
+      const reusedAlias = record?.alias ?? null;
+      const reusedDesc = record?.descriptions?.[0] ?? null;
+      new Notice(plugin.t('Using the existing sample {0} instead of creating one.', sibling));
+      return {
+        id: sibling,
+        alias: reusedAlias,
+        description: reusedDesc,
+        definitionText: buildSampleDefinitionText(type, sibling, reusedAlias, reusedDesc),
+        referenceText: buildSampleReferenceText(sibling, reusedAlias),
+        reused: true,
+      };
+    }
+  }
+
   const descRaw = await promptModal(app, {
     title: plugin.t('Enter a description (optional)'),
     value: existing?.record.descriptions?.[0] ?? '',
@@ -342,7 +393,6 @@ export async function createSampleInteractive(
     placeholder: plugin.t('e.g. Freezer-2 / Box-3 / A1'),
   });
   if (locationRaw === undefined) return undefined;
-  const alias = clean(aliasRaw);
   const description = clean(descRaw);
   const location = clean(locationRaw);
 
@@ -368,22 +418,10 @@ export async function createSampleInteractive(
     };
   }
 
-  // A twin in the same folder is worse than a Global one (#125): autocomplete
-  // shows the two with identical text and no Local/Global tag to tell them apart.
-  const sibling = alias ? await sampleWithAliasIn(plugin, type, folder, alias) : undefined;
+  // Only Global holds the alias: the two are told apart by the Local/Global
+  // tag in autocomplete, so a notice is enough (#109).
   const twin = alias && !sibling ? await globalSampleWithAlias(plugin, type, folder, alias) : undefined;
-  if (sibling) {
-    new Notice(
-      plugin.t(
-        isSameSampleFolder(folder, plugin.settings.globalSampleFolder)
-          ? 'Global samples already have the alias {0} ({1}). Autocomplete cannot tell the two apart, so picking the existing sample is usually better.'
-          : 'This experiment already has the alias {0} ({1}). Autocomplete cannot tell the two apart, so picking the existing sample is usually better.',
-        alias!,
-        sibling
-      ),
-      8000
-    );
-  } else if (twin) {
+  if (twin) {
     new Notice(
       plugin.t(
         'Global samples already have the alias {0} ({1}). Autocomplete will show both, marked Local and Global.',
