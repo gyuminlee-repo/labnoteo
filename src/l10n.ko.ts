@@ -261,8 +261,8 @@ const obsidianKo: Record<string, string> = {
     '{0}이(가) 새 버전과 다릅니다. 설치 뒤에 직접 고친 내용이 있다면 바꿀 때 사라집니다. 새 버전으로 바꿀까요?',
   'From then on, updates change only the marked block and keep what you write below it.':
     '이번에 바꾸면 다음부터는 업데이트가 표시된 블록만 바꾸고, 그 아래 적은 내용은 그대로 둡니다.',
-  'Pasted images are saved at the top of the vault. Save them in an images folder next to the note instead (for a lab note, the experiment\'s images folder)? This changes Settings → Files and links → Default location for new attachments to "./images".':
-    '붙여넣은 이미지가 보관함 맨 위에 저장되고 있습니다. 노트 옆 images 폴더(랩노트라면 실험의 images 폴더)에 저장할까요? 설정 → 파일 및 링크 → 새 첨부 파일의 기본 위치를 "./images"로 바꿉니다.',
+  'With the current setting, a pasted image is saved at the top of the vault. Save them in an images folder next to the note instead (for a lab note, the experiment\'s images folder)? This changes Settings → Files and links → Default location for new attachments to "./images".':
+    '지금 설정에서는 붙여넣은 이미지가 보관함 맨 위에 저장됩니다. 노트 옆 images 폴더(랩노트라면 실험의 images 폴더)에 저장하도록 바꿀까요? 설정 → 파일 및 링크 → 새 첨부 파일의 기본 위치를 "./images"로 바꿉니다.',
   'Use ./images': './images 쓰기',
   'New attachments now go to the images folder next to each note.':
     '이제 새 첨부 파일은 각 노트 옆 images 폴더에 저장됩니다.',

@@ -1371,7 +1371,7 @@ export default class LabnotePlugin extends Plugin {
     if (current !== undefined && current !== null && current !== '' && current !== '/') return;
     const ok = await this.host.confirm(
       this.t(
-        'Pasted images are saved at the top of the vault. Save them in an images folder next to the note instead (for a lab note, the experiment\'s images folder)? This changes Settings → Files and links → Default location for new attachments to "./images".'
+        'With the current setting, a pasted image is saved at the top of the vault. Save them in an images folder next to the note instead (for a lab note, the experiment\'s images folder)? This changes Settings → Files and links → Default location for new attachments to "./images".'
       ),
       { confirmLabel: this.t('Use ./images') }
     );
