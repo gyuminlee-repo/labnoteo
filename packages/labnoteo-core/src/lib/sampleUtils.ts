@@ -106,6 +106,22 @@ export function sampleAliasProblem(alias: string): 'separator' | 'markdown' | un
   return undefined;
 }
 
+/**
+ * `name` rewritten into an alias {@link sampleAliasProblem} accepts, or
+ * undefined when nothing is left. Used where nobody can be asked to fix it:
+ * samples a model extracted (#61) and items pulled from partbank, whose names
+ * routinely carry `_` (`pTrc99A_GFP`).
+ */
+export function toSampleAlias(name: string): string | undefined {
+  return (
+    name
+      .replace(/[;:_]/g, '-')
+      .replace(/\[\[|\]\]/g, '')
+      .replace(/[#*`]/g, '')
+      .trim() || undefined
+  );
+}
+
 /** Whether a description holds `;`, which ends it in a note (#98). */
 export function hasSampleDescriptionSeparator(description: string): boolean {
   return description.includes(';');
@@ -162,15 +178,21 @@ export function buildSampleReferenceText(id: string, alias?: string | null): str
 }
 
 /**
- * Catalog (reference-DB) sample types whose entries come from read-only
- * `{Type}_*.json` product catalogs rather than being authored. New ids are not
- * generated for these; the user searches the catalog instead.
+ * Whether a type can have a read-only `{Type}_*.json` catalog beside its
+ * registry.
+ *
+ * Every type can. It used to be only Reagent, Labware and Equip, which were
+ * the types with vendor catalogs, but a downloaded partbank catalog is a
+ * catalog of DNA parts, plasmids and primers. What decides whether a catalog
+ * is offered is now simply whether such a file exists (`hasReferenceCatalog`),
+ * so a vault without one sees the menus it always did.
+ *
+ * Kept as a function rather than removed: it names the rule at its six call
+ * sites, and a type that must not take one would otherwise have no place to
+ * be excluded.
  */
-export const CATALOG_SAMPLE_TYPES = ['Reagent', 'Labware', 'Equip'] as const;
-
-/** True when `type` is a catalog (reference-DB) type. */
-export function isCatalogSampleType(type: string): boolean {
-  return (CATALOG_SAMPLE_TYPES as readonly string[]).includes(type);
+export function isCatalogSampleType(_type: string): boolean {
+  return true;
 }
 
 /**

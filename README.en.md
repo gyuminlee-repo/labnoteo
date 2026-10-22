@@ -1,6 +1,6 @@
 # Labnote Assistant for Obsidian (labnoteo)
 
-**Version 0.114.1**
+**Version 0.115.0**
 
 [한국어](README.md)
 
@@ -24,6 +24,7 @@ This repository is the Obsidian port of the Labnote Assistant. It shares its pla
 - **Sample suggestions & CSV export**: Inline suggestions and highlighting for sample references while editing, plus CSV export of note tables (Excel-compatible UTF-8 with BOM). → [Export tables to CSV](docs/REFERENCE.en.md#export-tables-to-csv)
 - **Experiment status, discussion flag, issue markers**: Track each experiment's lifecycle (`planned` → `in-progress` → … → `completed`/`failed`) in frontmatter, and flag a note for team discussion either whole (*Toggle discussion flag*) or at a specific line (`@issue;<ID>;<topic>` marker). The next push opens a GitHub Issue.
 - **Note IDs, QR worksheets, scan filing (desktop)**: Every lab note gets a unique ID (`labnote_id: LN-7K3M9QX2`), and a workflow note's unit operations print as **experiment worksheets** with a QR code on every page. Write on them, then put phone photos or scanner output (images, PDF, zip) in a **PC scan folder** or drop them on a window: the QR code is read and the image is filed in a `#### Worksheet scans` section at the end of that unit operation. Sending them to your own Slack bot by DM works too (optional). → [printout scan guide](docs/SCAN.md) (Korean)
+- **partbank integration (optional)**: Search partbank's parts, plasmids, primers and strains from the `@` autocomplete and register them as samples, read their storage location, and open them in partbank. A whole catalog can be downloaded to pick from offline. The API key is kept on the PC, never in the vault. → [partbank](docs/REFERENCE.en.md#partbank)
 - **LLM assistance (optional)**: Draft methods, summarize results, and extract samples via Ollama or OpenAI. The *Ask assistant* command lets the model call Labnote's own tools to reach a goal, confirming before any write. The same tools are available to external MCP clients. → [AI](docs/REFERENCE.en.md#ai)
 - **Research automation (optional)**: One command scaffolds GitHub Actions, zero-dependency scripts, and AI-agent rules (`AGENTS.md`) into your vault to validate notes, open Experiment ↔ Issue links, and draft a Living-Manuscript Wiki — all opt-in and human-reviewed. → [below](#research-automation)
 
@@ -71,6 +72,8 @@ Under a Korean UI the command palette shows each name as `Korean (English)` (e.g
 | Open workflow view / Open sample view | Reveal the sidebar view and move focus into its list |
 | Open sample definition | Open the definition window for the sample under the cursor, or one picked by search |
 | Insert sample list of this experiment | Insert this experiment's samples as a Markdown table at the cursor |
+| Download partbank catalog | Download your own partbank items as product catalog files in the global sample folder |
+| Refresh storage locations from partbank | Read the storage location of every partbank-linked sample again and store the changes after confirming |
 | Show note barcode | Show the note's ID and QR code in a window, giving it an ID first if it has none |
 | Assign note ID | Give a note without one a `labnote_id` |
 | Print experiment worksheet | Print the chosen unit operations as worksheets with a QR code on every page (A4 or Letter) |
@@ -121,6 +124,13 @@ See the generated `.labnoteo/SETUP.md` (admins) for the full asset table, prereq
 - **Sample tracking**: whether autocomplete, highlighting and `{Type}.json` registry sync are on (reload to apply). `sample_tracking: 'no'` in an experiment README's front matter turns them off for that experiment's notes only.
 - **Custom sample types**: types in addition to the built-ins. Korean types (`배지`) get `@배지` autocomplete. Use letters, digits and `_` only — a name with a space or `-`, or one that differs from an existing type only in letter case, is not saved.
 - **Global sample folder**: the vault-global sample folder (default `resources/labsamples`). After you change it and close settings, you are asked whether to move the samples left in the old folder.
+
+**partbank**
+
+- **partbank server** / **partbank desktop app**: an address, an API key and a `Test connection` button for each. The key is kept on this PC only, never in the vault, so enter it once per PC. The desktop connection is hidden on mobile.
+- **Connection to search**: which connection the autocomplete search and the catalog download use (default `partbank server`). A link made through the desktop app only means something on that PC, so a vault shared with the lab should use the server.
+
+See [partbank](docs/REFERENCE.en.md#partbank) for the details.
 
 **Workflows**
 

@@ -17,6 +17,8 @@ import {
   resolveSampleDefinition,
   type ResolvedSampleDefinition,
 } from './sampleActions';
+import { openInPartbank } from './partbank/partbankActions';
+import { refreshOneLocation } from './partbank/partbankLocation';
 
 /**
  * Resolve `(type, id)` then show the definition popup (or a Notice if absent).
@@ -79,6 +81,8 @@ class SampleDefinitionModal extends Modal {
       [t('Alias'), record.alias ?? '-'],
       [t('Description'), record.descriptions?.[0] ?? '-'],
       [t('Location'), record.location ?? '-'],
+      // The partbank id is the one key that makes the link usable by hand.
+      ...(record.source ? [[t('partbank'), record.source.kid ?? record.source.id] as [string, string]] : []),
       ...(record.discarded ? [[t('Discarded'), record.discarded] as [string, string]] : []),
       [t('Scope'), scope],
       [t('File'), jsonPath],
@@ -139,6 +143,25 @@ class SampleDefinitionModal extends Modal {
             });
             if (ok) this.close();
           })
+        );
+      }
+      if (record.source) {
+        const source = record.source;
+        buttons.addButton(btn =>
+          btn.setButtonText(t('Refresh storage location from partbank')).onClick(async () => {
+            const stored = await refreshOneLocation(this.plugin, {
+              type: this.type,
+              id: this.id,
+              folder,
+              record,
+            });
+            if (stored) this.close();
+          })
+        );
+        buttons.addButton(btn =>
+          btn
+            .setButtonText(t('Open in partbank'))
+            .onClick(() => openInPartbank(this.plugin, source))
         );
       }
       buttons.addButton(btn =>

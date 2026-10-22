@@ -133,6 +133,37 @@ describe('migrateSettings', () => {
     expect(migrateSettings({ catalogNoticeHash: 42 }).catalogNoticeHash).toBe('');
   });
 
+  // The API key goes to whatever address is stored here, so a value that is
+  // not an http(s) origin is refused rather than kept.
+  it('keeps a partbank address only when it is an http(s) URL', () => {
+    expect(migrateSettings({}).partbankWebUrl).toBe('https://partbank.kbiofoundry.kr');
+    expect(migrateSettings({}).partbankDesktopUrl).toBe('http://127.0.0.1:47830');
+    expect(migrateSettings({ partbankWebUrl: ' https://pb.lab.kr ' }).partbankWebUrl).toBe(
+      'https://pb.lab.kr'
+    );
+    expect(migrateSettings({ partbankDesktopUrl: 'http://127.0.0.1:9000' }).partbankDesktopUrl).toBe(
+      'http://127.0.0.1:9000'
+    );
+    expect(migrateSettings({ partbankWebUrl: 'partbank.kr' }).partbankWebUrl).toBe(
+      DEFAULT_SETTINGS.partbankWebUrl
+    );
+    expect(migrateSettings({ partbankWebUrl: 'file:///etc/passwd' }).partbankWebUrl).toBe(
+      DEFAULT_SETTINGS.partbankWebUrl
+    );
+    expect(migrateSettings({ partbankWebUrl: 47830 }).partbankWebUrl).toBe(
+      DEFAULT_SETTINGS.partbankWebUrl
+    );
+  });
+
+  // Web by default: a desktop link means nothing on anyone else's machine.
+  it('defaults the partbank connection to the server', () => {
+    expect(migrateSettings({}).partbankDefaultConnection).toBe('web');
+    expect(migrateSettings({ partbankDefaultConnection: 'desktop' }).partbankDefaultConnection).toBe(
+      'desktop'
+    );
+    expect(migrateSettings({ partbankDefaultConnection: 'lan' }).partbankDefaultConnection).toBe('web');
+  });
+
   it('defaults autoUpdateLastUpdated to on and keeps a stored boolean', () => {
     expect(migrateSettings({}).autoUpdateLastUpdated).toBe(true);
     expect(migrateSettings({ autoUpdateLastUpdated: false }).autoUpdateLastUpdated).toBe(false);

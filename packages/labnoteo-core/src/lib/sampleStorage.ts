@@ -16,6 +16,7 @@ import {
 } from './sampleUtils';
 import { escapeRegExp } from './regexUtils';
 import { getExperimentDir, getExperimentLabsamplesFolder } from './labnoteStructure';
+import { normalizeSampleSource, type SampleSource } from '../partbank/types';
 
 /**
  * Extracted sample information from document text
@@ -61,6 +62,13 @@ export interface SampleRecord {
    * from "Edit sample" or from before this field are not listed and stay.
    */
   descriptionSources?: Record<string, string>;
+  /**
+   * The external item this sample stands for, when it was registered from one
+   * (partbank today). Lookups that need a stable key — "refresh the storage
+   * location", "open in partbank" — read it; `null` or absent means the sample
+   * was authored locally.
+   */
+  source?: SampleSource | null;
 }
 
 /**
@@ -93,6 +101,7 @@ function assertSafeSampleType(type: string): void {
  */
 function normalizeSampleRecord(rec: unknown, fallbackType: string): SampleRecord {
   const r = (rec && typeof rec === 'object' ? rec : {}) as Partial<SampleRecord>;
+  const source = normalizeSampleSource(r.source);
   return {
     type: typeof r.type === 'string' && r.type ? r.type : fallbackType,
     alias: typeof r.alias === 'string' ? r.alias : null,
@@ -113,6 +122,7 @@ function normalizeSampleRecord(rec: unknown, fallbackType: string): SampleRecord
           ),
         }
       : {}),
+    ...(source ? { source } : {}),
   };
 }
 
@@ -150,6 +160,7 @@ function mergeCaseCollidingIds(
     }
     if (!target.alias && rec.alias) target.alias = rec.alias;
     if (!target.location && rec.location) target.location = rec.location;
+    if (!target.source && rec.source) target.source = rec.source;
   }
 
   return { records: out, changed };
@@ -890,8 +901,25 @@ export async function loadSampleAliases(
   }
 }
 
-const isReferenceCatalogFile = (name: string, type: string): boolean =>
-  name.startsWith(`${type}_`) && name.endsWith('.json');
+/**
+ * Whether `name` is a `{type}_*.json` catalog of `type`.
+ *
+ * `knownTypes` is what keeps a catalog of one type from swallowing another
+ * type's registry: a custom type name may hold `_` (`DNA_Lib`), so `DNA_Lib.json`
+ * — the registry of the `DNA_Lib` type — matches the `DNA_` prefix too. Passing
+ * the vault's type list excludes any file that is exactly `{known type}.json`.
+ * Callers all have the list; it is optional only so older call sites keep
+ * compiling.
+ */
+const isReferenceCatalogFile = (
+  name: string,
+  type: string,
+  knownTypes?: readonly string[]
+): boolean => {
+  if (!name.startsWith(`${type}_`) || !name.endsWith('.json')) return false;
+  const stem = name.slice(0, -'.json'.length);
+  return !knownTypes?.some((t) => t === stem);
+};
 
 /**
  * Whether `labsamplesFolder` holds a `{type}_*.json` product catalog, without
@@ -901,11 +929,14 @@ const isReferenceCatalogFile = (name: string, type: string): boolean =>
 export async function hasReferenceCatalog(
   fs: LabnoteFs,
   labsamplesFolder: string,
-  type: string
+  type: string,
+  knownTypes?: readonly string[]
 ): Promise<boolean> {
   if (!labsamplesFolder || !(await fs.exists(labsamplesFolder))) return false;
   try {
-    return (await fs.list(labsamplesFolder)).some((name) => isReferenceCatalogFile(name, type));
+    return (await fs.list(labsamplesFolder)).some((name) =>
+      isReferenceCatalogFile(name, type, knownTypes)
+    );
   } catch {
     return false;
   }
@@ -918,7 +949,8 @@ export async function hasReferenceCatalog(
 export async function loadReferenceSamplesByType(
   fs: LabnoteFs,
   labsamplesFolder: string,
-  type: string
+  type: string,
+  knownTypes?: readonly string[]
 ): Promise<Record<string, SampleRecord>> {
   const merged: Record<string, SampleRecord> = {};
   if (!(await fs.exists(labsamplesFolder))) {
@@ -932,7 +964,7 @@ export async function loadReferenceSamplesByType(
     return merged;
   }
   for (const name of names) {
-    if (!isReferenceCatalogFile(name, type)) {
+    if (!isReferenceCatalogFile(name, type, knownTypes)) {
       continue;
     }
     const filePath = path.join(labsamplesFolder, name);
@@ -940,15 +972,64 @@ export async function loadReferenceSamplesByType(
       const content = await fs.read(filePath);
       const data = JSON.parse(content) as Record<string, unknown>;
       for (const [id, record] of Object.entries(data)) {
-        if (record && typeof record === 'object' && !merged[id]) {
-          merged[id] = normalizeSampleRecord(record, type);
-        }
+        if (!record || typeof record !== 'object' || merged[id]) continue;
+        const normalized = normalizeSampleRecord(record, type);
+        // A safety net behind the file-name rule: a record that names another
+        // type is not this type's, whatever file it turned up in.
+        if (normalized.type.toLowerCase() !== type.toLowerCase()) continue;
+        merged[id] = normalized;
       }
     } catch (err) {
       console.warn(`[labnoteo] Failed to load reference ${filePath}:`, err);
     }
   }
   return merged;
+}
+
+/**
+ * Every type's catalog ids in one folder, listing the directory once.
+ *
+ * {@link loadReferenceSamplesByType} lists it per call, which was fine while
+ * three types could have a catalog. Now that any type can, the id index would
+ * list the same folder once per type on every refresh.
+ */
+export async function loadReferenceIdsByFolder(
+  fs: LabnoteFs,
+  labsamplesFolder: string,
+  types: readonly string[]
+): Promise<Map<string, Set<string>>> {
+  const out = new Map<string, Set<string>>();
+  if (!labsamplesFolder || !(await fs.exists(labsamplesFolder))) return out;
+  let names: string[];
+  try {
+    names = await fs.list(labsamplesFolder);
+  } catch (err) {
+    console.warn(`[labnoteo] Failed to readdir ${labsamplesFolder}:`, err);
+    return out;
+  }
+  for (const type of types) {
+    const ids = new Set<string>();
+    for (const name of names) {
+      if (!isReferenceCatalogFile(name, type, types)) continue;
+      try {
+        const data = JSON.parse(await fs.read(path.join(labsamplesFolder, name))) as Record<
+          string,
+          unknown
+        >;
+        for (const [id, record] of Object.entries(data)) {
+          if (!record || typeof record !== 'object') continue;
+          if (normalizeSampleRecord(record, type).type.toLowerCase() !== type.toLowerCase()) {
+            continue;
+          }
+          ids.add(id);
+        }
+      } catch (err) {
+        console.warn(`[labnoteo] Failed to load reference ${labsamplesFolder}/${name}:`, err);
+      }
+    }
+    if (ids.size > 0) out.set(type, ids);
+  }
+  return out;
 }
 
 /**
@@ -978,10 +1059,10 @@ export async function saveSamplesByType(
  * `sources` semantics:
  *  - omit `sources` to preserve whatever the existing record had (sidebar edit),
  *  - pass an explicit array to set them (tool create binds the note as source).
- * `location` follows the same preserve-when-omitted rule (pass `null` to clear).
- * `alias` is overwritten; `description` replaces only the first description
- * (the one the edit prompt shows), keeping those other notes added. Every other
- * field — `discarded`, `descriptionSources` — is kept (#188).
+ * `location` and `source` follow the same preserve-when-omitted rule (pass
+ * `null` to clear). `alias` is overwritten; `description` replaces only the
+ * first description (the one the edit prompt shows), keeping those other notes
+ * added. Every other field — `discarded`, `descriptionSources` — is kept (#188).
  */
 export async function upsertSampleRecord(
   fs: LabnoteFs,
@@ -993,6 +1074,7 @@ export async function upsertSampleRecord(
     description: string | null;
     sources?: string[];
     location?: string | null;
+    source?: SampleSource | null;
   }
 ): Promise<void> {
   assertSafeSampleType(type);
@@ -1001,7 +1083,7 @@ export async function upsertSampleRecord(
     const records = parseSampleRecords(raw);
     const existing = records[id];
     const others = (existing?.descriptions ?? []).slice(1);
-    records[id] = {
+    const record: SampleRecord = {
       ...existing,
       type,
       alias: fields.alias,
@@ -1011,6 +1093,12 @@ export async function upsertSampleRecord(
       sources: fields.sources ?? existing?.sources ?? [],
       location: fields.location !== undefined ? fields.location : (existing?.location ?? null),
     };
+    // Absent rather than `null` when there is no link, so the vast majority of
+    // records (authored by hand) keep the shape they had.
+    const source = fields.source !== undefined ? fields.source : (existing?.source ?? null);
+    if (source) record.source = source;
+    else delete record.source;
+    records[id] = record;
     return JSON.stringify(records, null, 2);
   });
 }
@@ -1276,17 +1364,21 @@ export async function saveSamplesFromDocument(
       : [];
     if (catalogRefs.length > 0) {
       const catalogFolder = getExperimentLabsamplesFolder(documentPath) ?? labsamplesFolder;
+      const knownTypes = [...SAMPLE_TYPES, ...(additionalTypes ?? [])];
       const catalog = {
         ...(globalLabsamplesFolder
-          ? await loadReferenceSamplesByType(fs, globalLabsamplesFolder, type)
+          ? await loadReferenceSamplesByType(fs, globalLabsamplesFolder, type, knownTypes)
           : {}),
-        ...(await loadReferenceSamplesByType(fs, catalogFolder, type)),
+        ...(await loadReferenceSamplesByType(fs, catalogFolder, type, knownTypes)),
       };
       for (const ref of catalogRefs) {
         const entry = catalog[ref.id];
         if (!entry) continue;
         newDb[type][ref.id].alias = entry.alias;
         newDb[type][ref.id].descriptions = [];
+        // The catalog knows which partbank item this is; a seeded record that
+        // dropped it could never refresh its location or open in partbank.
+        if (entry.source) newDb[type][ref.id].source = entry.source;
         seedable.add(sampleReferenceKey(type, ref.id));
       }
     }

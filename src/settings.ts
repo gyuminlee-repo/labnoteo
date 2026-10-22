@@ -6,7 +6,7 @@
  * that the Obsidian build introduces (VS Code delegates LLM to Copilot Chat,
  * Obsidian talks to Ollama/OpenAI directly).
  */
-import type { ExperimentGrouping } from '@labnoteo/core';
+import type { ExperimentGrouping, PartbankConnection } from '@labnoteo/core';
 import { isValidSampleTypeName, SAMPLE_TYPES, suggestSampleTypeName } from '@labnoteo/core/lib/sampleUtils';
 
 export type LlmProviderKind = 'none' | 'ollama' | 'openai';
@@ -63,6 +63,24 @@ export interface LabnoteSettings {
   scanEmbedWidth: number;
   /** Paper the worksheets are laid out for. */
   worksheetPaperSize: WorksheetPaperSize;
+
+  // --- partbank ---
+  /**
+   * Address of the partbank desktop app's API. Its port is not guaranteed:
+   * the user moves it when 47830 is taken.
+   */
+  partbankDesktopUrl: string;
+  /** Address of the partbank web server's API. */
+  partbankWebUrl: string;
+  /**
+   * Which connection search and the catalog download use. Web by default: a
+   * desktop link means nothing on anyone else's machine, so it would break a
+   * vault shared through git.
+   *
+   * The API keys are deliberately NOT here — they live per-PC (see `pcStore`),
+   * since `data.json` travels with the vault.
+   */
+  partbankDefaultConnection: PartbankConnection;
 }
 
 export type WorksheetPaperSize = 'a4' | 'letter';
@@ -89,7 +107,24 @@ export const DEFAULT_SETTINGS: LabnoteSettings = {
   scanJpegQuality: 0.85,
   scanEmbedWidth: 200,
   worksheetPaperSize: 'a4',
+  partbankDesktopUrl: 'http://127.0.0.1:47830',
+  partbankWebUrl: 'https://partbank.kbiofoundry.kr',
+  partbankDefaultConnection: 'web',
 };
+
+/**
+ * Whether `url` can be a partbank address: an http(s) origin. Anything else
+ * (a `file:` path, a typo without a scheme) is refused rather than stored,
+ * because the API key is sent to whatever is stored here.
+ */
+export function isValidPartbankUrl(url: string): boolean {
+  try {
+    const { protocol } = new URL(url.trim());
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
 
 export const SCAN_IMAGE_EDGE_RANGE = { min: 800, max: 6000 } as const;
 export const SCAN_JPEG_QUALITY_RANGE = { min: 0.5, max: 1 } as const;
@@ -243,6 +278,15 @@ export function migrateSettings(raw: unknown): LabnoteSettings {
   if (storedVersion < 2 && out.scanEmbedWidth === 300) out.scanEmbedWidth = DEFAULT_SETTINGS.scanEmbedWidth;
   if (data.worksheetPaperSize === 'a4' || data.worksheetPaperSize === 'letter') {
     out.worksheetPaperSize = data.worksheetPaperSize;
+  }
+  if (typeof data.partbankDesktopUrl === 'string' && isValidPartbankUrl(data.partbankDesktopUrl)) {
+    out.partbankDesktopUrl = data.partbankDesktopUrl.trim();
+  }
+  if (typeof data.partbankWebUrl === 'string' && isValidPartbankUrl(data.partbankWebUrl)) {
+    out.partbankWebUrl = data.partbankWebUrl.trim();
+  }
+  if (data.partbankDefaultConnection === 'desktop' || data.partbankDefaultConnection === 'web') {
+    out.partbankDefaultConnection = data.partbankDefaultConnection;
   }
 
   // Provider-specific endpoints (new shape) win when present…

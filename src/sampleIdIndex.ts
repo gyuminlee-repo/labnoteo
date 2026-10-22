@@ -13,11 +13,10 @@
 import type { LabnoteFs } from '@labnoteo/core';
 import {
   isSameSampleFolder,
-  loadReferenceSamplesByType,
+  loadReferenceIdsByFolder,
   loadSampleAliases,
   noteLabsamplesFolder,
 } from '@labnoteo/core/lib/sampleStorage';
-import { isCatalogSampleType } from '@labnoteo/core/lib/sampleUtils';
 import * as posix from '@labnoteo/core/posix';
 
 const LABNOTE_SUFFIX = '.labnote.md';
@@ -150,18 +149,21 @@ export class SampleIdIndex {
     try {
       const aliases = new Map<string, string>();
       const catalog = new Set<string>();
+      const types = this.opts.types();
       let readable = true;
-      for (const type of this.opts.types()) {
+      for (const type of types) {
         const own = await loadSampleAliases(this.fs, folder, type);
         if (!own) {
           readable = false;
           break;
         }
         for (const [id, alias] of own) aliases.set(id, alias);
-        if (isCatalogSampleType(type)) {
-          for (const id of Object.keys(await loadReferenceSamplesByType(this.fs, folder, type))) {
-            catalog.add(id.toLowerCase());
-          }
+      }
+      if (readable) {
+        // One directory listing for every type: any type may have a catalog
+        // now, and this runs on each refresh.
+        for (const ids of (await loadReferenceIdsByFolder(this.fs, folder, types)).values()) {
+          for (const id of ids) catalog.add(id.toLowerCase());
         }
       }
       this.folders.set(folder, readable ? { aliases, catalog } : null);

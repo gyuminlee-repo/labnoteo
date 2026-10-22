@@ -68,6 +68,26 @@ function clean(value: string | undefined): string | null {
 }
 
 /**
+ * Read a type's product catalogs from `folder`.
+ *
+ * Always goes through the vault's type list: a custom type name may hold `_`,
+ * so `DNA_Lib.json` — the registry of the `DNA_Lib` type — would otherwise be
+ * read as a `DNA` catalog.
+ */
+export function loadCatalogSamples(
+  plugin: LabnotePlugin,
+  folder: string,
+  type: string
+): Promise<Record<string, SampleRecord>> {
+  return loadReferenceSamplesByType(
+    plugin.fs,
+    folder,
+    type,
+    getSampleDisplayMeta(plugin.settings.customSampleTypes).types
+  );
+}
+
+/**
  * Block the characters that would split the alias in a note (#98) or that
  * Markdown reads as a tag, link, emphasis or code (#168).
  */
@@ -168,12 +188,12 @@ export async function insertExperimentSamplesTable(app: App, plugin: LabnotePlug
   for (const type of types) {
     const localDb = await loadSamplesByType(plugin.fs, local, type);
     remember(localDb);
-    if (isCatalogSampleType(type)) remember(await loadReferenceSamplesByType(plugin.fs, local, type));
+    if (isCatalogSampleType(type)) remember(await loadCatalogSamples(plugin, local, type));
     for (const [id, rec] of Object.entries(localDb)) rows.push(row(id, rec, plugin.t('Local')));
     if (!globalFolder) continue;
     const globalDb = await loadSamplesByType(plugin.fs, globalFolder, type);
     remember(globalDb);
-    if (isCatalogSampleType(type)) remember(await loadReferenceSamplesByType(plugin.fs, globalFolder, type));
+    if (isCatalogSampleType(type)) remember(await loadCatalogSamples(plugin, globalFolder, type));
     for (const [id, rec] of Object.entries(globalDb)) {
       if (!localDb[id] && used.has(`${type}\u0000${id}`)) rows.push(row(id, rec, plugin.t('Global')));
     }
@@ -462,10 +482,8 @@ export async function pickCatalogReference(
   const localFolder = noteLabsamplesFolder(docPath, plugin.settings.globalSampleFolder);
   const globalFolder = plugin.settings.globalSampleFolder;
 
-  const local = await loadReferenceSamplesByType(plugin.fs, localFolder, type);
-  const global = globalFolder
-    ? await loadReferenceSamplesByType(plugin.fs, globalFolder, type)
-    : {};
+  const local = await loadCatalogSamples(plugin, localFolder, type);
+  const global = globalFolder ? await loadCatalogSamples(plugin, globalFolder, type) : {};
   const merged: Record<string, SampleRecord> = { ...global, ...local };
 
   const items: PickItem<string>[] = Object.entries(merged).map(([id, rec]) => ({
@@ -657,11 +675,11 @@ export async function resolveSampleDefinition(
 
   if (isCatalogSampleType(type)) {
     if (localFolder) {
-      const localCat = await loadReferenceSamplesByType(plugin.fs, localFolder, type);
+      const localCat = await loadCatalogSamples(plugin, localFolder, type);
       if (localCat[id]) return { scope: 'catalog', folder: localFolder, record: localCat[id] };
     }
     if (globalFolder) {
-      const globalCat = await loadReferenceSamplesByType(plugin.fs, globalFolder, type);
+      const globalCat = await loadCatalogSamples(plugin, globalFolder, type);
       if (globalCat[id]) return { scope: 'catalog', folder: globalFolder, record: globalCat[id] };
     }
   }

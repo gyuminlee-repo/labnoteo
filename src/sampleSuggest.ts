@@ -18,6 +18,7 @@ import {
 import {
   parseSampleTrigger,
   buildSampleCompletionEntries,
+  searchEntitiesForSampleType,
   type SampleCandidate,
   type SampleCompletionEntry,
   type LabnoteFs,
@@ -36,6 +37,7 @@ import {
 } from '@labnoteo/core/lib/sampleStorage';
 import type LabnotePlugin from './main';
 import { createSampleInteractive, pickCatalogReference } from './sampleActions';
+import { pickPartbankReference, strainTypeOf } from './partbank/partbankRegister';
 
 /**
  * A rendered suggestion: either an existing sample reference, or a synthetic
@@ -44,7 +46,10 @@ import { createSampleInteractive, pickCatalogReference } from './sampleActions';
  */
 type SuggestEntry =
   | { kind: 'existing'; entry: SampleCompletionEntry }
-  | { kind: 'generate' | 'manual' | 'catalog'; type: string };
+  | { kind: 'generate' | 'manual' | 'catalog'; type: string }
+  // `@sample` reaches partbank too, so the type is only known once an item is
+  // picked; `null` means "whatever the item turns out to be".
+  | { kind: 'partbank'; type: string | null };
 
 export interface SampleSuggestDeps {
   fs: LabnoteFs;
@@ -103,9 +108,11 @@ export class SampleEditorSuggest extends EditorSuggest<SuggestEntry> {
     const now = Date.now();
     const hit = this.catalogCache.get(key);
     if (hit && hit.expiry > now) return hit.exists;
+    const knownTypes = this.types;
     const exists =
-      (await hasReferenceCatalog(this.deps.fs, localFolder, type)) ||
-      (Boolean(globalFolder) && (await hasReferenceCatalog(this.deps.fs, globalFolder, type)));
+      (await hasReferenceCatalog(this.deps.fs, localFolder, type, knownTypes)) ||
+      (Boolean(globalFolder) &&
+        (await hasReferenceCatalog(this.deps.fs, globalFolder, type, knownTypes)));
     this.catalogCache.set(key, { exists, expiry: now + SampleEditorSuggest.CACHE_TTL_MS });
     return exists;
   }
@@ -183,8 +190,30 @@ export class SampleEditorSuggest extends EditorSuggest<SuggestEntry> {
       if (flags.generate) actions.push({ kind: 'generate', type });
       if (flags.manual) actions.push({ kind: 'manual', type });
     }
+    // partbank is offered for `@sample` as well, since one of its six kinds
+    // may well be what the user means. Without a connection the menu is
+    // exactly what it was before.
+    const partbankType = this.partbankSearchType(trigger.typesToSearch);
+    if (partbankType !== undefined) actions.push({ kind: 'partbank', type: partbankType });
 
     return [...existing, ...actions];
+  }
+
+  /**
+   * The type to offer a partbank search for: the concrete type when one was
+   * typed, `null` for `@sample`, or undefined when partbank has nothing of
+   * that kind (or no connection is set up).
+   */
+  private partbankSearchType(typesToSearch: readonly string[]): string | null | undefined {
+    const { plugin } = this.deps;
+    if (!plugin.partbank.configured) return undefined;
+    if (typesToSearch.length !== 1) {
+      // `@sample` expands to every type, which is the only multi-type trigger.
+      return typesToSearch.length > 1 ? null : undefined;
+    }
+    const type = typesToSearch[0];
+    const strainType = strainTypeOf(plugin);
+    return searchEntitiesForSampleType(type, { strainType }).length > 0 ? type : undefined;
   }
 
   renderSuggestion(item: SuggestEntry, el: HTMLElement): void {
@@ -212,6 +241,14 @@ export class SampleEditorSuggest extends EditorSuggest<SuggestEntry> {
       el.createEl('div', { text: t('Search {0} catalog', item.type) });
       el.createEl('small', {
         text: t('Insert a reference from the product catalog'),
+        cls: 'labnote-suggest-detail',
+      });
+      return;
+    }
+    if (item.kind === 'partbank') {
+      el.createEl('div', { text: t('Search partbank') });
+      el.createEl('small', {
+        text: t('Register a part, plasmid or primer from partbank'),
         cls: 'labnote-suggest-detail',
       });
       return;
@@ -250,23 +287,28 @@ export class SampleEditorSuggest extends EditorSuggest<SuggestEntry> {
     // captured range.
     this.close();
     const { plugin } = this.deps;
-    const type = item.type;
-    const kind = item.kind;
+    const action = item;
+    // What was typed after `@type;` fills the prompt or search box (#142).
+    const typed = /^@[\p{L}\p{N}_]+[;:]?(.*)$/u.exec(originalRange)?.[1];
     void (async () => {
       let referenceText: string | undefined;
-      if (kind === 'catalog') {
+      if (action.kind === 'partbank') {
+        referenceText = await pickPartbankReference(plugin, {
+          type: action.type,
+          initialQuery: typed ?? '',
+        });
+      } else if (action.kind === 'catalog') {
         referenceText = await pickCatalogReference(plugin.app, plugin, {
-          type,
+          type: action.type,
           docPath: filePath,
         });
       } else {
         const created = await createSampleInteractive(plugin.app, plugin, {
-          type,
+          type: action.type,
           folder: plugin.localSampleFolder(),
-          mode: kind,
+          mode: action.kind,
           scope: 'local',
-          // What was typed after `@type;` fills the ID or alias prompt (#142).
-          initial: /^@[\p{L}\p{N}_]+[;:]?(.*)$/u.exec(originalRange)?.[1],
+          initial: typed,
         });
         referenceText = created?.referenceText;
       }

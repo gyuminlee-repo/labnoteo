@@ -99,11 +99,12 @@ class PickManyModal<T> extends Modal {
     if (this.opts?.title) this.setTitle(this.opts.title);
 
     this.items.forEach((item, idx) => {
+      if (item.checked) this.selected.add(idx);
       new Setting(contentEl)
         .setName(item.label)
         .setDesc(item.description ?? '')
         .addToggle(t =>
-          t.setValue(false).onChange(v => {
+          t.setValue(Boolean(item.checked)).onChange(v => {
             if (v) this.selected.add(idx);
             else this.selected.delete(idx);
           })

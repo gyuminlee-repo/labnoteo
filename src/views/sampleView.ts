@@ -17,6 +17,7 @@ import {
 import { isSameSampleFolder, type SampleRecord } from '@labnoteo/core/lib/sampleStorage';
 import type LabnotePlugin from '../main';
 import { focusTree, renderTree } from './treeRender';
+import { addPartbankMenuItems } from '../partbank/partbankActions';
 import {
   createSampleInteractive,
   editSampleInteractive,
@@ -321,6 +322,12 @@ export class SampleTreeView extends ItemView {
         .setIcon('search')
         .onClick(() => void this.showUsages(folder, sample))
     );
+    addPartbankMenuItems(menu, this.plugin, {
+      type: sample.type,
+      id: sample.id,
+      folder,
+      record: sample.record,
+    });
     menu.addItem(item =>
       item
         .setTitle(this.plugin.t('Edit sample'))

@@ -142,6 +142,9 @@ version.
 - When a plugin update changes the bundled catalogs, you are told once on startup. In a team, one
   person runs it and commits.
 
+This command is about the workflow catalogs. The sample "product catalogs" of
+[partbank](#partbank) are a different thing.
+
 ## Tables
 
 ### Export tables to CSV
@@ -208,6 +211,84 @@ discarded columns, leaving the cursor below the table. With a Live Preview table
 goes below that table. Use `Export tables to CSV` for a CSV.
 
 References the note makes that no registry has are left out of the table, and the notice names them.
+
+## partbank
+
+Register parts, devices, plasmids, primers, molecules and strains kept in
+[partbank](https://partbank.kbiofoundry.kr) as samples, read where they are stored, and open them
+in partbank. Nothing below appears until a connection is set up in the plugin settings, so a vault
+that does not use partbank keeps the menus it always had.
+
+### Connections
+
+Two connections, each with an address, an API key and a `Test connection` button that answers with
+the account name.
+
+- **partbank server** — your lab's server (default `https://partbank.kbiofoundry.kr`). Its links
+  work for the whole team, so **use this one in a shared vault**.
+- **partbank desktop app** — the app running on this PC (default `http://127.0.0.1:47830`). A link
+  made through it only means something on that PC; for everyone else the location refresh and the
+  open action say so. The connection is hidden on mobile.
+
+Issue the key in partbank under Profile → API Keys (365 days at most). It is kept on this PC and
+this vault only, never written into the vault, so each PC needs its own. With both connections set
+up, **Connection to search** picks the one the autocomplete search and the catalog download use.
+The key is only ever sent to the address in the settings — never to an address stored in a sample
+or in a link. A server address on plain `http://` warns that the key travels in the clear.
+
+### Search partbank
+
+Typing `@dna`, `@plasmid`, `@primer` (or `@sample`) puts **Search partbank** at the bottom of the
+autocomplete menu, which opens a search window prefilled with whatever was typed after `;`. From
+two characters on it searches after a short pause and lists each hit with its name, KID, kind and
+whether it is yours, shared with you, or public. Picking one reads the item and its storage
+location, registers it, and inserts `ID;alias`.
+
+- **The type you typed wins.** Only when it is open (`@sample`, a link, a catalog) does the
+  partbank kind decide: part and device → `DNA`, plasmid → `Plasmid`, primer → `Primer`,
+  molecules by their kind (`protein`/`enzyme` → `Protein`, `rna` → `RNA`, `dna` → `DNA`, the rest
+  → `Reagent`).
+- **Strains** have no built-in type, so they use a custom type `Strain`, which you are asked to add
+  when it does not exist. Decline and the strain is not registered.
+- It registers where any other sample would (the experiment's Local registry, or Global outside an
+  experiment). **An item already registered** is not registered twice: its existing ID is inserted
+  instead, looked up in this experiment, then Global, then the product catalogs. The KID is kept
+  with the link rather than as the sample ID, and shows in the sample definition window.
+
+### Refresh storage location from partbank
+
+In the sample view's context menu and in the definition window. It reads the location as
+`storage / box / position` and stores it after showing the change once.
+**Refresh storage locations from partbank** (command palette) does every linked sample at once,
+listing only what changes as `old → new`; an entry that would become empty is unchecked by default
+so a hand-written location is not wiped. Because the value is stored, it stays visible offline and
+in the sample list table and search.
+
+partbank only reports the stock **the calling account can see**, so the same vault can end up with
+different values depending on who refreshed.
+
+### Open in partbank
+
+In the same two places. A server link opens in the browser; a desktop link opens the desktop app
+(starting it if it is closed) through its own `partbank://` scheme. A sample linked to the app on
+another PC says so instead.
+
+### Download partbank catalog
+
+Download the items in your own workspace on the default connection into the global sample folder
+as `{Type}_partbank-web.json` (or `-desktop`), which the autocomplete then offers under
+`{Type} catalog search` without any searching. Downloading again keeps the sample ID each item
+already had and writes the file sorted by KID, so the git diff stays small. Items with the same
+name within a file get ` (KID)` after the alias. Items other people share with your groups are
+not included; register those through [Search partbank](#search-partbank). It stops with a notice
+when no global sample folder is set. This is not the workflow [Update catalogs](#update-catalogs).
+
+### Send to labnoteo
+
+The detail screens in partbank have a **labnoteo로 보내기** button that opens Obsidian and asks
+whether to register that item, letting you switch the destination to Global there. Links naming an
+address that is not in the settings are refused. After registering, `ID;alias` goes to the cursor
+of an open note after asking, or to the clipboard.
 
 ## Barcodes and scans
 

@@ -1,6 +1,6 @@
 # Labnote Assistant for Obsidian (labnoteo)
 
-**버전 0.114.1**
+**버전 0.115.0**
 
 [English](README.en.md)
 
@@ -24,6 +24,7 @@
 - **샘플 자동완성 · CSV 내보내기**: 편집 중 샘플 참조 인라인 제안과 하이라이트, 노트 표의 CSV 내보내기(엑셀 호환 UTF-8 BOM). → [날짜 · 표](automation/templates/QUICKSTART.md#날짜--표)
 - **실험 상태 · 논의 표시 · 이슈 마커**: 실험 생애주기(`planned` → `in-progress` → … → `completed`/`failed`)를 frontmatter에 기록하고, 팀 논의가 필요한 노트에는 *논의 표시*나 그 자리에 `@issue;<ID>;<주제문장>` 마커를 달아 push 때 GitHub Issue로 엽니다.
 - **노트 ID · QR 기록지 · 스캔 붙이기(데스크톱)**: 실험 노트마다 고유 ID(`labnote_id: LN-7K3M9QX2`)를 붙이고, 워크플로 노트를 페이지마다 QR이 찍힌 **실험 기록지**로 출력합니다. 손으로 적은 뒤 휴대폰 사진이나 복합기 스캔(이미지·PDF·zip)을 **PC 스캔 폴더**에 넣거나 창에 끌어다 놓으면 QR을 읽어 그 유닛 오퍼레이션 끝 `#### Worksheet scans` 절에 이미지를 붙입니다. 내 Slack 봇에게 DM으로 보내도 됩니다(선택). → [출력본 스캔 가이드](docs/SCAN.md)
+- **partbank 연동(선택)**: partbank의 부품·플라스미드·프라이머·균주를 `@` 자동완성에서 검색해 시료로 등록하고, 보관 위치를 읽어 오고, partbank 화면을 엽니다. 카탈로그를 통째로 내려받아 오프라인에서 고를 수도 있습니다. API 키는 보관함이 아니라 PC에만 저장됩니다. → [partbank에서 부품 가져오기](automation/templates/QUICKSTART.md#partbank에서-부품-가져오기)
 - **LLM 보조(선택)**: Ollama 또는 OpenAI로 방법 초안·결과 요약·샘플 추출. *어시스턴트에게 요청* 명령은 모델이 Labnote 툴을 직접 호출해 목표를 달성하며, 보관함 수정 전 매번 확인합니다. 같은 툴을 외부 MCP 클라이언트에도 노출할 수 있습니다. → [AI 도우미](automation/templates/QUICKSTART.md#ai-도우미)
 - **연구노트 자동화(선택)**: 명령 한 번으로 GitHub Actions·무의존성 스크립트·AI 에이전트 규칙(`AGENTS.md`)을 보관함에 설치해 노트 검증·Experiment ↔ Issue 연결·Living-Manuscript Wiki를 자동화합니다. 모두 선택적이며 사람이 검토합니다. → [아래](#연구노트-자동화)
 
@@ -70,6 +71,8 @@ Obsidian 설치와 git·GitHub 계정 준비부터 커뮤니티 플러그인·�
 | 워크플로/샘플 뷰 열기 (`Open workflow view` / `Open sample view`) | 사이드바 뷰를 표시하고 포커스를 목록으로 옮깁니다 |
 | 샘플 정의 열기 (편집·이동·삭제) (`Open sample definition`) | 커서 위 샘플이나 검색해 고른 샘플의 정의 창을 엽니다(편집·삭제·이동·타입 변경) |
 | 이 실험의 시료 목록 삽입 (`Insert sample list of this experiment`) | 이 실험의 시료를 Markdown 표로 커서 위치에 넣습니다 |
+| partbank 카탈로그 내려받기 (`Download partbank catalog`) | partbank의 내 항목을 전역 샘플 폴더의 제품 카탈로그 파일로 받습니다 |
+| partbank에서 보관 위치 일괄 갱신 (`Refresh storage locations from partbank`) | partbank와 연결된 시료의 보관 위치를 한꺼번에 다시 읽어 확인 후 저장합니다 |
 | 노트 바코드 보기 (`Show note barcode`) | 노트의 ID와 QR을 창으로 보여 줍니다(ID가 없으면 먼저 발급) |
 | 노트 ID 발급 (`Assign note ID`) | ID가 없는 노트에 `labnote_id`를 발급합니다 |
 | 실험 기록지 출력 (`Print experiment worksheet`) | 고른 유닛 오퍼레이션을 페이지마다 QR이 찍힌 기록지로 출력합니다(A4/Letter) |
@@ -125,6 +128,13 @@ Obsidian 설치와 git·GitHub 계정 준비부터 커뮤니티 플러그인·�
 - **전역 샘플 폴더**: 보관함 전역 샘플 저장소 폴더 (기본 `resources/labsamples`). 폴더를 바꾸고 설정 창을 닫았을 때 옛 폴더에 샘플이 남아 있으면 새 폴더로 옮길지 묻습니다.
 
 자세한 동작은 [샘플 다루기](automation/templates/QUICKSTART.md#샘플-다루기)를 보세요.
+
+**partbank**
+
+- **partbank 서버** / **partbank 데스크톱 앱**: 각각 주소와 API 키, `연결 확인` 버튼. 키는 보관함이 아니라 이 PC에만 저장되므로 PC마다 적어야 합니다. 데스크톱 연결은 모바일에서 보이지 않습니다.
+- **검색할 연결**: 자동완성 검색과 카탈로그 내려받기가 쓸 연결(기본 `partbank 서버`). 데스크톱 앱으로 만든 링크는 그 PC에서만 통하므로 함께 쓰는 보관함은 서버를 쓰세요.
+
+자세한 동작은 [partbank에서 부품 가져오기](automation/templates/QUICKSTART.md#partbank에서-부품-가져오기)를 보세요.
 
 **워크플로**
 

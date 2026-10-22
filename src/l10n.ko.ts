@@ -868,6 +868,99 @@ const obsidianKo: Record<string, string> = {
     '연결되었습니다. 출력한 기록지의 사진이나 스캔을 여기로 보내면 해당 노트에 붙습니다.',
   'Slack scans: checking failed ({0}). See the Slack section of docs/SCAN.md for the bot permissions.':
     'Slack 스캔: 확인하지 못했습니다({0}). 봇 권한은 docs/SCAN.md의 Slack 절을 보세요.',
+
+  // partbank
+  'partbank': 'partbank',
+  'Register DNA parts, plasmids and primers from partbank as samples, read their storage location, and open them in partbank. Issue an API key in partbank under Profile - API Keys; it is kept on this PC only, not in the vault.':
+    'partbank의 DNA 부품·플라스미드·프라이머를 시료로 등록하고, 보관 위치를 가져오고, partbank에서 열 수 있습니다. API 키는 partbank의 Profile → API Keys에서 발급하며, 보관함이 아니라 이 PC에만 저장합니다.',
+  'partbank server': 'partbank 서버',
+  'partbank desktop app': 'partbank 데스크톱 앱',
+  'Connection to search': '검색에 쓸 연결',
+  'Which partbank the autocomplete search and the catalog download use. A link made through the desktop app points at this PC only, so a vault shared with the lab should use the server.':
+    '자동완성 검색과 카탈로그 내려받기가 어느 partbank를 쓸지 정합니다. 데스크톱 앱으로 만든 연결은 이 PC에서만 통하므로, 연구실과 함께 쓰는 보관함이면 서버를 쓰세요.',
+  '{0} address': '{0} 주소',
+  'The address the desktop app serves its API on. Change it only if you moved its port.':
+    '데스크톱 앱이 API를 여는 주소입니다. 포트를 바꾼 경우에만 고치세요.',
+  'The address of your lab’s partbank server.': '연구실 partbank 서버 주소입니다.',
+  'Enter a full address starting with http:// or https://.':
+    'http:// 또는 https://로 시작하는 전체 주소를 입력하세요.',
+  'This address is not encrypted, so the API key is sent in the clear.':
+    '암호화되지 않은 주소라 API 키가 그대로 오갑니다.',
+  '{0} API key': '{0} API 키',
+  'Kept on this PC and this vault only, never written to the vault.':
+    '이 PC의 이 보관함에만 저장하며, 보관함 파일에는 쓰지 않습니다.',
+  'Test connection': '연결 확인',
+  'Enter the address and the API key first.': '주소와 API 키를 먼저 입력하세요.',
+  'Checking…': '확인 중…',
+  'Connected as {0}.': '{0} 계정으로 연결됐습니다.',
+  'Connected.': '연결됐습니다.',
+  'Set up a partbank connection in the plugin settings first.':
+    '플러그인 설정에서 partbank 연결을 먼저 설정하세요.',
+  'Could not reach the partbank app at {0}. Check that it is running, and that its port has not moved.':
+    '{0}의 partbank 앱에 연결하지 못했습니다. 앱이 켜져 있는지, 포트가 바뀌지 않았는지 확인하세요.',
+  'Could not reach the partbank server at {0}.': '{0}의 partbank 서버에 연결하지 못했습니다.',
+  'The partbank API key was refused. Issue a new one in partbank under Profile - API Keys (a key lasts at most 365 days).':
+    'partbank API 키가 거부됐습니다. partbank의 Profile → API Keys에서 새로 발급하세요(키는 최대 365일).',
+  'This partbank item is not shared with your account.': '이 partbank 항목은 내 계정에 공유되어 있지 않습니다.',
+  'This item is no longer in partbank, or it was never on this server.':
+    'partbank에 이 항목이 없습니다. 삭제됐거나 다른 서버의 항목입니다.',
+  'partbank is refusing further requests for now. Try again in a minute.':
+    'partbank가 당분간 요청을 더 받지 않습니다. 잠시 후 다시 시도하세요.',
+  'partbank returned an error ({0}).': 'partbank가 오류를 돌려줬습니다({0}).',
+  'Search partbank': 'partbank에서 검색',
+  'Register a part, plasmid or primer from partbank': 'partbank의 부품·플라스미드·프라이머를 등록',
+  'Nothing found in partbank.': 'partbank에서 찾지 못했습니다.',
+  '"{0}" is already the alias of {1}.': '"{0}"은(는) 이미 {1}의 별칭입니다.',
+  '{0} already stands for this partbank item.': '이 partbank 항목은 이미 {0}으로 등록돼 있습니다.',
+  'partbank keeps strains, but this vault has no sample type for them. Add the custom sample type "{0}"?':
+    'partbank에는 균주가 있지만 이 보관함에는 균주용 시료 타입이 없습니다. 사용자 정의 타입 "{0}"을(를) 추가할까요?',
+  'Add {0}': '{0} 추가',
+  'part': '부품',
+  'device': '디바이스',
+  'plasmid': '플라스미드',
+  'primer': '프라이머',
+  'molecule': '분자',
+  'strain': '균주',
+  'mine': '내 것',
+  'public': '공개',
+  'shared': '공유됨',
+  'Refresh storage location from partbank': 'partbank에서 보관 위치 갱신',
+  'Refresh storage locations from partbank': 'partbank에서 보관 위치 일괄 갱신',
+  'Open in partbank': 'partbank에서 열기',
+  'This sample is not linked to partbank.': 'partbank와 연결되지 않은 시료입니다.',
+  'This sample is linked to the partbank app on another PC.':
+    '다른 PC의 partbank 앱에 연결된 시료입니다.',
+  'The storage location is unchanged.': '보관 위치가 그대로입니다.',
+  'Store the storage location of {0} as read from partbank?\n{1}':
+    'partbank에서 읽은 {0}의 보관 위치를 저장할까요?\n{1}',
+  'Store': '저장',
+  'No sample in this vault is linked to partbank.': 'partbank와 연결된 시료가 없습니다.',
+  'Reading storage locations from partbank…': 'partbank에서 보관 위치를 읽는 중…',
+  'Checked {0} linked sample(s); no storage location changed.':
+    '연결된 시료 {0}개를 확인했고, 바뀐 보관 위치는 없습니다.',
+  'Storage locations to store ({0} changed)': '저장할 보관 위치 ({0}개 변경)',
+  'Stored {0} storage location(s).': '보관 위치 {0}개를 저장했습니다.',
+  '{0} sample(s) could not be read from partbank.': '시료 {0}개는 partbank에서 읽지 못했습니다.',
+  'Download partbank catalog': 'partbank 카탈로그 내려받기',
+  'Set the Global sample folder in the plugin settings before downloading a catalog.':
+    '카탈로그를 내려받기 전에 플러그인 설정에서 전역 시료 폴더를 지정하세요.',
+  'Downloading the partbank catalog…': 'partbank 카탈로그를 내려받는 중…',
+  'partbank returned nothing to put in a catalog.': 'partbank에서 카탈로그에 담을 항목을 받지 못했습니다.',
+  'Downloaded the partbank catalog: {0}.': 'partbank 카탈로그를 내려받았습니다: {0}.',
+  '{0} strain(s) were left out.': '균주 {0}개는 제외했습니다.',
+  'That partbank link is not something labnoteo can read.': 'labnoteo가 읽을 수 없는 partbank 링크입니다.',
+  'That link points at a partbank that is not set up here ({0}).':
+    '이 보관함에 설정되지 않은 partbank를 가리키는 링크입니다({0}).',
+  'Register "{0}" from partbank as a {1} sample in {2}?':
+    'partbank의 "{0}"을(를) {2}에 {1} 시료로 등록할까요?',
+  'Register "{0}" from partbank as a {1} sample where?':
+    'partbank의 "{0}"을(를) {1} 시료로 어디에 등록할까요?',
+  'Register': '등록',
+  'Local: {0}': 'Local: {0}',
+  'Global: {0}': 'Global: {0}',
+  'Insert {0} into the open note?': '열려 있는 노트에 {0}을(를) 삽입할까요?',
+  'Insert': '삽입',
+  'Copied {0} to the clipboard.': '{0}을(를) 클립보드에 복사했습니다.',
 };
 
 export default obsidianKo;

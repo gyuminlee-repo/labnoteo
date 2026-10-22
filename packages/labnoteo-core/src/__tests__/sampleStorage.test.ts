@@ -32,6 +32,8 @@ import {
   planLocalSampleAdoption,
   legacyDefinitionSpan,
   hasReferenceCatalog,
+  loadReferenceSamplesByType,
+  loadReferenceIdsByFolder,
   removeSampleSource,
   sampleTypesInText,
   renameSampleSources,
@@ -1203,6 +1205,69 @@ describe('hasReferenceCatalog (#99)', () => {
 
   it('is false for an empty folder setting', async () => {
     expect(await hasReferenceCatalog(new MemFileSystem(), '', 'Reagent')).toBe(false);
+  });
+
+  // A custom type name may hold `_`, so `DNA_Lib.json` — the registry of the
+  // `DNA_Lib` type — matches the `DNA_` catalog prefix too. Harmless while
+  // only Reagent/Labware/Equip could have catalogs; not once any type can.
+  it('does not read another type\u2019s registry as a catalog', async () => {
+    const fs = new MemFileSystem();
+    const types = ['DNA', 'DNA_Lib'];
+    await fs.write(
+      `${FOLDER}/DNA_Lib.json`,
+      JSON.stringify({ 'DNA_Lib-1': { type: 'DNA_Lib', alias: 'lib', descriptions: [], sources: [] } })
+    );
+    expect(await hasReferenceCatalog(fs, FOLDER, 'DNA', types)).toBe(false);
+    expect(await loadReferenceSamplesByType(fs, FOLDER, 'DNA', types)).toEqual({});
+    // Its own registry is still read as a registry.
+    expect(Object.keys(await loadSamplesByType(fs, FOLDER, 'DNA_Lib'))).toEqual(['DNA_Lib-1']);
+
+    await fs.write(
+      `${FOLDER}/DNA_partbank-web.json`,
+      JSON.stringify({ 'DNA-1': { type: 'DNA', alias: 'gfp', descriptions: [], sources: [] } })
+    );
+    expect(await hasReferenceCatalog(fs, FOLDER, 'DNA', types)).toBe(true);
+    expect(Object.keys(await loadReferenceSamplesByType(fs, FOLDER, 'DNA', types))).toEqual(['DNA-1']);
+  });
+
+  // A safety net behind the file-name rule.
+  it('skips a catalog record that names another type', async () => {
+    const fs = new MemFileSystem();
+    await fs.write(
+      `${FOLDER}/DNA_mixed.json`,
+      JSON.stringify({
+        'DNA-1': { type: 'DNA', alias: 'gfp', descriptions: [], sources: [] },
+        'Plasmid-1': { type: 'Plasmid', alias: 'p', descriptions: [], sources: [] },
+      })
+    );
+    expect(Object.keys(await loadReferenceSamplesByType(fs, FOLDER, 'DNA', ['DNA']))).toEqual(['DNA-1']);
+  });
+});
+
+describe('loadReferenceIdsByFolder (one listing for every type)', () => {
+  const FOLDER = 'resources/labsamples';
+
+  it('groups the catalog ids by type', async () => {
+    const fs = new MemFileSystem();
+    await fs.write(
+      `${FOLDER}/DNA_partbank-web.json`,
+      JSON.stringify({ 'DNA-1': { type: 'DNA' }, 'DNA-2': { type: 'DNA' } })
+    );
+    await fs.write(`${FOLDER}/Reagent_sigma.json`, JSON.stringify({ 'Reagent-1': { type: 'Reagent' } }));
+    // Not a catalog: it is the `DNA_Lib` type's own registry.
+    await fs.write(`${FOLDER}/DNA_Lib.json`, JSON.stringify({ 'DNA_Lib-1': { type: 'DNA_Lib' } }));
+
+    const byType = await loadReferenceIdsByFolder(fs, FOLDER, ['DNA', 'DNA_Lib', 'Reagent']);
+    expect([...byType.get('DNA')!]).toEqual(['DNA-1', 'DNA-2']);
+    expect([...byType.get('Reagent')!]).toEqual(['Reagent-1']);
+    expect(byType.has('DNA_Lib')).toBe(false);
+  });
+
+  it('is empty for a missing folder and tolerates broken JSON', async () => {
+    const fs = new MemFileSystem();
+    expect(await loadReferenceIdsByFolder(fs, 'nope', ['DNA'])).toEqual(new Map());
+    await fs.write(`${FOLDER}/DNA_broken.json`, '{ not json');
+    expect(await loadReferenceIdsByFolder(fs, FOLDER, ['DNA'])).toEqual(new Map());
   });
 });
 

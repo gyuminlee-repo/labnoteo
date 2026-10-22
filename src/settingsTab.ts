@@ -21,6 +21,7 @@ import { confirmModal } from './modals';
 import { openUserGuide } from './userGuide';
 import { tokenFingerprint } from './llm/mcpServer';
 import { renderScanSettings } from './scan/scanSettings';
+import { renderPartbankSettings } from './partbank/partbankSettings';
 
 /** How long the regenerate button waits for its confirming second click. */
 const REGENERATE_CONFIRM_MS = 5000;
@@ -239,6 +240,8 @@ export class LabnoteSettingTab extends PluginSettingTab {
       );
 
     renderScanSettings(containerEl, this.plugin, () => this.display());
+
+    renderPartbankSettings(containerEl, this.plugin);
 
     new Setting(containerEl).setName(this.plugin.t('AI provider')).setHeading();
 

@@ -25,6 +25,8 @@ export interface PickItem<T> {
   detail?: string;
   /** Extra words the filter matches, not shown (e.g. a Korean name or abbreviation). */
   keywords?: readonly string[];
+  /** Ticked when a multi-select list opens; ignored by single-select pickers. */
+  checked?: boolean;
   /** The value returned when this item is chosen. */
   value: T;
 }

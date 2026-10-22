@@ -136,6 +136,10 @@ import {
 import { LabnoteMcpServer } from './llm/mcpServer';
 import { CURRENT_SCHEMA_VERSION, migrateSettings, type LabnoteSettings } from './settings';
 import { BarcodeFeature } from './barcode/barcodeFeature';
+import { PartbankFeature } from './partbank/partbankFeature';
+import { refreshLocationsIn } from './partbank/partbankLocation';
+import { downloadPartbankCatalog } from './partbank/partbankCatalog';
+import { handleImportUri, IMPORT_ACTION } from './partbank/partbankUri';
 
 export default class LabnotePlugin extends Plugin {
   // `Plugin` already declares `settings?: unknown`; re-type it concretely.
@@ -145,6 +149,7 @@ export default class LabnotePlugin extends Plugin {
   host!: LabnoteHost;
   mcpServer!: LabnoteMcpServer;
   barcode!: BarcodeFeature;
+  partbank!: PartbankFeature;
   private sampleSuggest?: SampleEditorSuggest;
   private sampleIds?: SampleIdIndex;
   // Last experiment folder (`labnote/###_*`) resolved from an active note, kept
@@ -203,6 +208,12 @@ export default class LabnotePlugin extends Plugin {
     this.host = createObsidianHost(this.app, this.fs, this.t);
     this.mcpServer = new LabnoteMcpServer(this);
 
+    this.partbank = new PartbankFeature(this);
+    // "Send to labnoteo" in partbank. Any web page can open an `obsidian://`
+    // URI, so the handler validates everything and confirms before writing.
+    this.registerObsidianProtocolHandler(IMPORT_ACTION, params => {
+      this.run(() => handleImportUri(this, params as Record<string, string>));
+    });
     this.registerCommands();
     this.barcode = new BarcodeFeature(this, key => this.paletteName(key));
     this.barcode.register();
@@ -432,6 +443,40 @@ export default class LabnotePlugin extends Plugin {
       id: 'open-sample-definition',
       name: this.paletteName('Open sample definition'),
       callback: () => this.run(() => this.openSampleDefinitionCommand()),
+    });
+
+    this.addCommand({
+      id: 'download-partbank-catalog',
+      name: this.paletteName('Download partbank catalog'),
+      checkCallback: checking => {
+        if (!this.partbank.configured) return false;
+        if (!checking) this.run(() => downloadPartbankCatalog(this));
+        return true;
+      },
+    });
+
+    this.addCommand({
+      id: 'download-partbank-catalog',
+      name: this.paletteName('Download partbank catalog'),
+      checkCallback: checking => {
+        if (!this.partbank.configured) return false;
+        if (!checking) this.run(() => downloadPartbankCatalog(this));
+        return true;
+      },
+    });
+
+    this.addCommand({
+      id: 'refresh-partbank-locations',
+      name: this.paletteName('Refresh storage locations from partbank'),
+      checkCallback: checking => {
+        if (!this.partbank.configured) return false;
+        if (!checking) {
+          this.run(() =>
+            refreshLocationsIn(this, [this.localSampleFolder(), this.settings.globalSampleFolder])
+          );
+        }
+        return true;
+      },
     });
 
     this.addCommand({
@@ -688,14 +733,15 @@ export default class LabnotePlugin extends Plugin {
     );
     if (!type) return;
 
-    // Catalog types (Reagent/Labware/Equip) are curated: search the read-only
-    // product catalog first; without one, a generated id is registered instead.
+    // A type with a product catalog is curated: search the read-only catalog
+    // first; without one, a generated id is registered instead.
     let referenceText: string | undefined;
     const localFolder = noteLabsamplesFolder(target.path, this.settings.globalSampleFolder);
+    const knownTypes = getSampleDisplayMeta(this.settings.customSampleTypes).types;
     if (
       isCatalogSampleType(type) &&
-      ((await hasReferenceCatalog(this.fs, localFolder, type)) ||
-        (await hasReferenceCatalog(this.fs, this.settings.globalSampleFolder, type)))
+      ((await hasReferenceCatalog(this.fs, localFolder, type, knownTypes)) ||
+        (await hasReferenceCatalog(this.fs, this.settings.globalSampleFolder, type, knownTypes)))
     ) {
       referenceText = await pickCatalogReference(this.app, this, {
         type,
@@ -2074,6 +2120,15 @@ export default class LabnotePlugin extends Plugin {
       if (leaf.view instanceof SampleTreeView) void leaf.view.refresh();
     }
     this.sampleIds?.invalidate();
+  }
+
+  /**
+   * The sample registry changed on disk: drop the autocomplete cache so the
+   * new records show up at once, and redraw the sidebar.
+   */
+  samplesChanged(): void {
+    this.sampleSuggest?.clearCache();
+    this.refreshSampleViews();
   }
 
   /** Refresh any open workflow view(s), which read the catalogs only when refreshed. */

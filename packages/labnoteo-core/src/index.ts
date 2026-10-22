@@ -189,6 +189,38 @@ export {
   type SampleLocationQuery,
 } from './sample/sampleLocationProvider';
 
+// === partbank link model (which external item a sample stands for) ===
+export {
+  PARTBANK_TYPES,
+  isPartbankType,
+  normalizeOrigin,
+  isDesktopOrigin,
+  normalizeSampleSource,
+  isSameSampleSource,
+  type PartbankType,
+  type PartbankConnection,
+  type SampleSource,
+} from './partbank/types';
+export {
+  STRAIN_SAMPLE_TYPE,
+  resourceSegment,
+  webAppPath,
+  desktopAppLink,
+  typeFromSearchEntity,
+  searchEntityForType,
+  searchEntitiesForSampleType,
+  sampleTypeForItem,
+  aliasForItem,
+  descriptionForItem,
+  sourceForItem,
+  formatStockLocation,
+  findLinkedSample,
+  type PartbankSearchEntity,
+  type PartbankItem,
+  type PartbankStock,
+  type LinkedSample,
+} from './partbank/mapping';
+
 // === Platform-neutral tree model (VS Code providers + Obsidian ItemViews) ===
 export {
   buildExperimentTree,

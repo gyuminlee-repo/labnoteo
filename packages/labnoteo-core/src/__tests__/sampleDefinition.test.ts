@@ -111,16 +111,13 @@ describe('escaping `|` in sample text', () => {
 });
 
 describe('isCatalogSampleType', () => {
-  it('is true for reference-DB types', () => {
-    expect(isCatalogSampleType('Reagent')).toBe(true);
-    expect(isCatalogSampleType('Labware')).toBe(true);
-    expect(isCatalogSampleType('Equip')).toBe(true);
-  });
-
-  it('is false for authored types', () => {
-    expect(isCatalogSampleType('DNA')).toBe(false);
-    expect(isCatalogSampleType('RNA')).toBe(false);
-    expect(isCatalogSampleType('Custom')).toBe(false);
+  // Used to be Reagent/Labware/Equip alone, the types with vendor catalogs. A
+  // downloaded partbank catalog is a catalog of DNA, plasmids and primers, so
+  // what decides is now whether a `{Type}_*.json` file exists, not the type.
+  it('is true for every type, authored ones included', () => {
+    for (const type of ['Reagent', 'Labware', 'Equip', 'DNA', 'RNA', 'Custom']) {
+      expect(isCatalogSampleType(type)).toBe(true);
+    }
   });
 });
 
@@ -131,18 +128,35 @@ describe('the built-in Other type', () => {
     expect(meta.colors.Other).toBeTruthy();
   });
 
-  it('is authored, not a catalog type, so ids can be generated or typed', () => {
-    expect(isCatalogSampleType('Other')).toBe(false);
+  it('can have ids generated or typed, and no catalog action without a catalog file', () => {
     const t = parseSampleTrigger('@other:', [...SAMPLE_TYPES])!;
     expect(t.typesToSearch).toEqual(['Other']);
-    expect(sampleSuggestActions(t)).toEqual({ generate: true, manual: true, catalog: false });
+    expect(sampleSuggestActions(t, { catalogAvailable: false })).toEqual({
+      generate: true,
+      manual: true,
+      catalog: false,
+    });
   });
 });
 
 describe('sampleSuggestActions', () => {
-  it('offers generate + manual for a concrete authored type', () => {
+  it('offers generate + manual for a concrete type with no catalog file', () => {
     const t = parseSampleTrigger('@dna:', TYPES)!;
-    expect(sampleSuggestActions(t)).toEqual({ generate: true, manual: true, catalog: false });
+    expect(sampleSuggestActions(t, { catalogAvailable: false })).toEqual({
+      generate: true,
+      manual: true,
+      catalog: false,
+    });
+  });
+
+  // A downloaded partbank catalog puts DNA parts and plasmids in one.
+  it('offers the catalog for an authored type once it has a catalog file', () => {
+    const t = parseSampleTrigger('@dna:', TYPES)!;
+    expect(sampleSuggestActions(t, { catalogAvailable: true })).toEqual({
+      generate: true,
+      manual: true,
+      catalog: true,
+    });
   });
 
   // #40: without a catalog file, catalog-only left the user inventing an ID.
