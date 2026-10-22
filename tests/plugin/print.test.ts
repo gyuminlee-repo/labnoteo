@@ -33,6 +33,29 @@ describe('buildPrintHtml', () => {
 });
 
 describe('worksheetPrintPages', () => {
+  /** The printed body of a lab unit operation whose Method section is `method`. */
+  function worksheetBody(method: string[]): string {
+    let md = createWorkflowContent({ id: 'WD010', name: 'Design', description: 'desc' }, 'Dr. Kim', undefined, {
+      noteId: 'LN-7K3M9QX2',
+    });
+    const block = buildHwUnitOpMarkdown(
+      { opId: 'UHW090', opName: 'Electroporation', opDescription: 'step' },
+      { experimenter: 'Dr. Kim', dateTime: '2026-10-15 10:00' }
+    );
+    const off = findUnitOpInsertOffset(md);
+    md = rebuildUnitOpToc(md.slice(0, off) + block + md.slice(off));
+    md = md.replace('#### Method\n- (method used in this step)', method.join('\n'));
+    const pages = paginateWorksheet(listWorksheetUnitOps(md));
+    return worksheetPrintPages(pages, {
+      noteTitle: 'Note',
+      noteId: 'LN-7K3M9QX2',
+      printedOn: '2026-10-15',
+      t: (s: string, ...args: Array<string | number | boolean>) => args.reduce<string>((acc, a, i) => acc.replace(`{${i}}`, String(a)), s),
+    })
+      .map(p => p.body)
+      .join('');
+  }
+
   it('gives every page a QR naming the note, unit operation and page, and escapes note text', () => {
     let md = createWorkflowContent({ id: 'WD010', name: 'Design', description: 'desc' }, 'Dr. Kim', undefined, {
       noteId: 'LN-7K3M9QX2',
@@ -66,6 +89,23 @@ describe('worksheetPrintPages', () => {
     expect(printed[0].header).toContain('Liquid &lt;Handling&gt;');
     expect(printed[0].body).toContain('<div class="sec"><h3>Reagent</h3></div>');
     expect(printed.map(p => p.body).join('')).not.toContain('ruled');
+  });
+
+  it('prints what is nested under a step below it and a step\'s table as a table (#254)', () => {
+    const body = worksheetBody([
+      '#### Method',
+      '1. 컴피턴트 세포 준비',
+      '    - 얼음 위 10분',
+      '2. 전기천공 조건',
+      '',
+      '| 전압 | 큐벳 |',
+      '| --- | --- |',
+      '| 1.8 kV | 1 mm |',
+    ]);
+    expect(body).toContain('<span class="n">2.</span><div class="s">전기천공 조건');
+    expect(body).toContain('<ul class="sub"><li>얼음 위 10분</li></ul>');
+    expect(body).toContain('<table class="grid"><tr><th>전압</th><th>큐벳</th></tr><tr><td>1.8 kV</td><td>1 mm</td></tr></table>');
+    expect(body).not.toContain('| ---');
   });
 
   it('reduces inline markdown to its text', () => {

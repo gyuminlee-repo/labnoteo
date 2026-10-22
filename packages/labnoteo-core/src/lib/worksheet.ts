@@ -9,13 +9,28 @@
  */
 import { listUnitOpBlocks, WORKSHEET_SCANS_HEADING } from '../sections/scanInsert';
 import { stepFence, type OpenFence } from '../sections/sectionEdit';
+import { fitRow, SEPARATOR_ROW_RE, splitTableRow } from './exportTablesCsv';
 import { HW_PLACEHOLDERS, SW_PLACEHOLDERS } from './unitOpTemplate';
 
 export type UnitOpKind = 'hw' | 'sw';
 
+/** A piece of a section's body, as the printed sheet lays it out. */
+export type WorksheetBlock =
+  /** A list item; `level` is how deeply it is nested (0 = outermost). */
+  | { kind: 'item'; level: number; text: string }
+  | { kind: 'para'; text: string }
+  | { kind: 'table'; rows: string[][] };
+
+/** One Method step: its own line, the lines nested under it, and a table written below it. */
+export interface WorksheetStep {
+  text: string;
+  sub: string[];
+  table?: string[][];
+}
+
 export type WorksheetSection =
   | { type: 'meta'; title: string; fields: { label: string; value: string }[] }
-  | { type: 'steps'; title: string; steps: string[] }
+  | { type: 'steps'; title: string; steps: WorksheetStep[] }
   | { type: 'text'; title: string; lines: string[] }
   /** Nothing written yet: printed as the heading alone. */
   | { type: 'blank'; title: string };
@@ -85,6 +100,87 @@ function splitSections(lines: readonly string[]): { description: string; section
   return { description, sections };
 }
 
+const LIST_ITEM_RE = /^[ \t]*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?(.*)$/;
+const PIPE_ROW_RE = /^\s*\|/;
+
+/** Width of a line's indent in columns, a tab counting as four. */
+function indentWidth(line: string): number {
+  const ws = /^[ \t]*/.exec(line)?.[0] ?? '';
+  return [...ws].reduce((n, c) => n + (c === '\t' ? 4 : 1), 0);
+}
+
+/**
+ * How deeply an item at `indent` is nested, tracked the way a Markdown reader
+ * does it: a wider indent than the item above opens a level, a narrower one
+ * closes back to the level that matches.
+ */
+function levelOf(indent: number, open: number[]): number {
+  while (open.length > 0 && indent < open[open.length - 1]) open.pop();
+  if (open.length === 0 || indent > open[open.length - 1]) open.push(indent);
+  return open.length - 1;
+}
+
+/**
+ * A section's lines as blocks to print. List items keep their nesting, pipe
+ * tables stay tables instead of printing their `|` marks (#253, #254), and a
+ * line that is neither continues the item or paragraph above it.
+ */
+export function parseWorksheetBlocks(lines: readonly string[]): WorksheetBlock[] {
+  const blocks: WorksheetBlock[] = [];
+  const open: number[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trim() === '') continue;
+    if (PIPE_ROW_RE.test(line) && lines[i + 1] !== undefined && SEPARATOR_ROW_RE.test(lines[i + 1])) {
+      const header = splitTableRow(line);
+      const rows = [header];
+      for (i += 2; i < lines.length && PIPE_ROW_RE.test(lines[i]); i++) {
+        rows.push(fitRow(splitTableRow(lines[i]), header.length));
+      }
+      i--;
+      blocks.push({ kind: 'table', rows });
+      open.length = 0;
+      continue;
+    }
+    const item = LIST_ITEM_RE.exec(line);
+    if (item) {
+      blocks.push({ kind: 'item', level: levelOf(indentWidth(line), open), text: item[1].trim() });
+      continue;
+    }
+    const last = blocks[blocks.length - 1];
+    if (last && last.kind !== 'table') {
+      last.text += ` ${line.trim()}`;
+      continue;
+    }
+    blocks.push({ kind: 'para', text: line.trim() });
+    open.length = 0;
+  }
+  return blocks;
+}
+
+/**
+ * Method blocks as numbered steps. Only outermost items are steps, so the
+ * numbers match the note: what is nested under a step prints below it, and a
+ * table written after a step prints with it (#254).
+ */
+function toSteps(blocks: readonly WorksheetBlock[]): WorksheetStep[] {
+  const steps: WorksheetStep[] = [];
+  for (const block of blocks) {
+    const last = steps[steps.length - 1];
+    if (block.kind === 'table') {
+      if (last) last.table = block.rows;
+      else steps.push({ text: '', sub: [], table: block.rows });
+      continue;
+    }
+    if (last && block.kind === 'item' && block.level > 0) {
+      last.sub.push(block.text);
+      continue;
+    }
+    steps.push({ text: block.text, sub: [] });
+  }
+  return steps;
+}
+
 const trimBlankEdges = (lines: string[]): string[] => {
   let a = 0;
   let b = lines.length;
@@ -110,14 +206,7 @@ function toSection(raw: RawSection): WorksheetSection {
     return { type: 'blank', title: raw.title };
   }
   if (raw.title === 'Method') {
-    const steps: string[] = [];
-    for (const line of body) {
-      const item = /^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?(.*)$/.exec(line);
-      if (item) steps.push(item[1]);
-      else if (line.trim() && steps.length) steps[steps.length - 1] += ` ${line.trim()}`;
-      else if (line.trim()) steps.push(line.trim());
-    }
-    return { type: 'steps', title: raw.title, steps };
+    return { type: 'steps', title: raw.title, steps: toSteps(parseWorksheetBlocks(body)) };
   }
   return { type: 'text', title: raw.title, lines: body.filter(l => l.trim() !== '') };
 }
@@ -150,6 +239,14 @@ const CHARS_PER_LINE = 80;
 
 const wrapped = (text: string): number => Math.max(1, Math.ceil(text.length / CHARS_PER_LINE));
 
+/** A table prints one line per row plus the rule under its header. */
+const tableLines = (rows: readonly string[][]): number => rows.length + 1;
+
+const stepWeight = (step: WorksheetStep): number =>
+  wrapped(step.text) +
+  step.sub.reduce((n, line) => n + wrapped(line), 0) +
+  (step.table ? tableLines(step.table) : 0);
+
 /** Estimated printed height of a section, in text lines (heading included). */
 export function sectionWeight(section: WorksheetSection): number {
   const heading = 2;
@@ -157,7 +254,7 @@ export function sectionWeight(section: WorksheetSection): number {
     case 'meta':
       return heading + section.fields.length;
     case 'steps':
-      return heading + section.steps.reduce((n, s) => n + wrapped(s), 0);
+      return heading + section.steps.reduce((n, s) => n + stepWeight(s), 0);
     case 'text':
       return heading + section.lines.reduce((n, l) => n + wrapped(l), 0);
     case 'blank':

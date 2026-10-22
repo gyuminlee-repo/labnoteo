@@ -30,6 +30,15 @@ export function plainInline(text: string): string {
 
 const inline = (text: string): string => escapeHtml(plainInline(text));
 
+/** A pipe table as a printed table: on paper its `|` marks would be unreadable (#254). */
+function tableHtml(rows: readonly string[][]): string {
+  const [header, ...body] = rows;
+  const cells = (row: readonly string[], tag: 'th' | 'td'): string =>
+    row.map(c => `<${tag}>${inline(c)}</${tag}>`).join('');
+  const head = header ? `<tr>${cells(header, 'th')}</tr>` : '';
+  return `<table class="grid">${head}${body.map(r => `<tr>${cells(r, 'td')}</tr>`).join('')}</table>`;
+}
+
 function sectionHtml(section: WorksheetSection): string {
   const title = `<h3>${escapeHtml(section.title)}</h3>`;
   switch (section.type) {
@@ -41,7 +50,13 @@ function sectionHtml(section: WorksheetSection): string {
     }
     case 'steps': {
       const items = section.steps
-        .map((s, i) => `<li><span class="box"></span><span class="n">${i + 1}.</span><span>${inline(s)}</span></li>`)
+        .map((s, i) => {
+          const sub = s.sub.length > 0 ? `<ul class="sub">${s.sub.map(l => `<li>${inline(l)}</li>`).join('')}</ul>` : '';
+          return (
+            `<li><span class="box"></span><span class="n">${i + 1}.</span>` +
+            `<div class="s">${inline(s.text)}${sub}${s.table ? tableHtml(s.table) : ''}</div></li>`
+          );
+        })
         .join('');
       return `<div class="sec">${title}<ol class="steps">${items}</ol></div>`;
     }

@@ -11,7 +11,7 @@ export interface CsvTable {
   rows: string[][];
 }
 
-const SEPARATOR_ROW_RE = /^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$/;
+export const SEPARATOR_ROW_RE = /^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$/;
 
 function stripEdgePipes(line: string): string {
   let s = line.trim();
@@ -21,7 +21,7 @@ function stripEdgePipes(line: string): string {
 }
 
 /** Splits a single pipe-table row into cells, honoring `\|` as an escaped literal pipe. */
-function splitTableRow(line: string): string[] {
+export function splitTableRow(line: string): string[] {
   const stripped = stripEdgePipes(line);
   const cells: string[] = [];
   let current = '';
@@ -78,7 +78,7 @@ function stripInlineFormatting(cell: string): string {
 }
 
 /** Fits a data row to the header width the way GFM renders it: extra cells are dropped, missing ones are empty. */
-function fitRow(cells: string[], width: number): string[] {
+export function fitRow(cells: string[], width: number): string[] {
   if (cells.length >= width) return cells.slice(0, width);
   return [...cells, ...Array<string>(width - cells.length).fill('')];
 }
