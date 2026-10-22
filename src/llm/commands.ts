@@ -17,6 +17,9 @@ import {
   cleanMethodDraft,
   extractMethodBody,
   planBlockInsert,
+  hasRecordedResults,
+  stripAiCallouts,
+  stripTemplatePlaceholders,
   replaceSectionBodyAt,
   minimalReplacement,
   type ToolContext,
@@ -329,14 +332,27 @@ export async function summarizeResultsCommand(plugin: LabnotePlugin): Promise<vo
     new Notice(plugin.t('Nothing to summarize.'));
     return;
   }
+  // A note holding only the template used to be summarized into invented
+  // measurements (#257), so stop while the result sections are still empty.
+  if (!hasRecordedResults(text)) {
+    new Notice(
+      plugin.t('No results to summarize yet. Write them in "Results & Discussions" and run this again.'),
+      8000
+    );
+    return;
+  }
   const out = await complete(plugin, [
     {
       role: 'system',
       content:
         'You summarize experimental Results for a lab notebook as 3–6 concise Markdown bullet points. No preamble, no code fences. ' +
+        'Use only measurements and observations written in the note; never invent a number, a result or a conclusion that is not there. ' +
         replyLanguageInstruction(),
     },
-    { role: 'user', content: `Summarize these results:\n\n${text.slice(0, 6000)}` },
+    {
+      role: 'user',
+      content: `Summarize these results:\n\n${stripTemplatePlaceholders(stripAiCallouts(text)).slice(0, 6000)}`,
+    },
   ]);
   if (!out) return;
   const header = plugin.t('AI summary ({0}, {1})', plugin.settings.llmModel || plugin.settings.llmProvider, getSeoulDateString());

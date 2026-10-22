@@ -363,6 +363,13 @@ callout and inserted after the cursor's line.
 
 - With the cursor in the front matter or above the first heading, it is appended at the end of the
   note (the last section).
+- In a workflow note with no results written yet — its `Results & Discussions`, `QC Metrics`,
+  `Discussion` and `Conclusions and Discussion` empty or still holding the template wording, and
+  no section of the researcher's own — it stops instead of asking the model, so nothing is
+  invented. A section you added yourself counts as results, and a note outside the template is
+  summarized as before.
+- The template's `- (…)` wording and summaries inserted earlier are left out of what the model
+  reads, and it is told not to invent a measurement that is not in the note.
 - Moving to another note while waiting opens the answer dialog, as for the Method draft.
 - The summary and the Method draft ask the model to write in Obsidian's interface language.
 

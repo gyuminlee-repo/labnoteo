@@ -592,6 +592,8 @@ const obsidianKo: Record<string, string> = {
     'AI가 쓰는 동안 유닛 오퍼레이션이 바뀌어, 초안을 커서가 있는 줄 다음에 넣었습니다.',
   'Open a note first.': '먼저 노트를 여세요.',
   'Open a markdown note first.': '먼저 마크다운 노트를 여세요.',
+  'No results to summarize yet. Write them in "Results & Discussions" and run this again.':
+    '아직 요약할 결과가 없습니다. `Results & Discussions`에 결과를 적은 뒤 다시 실행하세요.',
   'Nothing to summarize.': '요약할 내용이 없습니다.',
   'Nothing to extract.': '추출할 내용이 없습니다.',
   'Created {0} sample(s).': '샘플 {0}개를 생성했습니다.',

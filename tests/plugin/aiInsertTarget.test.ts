@@ -135,6 +135,30 @@ describe('summarizeResultsCommand (#112)', () => {
     expect(Notice.shown).toContain('Inserted the summary into 001_WD010_A_fixed.labnote.md.');
   });
 
+  // #257: a note holding only the template got invented measurements back.
+  it('stops before asking the model when no results are written yet', async () => {
+    open = makeTarget(NOTE, 0);
+    open.text = BODY.replace('## 결과\n\n결과 문단\n', '');
+    await summarizeResultsCommand(plugin);
+
+    expect(chat).not.toHaveBeenCalled();
+    expect(Notice.shown).toContain(
+      'No results to summarize yet. Write them in "Results & Discussions" and run this again.'
+    );
+  });
+
+  it('sends the note without the template wording, and tells the model not to invent results', async () => {
+    const start = open!;
+    start.text = BODY.replace('#### Output\n', '#### Output\n- (samples to the next step)\n');
+    replyAfterSwitch('- 요약');
+    await summarizeResultsCommand(plugin);
+
+    const [messages] = chat.mock.calls[0] as [{ role: string; content: string }[]];
+    expect(messages[0].content).toContain('never invent a number');
+    expect(messages[1].content).not.toContain('(samples to the next step)');
+    expect(messages[1].content).toContain('결과 문단');
+  });
+
   it('inserts from the dialog once the user is back in that note', async () => {
     replyAfterSwitch('- 요약', makeTarget(OTHER, 0));
     await summarizeResultsCommand(plugin);
