@@ -349,6 +349,7 @@ Draft an experimental method with the configured LLM.
   and the draft goes after the cursor's line.
 - It goes in only if that note is still open when the reply arrives; if you moved to another note,
   the reply opens in the answer dialog (return to the note and press `Insert into note`, or `Copy`).
+  A note that was only renamed meanwhile is still the same note, so the reply goes in.
 
 ### AI: Summarize results
 
