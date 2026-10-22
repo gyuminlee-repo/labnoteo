@@ -58,9 +58,31 @@ export function isValidSampleTypeName(name: string): boolean {
   return /^[\p{L}\p{N}_]+$/u.test(name) && !RESERVED_SAMPLE_TYPE_NAMES.includes(name.toLowerCase());
 }
 
-/** `name` with each run of other characters turned into `_` (`Cell Line` → `Cell_Line`). */
+const isAsciiAlnum = (ch: string | undefined): boolean => ch !== undefined && /[A-Za-z0-9]/.test(ch);
+
+/**
+ * Whether Obsidian would read a `_` in `name` as the start of italics (#252).
+ * A `_` joins words only between ASCII letters and digits: `Cell_Line` is one
+ * word, while `무세포_용해물` is shown as italics in the reading view and the
+ * type no longer reads as what the note says.
+ */
+export function underscoreTurnsItalic(name: string): boolean {
+  for (let i = 0; i < name.length; i++) {
+    if (name[i] !== '_') continue;
+    if (!isAsciiAlnum(name[i - 1]) || !isAsciiAlnum(name[i + 1])) return true;
+  }
+  return false;
+}
+
+/**
+ * `name` as a type name that autocompletes and does not turn italic: runs of
+ * other characters become `_` between ASCII letters and digits (`Cell Line` →
+ * `Cell_Line`) and go away elsewhere (`무세포 용해물` → `무세포용해물`).
+ */
 export function suggestSampleTypeName(name: string): string {
-  return name.replace(/[^\p{L}\p{N}_]+/gu, '_').replace(/^_+|_+$/g, '');
+  return name.replace(/[^\p{L}\p{N}]+/gu, (run: string, at: number, whole: string) =>
+    isAsciiAlnum(whole[at - 1]) && isAsciiAlnum(whole[at + run.length]) ? '_' : ''
+  );
 }
 
 /**

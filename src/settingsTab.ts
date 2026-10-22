@@ -125,7 +125,7 @@ export class LabnoteSettingTab extends PluginSettingTab {
       .setName(this.plugin.t('Custom sample types'))
       .setDesc(
         this.plugin.t(
-          'Comma-separated types in addition to the built-ins. Use letters, digits and _ only (no spaces or -), e.g. CellLine, 배지.'
+          'Comma-separated types in addition to the built-ins. Use letters, digits and _ only (no spaces or -), e.g. CellLine, 배지. A _ works between ASCII letters and digits (Cell_Line); next to other letters it turns the name italic in the reading view, so write those together (무세포용해물).'
         )
       )
       .addText(t => {
@@ -137,14 +137,24 @@ export class LabnoteSettingTab extends PluginSettingTab {
             this.scheduleSampleTypesRefresh();
           });
         t.inputEl.addEventListener('blur', () => {
-          const { rejected, caseDuplicates } = partitionCustomSampleTypes(t.getValue(), storedTypes);
-          if (rejected.length === 0 && caseDuplicates.length === 0) return;
+          const { rejected, italic, caseDuplicates } = partitionCustomSampleTypes(t.getValue(), storedTypes);
+          if (rejected.length === 0 && italic.length === 0 && caseDuplicates.length === 0) return;
           if (rejected.length > 0) {
             new Notice(
               this.plugin.t(
                 '{0}: a space or - keeps a type from autocompleting, so it was not saved. Use {1} instead.',
                 rejected.map(r => r.name).join(', '),
                 rejected.map(r => r.suggestion).join(', ')
+              ),
+              8000
+            );
+          }
+          if (italic.length > 0) {
+            new Notice(
+              this.plugin.t(
+                '{0}: a _ next to a letter that is not A–Z or a digit shows the name in italics in the reading view, so it was not saved. Use {1} instead.',
+                italic.map(r => r.name).join(', '),
+                italic.map(r => r.suggestion).join(', ')
               ),
               8000
             );
@@ -162,7 +172,7 @@ export class LabnoteSettingTab extends PluginSettingTab {
           t.setValue(s.customSampleTypes.join(', '));
         });
       });
-    const { legacyInvalid, legacyCaseDuplicates } = partitionCustomSampleTypes(
+    const { legacyInvalid, legacyItalic, legacyCaseDuplicates } = partitionCustomSampleTypes(
       s.customSampleTypes.join(','),
       storedTypes
     );
@@ -173,6 +183,16 @@ export class LabnoteSettingTab extends PluginSettingTab {
           '{0} cannot be autocompleted in notes (a space or -). Rename it, e.g. {1}, if you have no samples of it yet.',
           legacyInvalid.join(', '),
           legacyInvalid.map(suggestSampleTypeName).join(', ')
+        ),
+      });
+    }
+    if (legacyItalic.length > 0) {
+      typesSetting.descEl.createDiv({
+        cls: 'mod-warning',
+        text: this.plugin.t(
+          '{0} is shown in italics in the reading view because of its _. It keeps working; rename it, e.g. {1}, if you have no samples of it yet.',
+          legacyItalic.join(', '),
+          legacyItalic.map(suggestSampleTypeName).join(', ')
         ),
       });
     }
@@ -214,7 +234,7 @@ export class LabnoteSettingTab extends PluginSettingTab {
       .setName(this.plugin.t('Auto-sync unit operation TOC'))
       .setDesc(
         this.plugin.t(
-          "Reorder a workflow note's Related Unit Operations list to match heading order after edits, and tidy the --- separators immediately when a block is moved."
+          "Reorder a workflow note's Related Unit Operations list to match heading order after edits, and tidy the --- separators immediately when a block is moved. Off, the order is left as you arranged it but the names and links still follow the headings."
         )
       )
       .addToggle(t =>

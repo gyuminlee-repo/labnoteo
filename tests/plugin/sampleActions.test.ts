@@ -38,6 +38,7 @@ let plugin: LabnotePlugin;
 
 beforeEach(() => {
   vi.mocked(promptModal).mockReset();
+  vi.mocked(pickModal).mockReset();
   fs = new MemFileSystem();
   plugin = {
     fs,
@@ -108,23 +109,24 @@ describe('createSampleInteractive', () => {
     expect(JSON.parse(await fs.read(REGISTRY))[created!.id].alias).toBe('sikif');
   });
 
-  it('warns about a same-alias Global sample as one that cannot be told apart when adding to Global', async () => {
+  it('asks about a same-alias Global sample when adding to Global', async () => {
     await fs.write(
       `${GLOBAL}/RNA.json`,
       JSON.stringify({ 'RNA-7': { type: 'RNA', alias: 'siKIF', descriptions: [], sources: [] } })
     );
-    Notice.reset();
     answer('siKIF', '', '');
+    vi.mocked(pickModal).mockResolvedValueOnce(false);
 
     await createSampleInteractive(new App(), plugin, { type: 'RNA', folder: GLOBAL, mode: 'generate' });
 
-    expect(Notice.shown[0]).toBe(
-      'Global samples already have the alias siKIF (RNA-7). Autocomplete cannot tell the two apart, so picking the existing sample is usually better.'
-    );
+    expect(vi.mocked(pickModal).mock.calls[0][2]).toMatchObject({
+      title: 'Global samples already have the alias siKIF (RNA-7).',
+    });
   });
 
-  // #125: two Local samples with one alias show as identical autocomplete lines.
-  it('warns, without refusing, when the same experiment has the alias', async () => {
+  // #125, #248: two Local samples with one alias show as identical
+  // autocomplete lines, so the choice comes before the sample is written.
+  it('asks before creating when the same experiment has the alias, and creates on "anyway"', async () => {
     await fs.write(
       REGISTRY,
       JSON.stringify({ 'RNA-3': { type: 'RNA', alias: '배지성분-1', descriptions: [], sources: [] } })
@@ -135,14 +137,54 @@ describe('createSampleInteractive', () => {
     );
     Notice.reset();
     answer('배지성분-1', '', '');
+    vi.mocked(pickModal).mockResolvedValueOnce(false);
 
     const created = await add();
 
-    expect(Notice.shown[0]).toBe(
-      'This experiment already has the alias 배지성분-1 (RNA-3). Autocomplete cannot tell the two apart, so picking the existing sample is usually better.'
-    );
+    expect(vi.mocked(pickModal).mock.calls[0][2]).toMatchObject({
+      title: 'This experiment already has the alias 배지성분-1 (RNA-3).',
+    });
     expect(Notice.shown.some(m => m.includes('marked Local and Global'))).toBe(false);
+    expect(created?.reused).toBeUndefined();
     expect(Object.keys(JSON.parse(await fs.read(REGISTRY)))).toContain(created!.id);
+  });
+
+  it('inserts the existing sample, asking nothing else and writing nothing, on "use the existing one"', async () => {
+    await fs.write(
+      REGISTRY,
+      JSON.stringify({
+        'RNA-3': { type: 'RNA', alias: '배지성분-1', descriptions: ['first run'], sources: [] },
+      })
+    );
+    Notice.reset();
+    answer('배지성분-1');
+    vi.mocked(pickModal).mockResolvedValueOnce(true);
+
+    const created = await add();
+
+    expect(created).toMatchObject({
+      id: 'RNA-3',
+      alias: '배지성분-1',
+      description: 'first run',
+      referenceText: 'RNA-3;배지성분-1',
+      reused: true,
+    });
+    expect(vi.mocked(promptModal)).toHaveBeenCalledTimes(1);
+    expect(Object.keys(JSON.parse(await fs.read(REGISTRY)))).toEqual(['RNA-3']);
+    expect(Notice.shown).toContain('Using the existing sample RNA-3 instead of creating one.');
+    expect(Notice.shown.some(m => m.includes('Sample added'))).toBe(false);
+  });
+
+  it('registers nothing when the same-alias question is closed', async () => {
+    await fs.write(
+      REGISTRY,
+      JSON.stringify({ 'RNA-3': { type: 'RNA', alias: 'R1', descriptions: [], sources: [] } })
+    );
+    answer('R1');
+    vi.mocked(pickModal).mockResolvedValueOnce(undefined);
+
+    expect(await add()).toBeUndefined();
+    expect(Object.keys(JSON.parse(await fs.read(REGISTRY)))).toEqual(['RNA-3']);
   });
 
   it('does not warn about a same alias of another type', async () => {

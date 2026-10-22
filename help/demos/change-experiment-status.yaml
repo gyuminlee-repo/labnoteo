@@ -15,7 +15,7 @@ steps:
   - highlight: { selector: .labnote-tree-row, text: { ko: RFP 프로모터 비교, en: RFP promoter comparison } }
   - caption: { ko: 팔레트에서 실험 상태 변경을 실행합니다, en: Run Change experiment status from the palette }
     palette: change-experiment-status
-  - caption: { ko: 목록에서 in-progress를 고릅니다, en: Pick in-progress from the list }
+  - caption: { ko: 목록에는 상태마다 뜻이 함께 나옵니다. in-progress를 고릅니다, en: The list says what each status means; pick in-progress }
     tool: modal_pick
     args: { text: in-progress }
   - caption: { ko: README의 status가 바뀌었습니다, en: The README status has changed }

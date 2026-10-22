@@ -17,6 +17,9 @@ import {
   cleanMethodDraft,
   extractMethodBody,
   planBlockInsert,
+  hasRecordedResults,
+  stripAiCallouts,
+  stripTemplatePlaceholders,
   replaceSectionBodyAt,
   minimalReplacement,
   type ToolContext,
@@ -150,6 +153,21 @@ async function insertBlock(plugin: LabnotePlugin, target: EditTarget, block: str
   plugin.markUserEdit(target.path);
 }
 
+/** A note followed by reference, so a rename does not lose track of it (#260). */
+interface NoteRef {
+  readonly path: string;
+}
+
+/**
+ * The note a command starts from. Obsidian keeps a `TFile`'s `path` up to
+ * date, so holding the file rather than the path string means a reply still
+ * goes in when the note was renamed while the model was writing (#260).
+ * A note the vault index does not know falls back to the path as it was.
+ */
+function noteRef(plugin: LabnotePlugin, path: string): NoteRef {
+  return plugin.app.vault.getFileByPath?.(path) ?? { path };
+}
+
 /**
  * Write a reply into the note the command started from (#112, the #77 rule).
  * The tab's editor may show another note by the time the reply arrives, so it
@@ -158,22 +176,22 @@ async function insertBlock(plugin: LabnotePlugin, target: EditTarget, block: str
  */
 async function deliverToNote(
   plugin: LabnotePlugin,
-  path: string,
+  note: NoteRef,
   content: string,
   write: (target: EditTarget) => Promise<void>,
   doneMessage: string
 ): Promise<void> {
   const writeIfOpen = async (): Promise<boolean> => {
     const current = plugin.host.editTarget();
-    if (current?.path !== path) return false;
+    if (current?.path !== note.path) return false;
     await write(current);
-    new Notice(plugin.t(doneMessage, path.split('/').pop() ?? path));
+    new Notice(plugin.t(doneMessage, note.path.split('/').pop() ?? note.path));
     return true;
   };
   if (await writeIfOpen()) return;
   aiAnswerModal(plugin.app, {
     content,
-    sourcePath: path,
+    sourcePath: note.path,
     onInsert: async () => {
       if (await writeIfOpen()) return true;
       new Notice(plugin.t('That note is no longer open. Copy the answer instead.'));
@@ -231,6 +249,7 @@ export async function draftMethodCommand(plugin: LabnotePlugin): Promise<void> {
     new Notice(plugin.t('Open a note to insert into.'));
     return;
   }
+  const note = noteRef(plugin, target.path);
   const text = await target.getText();
   let loc = target.getCursorOffset ? findUnitOpMethodAt(text, await target.getCursorOffset()) : null;
   if (!loc) {
@@ -275,7 +294,7 @@ export async function draftMethodCommand(plugin: LabnotePlugin): Promise<void> {
     ]);
     const draft = out ? cleanMethodDraft(out) : '';
     if (draft) {
-      await deliverToNote(plugin, target.path, draft, t => writeMethodDraft(plugin, t, null, draft), 'Inserted the Method draft into {0}.');
+      await deliverToNote(plugin, note, draft, t => writeMethodDraft(plugin, t, null, draft), 'Inserted the Method draft into {0}.');
     }
     return;
   }
@@ -294,7 +313,7 @@ export async function draftMethodCommand(plugin: LabnotePlugin): Promise<void> {
   ]);
   if (!out) return;
   const body = extractMethodBody(out) || out.trim();
-  await deliverToNote(plugin, target.path, body, t => writeMethodDraft(plugin, t, loc, body), 'Inserted the Method draft into {0}.');
+  await deliverToNote(plugin, note, body, t => writeMethodDraft(plugin, t, loc, body), 'Inserted the Method draft into {0}.');
 }
 
 /** Summarize the whole note as a block after the cursor's line. */
@@ -304,6 +323,7 @@ export async function summarizeResultsCommand(plugin: LabnotePlugin): Promise<vo
     new Notice(plugin.t('Open a note to insert into.'));
     return;
   }
+  const note = noteRef(plugin, target.path);
   // Read from the SAME target we insert into (previously this read the active
   // MarkdownView, which could differ from the insert target when a sidebar had
   // focus — reading note A while writing to note B).
@@ -312,19 +332,32 @@ export async function summarizeResultsCommand(plugin: LabnotePlugin): Promise<vo
     new Notice(plugin.t('Nothing to summarize.'));
     return;
   }
+  // A note holding only the template used to be summarized into invented
+  // measurements (#257), so stop while the result sections are still empty.
+  if (!hasRecordedResults(text)) {
+    new Notice(
+      plugin.t('No results to summarize yet. Write them in "Results & Discussions" and run this again.'),
+      8000
+    );
+    return;
+  }
   const out = await complete(plugin, [
     {
       role: 'system',
       content:
         'You summarize experimental Results for a lab notebook as 3–6 concise Markdown bullet points. No preamble, no code fences. ' +
+        'Use only measurements and observations written in the note; never invent a number, a result or a conclusion that is not there. ' +
         replyLanguageInstruction(),
     },
-    { role: 'user', content: `Summarize these results:\n\n${text.slice(0, 6000)}` },
+    {
+      role: 'user',
+      content: `Summarize these results:\n\n${stripTemplatePlaceholders(stripAiCallouts(text)).slice(0, 6000)}`,
+    },
   ]);
   if (!out) return;
   const header = plugin.t('AI summary ({0}, {1})', plugin.settings.llmModel || plugin.settings.llmProvider, getSeoulDateString());
   const block = toNoteCallout(out, header);
-  await deliverToNote(plugin, target.path, block, t => insertBlock(plugin, t, block), 'Inserted the summary into {0}.');
+  await deliverToNote(plugin, note, block, t => insertBlock(plugin, t, block), 'Inserted the summary into {0}.');
 }
 
 /**

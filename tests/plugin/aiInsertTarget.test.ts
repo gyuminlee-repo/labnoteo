@@ -37,7 +37,7 @@ const BODY = [
   '',
 ].join('\n');
 
-type Target = EditTarget & { text: string };
+type Target = Omit<EditTarget, 'path'> & { text: string; path: string };
 
 function makeTarget(path: string, cursor: number): Target {
   const target: Target = {
@@ -56,14 +56,17 @@ function makeTarget(path: string, cursor: number): Target {
 
 let open: Target | undefined;
 let plugin: LabnotePlugin;
+/** Stands in for Obsidian's index: a TFile whose `path` follows a rename. */
+let files: Map<string, { path: string }>;
 
 beforeEach(() => {
   chat.mockReset();
   vi.mocked(aiAnswerModal).mockReset();
   Notice.reset();
   open = makeTarget(NOTE, BODY.indexOf('결과 문단'));
+  files = new Map([NOTE, OTHER].map(p => [p, { path: p }]));
   plugin = {
-    app: {},
+    app: { vault: { getFileByPath: (p: string) => files.get(p) } },
     settings: { globalSampleFolder: 'resources/labsamples', customSampleTypes: [], llmModel: 'llama3.1' },
     t: (key: string, ...args: string[]) => args.reduce<string>((s, a, i) => s.replace(`{${i}}`, a), key),
     host: {
@@ -114,6 +117,46 @@ describe('summarizeResultsCommand (#112)', () => {
     expect(await opts.onInsert()).toBe(false);
     expect(other.replaceRange).not.toHaveBeenCalled();
     expect(Notice.shown).toContain('That note is no longer open. Copy the answer instead.');
+  });
+
+  // #260: renaming the note while the model writes is still the same note.
+  it('inserts into the note it started from after it was renamed', async () => {
+    const start = open!;
+    const renamed = 'labnote/001_Test/001_WD010_A_fixed.labnote.md';
+    chat.mockImplementation(async () => {
+      files.get(NOTE)!.path = renamed;
+      start.path = renamed;
+      return { content: '- 요약' };
+    });
+    await summarizeResultsCommand(plugin);
+
+    expect(start.text).toContain('- 요약');
+    expect(aiAnswerModal).not.toHaveBeenCalled();
+    expect(Notice.shown).toContain('Inserted the summary into 001_WD010_A_fixed.labnote.md.');
+  });
+
+  // #257: a note holding only the template got invented measurements back.
+  it('stops before asking the model when no results are written yet', async () => {
+    open = makeTarget(NOTE, 0);
+    open.text = BODY.replace('## 결과\n\n결과 문단\n', '');
+    await summarizeResultsCommand(plugin);
+
+    expect(chat).not.toHaveBeenCalled();
+    expect(Notice.shown).toContain(
+      'No results to summarize yet. Write them in "Results & Discussions" and run this again.'
+    );
+  });
+
+  it('sends the note without the template wording, and tells the model not to invent results', async () => {
+    const start = open!;
+    start.text = BODY.replace('#### Output\n', '#### Output\n- (samples to the next step)\n');
+    replyAfterSwitch('- 요약');
+    await summarizeResultsCommand(plugin);
+
+    const [messages] = chat.mock.calls[0] as [{ role: string; content: string }[]];
+    expect(messages[0].content).toContain('never invent a number');
+    expect(messages[1].content).not.toContain('(samples to the next step)');
+    expect(messages[1].content).toContain('결과 문단');
   });
 
   it('inserts from the dialog once the user is back in that note', async () => {

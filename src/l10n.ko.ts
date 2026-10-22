@@ -132,6 +132,21 @@ const obsidianKo: Record<string, string> = {
   'The current status "{0}" is not an allowed value. Select a status':
     '현재 값 "{0}"은(는) 허용 목록에 없습니다. 상태를 선택하세요',
   'current': '현재',
+  'Planned: written down, not started yet': '계획 — 적어만 두고 아직 시작하지 않음',
+  'planned not started yet': '계획 예정 시작전',
+  'In progress: being run now': '진행 중 — 지금 하고 있음',
+  'in progress running now': '진행 진행중 수행중',
+  'Needs review: with the research automation, a push opens a GitHub issue for this experiment':
+    '검토 필요 — 연구노트 자동화를 쓰면 push할 때 이 실험의 GitHub 이슈가 열림',
+  'needs review discussion issue': '검토 리뷰 논의 이슈',
+  'Completed: finished, with the results written down': '완료 — 결과까지 적고 끝냄',
+  'completed done finished': '완료 끝 종료',
+  'Failed: it did not work': '실패 — 뜻대로 되지 않음',
+  'failed did not work': '실패 안됨',
+  'Discontinued: stopped on the way, not to be taken up again': '중단 — 도중에 그만두고 다시 하지 않음',
+  'discontinued stopped abandoned': '중단 중지 그만둠',
+  'Needs repeat: to be run once more': '재실험 필요 — 한 번 더 해야 함',
+  'needs repeat again redo': '재실험 다시 반복',
   'Workflow name': '워크플로 이름',
   'Enter a name for this workflow': '이 워크플로의 상세 별칭을 입력하세요',
   'Unit operation alias': '유닛 오퍼레이션 별칭',
@@ -246,8 +261,8 @@ const obsidianKo: Record<string, string> = {
     '{0}이(가) 새 버전과 다릅니다. 설치 뒤에 직접 고친 내용이 있다면 바꿀 때 사라집니다. 새 버전으로 바꿀까요?',
   'From then on, updates change only the marked block and keep what you write below it.':
     '이번에 바꾸면 다음부터는 업데이트가 표시된 블록만 바꾸고, 그 아래 적은 내용은 그대로 둡니다.',
-  'Pasted images are saved at the top of the vault. Save them in an images folder next to the note instead (for a lab note, the experiment\'s images folder)? This changes Settings → Files and links → Default location for new attachments to "./images".':
-    '붙여넣은 이미지가 보관함 맨 위에 저장되고 있습니다. 노트 옆 images 폴더(랩노트라면 실험의 images 폴더)에 저장할까요? 설정 → 파일 및 링크 → 새 첨부 파일의 기본 위치를 "./images"로 바꿉니다.',
+  'With the current setting, a pasted image is saved at the top of the vault. Save them in an images folder next to the note instead (for a lab note, the experiment\'s images folder)? This changes Settings → Files and links → Default location for new attachments to "./images".':
+    '지금 설정에서는 붙여넣은 이미지가 보관함 맨 위에 저장됩니다. 노트 옆 images 폴더(랩노트라면 실험의 images 폴더)에 저장하도록 바꿀까요? 설정 → 파일 및 링크 → 새 첨부 파일의 기본 위치를 "./images"로 바꿉니다.',
   'Use ./images': './images 쓰기',
   'New attachments now go to the images folder next to each note.':
     '이제 새 첨부 파일은 각 노트 옆 images 폴더에 저장됩니다.',
@@ -414,10 +429,15 @@ const obsidianKo: Record<string, string> = {
   'Global {0} sample': '전역 {0} 샘플',
   'Global samples already have the alias {0} ({1}). Autocomplete will show both, marked Local and Global.':
     '전역 샘플에 같은 별칭 {0}({1})이 이미 있습니다. 자동완성에는 로컬과 전역으로 구분되어 둘 다 보입니다.',
-  'This experiment already has the alias {0} ({1}). Autocomplete cannot tell the two apart, so picking the existing sample is usually better.':
-    '이 실험에 같은 별칭 {0}({1})이 이미 있습니다. 자동완성에서 둘을 구분할 수 없으니 있는 샘플을 고르는 편이 좋습니다.',
-  'Global samples already have the alias {0} ({1}). Autocomplete cannot tell the two apart, so picking the existing sample is usually better.':
-    '전역 샘플에 같은 별칭 {0}({1})이 이미 있습니다. 자동완성에서 둘을 구분할 수 없으니 있는 샘플을 고르는 편이 좋습니다.',
+  'This experiment already has the alias {0} ({1}).': '이 실험에 같은 별칭 {0}({1})이 이미 있습니다.',
+  'Global samples already have the alias {0} ({1}).': '전역 샘플에 같은 별칭 {0}({1})이 이미 있습니다.',
+  'Use the existing sample {0}': '있는 샘플 {0} 쓰기',
+  'Nothing is registered; its ID goes where this one would have.':
+    '새로 등록하지 않고, 만들려던 자리에 그 샘플의 ID를 넣습니다.',
+  'Create a new sample anyway': '그래도 새로 만들기',
+  'Both keep the alias, and only their descriptions tell them apart.':
+    '두 샘플이 같은 별칭을 쓰게 되어 설명으로만 구분할 수 있습니다.',
+  'Using the existing sample {0} instead of creating one.': '새로 만들지 않고 있는 샘플 {0}을(를) 씁니다.',
   '{0} was added to Global samples because this note is outside an experiment folder.':
     '이 노트는 실험 폴더 밖에 있어 {0}을(를) 전역 샘플에 추가했습니다.',
   'Sample updated: {0}': '샘플이 수정되었습니다: {0}',
@@ -480,12 +500,16 @@ const obsidianKo: Record<string, string> = {
   'Autocomplete, highlighting and {Type}.json sync. Reload to apply.':
     '자동완성, 하이라이팅 및 {Type}.json 동기화. 적용하려면 다시 로드하세요.',
   'Custom sample types': '사용자 정의 샘플 타입',
-  'Comma-separated types in addition to the built-ins. Use letters, digits and _ only (no spaces or -), e.g. CellLine, 배지.':
-    '기본 제공 타입 외에 추가할 타입을 쉼표로 구분해 입력합니다. 글자·숫자·_만 쓰세요(공백·- 불가). 예: CellLine, 배지',
+  'Comma-separated types in addition to the built-ins. Use letters, digits and _ only (no spaces or -), e.g. CellLine, 배지. A _ works between ASCII letters and digits (Cell_Line); next to other letters it turns the name italic in the reading view, so write those together (무세포용해물).':
+    '기본 제공 타입 외에 추가할 타입을 쉼표로 구분해 입력합니다. 글자·숫자·_만 쓰세요(공백·- 불가). 예: CellLine, 배지. _는 영문자·숫자 사이에서만 쓸 수 있고(Cell_Line), 한글처럼 다른 글자 옆에 두면 읽기 화면에서 이름이 기울임으로 보이니 붙여 쓰세요(무세포용해물).',
   '{0}: a space or - keeps a type from autocompleting, so it was not saved. Use {1} instead.':
     '{0}: 공백이나 -가 들어간 타입은 자동완성되지 않아 저장하지 않았습니다. 대신 {1}처럼 쓰세요.',
+  '{0}: a _ next to a letter that is not A–Z or a digit shows the name in italics in the reading view, so it was not saved. Use {1} instead.':
+    '{0}: 영문자·숫자가 아닌 글자 옆의 _는 읽기 화면에서 이름을 기울임으로 보이게 해 저장하지 않았습니다. 대신 {1}처럼 쓰세요.',
   '{0} cannot be autocompleted in notes (a space or -). Rename it, e.g. {1}, if you have no samples of it yet.':
     '{0}은(는) 공백이나 -가 있어 노트에서 자동완성되지 않습니다. 아직 그 타입의 샘플이 없다면 {1}처럼 이름을 바꾸세요.',
+  '{0} is shown in italics in the reading view because of its _. It keeps working; rename it, e.g. {1}, if you have no samples of it yet.':
+    '{0}은(는) _ 때문에 읽기 화면에서 기울임으로 보입니다. 계속 쓸 수는 있으며, 아직 그 타입의 샘플이 없다면 {1}처럼 이름을 바꾸세요.',
   '{0}: differs from {1} only in letter case, so on Windows both would share one {Type}.json and their samples would mix. It was not saved.':
     '{0}: {1}와(과) 대소문자만 다른 이름이라 Windows에서 두 타입이 같은 {Type}.json을 함께 써 시료가 섞입니다. 저장하지 않았습니다.',
   '{0} differs from {1} only in letter case: on Windows both share one {Type}.json, so their samples mix. Keep one of them.':
@@ -510,8 +534,8 @@ const obsidianKo: Record<string, string> = {
   'Catalog files not moved, {0} already has them: {1}':
     '{0}에 같은 이름이 있어 옮기지 않은 카탈로그 파일: {1}',
   'Auto-sync unit operation TOC': '유닛오퍼레이션 TOC 자동 정렬',
-  "Reorder a workflow note's Related Unit Operations list to match heading order after edits, and tidy the --- separators immediately when a block is moved.":
-    '편집 후 워크플로 노트의 Related Unit Operations 목록을 헤딩 순서에 맞게 정렬하고, 블록을 옮기면 `---` 구분선도 즉시 정리합니다.',
+  "Reorder a workflow note's Related Unit Operations list to match heading order after edits, and tidy the --- separators immediately when a block is moved. Off, the order is left as you arranged it but the names and links still follow the headings.":
+    '편집 후 워크플로 노트의 Related Unit Operations 목록을 헤딩 순서에 맞게 정렬하고, 블록을 옮기면 `---` 구분선도 즉시 정리합니다. 끄면 순서는 그대로 두고 이름·링크만 헤딩에 맞춰 갱신합니다.',
   'Auto-update last updated date': '마지막 갱신일 자동 기록',
   "Set a lab note's last_updated_date to today (once a day) when you edit it, change its status or discussion flag, or the AI edits it. Editing a workflow note also updates its experiment README. Changes pulled from git are ignored. A date you type by hand is kept for the rest of that day; turning this off and on resumes it at once.":
     '연구노트를 편집하거나 상태·논의 표시를 바꾸거나 AI가 고치면 last_updated_date를 오늘 날짜로 바꿉니다(하루 한 번). 워크플로 노트를 고치면 실험 README도 함께 바뀝니다. git으로 받아온 변경은 반영하지 않습니다. 날짜를 손으로 고친 노트는 그날 하루 동안 고친 날짜를 그대로 두고, 이 설정을 껐다 켜면 바로 다시 기록합니다.',
@@ -568,6 +592,8 @@ const obsidianKo: Record<string, string> = {
     'AI가 쓰는 동안 유닛 오퍼레이션이 바뀌어, 초안을 커서가 있는 줄 다음에 넣었습니다.',
   'Open a note first.': '먼저 노트를 여세요.',
   'Open a markdown note first.': '먼저 마크다운 노트를 여세요.',
+  'No results to summarize yet. Write them in "Results & Discussions" and run this again.':
+    '아직 요약할 결과가 없습니다. `Results & Discussions`에 결과를 적은 뒤 다시 실행하세요.',
   'Nothing to summarize.': '요약할 내용이 없습니다.',
   'Nothing to extract.': '추출할 내용이 없습니다.',
   'Created {0} sample(s).': '샘플 {0}개를 생성했습니다.',

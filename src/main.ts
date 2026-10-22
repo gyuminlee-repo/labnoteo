@@ -13,6 +13,7 @@ import {
   findSampleReferenceAt,
   isDiscussFlagged,
   rebuildUnitOpToc,
+  refreshUnitOpTocEntries,
   minimalReplacement,
   parseFrontMatterYaml,
   reassignIssueMarkerIds,
@@ -791,7 +792,12 @@ export default class LabnotePlugin extends Plugin {
         if (!(file instanceof TFile)) return;
         const newPath = file.path;
         const readmeOf = experimentLosingReadme(oldPath, newPath);
-        if (readmeOf) this.run(() => this.offerExperimentReadmeBack(file, readmeOf, oldPath));
+        // Not when the experiment folder itself was renamed: the README went
+        // along with it and the folder listener handles the name (#67, #166,
+        // #259). Then the old folder is no longer there.
+        if (readmeOf && this.app.vault.getAbstractFileByPath(readmeOf) instanceof TFolder) {
+          this.run(() => this.offerExperimentReadmeBack(file, readmeOf, oldPath));
+        }
         this.renameLocalSampleSources(oldPath, newPath);
         // Ahead of the copy branch, which returns early: a copy moved to
         // another experiment needs its samples and CSVs too.
@@ -966,6 +972,8 @@ export default class LabnotePlugin extends Plugin {
     if (this.unloaded || file.path !== movedPath) return;
     const free = (): boolean =>
       this.app.vault.getAbstractFileByPath(dir) instanceof TFolder && !this.app.vault.getAbstractFileByPath(oldPath);
+    // The experiment folder went too (it was renamed), so nothing was lost (#259).
+    if (!(this.app.vault.getAbstractFileByPath(dir) instanceof TFolder)) return;
     if (!settled || !free()) {
       this.host.notify('warn', warning);
       return;
@@ -1363,7 +1371,7 @@ export default class LabnotePlugin extends Plugin {
     if (current !== undefined && current !== null && current !== '' && current !== '/') return;
     const ok = await this.host.confirm(
       this.t(
-        'Pasted images are saved at the top of the vault. Save them in an images folder next to the note instead (for a lab note, the experiment\'s images folder)? This changes Settings → Files and links → Default location for new attachments to "./images".'
+        'With the current setting, a pasted image is saved at the top of the vault. Save them in an images folder next to the note instead (for a lab note, the experiment\'s images folder)? This changes Settings → Files and links → Default location for new attachments to "./images".'
       ),
       { confirmLabel: this.t('Use ./images') }
     );
@@ -1599,11 +1607,14 @@ export default class LabnotePlugin extends Plugin {
    * Only the changed span is rewritten (via {@link minimalReplacement}) so the
    * caret stays put; a full-document replace would reset it. The rewrite is
    * idempotent, so our own edit settles on the next pass without looping.
+   *
+   * With the setting off the order is left as the researcher arranged it, but
+   * the entries are still matched to their headings so a renamed unit
+   * operation does not leave a wrong name and a dead link behind (#258).
    */
   private registerUnitOpTocAutoSync(): void {
     this.registerEvent(
       this.app.workspace.on('editor-change', (editor, info) => {
-        if (!this.settings.autoSyncUnitOpToc) return;
         const file = info.file;
         if (!(file instanceof TFile) || !isValidWorkflowPath(file.path)) return;
 
@@ -1616,7 +1627,9 @@ export default class LabnotePlugin extends Plugin {
           if (info.file?.path !== path) return;
           if (this.lastChangeFromHistory.get(path)) return;
           const before = editor.getValue();
-          const after = rebuildUnitOpToc(before);
+          const after = this.settings.autoSyncUnitOpToc
+            ? rebuildUnitOpToc(before)
+            : refreshUnitOpTocEntries(before);
           const edit = minimalReplacement(before, after);
           if (!edit) return;
           editor.replaceRange(

@@ -5,7 +5,8 @@
 import { describe, it, expect } from 'vitest';
 import type { App } from 'obsidian';
 import { MarkdownView, TFile } from '../stubs/obsidian';
-import type { LabnoteHost } from '@labnoteo/core';
+import type { LabnoteHost, PickItem } from '@labnoteo/core';
+import { EXPERIMENT_STATUSES } from '@labnoteo/core';
 import { touchLastUpdatedDate } from '@labnoteo/core/lib/dateUtils';
 import { MemFileSystem } from '../../packages/labnoteo-core/src/fs/memFileSystem';
 import { changeExperimentStatusCommand, toggleDiscussionFlagCommand } from '../../src/commands';
@@ -181,6 +182,30 @@ describe('the status-change notice', () => {
     await changeExperimentStatusCommand(makeApp(), host, undefined, DIR);
     expect(opts.title).toBe('Change experiment status: 001_Test');
     expect(opts.placeholder).toContain('"Failed" is not an allowed value');
+  });
+
+  // #249: the stored values are English, so the list has to say what they mean.
+  it('explains every status and gives it search words', async () => {
+    const fs = new MemFileSystem({ [README]: note() });
+    let items: PickItem<string>[] = [];
+    const host = {
+      fs,
+      t: (s: string) => s,
+      notify: () => {},
+      pick: async (list: PickItem<string>[]) => {
+        items = list;
+        return undefined;
+      },
+    } as unknown as LabnoteHost;
+    await changeExperimentStatusCommand(makeApp(), host, undefined, DIR);
+
+    expect(items.map(i => i.value)).toEqual([...EXPERIMENT_STATUSES]);
+    for (const item of items) {
+      expect(item.detail).toBeTruthy();
+      expect(item.keywords?.length).toBeGreaterThan(0);
+    }
+    expect(items.find(i => i.value === 'needs-review')?.detail).toContain('GitHub issue');
+    expect(items.find(i => i.value === 'needs-repeat')?.keywords).toContain('repeat');
   });
 });
 

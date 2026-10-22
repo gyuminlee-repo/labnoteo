@@ -41,6 +41,8 @@ Create a new `.labnote.md` experiment note.
 
 Update the active experiment's `status` frontmatter via a picker.
 
+- Each status is listed with what it means, and its search also matches words for it (in the
+  Korean UI, Korean ones). The stored value is the English term either way.
 - Also on an experiment's right-click menu in the workflow view, where it changes that experiment
   (the picker title and notice name the experiment folder).
 - Picking `completed` while checklist workflows are unchecked, or while workflow notes have an
@@ -128,6 +130,9 @@ the alias goes into no file name.
   experiment moved into a subfolder of `labnote/`, …), it says what is wrong before the list opens.
 - A HW unit operation whose catalog entry names its equipment lists it in `#### Equipment`, not in
   `#### Meta`.
+- With **Auto-sync unit operation TOC** on, the TOC is reordered to match the headings. Turned
+  off, the order stays as you arranged it, but renaming a unit operation still updates the entry's
+  name and link.
 
 ### Update catalogs
 
@@ -349,6 +354,7 @@ Draft an experimental method with the configured LLM.
   and the draft goes after the cursor's line.
 - It goes in only if that note is still open when the reply arrives; if you moved to another note,
   the reply opens in the answer dialog (return to the note and press `Insert into note`, or `Copy`).
+  A note that was only renamed meanwhile is still the same note, so the reply goes in.
 
 ### AI: Summarize results
 
@@ -357,6 +363,13 @@ callout and inserted after the cursor's line.
 
 - With the cursor in the front matter or above the first heading, it is appended at the end of the
   note (the last section).
+- In a workflow note with no results written yet — its `Results & Discussions`, `QC Metrics`,
+  `Discussion` and `Conclusions and Discussion` empty or still holding the template wording, and
+  no section of the researcher's own — it stops instead of asking the model, so nothing is
+  invented. A section you added yourself counts as results, and a note outside the template is
+  summarized as before.
+- The template's `- (…)` wording and summaries inserted earlier are left out of what the model
+  reads, and it is told not to invent a measurement that is not in the note.
 - Moving to another note while waiting opens the answer dialog, as for the Method draft.
 - The summary and the Method draft ask the model to write in Obsidian's interface language.
 

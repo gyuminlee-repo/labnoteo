@@ -13,6 +13,7 @@ export {
   buildUnitOpTocLine,
   appendUnitOpToWorkflowToc,
   rebuildUnitOpToc,
+  refreshUnitOpTocEntries,
   locateInsertedUnitOpHeading,
   findUnitOpInsertOffset,
   findUnitOpInsertPointAt,
@@ -55,6 +56,10 @@ export {
   type UnitOpMethodLocation,
   type BlockInsert,
 } from './sections/blockInsert';
+
+// Whether a note holds results, so the AI summary stops instead of inventing
+// them (#257).
+export { hasRecordedResults, stripAiCallouts, stripTemplatePlaceholders } from './lib/noteResults';
 
 // Scanned worksheet pages filed under each unit operation.
 export {
