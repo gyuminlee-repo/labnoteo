@@ -11,6 +11,7 @@ import {
   listWorksheetUnitOps,
   paginateWorksheet,
   type WorksheetPage,
+  type WorksheetBlock,
   type WorksheetSection,
   type WorksheetUnitOp,
 } from '@labnoteo/core/lib/worksheet';
@@ -39,6 +40,30 @@ function tableHtml(rows: readonly string[][]): string {
   return `<table class="grid">${head}${body.map(r => `<tr>${cells(r, 'td')}</tr>`).join('')}</table>`;
 }
 
+/**
+ * Section blocks as paper would have them: a list prints with bullets rather
+ * than its `- ` marks (#253), a run of items staying one list.
+ */
+function blocksHtml(blocks: readonly WorksheetBlock[]): string {
+  let html = '';
+  let items: string[] = [];
+  const flush = (): void => {
+    if (items.length === 0) return;
+    html += `<ul class="bul">${items.join('')}</ul>`;
+    items = [];
+  };
+  for (const block of blocks) {
+    if (block.kind === 'item') {
+      items.push(`<li class="d${Math.min(block.level, 3)}">${inline(block.text) || '&nbsp;'}</li>`);
+      continue;
+    }
+    flush();
+    html += block.kind === 'table' ? tableHtml(block.rows) : `<p>${inline(block.text) || '&nbsp;'}</p>`;
+  }
+  flush();
+  return html;
+}
+
 function sectionHtml(section: WorksheetSection): string {
   const title = `<h3>${escapeHtml(section.title)}</h3>`;
   switch (section.type) {
@@ -60,10 +85,8 @@ function sectionHtml(section: WorksheetSection): string {
         .join('');
       return `<div class="sec">${title}<ol class="steps">${items}</ol></div>`;
     }
-    case 'text': {
-      const lines = section.lines.map(l => `<p>${inline(l) || '&nbsp;'}</p>`).join('');
-      return `<div class="sec text">${title}${lines}</div>`;
-    }
+    case 'text':
+      return `<div class="sec text">${title}${blocksHtml(section.blocks)}</div>`;
     case 'blank':
       return `<div class="sec">${title}</div>`;
   }

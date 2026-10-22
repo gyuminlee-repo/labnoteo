@@ -61,7 +61,26 @@ describe('listWorksheetUnitOps', () => {
     expect(listWorksheetUnitOps(md)[0].sections.find(s => s.title === 'Results & Discussions')).toEqual({
       type: 'text',
       title: 'Results & Discussions',
-      lines: ['Yield was low.', 'Repeat tomorrow.'],
+      blocks: [
+        { kind: 'para', text: 'Yield was low.' },
+        { kind: 'para', text: 'Repeat tomorrow.' },
+      ],
+    });
+  });
+
+  it('reads a text section as list items, paragraphs and tables (#253)', () => {
+    const md = buildNote([hw('UHW010')]).replace(
+      '#### Equipment\n- (e.g. centrifuge, spectrophotometer, etc.)',
+      '#### Equipment\n- Acoustic liquid dispenser\n  - 384-well head\n\n뒷정리 필요'
+    );
+    expect(listWorksheetUnitOps(md)[0].sections.find(s => s.title === 'Equipment')).toEqual({
+      type: 'text',
+      title: 'Equipment',
+      blocks: [
+        { kind: 'item', level: 0, text: 'Acoustic liquid dispenser' },
+        { kind: 'item', level: 1, text: '384-well head' },
+        { kind: 'para', text: '뒷정리 필요' },
+      ],
     });
   });
 

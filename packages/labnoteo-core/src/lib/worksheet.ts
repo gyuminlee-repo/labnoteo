@@ -31,7 +31,7 @@ export interface WorksheetStep {
 export type WorksheetSection =
   | { type: 'meta'; title: string; fields: { label: string; value: string }[] }
   | { type: 'steps'; title: string; steps: WorksheetStep[] }
-  | { type: 'text'; title: string; lines: string[] }
+  | { type: 'text'; title: string; blocks: WorksheetBlock[] }
   /** Nothing written yet: printed as the heading alone. */
   | { type: 'blank'; title: string };
 
@@ -128,9 +128,13 @@ function levelOf(indent: number, open: number[]): number {
 export function parseWorksheetBlocks(lines: readonly string[]): WorksheetBlock[] {
   const blocks: WorksheetBlock[] = [];
   const open: number[] = [];
+  let afterBlank = false;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (line.trim() === '') continue;
+    if (line.trim() === '') {
+      afterBlank = true;
+      continue;
+    }
     if (PIPE_ROW_RE.test(line) && lines[i + 1] !== undefined && SEPARATOR_ROW_RE.test(lines[i + 1])) {
       const header = splitTableRow(line);
       const rows = [header];
@@ -140,20 +144,23 @@ export function parseWorksheetBlocks(lines: readonly string[]): WorksheetBlock[]
       i--;
       blocks.push({ kind: 'table', rows });
       open.length = 0;
+      afterBlank = false;
       continue;
     }
     const item = LIST_ITEM_RE.exec(line);
     if (item) {
       blocks.push({ kind: 'item', level: levelOf(indentWidth(line), open), text: item[1].trim() });
+      afterBlank = false;
       continue;
     }
     const last = blocks[blocks.length - 1];
-    if (last && last.kind !== 'table') {
+    if (!afterBlank && last && last.kind !== 'table') {
       last.text += ` ${line.trim()}`;
       continue;
     }
     blocks.push({ kind: 'para', text: line.trim() });
     open.length = 0;
+    afterBlank = false;
   }
   return blocks;
 }
@@ -208,7 +215,7 @@ function toSection(raw: RawSection): WorksheetSection {
   if (raw.title === 'Method') {
     return { type: 'steps', title: raw.title, steps: toSteps(parseWorksheetBlocks(body)) };
   }
-  return { type: 'text', title: raw.title, lines: body.filter(l => l.trim() !== '') };
+  return { type: 'text', title: raw.title, blocks: parseWorksheetBlocks(body) };
 }
 
 /** Every unit operation of the note, as worksheet content. */
@@ -256,7 +263,7 @@ export function sectionWeight(section: WorksheetSection): number {
     case 'steps':
       return heading + section.steps.reduce((n, s) => n + stepWeight(s), 0);
     case 'text':
-      return heading + section.lines.reduce((n, l) => n + wrapped(l), 0);
+      return heading + section.blocks.reduce((n, b) => n + (b.kind === 'table' ? tableLines(b.rows) : wrapped(b.text)), 0);
     case 'blank':
       return heading;
   }

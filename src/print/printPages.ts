@@ -83,6 +83,11 @@ body { font-family: "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sa
 .steps .s { flex: 1 1 auto; min-width: 0; }
 .steps .sub { margin: 0.4mm 0 0; padding-left: 5mm; }
 .steps .sub li { display: list-item; margin: 0.2mm 0; }
+.bul { margin: 0; padding-left: 4mm; }
+.bul li { margin: 0.2mm 0; }
+.bul li.d1 { margin-left: 4mm; }
+.bul li.d2 { margin-left: 8mm; }
+.bul li.d3 { margin-left: 12mm; }
 .sec .grid { border-collapse: collapse; margin: 0.8mm 0; }
 .sec .grid th, .sec .grid td { border: 0.2mm solid #999; padding: 0.4mm 1.4mm; text-align: left; }
 .text p { margin: 0; white-space: pre-wrap; }
