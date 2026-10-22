@@ -23,8 +23,15 @@ export type ScanFolderMode = 'dedicated' | 'shared';
 export interface ScanFolderConfig {
   path: string;
   mode: ScanFolderMode;
-  /** Files modified before this time (ms) were already there when the folder was set. */
+  /** When the folder was set (ms). Only read for folders set before `baseline` existed. */
   since: number;
+  /**
+   * {@link historyKey} of every scan file in the folder when it was set: those
+   * are the ones to pass over. A copied file keeps its modification time, so
+   * going by the time alone skipped it as well (#247). Missing in folders set
+   * before 0.116.0.
+   */
+  baseline?: string[];
 }
 
 export const PROCESSED_DIR = 'labnote-processed';
@@ -42,15 +49,30 @@ export interface FolderEntry {
   name: string;
   size: number;
   mtimeMs: number;
+  /** When the file appeared here; Windows sets it anew on a copy. 0 where the file system has none. */
+  birthtimeMs?: number;
 }
 
 /** Key remembering a file in shared mode: a re-saved or edited photo counts as new. */
 export const historyKey = (e: FolderEntry): string => `${e.name}|${e.size}|${Math.round(e.mtimeMs)}`;
 
 /**
- * Files to read now: scan files new since the folder was set (or all, with
- * `includeExisting`), not handled before, and done being written — same size
- * as at the previous look (`lastSizes`) and untouched for a moment.
+ * Whether a file was already in the folder when it was set. With a
+ * {@link ScanFolderConfig.baseline} that is simply the list taken then. In
+ * older folders there is no list, so the time is all there is: a copy keeps
+ * its modification time but Windows gives it a new creation time, so the
+ * later of the two decides (#247).
+ */
+function wasThereBefore(e: FolderEntry, since: number, baseline?: ReadonlySet<string>): boolean {
+  if (baseline) return baseline.has(historyKey(e));
+  return Math.max(e.mtimeMs, e.birthtimeMs ?? 0) < since;
+}
+
+/**
+ * Files to read now: scan files that were not in the folder when it was set
+ * (or all, with `includeExisting`), not handled before, and done being
+ * written — same size as at the previous look (`lastSizes`) and untouched for
+ * a moment.
  */
 export function selectReadyFiles(
   entries: readonly FolderEntry[],
@@ -58,6 +80,8 @@ export function selectReadyFiles(
     since: number;
     now: number;
     includeExisting?: boolean;
+    /** {@link historyKey}s of the files the folder already had. */
+    baseline?: ReadonlySet<string>;
     handled: (e: FolderEntry) => boolean;
     lastSizes: Map<string, number>;
     /** A manual run does not wait for a second look. */
@@ -69,7 +93,7 @@ export function selectReadyFiles(
   const seen = new Set<string>();
   for (const e of entries) {
     if (!SCAN_FILE_RE.test(e.name) || e.name.startsWith('.') || e.name.startsWith('~$')) continue;
-    if (!opts.includeExisting && e.mtimeMs < opts.since) continue;
+    if (!opts.includeExisting && wasThereBefore(e, opts.since, opts.baseline)) continue;
     if (opts.handled(e)) continue;
     seen.add(e.name);
     const settled = opts.now - e.mtimeMs >= SETTLE_MS && e.size > 0;
@@ -133,12 +157,37 @@ export class ScanFolderWatcher {
     const prev = this.config();
     const trimmed = path.trim();
     if (!trimmed) this.deps.store.set(CONFIG_KEY, undefined);
-    else {
-      const since = prev && prev.path === trimmed ? prev.since : Date.now();
-      this.deps.store.set(CONFIG_KEY, { path: trimmed, mode, since } satisfies ScanFolderConfig);
+    else if (prev && prev.path === trimmed) {
+      // Only the mode changed: the folder is the same one, so keep its baseline.
+      this.deps.store.set(CONFIG_KEY, { ...prev, mode } satisfies ScanFolderConfig);
+    } else {
+      const config: ScanFolderConfig = { path: trimmed, mode, since: Date.now(), baseline: this.readBaseline(trimmed) };
+      this.deps.store.set(CONFIG_KEY, config);
     }
     this.lastSizes.clear();
     this.restart();
+  }
+
+  /** What the folder holds right now, as the list of files to pass over (#247). */
+  private readBaseline(folder: string): string[] {
+    const { fs, path } = this.node;
+    let names: import('fs').Dirent[];
+    try {
+      names = fs.readdirSync(folder, { withFileTypes: true });
+    } catch {
+      return []; // Not there (yet): nothing to pass over.
+    }
+    const keys: string[] = [];
+    for (const d of names) {
+      if (!d.isFile() || !SCAN_FILE_RE.test(d.name)) continue;
+      try {
+        const st = fs.statSync(path.join(folder, d.name));
+        keys.push(historyKey({ name: d.name, size: st.size, mtimeMs: st.mtimeMs }));
+      } catch {
+        // Gone meanwhile.
+      }
+    }
+    return keys;
   }
 
   /** Watch the folder for changes; the plugin calls {@link tick} on its own interval too. */
@@ -202,24 +251,28 @@ export class ScanFolderWatcher {
         if (!d.isFile() || !SCAN_FILE_RE.test(d.name)) continue;
         try {
           const st = await fs.promises.stat(path.join(cfg.path, d.name));
-          entries.push({ name: d.name, size: st.size, mtimeMs: st.mtimeMs });
+          entries.push({ name: d.name, size: st.size, mtimeMs: st.mtimeMs, birthtimeMs: st.birthtimeMs });
         } catch {
           // Gone meanwhile.
         }
       }
       const now = Date.now();
       let history = pruneHistory(this.deps.store.get<Record<string, number>>(HISTORY_KEY) ?? {}, now);
+      // A file taken out of the folder leaves the baseline, so putting it back
+      // in (the same photo once more) reads it.
+      const stillThere = this.pruneBaseline(cfg, entries);
       const { ready, waiting } = selectReadyFiles(entries, {
         since: cfg.since,
         now,
         includeExisting: opts.includeExisting,
+        baseline: stillThere && new Set(stillThere),
         handled: e => historyKey(e) in history,
         lastSizes: this.lastSizes,
         manual: opts.manual,
       });
       if (waiting > 0) this.scheduleTick(SETTLE_MS + 1_000);
       if (ready.length === 0) {
-        if (opts.manual) this.deps.notify(t('No new files in the scan folder.'));
+        if (opts.manual) this.deps.notify(this.nothingNewMessage(stillThere, !!opts.includeExisting));
         return [];
       }
       const inputs: ScanInput[] = [];
@@ -244,6 +297,30 @@ export class ScanFolderWatcher {
     } finally {
       this.running = false;
     }
+  }
+
+  /**
+   * The baseline with the keys of files no longer in the folder dropped, saved
+   * when it changed. `undefined` for a folder set before baselines existed.
+   */
+  private pruneBaseline(cfg: ScanFolderConfig, entries: readonly FolderEntry[]): string[] | undefined {
+    if (!cfg.baseline) return undefined;
+    const present = new Set(entries.map(historyKey));
+    const kept = cfg.baseline.filter(key => present.has(key));
+    if (kept.length !== cfg.baseline.length) this.deps.store.set(CONFIG_KEY, { ...cfg, baseline: kept });
+    return kept;
+  }
+
+  /** Why a manual run found nothing, and what to do about files it passes over. */
+  private nothingNewMessage(baseline: string[] | undefined, includeExisting: boolean): string {
+    const { t } = this.deps;
+    const nothing = t('No new files in the scan folder.');
+    if (includeExisting) return nothing;
+    if (baseline === undefined) {
+      return `${nothing} ${t('Files that were already in the folder when it was set are skipped. Read them with "{0}", or set the folder again to take what is in it now as the starting point.', t('Process existing files too'))}`;
+    }
+    if (baseline.length === 0) return nothing;
+    return `${nothing} ${t('{0} file(s) that were already in the folder when it was set are skipped. Read them with "{1}".', String(baseline.length), t('Process existing files too'))}`;
   }
 
   private async moveOriginal(folder: string, name: string, outcome: 'processed' | 'failed'): Promise<void> {

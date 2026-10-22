@@ -797,6 +797,10 @@ const obsidianKo: Record<string, string> = {
   'The scan folder is being processed already.': '스캔 폴더를 이미 처리하는 중입니다.',
   'The scan folder {0} could not be read: {1}': '스캔 폴더 {0}을(를) 읽지 못했습니다: {1}',
   'No new files in the scan folder.': '스캔 폴더에 새 파일이 없습니다.',
+  '{0} file(s) that were already in the folder when it was set are skipped. Read them with "{1}".':
+    '폴더를 지정할 때 이미 있던 파일 {0}개는 건너뜁니다. 그 파일도 처리하려면 설정의 "{1}"을 누르세요.',
+  'Files that were already in the folder when it was set are skipped. Read them with "{0}", or set the folder again to take what is in it now as the starting point.':
+    '폴더를 지정할 때 이미 있던 파일은 건너뜁니다. 그 파일도 처리하려면 설정의 "{0}"을 누르세요. 폴더 경로를 다시 지정하면 지금 들어 있는 파일을 기준으로 삼습니다.',
   'Worksheet paper size': '기록지 용지 크기',
   'Scan folder': '스캔 폴더',
   'A folder on this PC where photos and scans arrive (Google Drive folder, scanner share, KakaoTalk downloads…). Checked every 30 seconds. Stored for this PC only; set it on one PC.':
