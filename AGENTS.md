@@ -14,8 +14,10 @@
 - `automation/` — 보관함에 설치되는 자동화 스크립트·템플릿의 소스. esbuild가
   `dist-automation/*.mjs`로 번들하고 워크플로/`AGENTS.md`/`QUICKSTART.md`/`SETUP.md`/
   Wiki 템플릿과 함께 `main.js`에 **문자열로 임베드**합니다.
-- `docs/` — 사용자용 문서(`INSTALL.md`, `COPILOT.md`). 저장소 루트 `README.md`(한)·
- `README.en.md`(영)가 진입점.
+- `docs/` — 사용자용 문서. 한국어는 `INSTALL.md`·`COPILOT.md`·`SCAN.md`, 영어는
+ `INSTALL.en.md`·`REFERENCE.en.md`. 저장소 루트 `README.md`(한)·`README.en.md`(영)가
+ 진입점이고 **요약만** 담습니다.
+- `references/` — 설계 아카이브. 어떤 사용자 문서에서도 링크하지 않으며 빌드·배포와 무관합니다.
 - `help/` — 도움말 사이트와 기능 영상. `help/site/`(한/영 정적 페이지, `media/`의 영상과
  `manifest.json`)는 [`.github/workflows/pages.yml`](.github/workflows/pages.yml)이 GitHub
  Pages로 배포하고, `help/demos/*.yaml`(영상 대본)·`help/seeds/`(영상 시작 상태)는 testpilotO가
@@ -27,12 +29,24 @@
 기능·설정·명령·설치 절차가 바뀌면 아래를 **같은 변경 단위**로 갱신합니다.
 
 1. **한/영 동시 갱신** — [`README.md`](README.md)와 [`README.en.md`](README.en.md)는
-   항상 짝으로 수정합니다. 한쪽만 고치지 마세요. 도메인/포지셔닝 문구는 **한국어를
-   기준**으로 맞춥니다.
+ 항상 짝으로 수정합니다. 한쪽만 고치지 마세요. 도메인/포지셔닝 문구는 **한국어를
+ 기준**으로 맞춥니다. 설치 절차도
+ [`docs/INSTALL.md`](docs/INSTALL.md)·[`docs/INSTALL.en.md`](docs/INSTALL.en.md)가 짝입니다.
+   - **명령·동작 세부는 참조 문서를 짝으로 고칩니다.** 세부 정본은 한국어가
+     [`automation/templates/QUICKSTART.md`](automation/templates/QUICKSTART.md),
+     영어가 [`docs/REFERENCE.en.md`](docs/REFERENCE.en.md)입니다. 한쪽만 고치면 두 언어의
+     설명이 갈라집니다. QUICKSTART는 템플릿이라 고치면 아래 4번(재임베드)이 따라붙지만
+     REFERENCE.en.md는 평범한 문서라 갱신 경로가 다르다는 점에 주의하세요.
+   - **README에 세부를 다시 쌓지 마세요.** README 한/영은 명령마다 **목적 한 문장**,
+     기능마다 2~3문장까지입니다. 삽입 위치 규칙·확인 창·파일 이름/번호/복사본 처리 같은
+     동작 설명은 위 참조 문서에 적고 README에서는 링크만 겁니다. 릴리스마다 README 표
+     한 칸에 문장을 덧붙인 것이 과거 비대화의 원인이었습니다.
 2. **UI 문자열은 실제 라벨 그대로** — 설정·명령 이름은 [`src/settingsTab.ts`](src/settingsTab.ts)/
    [`src/l10n.ko.ts`](src/l10n.ko.ts)의 실제 문자열을 확인해 옮깁니다(추정 금지).
 3. **사용자 문서** — 관련되면 [`docs/INSTALL.md`](docs/INSTALL.md)·
-   [`docs/COPILOT.md`](docs/COPILOT.md)와, 보관함에 설치되는 템플릿
+ [`docs/INSTALL.en.md`](docs/INSTALL.en.md)·[`docs/COPILOT.md`](docs/COPILOT.md)·
+ [`docs/SCAN.md`](docs/SCAN.md)·[`docs/REFERENCE.en.md`](docs/REFERENCE.en.md)와,
+ 보관함에 설치되는 템플릿
    [`automation/templates/QUICKSTART.md`](automation/templates/QUICKSTART.md)·
    [`automation/templates/SETUP.md`](automation/templates/SETUP.md)·
    [`automation/templates/AGENTS.md`](automation/templates/AGENTS.md)도 함께 갱신합니다.
