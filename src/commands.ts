@@ -15,6 +15,7 @@ import type {
   LabnoteHost,
   WorkflowItem,
   UnitOperationItem,
+  ExperimentStatus,
   PickItem,
   PromptHint,
   InsertUnitOperationInput,
@@ -274,6 +275,46 @@ export async function createExperimentCommand(app: App, host: LabnoteHost): Prom
 }
 
 /**
+ * What each status means, shown under its name in the picker, and the words
+ * its search also matches (#249). The stored value stays the English term;
+ * only the explanation and the search words are translated, so a Korean user
+ * finds `needs-repeat` by typing 재실험.
+ */
+function statusMeanings(host: LabnoteHost): Record<ExperimentStatus, { detail: string; keywords: string }> {
+  return {
+    planned: {
+      detail: host.t('Planned: written down, not started yet'),
+      keywords: host.t('planned not started yet'),
+    },
+    'in-progress': {
+      detail: host.t('In progress: being run now'),
+      keywords: host.t('in progress running now'),
+    },
+    'needs-review': {
+      // The GitHub issue only happens through the vault automation (#79).
+      detail: host.t('Needs review: with the research automation, a push opens a GitHub issue for this experiment'),
+      keywords: host.t('needs review discussion issue'),
+    },
+    completed: {
+      detail: host.t('Completed: finished, with the results written down'),
+      keywords: host.t('completed done finished'),
+    },
+    failed: {
+      detail: host.t('Failed: it did not work'),
+      keywords: host.t('failed did not work'),
+    },
+    discontinued: {
+      detail: host.t('Discontinued: stopped on the way, not to be taken up again'),
+      keywords: host.t('discontinued stopped abandoned'),
+    },
+    'needs-repeat': {
+      detail: host.t('Needs repeat: to be run once more'),
+      keywords: host.t('needs repeat again redo'),
+    },
+  };
+}
+
+/**
  * Change the `status` front-matter of the active experiment's README via a
  * picker.
  *
@@ -312,10 +353,15 @@ export async function changeExperimentStatusCommand(
     current && !isValidStatus(current)
       ? host.t('The current status "{0}" is not an allowed value. Select a status', current)
       : host.t('Select a status');
+  // The stored values are English, so the list says what each one means and
+  // takes Korean search words too (#249).
+  const meanings = statusMeanings(host);
   const chosen = await host.pick(
     EXPERIMENT_STATUSES.map(status => ({
       label: status,
       description: status === current ? host.t('current') : undefined,
+      detail: meanings[status].detail,
+      keywords: meanings[status].keywords.split(/\s+/).filter(Boolean),
       value: status,
     })),
     { title: `${host.t('Change experiment status')}: ${folderName}`, placeholder }

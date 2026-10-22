@@ -62,6 +62,8 @@ README에는 목적(`Experiment Objective`)·관련 워크플로·요약을 기�
 
 명령 팔레트 → **`Change experiment status`** (실험 상태 변경) → 상태 선택
 (`planned` → `in-progress` → `completed` / `failed` 등).
+목록에는 상태마다 한국어 뜻(`진행 중 — 지금 하고 있음`)이 함께 나오고, `재실험`·`검토`처럼
+한국어로 쳐서 찾을 수도 있습니다. 저장되는 값은 영어 그대로입니다.
 `needs-review`로 바꾸면 다음 push 때 검토 이슈가 열립니다. 자동화 설정 전이거나 보관함이
 아직 git 저장소가 아니면 이슈가 열리지 않는다는 것을 함께 알려 줍니다.
 알림은 `planned → in-progress`처럼 바뀌기 전 값도 보여 줍니다. 상태는 어느 실험 노트에서 실행해도

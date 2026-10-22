@@ -41,6 +41,8 @@ Create a new `.labnote.md` experiment note.
 
 Update the active experiment's `status` frontmatter via a picker.
 
+- Each status is listed with what it means, and its search also matches words for it (in the
+  Korean UI, Korean ones). The stored value is the English term either way.
 - Also on an experiment's right-click menu in the workflow view, where it changes that experiment
   (the picker title and notice name the experiment folder).
 - Picking `completed` while checklist workflows are unchecked, or while workflow notes have an
