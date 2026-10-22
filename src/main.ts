@@ -791,7 +791,12 @@ export default class LabnotePlugin extends Plugin {
         if (!(file instanceof TFile)) return;
         const newPath = file.path;
         const readmeOf = experimentLosingReadme(oldPath, newPath);
-        if (readmeOf) this.run(() => this.offerExperimentReadmeBack(file, readmeOf, oldPath));
+        // Not when the experiment folder itself was renamed: the README went
+        // along with it and the folder listener handles the name (#67, #166,
+        // #259). Then the old folder is no longer there.
+        if (readmeOf && this.app.vault.getAbstractFileByPath(readmeOf) instanceof TFolder) {
+          this.run(() => this.offerExperimentReadmeBack(file, readmeOf, oldPath));
+        }
         this.renameLocalSampleSources(oldPath, newPath);
         // Ahead of the copy branch, which returns early: a copy moved to
         // another experiment needs its samples and CSVs too.
@@ -966,6 +971,8 @@ export default class LabnotePlugin extends Plugin {
     if (this.unloaded || file.path !== movedPath) return;
     const free = (): boolean =>
       this.app.vault.getAbstractFileByPath(dir) instanceof TFolder && !this.app.vault.getAbstractFileByPath(oldPath);
+    // The experiment folder went too (it was renamed), so nothing was lost (#259).
+    if (!(this.app.vault.getAbstractFileByPath(dir) instanceof TFolder)) return;
     if (!settled || !free()) {
       this.host.notify('warn', warning);
       return;
