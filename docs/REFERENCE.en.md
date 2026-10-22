@@ -176,6 +176,8 @@ Export note tables to `<note name>.labnote_tableN.csv` next to the note.
 - A table written right under a line of text, with no blank line between, shows as text in the
   reading view, so it is skipped too and the notice says how many. A table right under a heading, a
   thematic break or a callout title is exported.
+- A table inside a comment (`<!-- … -->` or `%% … %%`) is not shown in the reading view at all, so
+  it is neither exported nor counted. The notice keeps this apart from the case above.
 
 **Overwriting**
 

@@ -237,6 +237,7 @@ describe('extractMarkdownTables', () => {
       expect(scanMarkdownTables(md)).toEqual({
         tables: [{ index: 0, rows: [['a', 'b'], ['1', '2']] }],
         notRendered: 1,
+        hidden: 0,
       });
     });
 
@@ -251,12 +252,46 @@ describe('extractMarkdownTables', () => {
         expect(scanMarkdownTables(`${before}${table}\n`), JSON.stringify(before)).toEqual({
           tables: [{ index: 0, rows: [['a', 'b'], ['1', '2']] }],
           notRendered: 0,
+          hidden: 0,
         });
       }
     });
 
     it('finds a table that opens a quote under a paragraph', () => {
       expect(extractMarkdownTables(`설명\n> ${table.replace(/\n/g, '\n> ')}\n`)).toHaveLength(1);
+    });
+  });
+
+  // #246: the reading view hides both comment forms, so their tables are not exported.
+  describe('a table inside a comment', () => {
+    const table = '| a | b |\n|---|---|\n| 1 | 2 |';
+
+    it('counts a commented-out table apart, and keeps the numbering of the rest', () => {
+      const md = `<!--\n옛 측정값\n\n${table}\n-->\n\n| c | d |\n|---|---|\n| 3 | 4 |\n`;
+      expect(scanMarkdownTables(md)).toEqual({
+        tables: [{ index: 0, rows: [['c', 'd'], ['3', '4']] }],
+        notRendered: 0,
+        hidden: 1,
+      });
+    });
+
+    it('hides an Obsidian %% comment too, over one line or several', () => {
+      expect(scanMarkdownTables(`%%\n${table}\n%%\n`).hidden).toBe(1);
+      expect(scanMarkdownTables(`%% 숨김 %%\n\n${table}\n`)).toMatchObject({ hidden: 0, notRendered: 0 });
+      expect(extractMarkdownTables(`%% 숨김 %%\n\n${table}\n`)).toHaveLength(1);
+    });
+
+    it('exports the table on the line right after a comment ends', () => {
+      expect(extractMarkdownTables(`<!-- 메모 -->\n${table}\n`)).toHaveLength(1);
+      expect(scanMarkdownTables(`설명문\n<!-- 메모 -->\n${table}\n`).notRendered).toBe(0);
+    });
+
+    it('leaves comment marks inside a code block alone', () => {
+      expect(extractMarkdownTables('```\n%%\n```\n\n' + table + '\n')).toHaveLength(1);
+    });
+
+    it('keeps a row that only has a comment in one cell', () => {
+      expect(extractMarkdownTables('| a | %%메모%% b |\n|---|---|\n| 1 | 2 |\n')).toHaveLength(1);
     });
   });
 

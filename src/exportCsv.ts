@@ -44,14 +44,23 @@ async function offerStaleCsvCleanup(plugin: LabnotePlugin, file: TFile, tableCou
 
 export async function exportTablesToCsv(plugin: LabnotePlugin, file: TFile): Promise<void> {
   const content = await plugin.app.vault.read(file);
-  const { tables, notRendered } = scanMarkdownTables(content);
-  const skipped =
+  const { tables, notRendered, hidden } = scanMarkdownTables(content);
+  const skipped = [
     notRendered > 0
       ? plugin.t(
           '{0} table(s) were not exported: with no blank line above, the reading view shows them as text. Add a blank line above a table to export it.',
           String(notRendered)
         )
-      : '';
+      : '',
+    hidden > 0
+      ? plugin.t(
+          '{0} table(s) were not exported: they are inside a comment, so the reading view does not show them at all.',
+          String(hidden)
+        )
+      : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
   if (tables.length === 0) {
     const cleanup = await offerStaleCsvCleanup(plugin, file, 0);
     new Notice([plugin.t('No tables found in this note.'), skipped, cleanup].filter(Boolean).join(' '));
