@@ -244,6 +244,13 @@ export function listWorksheetUnitOps(md: string): WorksheetUnitOp[] {
 export const PAGE_LINE_BUDGET = 42;
 const CHARS_PER_LINE = 80;
 
+/**
+ * Writing space kept for a section with nothing in it, so a full page cannot
+ * squeeze it to its heading (#245). The printed sheet hands out whatever is
+ * left over on top of this.
+ */
+const BLANK_WRITING_LINES = 3;
+
 const wrapped = (text: string): number => Math.max(1, Math.ceil(text.length / CHARS_PER_LINE));
 
 /** A table prints one line per row plus the rule under its header. */
@@ -265,7 +272,7 @@ export function sectionWeight(section: WorksheetSection): number {
     case 'text':
       return heading + section.blocks.reduce((n, b) => n + (b.kind === 'table' ? tableLines(b.rows) : wrapped(b.text)), 0);
     case 'blank':
-      return heading;
+      return heading + BLANK_WRITING_LINES;
   }
 }
 

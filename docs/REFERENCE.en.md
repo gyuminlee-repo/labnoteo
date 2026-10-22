@@ -307,8 +307,11 @@ read is left unchanged, with a notice.
 ### Print experiment worksheet
 
 Pick a workflow note's unit operations (lab ones preselected) and print them as worksheets with a
-QR code in two corners of every page; A4 or Letter. When printing from Obsidian does not work, it
-opens in the browser. See the [printout scan guide](./SCAN.md#2-기록지-출력) (Korean).
+QR code in two corners of every page; A4 or Letter. Method steps keep the numbers they have in the
+note, lines indented under a step print below it, and pipe tables print as tables. Sections with
+nothing in them are left as ruled writing space, Method and Results & Discussions widest. When
+printing from Obsidian does not work, it opens in the browser. See the
+[printout scan guide](./SCAN.md#2-기록지-출력) (Korean).
 
 ### Print whole note with barcodes
 

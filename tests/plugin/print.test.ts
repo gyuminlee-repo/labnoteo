@@ -86,8 +86,17 @@ describe('worksheetPrintPages', () => {
       expect(p.header).not.toContain('<Handling>');
     });
     expect(printed[0].header).toContain('Liquid &lt;Handling&gt;');
-    expect(printed[0].body).toContain('<div class="sec"><h3>Reagent</h3></div>');
-    expect(printed.map(p => p.body).join('')).not.toContain('ruled');
+    expect(printed[0].body).toContain('<div class="sec g1"><h3>Reagent</h3><div class="fill"></div></div>');
+  });
+
+  it('hands the leftover height to the sections written in by hand, Method and Results widest (#245)', () => {
+    const body = worksheetBody(md =>
+      md.replace('#### Results & Discussions\n- (Any results and discussions. Link file path if needed)', '#### Results & Discussions\n수율 낮음')
+    );
+    expect(body.startsWith('<div class="ws">')).toBe(true);
+    expect(body).toContain('<div class="sec g2"><h3>Method</h3><div class="fill"></div></div>');
+    expect(body).toContain('<div class="sec text g2"><h3>Results &amp; Discussions</h3><p>수율 낮음</p><div class="fill"></div></div>');
+    expect(body).toContain('<div class="sec g1"><h3>Input</h3>');
   });
 
   it('prints what is nested under a step below it and a step\'s table as a table (#254)', () => {
