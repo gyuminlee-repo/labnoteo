@@ -7,7 +7,12 @@
  * Obsidian talks to Ollama/OpenAI directly).
  */
 import type { ExperimentGrouping, PartbankConnection } from '@labnoteo/core';
-import { isValidSampleTypeName, SAMPLE_TYPES, suggestSampleTypeName } from '@labnoteo/core/lib/sampleUtils';
+import {
+  isValidSampleTypeName,
+  SAMPLE_TYPES,
+  suggestSampleTypeName,
+  underscoreTurnsItalic,
+} from '@labnoteo/core/lib/sampleUtils';
 
 export type LlmProviderKind = 'none' | 'ollama' | 'openai';
 
@@ -139,6 +144,10 @@ export interface CustomSampleTypesInput {
   rejected: { name: string; suggestion: string }[];
   /** Invalid names kept from before, so their `{Type}.json` and ids stay linked. */
   legacyInvalid: string[];
+  /** Newly typed names whose `_` the reading view turns into italics (#252). */
+  italic: { name: string; suggestion: string }[];
+  /** Such names kept from before, so their samples stay linked. */
+  legacyItalic: string[];
   /** Newly typed names that differ from a built-in or earlier type only in case. */
   caseDuplicates: { name: string; clashesWith: string }[];
   /** Such names kept from before, so their samples stay linked. */
@@ -153,7 +162,8 @@ export interface CustomSampleTypesInput {
  *
  * Names that differ only in case (`dna` next to the built-in `DNA`) are
  * refused the same way (#222): on a case-insensitive file system both types
- * read and write the one `dna.json`, and their samples mix.
+ * read and write the one `dna.json`, and their samples mix. So is a name
+ * whose `_` the reading view turns into italics (#252).
  */
 export function partitionCustomSampleTypes(
   input: string,
@@ -163,6 +173,8 @@ export function partitionCustomSampleTypes(
     save: [],
     rejected: [],
     legacyInvalid: [],
+    italic: [],
+    legacyItalic: [],
     caseDuplicates: [],
     legacyCaseDuplicates: [],
   };
@@ -184,13 +196,14 @@ export function partitionCustomSampleTypes(
       continue;
     }
     taken.set(name.toLowerCase(), name);
-    if (isValidSampleTypeName(name)) {
+    const readable = isValidSampleTypeName(name);
+    if (readable && !underscoreTurnsItalic(name)) {
       out.save.push(name);
     } else if (previouslySaved.includes(name)) {
       out.save.push(name);
-      out.legacyInvalid.push(name);
+      (readable ? out.legacyItalic : out.legacyInvalid).push(name);
     } else {
-      out.rejected.push({ name, suggestion: suggestSampleTypeName(name) });
+      (readable ? out.italic : out.rejected).push({ name, suggestion: suggestSampleTypeName(name) });
     }
   }
   return out;

@@ -24,9 +24,29 @@ describe('partitionCustomSampleTypes', () => {
         { name: 'Strain-A', suggestion: 'Strain_A' },
       ],
       legacyInvalid: [],
+      italic: [],
+      legacyItalic: [],
       caseDuplicates: [],
       legacyCaseDuplicates: [],
     });
+  });
+
+  // #252: `무세포_용해물` reads as italics in the reading view, so the type no longer matches.
+  it('rejects a _ next to a letter that is not A–Z or a digit, and suggests the name joined up', () => {
+    const out = partitionCustomSampleTypes('무세포_용해물, Cell_Line, 배지_2', []);
+    expect(out.save).toEqual(['Cell_Line']);
+    expect(out.italic).toEqual([
+      { name: '무세포_용해물', suggestion: '무세포용해물' },
+      { name: '배지_2', suggestion: '배지2' },
+    ]);
+    expect(out.rejected).toEqual([]);
+  });
+
+  it('keeps such a name stored by an older release and only warns about it', () => {
+    const out = partitionCustomSampleTypes('무세포_용해물', ['무세포_용해물']);
+    expect(out.save).toEqual(['무세포_용해물']);
+    expect(out.legacyItalic).toEqual(['무세포_용해물']);
+    expect(out.italic).toEqual([]);
   });
 
   it('rejects the autocomplete keywords sample and item', () => {

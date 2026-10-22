@@ -480,12 +480,16 @@ const obsidianKo: Record<string, string> = {
   'Autocomplete, highlighting and {Type}.json sync. Reload to apply.':
     '자동완성, 하이라이팅 및 {Type}.json 동기화. 적용하려면 다시 로드하세요.',
   'Custom sample types': '사용자 정의 샘플 타입',
-  'Comma-separated types in addition to the built-ins. Use letters, digits and _ only (no spaces or -), e.g. CellLine, 배지.':
-    '기본 제공 타입 외에 추가할 타입을 쉼표로 구분해 입력합니다. 글자·숫자·_만 쓰세요(공백·- 불가). 예: CellLine, 배지',
+  'Comma-separated types in addition to the built-ins. Use letters, digits and _ only (no spaces or -), e.g. CellLine, 배지. A _ works between ASCII letters and digits (Cell_Line); next to other letters it turns the name italic in the reading view, so write those together (무세포용해물).':
+    '기본 제공 타입 외에 추가할 타입을 쉼표로 구분해 입력합니다. 글자·숫자·_만 쓰세요(공백·- 불가). 예: CellLine, 배지. _는 영문자·숫자 사이에서만 쓸 수 있고(Cell_Line), 한글처럼 다른 글자 옆에 두면 읽기 화면에서 이름이 기울임으로 보이니 붙여 쓰세요(무세포용해물).',
   '{0}: a space or - keeps a type from autocompleting, so it was not saved. Use {1} instead.':
     '{0}: 공백이나 -가 들어간 타입은 자동완성되지 않아 저장하지 않았습니다. 대신 {1}처럼 쓰세요.',
+  '{0}: a _ next to a letter that is not A–Z or a digit shows the name in italics in the reading view, so it was not saved. Use {1} instead.':
+    '{0}: 영문자·숫자가 아닌 글자 옆의 _는 읽기 화면에서 이름을 기울임으로 보이게 해 저장하지 않았습니다. 대신 {1}처럼 쓰세요.',
   '{0} cannot be autocompleted in notes (a space or -). Rename it, e.g. {1}, if you have no samples of it yet.':
     '{0}은(는) 공백이나 -가 있어 노트에서 자동완성되지 않습니다. 아직 그 타입의 샘플이 없다면 {1}처럼 이름을 바꾸세요.',
+  '{0} is shown in italics in the reading view because of its _. It keeps working; rename it, e.g. {1}, if you have no samples of it yet.':
+    '{0}은(는) _ 때문에 읽기 화면에서 기울임으로 보입니다. 계속 쓸 수는 있으며, 아직 그 타입의 샘플이 없다면 {1}처럼 이름을 바꾸세요.',
   '{0}: differs from {1} only in letter case, so on Windows both would share one {Type}.json and their samples would mix. It was not saved.':
     '{0}: {1}와(과) 대소문자만 다른 이름이라 Windows에서 두 타입이 같은 {Type}.json을 함께 써 시료가 섞입니다. 저장하지 않았습니다.',
   '{0} differs from {1} only in letter case: on Windows both share one {Type}.json, so their samples mix. Keep one of them.':

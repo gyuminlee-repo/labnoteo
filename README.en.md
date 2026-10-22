@@ -122,7 +122,7 @@ See the generated `.labnoteo/SETUP.md` (admins) for the full asset table, prereq
 **Samples**
 
 - **Sample tracking**: whether autocomplete, highlighting and `{Type}.json` registry sync are on (reload to apply). `sample_tracking: 'no'` in an experiment README's front matter turns them off for that experiment's notes only.
-- **Custom sample types**: types in addition to the built-ins. Korean types (`배지`) get `@배지` autocomplete. Use letters, digits and `_` only — a name with a space or `-`, or one that differs from an existing type only in letter case, is not saved.
+- **Custom sample types**: types in addition to the built-ins. Korean types (`배지`) get `@배지` autocomplete. Use letters, digits and `_` only — a name with a space or `-`, or one that differs from an existing type only in letter case, is not saved. A `_` works between ASCII letters and digits (`Cell_Line`); next to other letters it turns the name italic in the reading view, so such a name is not saved either and the joined-up form (`무세포용해물`) is suggested.
 - **Global sample folder**: the vault-global sample folder (default `resources/labsamples`). After you change it and close settings, you are asked whether to move the samples left in the old folder.
 
 **partbank**
