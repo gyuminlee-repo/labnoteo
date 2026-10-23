@@ -435,6 +435,10 @@ const obsidianKo: Record<string, string> = {
     '전역 샘플에 같은 별칭 {0}({1})이 이미 있습니다. 자동완성에는 로컬과 전역으로 구분되어 둘 다 보입니다.',
   'This experiment already has the alias {0} ({1}).': '이 실험에 같은 별칭 {0}({1})이 이미 있습니다.',
   'Global samples already have the alias {0} ({1}).': '전역 샘플에 같은 별칭 {0}({1})이 이미 있습니다.',
+  '{0} samples in this experiment already have the alias {1} ({2}).':
+    '이 실험에 같은 별칭 {1}을(를) 쓰는 샘플이 {0}개 있습니다({2}).',
+  '{0} Global samples already have the alias {1} ({2}).':
+    '전역 샘플에 같은 별칭 {1}을(를) 쓰는 샘플이 {0}개 있습니다({2}).',
   'Use the existing sample {0}': '있는 샘플 {0} 쓰기',
   'Nothing is registered; its ID goes where this one would have.':
     '새로 등록하지 않고, 만들려던 자리에 그 샘플의 ID를 넣습니다.',
