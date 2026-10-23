@@ -60,15 +60,24 @@ export class NoteIdService {
 
   /**
    * The note's ID, giving it a fresh one first when it has none (or always,
-   * with `reassign`). Undefined when the front matter cannot be read: writing
-   * then could lose the other fields. Not a content change, so
-   * `last_updated_date` stays as it is.
+   * with `reassign`). Undefined when the front matter cannot be read (writing
+   * then could lose the other fields) or when the user cancelled the offer to
+   * restore an earlier ID. Not a content change, so `last_updated_date` stays
+   * as it is.
    */
   async ensureId(file: TFile, opts: { reassign?: boolean } = {}): Promise<string | undefined> {
+    return (await this.ensureIdResult(file, opts)).id;
+  }
+
+  /** {@link ensureId}, saying why no ID came back. */
+  async ensureIdResult(
+    file: TFile,
+    opts: { reassign?: boolean } = {}
+  ): Promise<{ id: string; reason?: undefined } | { id?: undefined; reason: 'unreadable' | 'cancelled' }> {
     const content = (await this.app.vault.read(file)).replace(/\r\n/g, '\n');
     if (!opts.reassign) {
       const existing = readNoteId(content);
-      if (existing) return existing;
+      if (existing) return { id: existing };
     }
     const { parseError } = parseFrontMatterYaml(content);
     if (parseError) {
@@ -80,27 +89,32 @@ export class NoteIdService {
           parseError
         )
       );
-      return undefined;
+      return { reason: 'unreadable' };
     }
     if (!opts.reassign) {
-      const restored = await this.offerPreviousId(file, content);
-      if (restored) return restored;
+      const offer = await this.offerPreviousId(file, content);
+      if (offer.choice === 'restored') return { id: offer.id };
+      if (offer.choice === 'cancelled') return { reason: 'cancelled' };
     }
     const taken = new Set(this.index().keys());
     let id = generateNoteId();
     while (taken.has(id)) id = generateNoteId();
     await this.app.vault.process(file, data => setNoteId(data, id));
-    return id;
+    return { id };
   }
 
   /**
    * A note without an ID whose filed scans name the ID it was printed under
    * (#236): offer that ID back, so worksheets already printed still find the
-   * note. Resolves the restored ID, or undefined when a new one is to be made.
+   * note. A new ID is a choice of its own, so closing the question changes
+   * nothing and it is asked again next time (#267).
    */
-  private async offerPreviousId(file: TFile, content: string): Promise<string | undefined> {
+  private async offerPreviousId(
+    file: TFile,
+    content: string
+  ): Promise<{ choice: 'restored'; id: string } | { choice: 'new' | 'cancelled' }> {
     const previous = previousNoteIdFromScans(content);
-    if (!previous) return undefined;
+    if (!previous) return { choice: 'new' };
     const holder = this.filesWithId(previous).find(f => f.path !== file.path);
     if (holder) {
       this.host.notify(
@@ -111,18 +125,25 @@ export class NoteIdService {
           holder.path
         )
       );
-      return undefined;
+      return { choice: 'new' };
     }
-    const ok = await this.host.confirm(
-      this.host.t(
-        'This note has no labnote_id, but its scans show it was printed as {0}. Restore that ID? With a new ID, worksheets already printed will not find this note.',
-        previous
-      ),
-      { confirmLabel: this.host.t('Restore ID') }
+    const choice = await this.host.pick<'restore' | 'new' | 'cancel'>(
+      [
+        { label: this.host.t('Restore ID'), description: previous, value: 'restore' },
+        { label: this.host.t('Give a new ID'), value: 'new' },
+        { label: this.host.t('Cancel'), value: 'cancel' },
+      ],
+      {
+        title: this.host.t(
+          'This note has no labnote_id, but its scans show it was printed as {0}. Restore that ID? With a new ID, worksheets already printed will not find this note.',
+          previous
+        ),
+      }
     );
-    if (!ok) return undefined;
+    if (choice === 'new') return { choice: 'new' };
+    if (choice !== 'restore') return { choice: 'cancelled' };
     await this.app.vault.process(file, data => setNoteId(data, previous));
-    return previous;
+    return { choice: 'restored', id: previous };
   }
 
   /**

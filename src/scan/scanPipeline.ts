@@ -52,7 +52,8 @@ export interface ScanResult {
   /** Page within a PDF, 1-based. */
   sourcePage?: number;
   status: ScanStatus;
-  reason?: UnmatchedReason | UnsupportedReason;
+  /** `cancelled`: a hand assignment the user called off; the image stays in the queue. */
+  reason?: UnmatchedReason | UnsupportedReason | 'cancelled';
   /** Error message for `error`. */
   message?: string;
   payload?: ScanPayload;
@@ -323,7 +324,9 @@ export class ScanPipeline {
     printedOn?: string
   ): Promise<ScanResult> {
     const { app } = this.deps;
-    const noteId = await this.deps.noteIds.ensureId(note);
+    const ensured = await this.deps.noteIds.ensureIdResult(note);
+    if (ensured.reason === 'cancelled') return { source: image.name, status: 'skipped', reason: 'cancelled' };
+    const noteId = ensured.id;
     if (!noteId) return { source: image.name, status: 'error', message: 'front matter could not be read' };
     const bytes = await app.vault.readBinary(image);
     const hash = shortHash(await sha256Hex(bytes));

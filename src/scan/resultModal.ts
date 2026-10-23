@@ -28,6 +28,7 @@ export function describeResult(t: Translator, r: ScanResult): string {
     case 'blank':
       return t('Blank page; skipped');
     case 'skipped':
+      if (r.reason === 'cancelled') return t('Cancelled; the scan is still waiting to be assigned.');
       return t('No worksheet QR code; left alone');
     case 'error':
       return t('Failed: {0}', r.message ?? '');

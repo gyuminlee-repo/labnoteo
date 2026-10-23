@@ -284,6 +284,24 @@ describe('ScanPipeline.fileManually', () => {
     await s.pipeline.fileManually(file(QUEUED), file(NOTE), 1, { page: 1, pageCount: 1 }, '2026-09-30');
     expect(s.text.get(NOTE)!).toContain('*Printout 1/1 · printed 2026-09-30 · imported ');
   });
+
+  // #267: cancelling the "restore the old ID?" question is not a failure and
+  // must not give the note a new ID.
+  it('leaves the note and the queued image alone when the ID question is cancelled', async () => {
+    const s = manualSetup();
+    await s.pipeline.fileManually(file(QUEUED), file(NOTE), 1, { page: 1, pageCount: 1 });
+    const lost = s.text.get(NOTE)!.replace(/^labnote_id: .*\n/m, '');
+    s.text.set(NOTE, lost);
+    const SECOND = '_labnote-scans/unmatched/20261021-021800_unknown_photo2.jpg';
+    s.binary.set(SECOND, new Uint8Array([7, 7, 7]).buffer);
+    (s.host as unknown as { pick: () => Promise<string> }).pick = async () => 'cancel';
+
+    const result = await s.pipeline.fileManually(file(SECOND), file(NOTE), 1, { page: 1, pageCount: 1 });
+
+    expect(result).toEqual({ source: '20261021-021800_unknown_photo2.jpg', status: 'skipped', reason: 'cancelled' });
+    expect(s.text.get(NOTE)).toBe(lost);
+    expect(s.binary.has(SECOND)).toBe(true);
+  });
 });
 
 describe('isDateInput', () => {

@@ -790,6 +790,7 @@ const obsidianKo: Record<string, string> = {
   'Already in {0}; skipped': '{0}에 이미 있어 건너뛰었습니다',
   'Blank page; skipped': '빈 페이지라 건너뛰었습니다',
   'No worksheet QR code; left alone': '기록지 QR 코드가 없어 그대로 두었습니다',
+  'Cancelled; the scan is still waiting to be assigned.': '취소했습니다. 스캔은 그대로 할당을 기다립니다.',
   'Failed: {0}': '실패: {0}',
   'HEIC photo, which Obsidian cannot open. On iPhone set Settings → Camera → Formats → Most Compatible, or share the photo as JPEG.':
     'HEIC 사진이라 Obsidian에서 열 수 없습니다. iPhone 설정 → 카메라 → 포맷 → "높은 호환성"으로 바꾸거나 JPEG로 공유하세요.',
