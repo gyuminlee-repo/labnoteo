@@ -71,9 +71,12 @@ opens its own Issue (requires Setup research automation).
   line's whole text is replaced by the marker.
 - A multi-line selection is not folded into one line: the marker goes at the end of its last line,
   with list marks left out of the topic.
-- On a heading it goes on the line below. Inside a table, the front matter or a code block
-  (including code indented four spaces after a blank line) it is not inserted.
-- Markers inside code blocks open no Issue and are not validated.
+- On a heading it goes on the line below. Inside a table, the front matter, a code block
+  (including code indented four spaces after a blank line) or a comment (`<!-- -->`, `%% %%`) it is
+  not inserted.
+- Markers inside code blocks or comments are not highlighted, open no Issue and are not validated.
+  Commenting out a marker leaves an Issue it already opened as it is. Rerun `Setup research
+  automation` after updating for the server automation to skip comments.
 
 ## Workflows
 

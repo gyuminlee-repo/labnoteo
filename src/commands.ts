@@ -499,7 +499,7 @@ export async function insertIssueMarkerCommand(editor: Editor, host: LabnoteHost
     while (used.has(id)) id = generateIssueMarkerId();
     return id;
   };
-  const refuse = (reason: 'conflict' | 'table' | 'frontMatter' | 'codeBlock'): false => {
+  const refuse = (reason: 'conflict' | 'table' | 'frontMatter' | 'codeBlock' | 'comment'): false => {
     host.notify(
       'warn',
       reason === 'table'
@@ -508,7 +508,9 @@ export async function insertIssueMarkerCommand(editor: Editor, host: LabnoteHost
           ? host.t('Issue markers cannot go in the front matter. Run this in the note body.')
           : reason === 'codeBlock'
             ? host.t('Issue markers inside a code block open no issue. Run this on a line outside the code block.')
-            : host.t('This line already has an issue marker. A line can hold only one.')
+            : reason === 'comment'
+              ? host.t('Issue markers inside a comment open no issue. Run this on a line outside the comment.')
+              : host.t('This line already has an issue marker. A line can hold only one.')
     );
     return false;
   };

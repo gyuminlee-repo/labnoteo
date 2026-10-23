@@ -25,6 +25,11 @@ describe('noteMarkerIds', () => {
     const md = '---\ntitle: x\n---\n@issue;ISS-a;밖\n```\n@issue;ISS-b;예시\n```\n';
     expect(noteMarkerIds(md)).toEqual(['ISS-a']);
   });
+
+  // #266: a commented-out marker shares no issue, so it is no duplicate either.
+  it('leaves out the markers in comments', () => {
+    expect(noteMarkerIds('<!-- @issue;ISS-a;끔 -->\n%% @issue;ISS-b;끔 %%\n@issue;ISS-c;밖')).toEqual(['ISS-c']);
+  });
 });
 
 describe('markerExperimentDir', () => {

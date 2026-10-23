@@ -112,6 +112,7 @@ export {
   findIssueMarkerRanges,
   fencedCodeRanges,
   codeBlockRanges,
+  commentRanges,
   generateIssueMarkerId,
   resetIssueMarkerIdCounter,
   renderIssueMarker,

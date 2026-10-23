@@ -24,6 +24,7 @@ import { RangeSetBuilder, type Text as DocText } from '@codemirror/state';
 import { editorInfoField } from 'obsidian';
 import {
   codeBlockRanges,
+  commentRanges,
   findIssueMarkerRanges,
   findSampleIdRanges,
   staleSampleAliasEnd,
@@ -73,6 +74,8 @@ interface TokenRange {
 interface MarkerOptions {
   /** Drops the markers the automation will not read (#120). */
   inCode?: (start: number, end: number) => boolean;
+  /** Whether a marker starting here is in a comment, which the automation does not read either (#266). */
+  inComment?: (at: number) => boolean;
   /** Tooltip for a marker whose ID is used again, undefined otherwise (#119). */
   duplicate?: (id: string) => string | undefined;
   /** Tooltip for a sample ID the note cannot resolve, undefined otherwise (#210). */
@@ -128,7 +131,7 @@ export function collectTokenRanges(
   colors: Record<string, string>,
   opts: MarkerOptions = {}
 ): TokenRange[] {
-  const markers = findIssueMarkerRanges(text).filter(r => !opts.inCode?.(r.start, r.end));
+  const markers = findIssueMarkerRanges(text, opts.inComment).filter(r => !opts.inCode?.(r.start, r.end));
   const ranges: TokenRange[] = markers.map(r => {
     const id = MARKER_ID_RE.exec(text.slice(r.start, r.end))?.[1];
     const title = id ? opts.duplicate?.(id) : undefined;
@@ -211,6 +214,8 @@ export function createSampleHighlightPlugin(getState: (path: string | undefined)
       drawnKey = '';
       /** Fenced code of `fencedDoc`; a fence may open outside the visible ranges. */
       fenced: IssueMarkerRange[] = [];
+      /** Comments of `fencedDoc`, which may open outside the visible ranges too (#266). */
+      comments: IssueMarkerRange[] = [];
       /** How often each marker ID appears in `fencedDoc`, off screen included. */
       ownIds = new Map<string, number>();
       fencedDoc: DocText | undefined;
@@ -238,6 +243,7 @@ export function createSampleHighlightPlugin(getState: (path: string | undefined)
         if (this.fencedDoc !== doc) {
           const whole = doc.toString();
           this.fenced = codeBlockRanges(whole);
+          this.comments = commentRanges(whole);
           this.ownIds = new Map();
           for (const id of noteMarkerIds(whole)) this.ownIds.set(id, (this.ownIds.get(id) ?? 0) + 1);
           this.fencedDoc = doc;
@@ -250,7 +256,7 @@ export function createSampleHighlightPlugin(getState: (path: string | undefined)
         }
         const missing = missingSampleCheck(state, this.definedIds);
         const staleAlias = staleAliasCheck(state, this.definedIds);
-        const { fenced, ownIds } = this;
+        const { fenced, comments, ownIds } = this;
         // The open note counts as typed, the others as last saved.
         const duplicate = (id: string): string | undefined => {
           // Only an experiment's notes share issues; elsewhere nothing is read.
@@ -264,7 +270,14 @@ export function createSampleHighlightPlugin(getState: (path: string | undefined)
           const text = doc.sliceString(from, to);
           const inCode = (start: number, end: number): boolean =>
             fenced.some(f => from + start < f.end && from + end > f.start);
-          for (const r of collectTokenRanges(text, types, colors, { inCode, duplicate, missing, staleAlias })) {
+          const inComment = (at: number): boolean => comments.some(c => from + at >= c.start && from + at < c.end);
+          for (const r of collectTokenRanges(text, types, colors, {
+            inCode,
+            inComment,
+            duplicate,
+            missing,
+            staleAlias,
+          })) {
             const styleVar = sampleColorVar(r.color ?? '');
             const attributes: Record<string, string> = {};
             if (styleVar) attributes.style = styleVar;

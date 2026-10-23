@@ -187,6 +187,12 @@ describe('validateExperiments — @issue markers', () => {
     expect(errors[0]).toContain('duplicate marker ID `ISS-a1`');
     expect(errors[0]).toContain('already used at labnote/001_A/README.labnote.md:1');
   });
+
+  // #266: a commented-out marker is switched off, broken or reused alike.
+  it('skips markers inside HTML and Obsidian comments', () => {
+    const body = '<!-- @issue;깨진마커 -->\n%%\n@issue;ISS-a1;끝난 논의\n%%\n@issue;ISS-a1;진짜 논의';
+    expect(validateExperiments([note('a', ok, body)])).toEqual([]);
+  });
 });
 
 // The pre-commit hook runs this on every commit that touches a note, so the
