@@ -214,6 +214,8 @@ export {
   typeFromSearchEntity,
   searchEntityForType,
   searchEntitiesForSampleType,
+  searchScopeLabel,
+  searchScopeHint,
   sampleTypeForItem,
   aliasForItem,
   descriptionForItem,

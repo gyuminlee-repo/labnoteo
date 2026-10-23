@@ -255,6 +255,10 @@ two characters on it searches after a short pause and lists each hit with its na
 whether it is yours, shared with you, or public. Picking one reads the item and its storage
 location, registers it, and inserts `ID;alias`.
 
+- **Each typed type searches its own kinds.** `@dna` searches parts, devices and molecules,
+  `@plasmid` plasmids, `@primer` primers, `@protein`, `@reagent` and `@rna` molecules only, a strain
+  type strains only, and `@sample` everything. A part like sfGFP is therefore found under `@dna` or
+  `@sample`, not `@protein`. The Search partbank row and the empty result name what was searched.
 - **The type you typed wins.** Only when it is open (`@sample`, a link, a catalog) does the
   partbank kind decide: part and device → `DNA`, plasmid → `Plasmid`, primer → `Primer`,
   molecules by their kind (`protein`/`enzyme` → `Protein`, `rna` → `RNA`, `dna` → `DNA`, the rest

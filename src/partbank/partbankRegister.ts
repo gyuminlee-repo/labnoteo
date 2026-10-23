@@ -15,6 +15,8 @@ import {
   formatStockLocation,
   sampleTypeForItem,
   searchEntitiesForSampleType,
+  searchScopeHint,
+  searchScopeLabel,
   sourceForItem,
   STRAIN_SAMPLE_TYPE,
   type LinkedSample,
@@ -195,10 +197,12 @@ export async function pickPartbankReference(
   const entities = searchEntitiesForSampleType(opts.type, { strainType: strainTypeOf(plugin) });
   if (entities.length === 0) return undefined;
 
+  const hint = searchScopeHint(entities, plugin.t);
+  const notFound = plugin.t('Nothing found among partbank {0}.', searchScopeLabel(entities, plugin.t));
   const hit = await searchPartbankModal(plugin.app, client, entities, {
     initialQuery: opts.initialQuery,
     placeholder: plugin.t('Search partbank'),
-    emptyText: plugin.t('Nothing found in partbank.'),
+    emptyText: hint ? `${notFound} ${hint}` : notFound,
     t: plugin.t,
     onError: err => plugin.partbank.notifyError(err, client.kind),
   });

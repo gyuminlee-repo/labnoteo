@@ -19,6 +19,7 @@ import {
   parseSampleTrigger,
   buildSampleCompletionEntries,
   searchEntitiesForSampleType,
+  searchScopeLabel,
   type SampleCandidate,
   type SampleCompletionEntry,
   type LabnoteFs,
@@ -246,9 +247,10 @@ export class SampleEditorSuggest extends EditorSuggest<SuggestEntry> {
       return;
     }
     if (item.kind === 'partbank') {
+      const entities = searchEntitiesForSampleType(item.type, { strainType: strainTypeOf(this.deps.plugin) });
       el.createEl('div', { text: t('Search partbank') });
       el.createEl('small', {
-        text: t('Register a part, plasmid or primer from partbank'),
+        text: t('Find and register partbank {0}', searchScopeLabel(entities, t)),
         cls: 'labnote-suggest-detail',
       });
       return;
