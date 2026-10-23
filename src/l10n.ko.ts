@@ -620,6 +620,8 @@ const obsidianKo: Record<string, string> = {
   '{0} is not in the workflow catalog.': '{0}은(는) 워크플로 카탈로그에도 없습니다.',
   'Rename it back to "{0}"?': '"{0}"(으)로 이름을 되돌릴까요?',
   'Rename back': '이름 되돌리기',
+  'Kept the name "{0}". If the title or the README checklist no longer match the file name later, run "{1}".':
+    '이름 "{0}"을(를) 그대로 두었습니다. 나중에 제목이나 README 체크리스트가 파일 이름과 맞지 않으면 "{1}"을(를) 실행하세요.',
   'Renamed items keep their old names in the workflow notes and README checklists already made: {0} note(s) use them. Rename those by hand if needed.':
     '이름이 바뀌는 항목도 이미 만든 워크플로 노트와 README 체크리스트에서는 옛 이름 그대로입니다. 그 항목을 쓰는 노트는 {0}개입니다. 필요하면 직접 고치세요.',
   'Renamed items keep their old names in the workflow notes and README checklists already made.':

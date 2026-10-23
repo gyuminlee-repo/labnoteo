@@ -1084,7 +1084,18 @@ export function planWorkflowRetitle(
   const title = frontMatterTitle(text);
   const headingText = workflowTitleText(heading.id, heading.name, heading.alias);
   const current = title ?? headingText;
-  const matchedOld = (label: string) => fromName === undefined || labelMatchesFileName(label, fromName);
+  // A file whose catalog ID was changed by hand, with the offer to put it back
+  // declined, keeps a title naming the heading's ID: compare under that ID too,
+  // or the next alias change leaves the title behind for good (#268).
+  const fromParts = fromName === undefined ? null : parseWorkflowFileName(fromName);
+  const fromUnderHeadingId =
+    fromParts && fromParts.id !== heading.id
+      ? `${fromParts.sequence}_${heading.id}_${fromParts.safeName}.labnote.md`
+      : undefined;
+  const matchedOld = (label: string) =>
+    fromName === undefined ||
+    labelMatchesFileName(label, fromName) ||
+    (fromUnderHeadingId !== undefined && labelMatchesFileName(label, fromUnderHeadingId));
   if (!matchedOld(current)) return undefined;
 
   const fixTitle = title !== undefined && !labelMatchesFileName(title, toName) && matchedOld(title);

@@ -255,6 +255,14 @@ describe('syncWorkflowChecklistCommand', () => {
       expect(await h.fs.read(`${DIR}/${NEW}`)).toBe('---\ntitle: WD030 Design 2차\n---\n\n## [WD030 Design] 2차\n');
     });
 
+    // #268: the ID was changed in the file name and "Rename back" declined.
+    it('follows the next alias change after a file ID change that was kept', async () => {
+      const kept = '002_WD040_Design_1차.labnote.md';
+      const h = harness({ [`${DIR}/${NEW}`]: '---\ntitle: WD030 Design 1차\n---\n\n## [WD030 Design] 1차\n' }, true);
+      expect(await retitleWorkflowAfterRename(h.app, h.host, DIR, kept, NEW)).toBe(true);
+      expect(await h.fs.read(`${DIR}/${NEW}`)).toBe('---\ntitle: WD030 Design 2차\n---\n\n## [WD030 Design] 2차\n');
+    });
+
     it('keeps a title edited by hand, and skips a note that is gone', async () => {
       const own = '---\ntitle: 내 워크플로\n---\n\n## [WD030 Design] 1차\n';
       const h = harness({ [`${DIR}/${NEW}`]: own }, true);

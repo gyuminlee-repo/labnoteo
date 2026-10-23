@@ -1133,7 +1133,19 @@ export default class LabnotePlugin extends Plugin {
     const ok = await this.host.confirm(`${warning} ${this.t('Rename it back to "{0}"?', from)}`, {
       confirmLabel: this.t('Rename back'),
     });
-    if (!ok || file.path !== path || this.app.vault.getAbstractFileByPath(target)) return;
+    if (!ok) {
+      // A later rename may still leave the title behind (#268); say how to bring it back in step.
+      this.host.notify(
+        'info',
+        this.t(
+          'Kept the name "{0}". If the title or the README checklist no longer match the file name later, run "{1}".',
+          file.name,
+          this.t('Sync workflow checklist with folder')
+        )
+      );
+      return;
+    }
+    if (file.path !== path || this.app.vault.getAbstractFileByPath(target)) return;
     await this.app.fileManager.renameFile(file, target);
   }
 
