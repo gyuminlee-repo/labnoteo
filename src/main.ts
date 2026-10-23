@@ -185,6 +185,9 @@ export default class LabnotePlugin extends Plugin {
   // Experiment folders copied with "Make a copy" whose fix is being offered (#223);
   // the files created along with them are part of that copy, not copies of their own.
   private readonly copiedExperiments = new Set<string>();
+  // Of those, the folders whose notes already have their own IDs, and those
+  // notes (#265): until then the "same note ID" question would be redundant.
+  private readonly copyIdsRenewed = new Map<string, Set<string>>();
   // Pending "moved in but not listed" notices, coalesced per experiment folder.
   private readonly movedInTimers = new Map<string, number>();
   // Notes moved between experiments whose Local samples may need bringing
@@ -1272,8 +1275,36 @@ export default class LabnotePlugin extends Plugin {
         await this.offerCopiedExperimentFix(folder, origin);
       } finally {
         this.copiedExperiments.delete(copyPath);
+        this.copyIdsRenewed.delete(copyPath);
       }
     });
+  }
+
+  /**
+   * Whether the note at `path` is in a copied experiment folder whose IDs are
+   * about to be renewed, or was just given its own: asking about the shared
+   * note ID then would issue a second one. A note copied in only after the
+   * renewal is not covered, so the question still catches it (#265).
+   */
+  isRenewingCopiedNoteId(path: string): boolean {
+    const dir = getExperimentDir(path);
+    if (dir && this.copiedExperiments.has(dir) && !this.copyIdsRenewed.has(dir)) return true;
+    return [...this.copyIdsRenewed.values()].some(notes => notes.has(path));
+  }
+
+  /**
+   * Wait until the copy holds as many notes as the original. Obsidian creates
+   * the folder first and copies the files into it one by one, so right after
+   * the folder appears some notes may not be there yet. Gives up after 10s.
+   */
+  private async waitForCopiedNotes(folder: TFolder, originPath: string): Promise<void> {
+    const original = this.app.vault.getAbstractFileByPath(originPath);
+    if (!(original instanceof TFolder)) return;
+    const expected = markdownFilesIn(original).length;
+    const deadline = Date.now() + 10_000;
+    while (!this.unloaded && markdownFilesIn(folder).length < expected && Date.now() < deadline) {
+      await new Promise(resolve => window.setTimeout(resolve, 250));
+    }
   }
 
   private async offerCopiedExperimentFix(folder: TFolder, origin: string): Promise<void> {
@@ -1290,6 +1321,30 @@ export default class LabnotePlugin extends Plugin {
       );
     const settled = await this.waitForNoModal();
     if (this.unloaded || folder.path !== copyPath) return;
+    // Before any prompt or check, as for a copied workflow note: cancelling the
+    // title, another open dialog or a missing README must not leave the copy
+    // sharing issue IDs and note IDs with the original (#265).
+    await this.waitForCopiedNotes(folder, posix.join(labnoteDir, origin));
+    if (this.unloaded || folder.path !== copyPath) return;
+    const renewed = new Set<string>();
+    let markers = 0;
+    for (const note of markdownFilesIn(folder)) {
+      const reassigned = reassignIssueMarkerIds(await this.app.vault.read(note));
+      if (reassigned.count > 0) {
+        markers += reassigned.count;
+        await this.app.vault.process(note, data => reassignIssueMarkerIds(data).content);
+      }
+      renewed.add(note.path);
+      await this.barcode.reassignCopiedId(note);
+    }
+    this.copyIdsRenewed.set(copyPath, renewed);
+    if (markers > 0) {
+      this.host.notify(
+        'info',
+        this.t('Gave the {0} issue marker(s) of the copy new IDs, so they do not merge with the original\'s issues.', String(markers))
+      );
+    }
+
     const readme = this.app.vault.getAbstractFileByPath(posix.join(copyPath, 'README.labnote.md'));
     if (!settled || !(readme instanceof TFile)) {
       warn();
@@ -1332,22 +1387,9 @@ export default class LabnotePlugin extends Plugin {
     }
 
     await this.app.vault.process(readme, data => resetCopiedExperimentReadme(data, newTitle, getSeoulDateString()));
-    // Like a copied workflow note: shared issue IDs or note IDs would mix the two experiments.
-    let markers = 0;
-    for (const note of markdownFilesIn(folder)) {
-      const reassigned = reassignIssueMarkerIds(await this.app.vault.read(note));
-      if (reassigned.count > 0) {
-        markers += reassigned.count;
-        await this.app.vault.process(note, data => reassignIssueMarkerIds(data).content);
-      }
-      await this.barcode.reassignCopiedId(note);
-    }
     await this.app.fileManager.renameFile(folder, target);
     const done = [
       this.t('Made the copy the experiment {0}, created today.', posix.basename(target)),
-      ...(markers > 0
-        ? [this.t('Gave the {0} issue marker(s) of the copy new IDs, so they do not merge with the original\'s issues.', String(markers))]
-        : []),
       ...(discussed
         ? [this.t('The discussion flag was turned off; run "{0}" if the copy needs its own discussion.', this.t('Toggle discussion flag'))]
         : []),
