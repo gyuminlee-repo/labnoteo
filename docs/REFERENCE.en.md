@@ -172,8 +172,8 @@ Export note tables to `<note name>.labnote_tableN.csv` next to the note.
 - A cell starting with `=` or `@`, or with a `+`/`-` that is not part of a number, gets a leading
   tab so Excel shows it as typed instead of evaluating it. Numbers like `-80` are left alone. In a
   column where such a cell appears, like `+/-`, a lone `+` or `-` gets the tab too.
-- Opening the CSV by double-clicking it in Excel turns `3-1`, `1/2` and `SEPT9` into dates and
-  drops the leading zero of `007`. The file holds the text as typed; Excel is what changes it.
+- Opening the CSV by double-clicking it in Excel turns `3-1`, `1/2` and `SEPT9` into dates,
+  `2:1` and `10:30` into times (`2:01`), and drops the leading zero of `007`. The file holds the text as typed; Excel is what changes it.
   Open it with Data → From Text/CSV and set those columns to Text. When a table has such cells,
   the export notice says so with an example.
 

@@ -308,6 +308,18 @@ describe('extractMarkdownTables', () => {
     expect(excelRiskCells([['3-1'], ['정상']])).toEqual([]);
   });
 
+  // #272: Excel opens `2:1` as the time 2:01 and `10:30` as a time of day.
+  it('finds ratio and clock-time cells, which Excel turns into times', () => {
+    const rows = [
+      ['조건', '비율', '시각', '경과'],
+      ['A', '2:1', '10:30', '14:05:30'],
+      ['B', '1:10', '9:5', '100:1'],
+      ['C', '2:75', 'a:b', '1:2:3:4'],
+      ['D', 'ratio 2:1', '12:30 pm', '3:'],
+    ];
+    expect(excelRiskCells(rows)).toEqual(['2:1', '10:30', '14:05:30', '1:10', '9:5', '100:1']);
+  });
+
   it('ends a quoted table where the quote depth changes', () => {
     const md = '> | a |\n> |---|\n> | 1 |\n| 2 |\n';
     expect(extractMarkdownTables(md)).toEqual([{ index: 0, rows: [['a'], ['1']] }]);

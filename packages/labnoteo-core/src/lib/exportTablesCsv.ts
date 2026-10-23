@@ -336,20 +336,25 @@ const DATE_PAIR_RE = /^\d{1,2}[-/]\d{1,2}$/;
 const MONTH_NAME_RE = new RegExp(`^(?:${MONTHS})[-/ ]?\\d{1,2}$`, 'i');
 /** `007`, `0031`: Excel reads them as numbers and the zeros are gone. */
 const LEADING_ZERO_RE = /^0\d+$/;
+/** `2:1`, `10:30`, `14:05:30`: ratios and clock times become times of day (`2:01`). */
+const TIME_RE = /^\d{1,4}:[0-5]?\d(?::[0-5]?\d(?:\.\d+)?)?$/;
 
 /**
  * Cells Excel would change when it opens the CSV as a spreadsheet (#256):
- * clone or well names like `3-1` and `SEPT9` become dates, and IDs like `007`
- * lose their leading zeros. The file itself holds the text as typed — this is
- * only to warn about what opening it in Excel does. The header row is left
- * out, and each distinct value is reported once.
+ * clone or well names like `3-1` and `SEPT9` become dates, ratios like `2:1`
+ * become times (#272), and IDs like `007` lose their leading zeros. The file
+ * itself holds the text as typed — this is only to warn about what opening it
+ * in Excel does. The header row is left out, and each distinct value is
+ * reported once.
  */
 export function excelRiskCells(rows: readonly string[][]): string[] {
   const found = new Set<string>();
   for (const row of rows.slice(1)) {
     for (const cell of row) {
       const text = cell.trim();
-      if (DATE_PAIR_RE.test(text) || MONTH_NAME_RE.test(text) || LEADING_ZERO_RE.test(text)) found.add(text);
+      if (DATE_PAIR_RE.test(text) || MONTH_NAME_RE.test(text) || LEADING_ZERO_RE.test(text) || TIME_RE.test(text)) {
+        found.add(text);
+      }
     }
   }
   return [...found];
