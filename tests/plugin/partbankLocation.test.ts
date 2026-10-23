@@ -6,13 +6,14 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { MemFileSystem, type SampleSource } from '@labnoteo/core';
 import { loadSamplesByType, upsertSampleRecord } from '@labnoteo/core/lib/sampleStorage';
-import { __setRequestUrlHandler, type RequestUrlResponse } from '../stubs/obsidian';
+import { Notice, __setRequestUrlHandler, type RequestUrlResponse } from '../stubs/obsidian';
 import {
   PartbankLocationProvider,
   applyLocationChanges,
   checkedByDefault,
   linkedSamplesIn,
   locationChangesOf,
+  refreshOneLocation,
   type LocationChange,
 } from '../../src/partbank/partbankLocation';
 import { PartbankFeature } from '../../src/partbank/partbankFeature';
@@ -202,5 +203,33 @@ describe('applyLocationChanges', () => {
       { type: 'DNA', id: 'DNA-9', alias: null, folder: LOCAL, before: null, after: 'X' },
     ]);
     expect(await loadSamplesByType(fs, LOCAL, 'DNA')).toEqual({});
+  });
+});
+
+// #269: one Enter on "store (none)?" used to erase a hand-typed location.
+describe('refreshOneLocation', () => {
+  it('keeps the stored location without asking when partbank shows no stock', async () => {
+    const fs = new MemFileSystem();
+    const plugin = fakePlugin(fs);
+    (plugin as unknown as { partbank: PartbankFeature }).partbank = fakeFeature(plugin);
+    await upsertSampleRecord(fs, LOCAL, 'DNA', 'DNA-1', {
+      alias: 'gfp',
+      description: null,
+      location: '4도 냉장고 B칸',
+      source: source(),
+    });
+    __setRequestUrlHandler(
+      () => ({ status: 200, text: JSON.stringify({ items: [] }), headers: {} }) as RequestUrlResponse
+    );
+    const record = (await loadSamplesByType(fs, LOCAL, 'DNA'))['DNA-1'];
+    const shownBefore = Notice.shown.length;
+
+    // No app is set up, so reaching the confirmation would throw.
+    await expect(refreshOneLocation(plugin, { type: 'DNA', id: 'DNA-1', folder: LOCAL, record })).resolves.toBe(false);
+
+    expect((await loadSamplesByType(fs, LOCAL, 'DNA'))['DNA-1'].location).toBe('4도 냉장고 B칸');
+    expect(Notice.shown.slice(shownBefore)).toEqual([
+      'partbank shows no stock for {0}, so the current location is kept. To clear it, empty the location in Edit sample.',
+    ]);
   });
 });

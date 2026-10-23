@@ -269,7 +269,8 @@ location, registers it, and inserts `ID;alias`.
 ### Refresh storage location from partbank
 
 In the sample view's context menu and in the definition window. It reads the location as
-`storage / box / position` and stores it after showing the change once.
+`storage / box / position` and stores it after showing the change once. When partbank shows no
+stock, the current location is kept without asking (empty it in Edit sample to clear it).
 **Refresh storage locations from partbank** (command palette) does every linked sample at once,
 listing only what changes as `old → new`; an entry that would become empty is unchecked by default
 so a hand-written location is not wiped. Because the value is stored, it stays visible offline and

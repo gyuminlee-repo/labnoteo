@@ -969,6 +969,8 @@ const obsidianKo: Record<string, string> = {
   'This sample is linked to the partbank app on another PC.':
     '다른 PC의 partbank 앱에 연결된 시료입니다.',
   'The storage location is unchanged.': '보관 위치가 그대로입니다.',
+  'partbank shows no stock for {0}, so the current location is kept. To clear it, empty the location in Edit sample.':
+    'partbank에 {0}의 보이는 재고가 없어 지금 위치를 유지합니다. 지우려면 "샘플 편집"에서 위치를 비우세요.',
   'Store the storage location of {0} as read from partbank?\n{1}':
     'partbank에서 읽은 {0}의 보관 위치를 저장할까요?\n{1}',
   'Store': '저장',
