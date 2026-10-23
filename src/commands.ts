@@ -409,9 +409,10 @@ export async function changeExperimentStatusCommand(
 /**
  * Before an experiment is marked completed — the state the automation drafts
  * papers from — ask when its checklist still has unchecked workflows or
- * workflow notes without an `end_date` (#174). True to go ahead.
+ * workflow notes without an `end_date` (#174). True to go ahead. Only what was
+ * found is named, so a count of zero does not send the user looking (#275).
  */
-async function confirmCompleted(host: LabnoteHost, labnoteDir: string, readmeBody: string): Promise<boolean> {
+export async function confirmCompleted(host: LabnoteHost, labnoteDir: string, readmeBody: string): Promise<boolean> {
   const items = parseWorkflowChecklistFromReadme(readmeBody);
   const unchecked = items.filter(i => !i.done).length;
   let noEndDate = 0;
@@ -430,14 +431,17 @@ async function confirmCompleted(host: LabnoteHost, labnoteDir: string, readmeBod
     if ('end_date' in frontMatter && (end === null || end === undefined || String(end).trim() === '')) noEndDate++;
   }
   if (unchecked === 0 && noEndDate === 0) return true;
-  return host.confirm(
-    host.t(
-      '{0} workflow(s) in the checklist are not checked and {1} workflow note(s) have no end_date. Mark the experiment completed anyway?',
-      String(unchecked),
-      String(noEndDate)
-    ),
-    { confirmLabel: host.t('Mark completed') }
-  );
+  const message =
+    noEndDate === 0
+      ? host.t('{0} workflow(s) in the checklist are not checked. Mark the experiment completed anyway?', String(unchecked))
+      : unchecked === 0
+        ? host.t('{0} workflow note(s) have no end_date. Mark the experiment completed anyway?', String(noEndDate))
+        : host.t(
+            '{0} workflow(s) in the checklist are not checked and {1} workflow note(s) have no end_date. Mark the experiment completed anyway?',
+            String(unchecked),
+            String(noEndDate)
+          );
+  return host.confirm(message, { confirmLabel: host.t('Mark completed') });
 }
 
 /**

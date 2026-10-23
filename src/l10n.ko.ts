@@ -212,6 +212,10 @@ const obsidianKo: Record<string, string> = {
     '되돌리려면 워크플로 뷰에서 이 실험을 다시 우클릭해 {0}을(를) 고르세요.',
   '{0} workflow(s) in the checklist are not checked and {1} workflow note(s) have no end_date. Mark the experiment completed anyway?':
     '체크리스트에서 체크하지 않은 워크플로가 {0}개, 종료일(end_date)이 빈 워크플로 노트가 {1}개 있습니다. 그래도 completed로 바꿀까요?',
+  '{0} workflow(s) in the checklist are not checked. Mark the experiment completed anyway?':
+    '체크리스트에서 체크하지 않은 워크플로가 {0}개 있습니다. 그래도 completed로 바꿀까요?',
+  '{0} workflow note(s) have no end_date. Mark the experiment completed anyway?':
+    '종료일(end_date)이 빈 워크플로 노트가 {0}개 있습니다. 그래도 completed로 바꿀까요?',
   'Mark completed': 'completed로 바꾸기',
   'This vault is not a git repository yet, so no review issue will open. Finish the repository setup in {0} first.':
     '이 보관함은 아직 git 저장소가 아니라 검토 이슈가 생성되지 않습니다. 먼저 {0}의 저장소 연결을 마치세요.',
