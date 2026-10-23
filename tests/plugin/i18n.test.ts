@@ -122,4 +122,33 @@ describe('Korean catalog', () => {
       .map(([key]) => key);
     expect(mismatched).toEqual([]);
   });
+
+  // Notices, confirmations and setting descriptions are plain text, so a
+  // backtick shows as itself instead of marking code (#273).
+  it('has no Markdown backticks, which plain-text notices show as they are', () => {
+    const listsTheCharacter = (key: string): boolean => key.startsWith('An alias cannot contain');
+    const withBackticks = Object.entries(obsidianKo)
+      .filter(([key, value]) => value.includes('`') && !listsTheCharacter(key))
+      .map(([key]) => key);
+    expect(withBackticks).toEqual([]);
+  });
+
+  it('uses the particle that fits a quoted label filled in at runtime', () => {
+    const t = createObsidianTranslator('ko');
+    const label = t('Process existing files too');
+    const hasFinalConsonant = (word: string): boolean => {
+      const code = word.charCodeAt(word.length - 1) - 0xac00;
+      return code >= 0 && code <= 11171 && code % 28 !== 0;
+    };
+    const object = hasFinalConsonant(label) ? '을' : '를';
+    expect(
+      t('{0} file(s) that were already in the folder when it was set are skipped. Read them with "{1}".', '2', label)
+    ).toContain(`"${label}"${object} `);
+    expect(
+      t(
+        'Files that were already in the folder when it was set are skipped. Read them with "{0}", or set the folder again to take what is in it now as the starting point.',
+        label
+      )
+    ).toContain(`"${label}"${object} `);
+  });
 });

@@ -1375,7 +1375,11 @@ export async function saveSamplesFromDocument(
         const entry = catalog[ref.id];
         if (!entry) continue;
         newDb[type][ref.id].alias = entry.alias;
-        newDb[type][ref.id].descriptions = [];
+        // The catalog's own description and location, not the note's prose
+        // after the reference (#271). A reference adds no descriptionSources,
+        // so a later save does not take these away.
+        newDb[type][ref.id].descriptions = entry.descriptions?.[0] ? [entry.descriptions[0]] : [];
+        if (entry.location) newDb[type][ref.id].location = entry.location;
         // The catalog knows which partbank item this is; a seeded record that
         // dropped it could never refresh its location or open in partbank.
         if (entry.source) newDb[type][ref.id].source = entry.source;

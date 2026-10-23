@@ -132,7 +132,11 @@ describe('planScanMoves', () => {
 describe('NoteIdService', () => {
   const note = (id?: string) => `---\ntitle: x\n${id ? `labnote_id: ${id}\n` : ''}---\n\nbody\n`;
 
-  function service(notes: Record<string, { text: string; ctime: number }>) {
+  function service(
+    notes: Record<string, { text: string; ctime: number }>,
+    /** What the restore question is answered with; null closes it. */
+    answer: 'restore' | 'new' | 'cancel' | null = 'restore'
+  ) {
     const files = new Map(Object.entries(notes));
     const fileOf = (p: string) =>
       Object.assign(new TFile(p), { stat: { ctime: files.get(p)!.ctime } }) as unknown as ObsidianTFile;
@@ -152,6 +156,7 @@ describe('NoteIdService', () => {
       notify: (_level: string, msg: string) => notices.push(msg),
       t: (s: string) => s,
       confirm: async () => true,
+      pick: async () => answer ?? undefined,
     } as unknown as LabnoteHost;
     return { svc: new NoteIdService(app, host), files, fileOf, notices };
   }
@@ -192,6 +197,22 @@ describe('NoteIdService', () => {
     });
     expect(await svc.ensureId(fileOf('a.labnote.md'))).toBe('LN-FK5Q8KV0');
     expect(readNoteId(files.get('a.labnote.md')!.text)).toBe('LN-FK5Q8KV0');
+  });
+
+  // #267: closing the question must not be read as "give a new ID".
+  it('gives a new ID only when that is what was picked, and changes nothing on cancel', async () => {
+    const text = scanned('![[LN-FK5Q8KV0_u1_p1_20261021.jpg]]');
+    for (const answer of ['cancel', null] as const) {
+      const { svc, files, fileOf } = service({ 'a.labnote.md': { text, ctime: 1 } }, answer);
+      expect(await svc.ensureIdResult(fileOf('a.labnote.md'))).toEqual({ reason: 'cancelled' });
+      expect(await svc.ensureId(fileOf('a.labnote.md'))).toBeUndefined();
+      expect(files.get('a.labnote.md')!.text).toBe(text);
+    }
+    const { svc, files, fileOf } = service({ 'a.labnote.md': { text, ctime: 1 } }, 'new');
+    const id = await svc.ensureId(fileOf('a.labnote.md'));
+    expect(id).toMatch(/^LN-/);
+    expect(id).not.toBe('LN-FK5Q8KV0');
+    expect(readNoteId(files.get('a.labnote.md')!.text)).toBe(id);
   });
 
   it('gives a new ID, with a warning, when another note holds the old one', async () => {

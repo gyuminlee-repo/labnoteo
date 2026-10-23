@@ -502,17 +502,35 @@ describe('document references never overwrite the registry (#37)', () => {
     expect(records['Other-1791']).toBeUndefined();
   });
 
+  // #271: the seeded copy carries the catalog's description and location,
+  // never the note's prose after the reference.
   it('seeds a catalog-type record from the catalog, not the trailing prose', async () => {
     const fs = new MemFileSystem();
     await fs.write(
       `${FOLDER}/Reagent_vendor.json`,
-      JSON.stringify({ 'Reagent-7': { type: 'Reagent', alias: 'LB broth', descriptions: ['Sigma'] } })
+      JSON.stringify({
+        'Reagent-7': { type: 'Reagent', alias: 'LB broth', descriptions: ['Sigma'], location: '시약장 2칸' },
+      })
     );
     await saveSamplesFromDocument(fs, DOC, '배지는 Reagent-7;LB broth 를 썼고; 37도에서 배양');
 
     const records = await loadSamplesByType(fs, FOLDER, 'Reagent');
     expect(records['Reagent-7'].alias).toBe('LB broth');
-    expect(records['Reagent-7'].descriptions).toEqual([]);
+    expect(records['Reagent-7'].descriptions).toEqual(['Sigma']);
+    expect(records['Reagent-7'].location).toBe('시약장 2칸');
+    expect(records['Reagent-7'].descriptionSources).toBeUndefined();
+  });
+
+  it('keeps the copied description when the note is saved again', async () => {
+    const fs = new MemFileSystem();
+    await fs.write(
+      `${FOLDER}/Reagent_vendor.json`,
+      JSON.stringify({ 'Reagent-7': { type: 'Reagent', alias: 'LB broth', descriptions: ['Sigma'] } })
+    );
+    await saveSamplesFromDocument(fs, DOC, '배지는 Reagent-7;LB broth 를 썼고');
+    await saveSamplesFromDocument(fs, DOC, '배지는 Reagent-7;LB broth 를 다시 썼다');
+
+    expect((await loadSamplesByType(fs, FOLDER, 'Reagent'))['Reagent-7'].descriptions).toEqual(['Sigma']);
   });
 
   it('adds only a source when the reference differs from the stored id in case', async () => {

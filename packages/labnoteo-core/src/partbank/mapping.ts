@@ -107,6 +107,50 @@ export function searchEntitiesForSampleType(
   }
 }
 
+type Translate = (key: string, ...args: string[]) => string;
+
+/** One search entity in the plural, as a scope label lists it. */
+function entityPlural(entity: PartbankSearchEntity, t: Translate): string {
+  switch (entity) {
+    case 'part':
+      return t('parts');
+    case 'device':
+      return t('devices');
+    case 'vector':
+      return t('plasmids');
+    case 'primer':
+      return t('primers');
+    case 'molecule':
+      return t('molecules');
+    case 'strain':
+      return t('strains');
+  }
+}
+
+/**
+ * What a search over `entities` looks through, in words: "parts, devices and
+ * molecules" for `@dna;`, "molecules" for `@protein;`. Shown on the "Search
+ * partbank" row and in the empty result, so a typed type that does not reach
+ * an item says why rather than suggesting the item does not exist (#276).
+ */
+export function searchScopeLabel(entities: readonly PartbankSearchEntity[], t: Translate): string {
+  const names = entities.map(e => entityPlural(e, t));
+  if (names.length <= 1) return names[0] ?? '';
+  return t('{0} and {1}', names.slice(0, -1).join(t(', ')), names[names.length - 1]);
+}
+
+/**
+ * Where to look for what `entities` leaves out, or `''` when nothing worth
+ * naming is left out. Parts are what users miss most (#276), then plasmids,
+ * which `@dna;` does not search.
+ */
+export function searchScopeHint(entities: readonly PartbankSearchEntity[], t: Translate): string {
+  if (entities.length === 0) return '';
+  if (!entities.includes('part')) return t('Search parts with @dna; or @sample;.');
+  if (!entities.includes('vector')) return t('Search plasmids with @plasmid; or @sample;.');
+  return '';
+}
+
 /**
  * The labnoteo type for a partbank item when the user did not name one (an
  * `@sample` pick, a URI import, a catalog download). Built-in types are

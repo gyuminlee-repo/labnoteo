@@ -799,6 +799,29 @@ describe('planWorkflowRetitle (#71)', () => {
     expect(planWorkflowRetitle(note('My own title', '열충격'), NEW, OLD)).toBeUndefined();
   });
 
+  // #268: the ID in the file name was changed by hand and the offer to put it
+  // back declined, so the old name and the title name different IDs.
+  it('follows an alias change after the file ID was changed and not put back', () => {
+    const out = planWorkflowRetitle(
+      ORIGINAL,
+      '001_WB120_Biology-mediated_DNA_Transfers_열충격2.labnote.md',
+      '001_WB130_Biology-mediated_DNA_Transfers_열충격.labnote.md'
+    );
+    expect(out?.to).toBe('WB120 Biology-mediated DNA Transfers 열충격2');
+    expect(out?.content).toContain('\ntitle: WB120 Biology-mediated DNA Transfers 열충격2\n');
+    expect(out?.content).toContain('\n## [WB120 Biology-mediated DNA Transfers] 열충격2\n');
+  });
+
+  it('still keeps a hand-edited title when the old name had another ID', () => {
+    expect(
+      planWorkflowRetitle(
+        note('My own title', '열충격'),
+        '001_WB120_Biology-mediated_DNA_Transfers_열충격2.labnote.md',
+        '001_WB130_Biology-mediated_DNA_Transfers_열충격.labnote.md'
+      )
+    ).toBeUndefined();
+  });
+
   // #165: a file named before `IND+` became `IND_plus` keeps its title.
   it('changes nothing for a file named under the earlier +/- rule', () => {
     const typed = note('WB120 Biology-mediated DNA Transfers IND+', 'IND+');

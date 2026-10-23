@@ -167,6 +167,8 @@ export class BarcodeFeature {
     plugin.registerEvent(
       this.app.metadataCache.on('changed', file => {
         if (!isBarcodeNote(file.path) || !this.noteIds.idOf(file)) return;
+        // A copied experiment renews its notes' IDs itself; asking as well gave the copy two (#265).
+        if (this.plugin.isRenewingCopiedNoteId(file.path)) return;
         if (this.noteIds.filesWithId(this.noteIds.idOf(file)!).length > 1) {
           this.run(() => this.noteIds.offerDuplicateFixes());
         }

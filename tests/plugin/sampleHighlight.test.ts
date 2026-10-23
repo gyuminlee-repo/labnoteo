@@ -12,6 +12,7 @@ import {
   staleAliasCheck,
 } from '../../src/sampleHighlight';
 import { findDefinedSampleIds } from '../../packages/labnoteo-core/src/lib/sampleStorage';
+import { commentRanges } from '../../packages/labnoteo-core/src/lib/issueMarker';
 
 const on = { types: ['RNA', 'Cell'], colors: { RNA: 'red', Cell: 'blue' } };
 const off = { types: [], colors: {} };
@@ -115,5 +116,40 @@ describe('sample references with another alias than the registry', () => {
 
   it('keeps the marks apart when the alias runs into another ID', () => {
     expect(ranges(`${ID};DNA-2`)).toEqual([{ text: `${ID};DNA-2`, stale: true, title: 'registry: COL-001' }]);
+  });
+});
+
+// #266: a marker in a comment is hidden in the reading view and read by nothing.
+describe('issue markers in comments', () => {
+  const markers = (text: string) => {
+    const comments = commentRanges(text);
+    const inComment = (at: number): boolean => comments.some(c => at >= c.start && at < c.end);
+    return collectTokenRanges(text, [], {}, { inComment })
+      .filter(r => r.cls.includes('labnote-issue-marker'))
+      .map(r => text.slice(r.start, r.end));
+  };
+
+  it('styles neither a one-line nor a multi-line comment, and never the closing -->', () => {
+    const text = [
+      '<!-- 이슈 끔: @issue;ISS-oldnote1;형광 판독 기준 재검토 -->',
+      '',
+      '<!--',
+      '@issue;ISS-oldnote2;여러 줄 주석 안',
+      '-->',
+    ].join('\n');
+    expect(markers(text)).toEqual([]);
+  });
+
+  it('styles a live marker after a comment on the same line', () => {
+    expect(markers('%% 메모 %% @issue;ISS-a;진짜 논의')).toEqual(['@issue;ISS-a;진짜 논의']);
+  });
+
+  it('still styles sample IDs in a comment', () => {
+    const text = '<!-- DNA-1 -->';
+    const comments = commentRanges(text);
+    const inComment = (at: number): boolean => comments.some(c => at >= c.start && at < c.end);
+    expect(collectTokenRanges(text, ['DNA'], {}, { inComment }).map(r => text.slice(r.start, r.end))).toEqual([
+      'DNA-1',
+    ]);
   });
 });

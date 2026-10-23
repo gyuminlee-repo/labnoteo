@@ -6,6 +6,8 @@ import {
   typeFromSearchEntity,
   searchEntityForType,
   searchEntitiesForSampleType,
+  searchScopeLabel,
+  searchScopeHint,
   sampleTypeForItem,
   aliasForItem,
   descriptionForItem,
@@ -92,6 +94,34 @@ describe('search entities', () => {
     expect(searchEntitiesForSampleType('Strain', { strainType: 'Strain' })).toEqual(['strain']);
     expect(searchEntitiesForSampleType('strain', { strainType: 'Strain' })).toEqual(['strain']);
     expect(searchEntitiesForSampleType('CellLine', { strainType: 'CellLine' })).toEqual(['strain']);
+  });
+});
+
+// #276: `@protein;` only reaches molecules, so a part like sfGFP is not found
+// there; the row and the empty result have to say what was searched.
+describe('searchScopeLabel / searchScopeHint', () => {
+  const t = (key: string, ...args: string[]): string =>
+    args.reduce((acc, a, i) => acc.replace(`{${i}}`, a), key);
+  const label = (type: string | null): string => searchScopeLabel(searchEntitiesForSampleType(type), t);
+  const hint = (type: string | null): string => searchScopeHint(searchEntitiesForSampleType(type), t);
+
+  it('names what each typed type searches', () => {
+    expect(label('DNA')).toBe('parts, devices and molecules');
+    expect(label('Plasmid')).toBe('plasmids');
+    expect(label('Primer')).toBe('primers');
+    expect(label('Protein')).toBe('molecules');
+    expect(label('Reagent')).toBe('molecules');
+    expect(label('RNA')).toBe('molecules');
+    expect(label(null)).toBe('parts, devices, plasmids, primers, molecules and strains');
+    expect(searchScopeLabel(searchEntitiesForSampleType('Strain', { strainType: 'Strain' }), t)).toBe('strains');
+  });
+
+  it('points to where the left-out kinds are searched', () => {
+    expect(hint('Protein')).toBe('Search parts with @dna; or @sample;.');
+    expect(hint('Reagent')).toBe('Search parts with @dna; or @sample;.');
+    expect(hint('DNA')).toBe('Search plasmids with @plasmid; or @sample;.');
+    expect(hint(null)).toBe('');
+    expect(hint('Labware')).toBe('');
   });
 });
 

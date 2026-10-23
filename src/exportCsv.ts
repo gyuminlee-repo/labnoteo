@@ -192,14 +192,14 @@ export async function exportTablesToCsv(plugin: LabnotePlugin, file: TFile): Pro
 }
 
 /**
- * How to open the CSV in Excel without it rewriting cells like `3-1` or `007`
- * (#256). The file keeps the text as typed; Excel is what changes it.
+ * How to open the CSV in Excel without it rewriting cells like `3-1`, `2:1` or
+ * `007` (#256, #272). The file keeps the text as typed; Excel is what changes it.
  */
 function excelHint(plugin: LabnotePlugin, risky: readonly string[]): string {
   if (risky.length === 0) return '';
   const shown = [...new Set(risky)].slice(0, 3).join(', ');
   return plugin.t(
-    'Excel would read cells like {0} as dates or drop their leading zeros. Open the CSV with Data → From Text/CSV and set those columns to Text.',
+    'Excel would read cells like {0} as dates or times, or drop their leading zeros. Open the CSV with Data → From Text/CSV and set those columns to Text.',
     shown
   );
 }

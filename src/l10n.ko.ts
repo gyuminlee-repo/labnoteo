@@ -212,6 +212,10 @@ const obsidianKo: Record<string, string> = {
     '되돌리려면 워크플로 뷰에서 이 실험을 다시 우클릭해 {0}을(를) 고르세요.',
   '{0} workflow(s) in the checklist are not checked and {1} workflow note(s) have no end_date. Mark the experiment completed anyway?':
     '체크리스트에서 체크하지 않은 워크플로가 {0}개, 종료일(end_date)이 빈 워크플로 노트가 {1}개 있습니다. 그래도 completed로 바꿀까요?',
+  '{0} workflow(s) in the checklist are not checked. Mark the experiment completed anyway?':
+    '체크리스트에서 체크하지 않은 워크플로가 {0}개 있습니다. 그래도 completed로 바꿀까요?',
+  '{0} workflow note(s) have no end_date. Mark the experiment completed anyway?':
+    '종료일(end_date)이 빈 워크플로 노트가 {0}개 있습니다. 그래도 completed로 바꿀까요?',
   'Mark completed': 'completed로 바꾸기',
   'This vault is not a git repository yet, so no review issue will open. Finish the repository setup in {0} first.':
     '이 보관함은 아직 git 저장소가 아니라 검토 이슈가 생성되지 않습니다. 먼저 {0}의 저장소 연결을 마치세요.',
@@ -243,6 +247,8 @@ const obsidianKo: Record<string, string> = {
     '머리말(front matter)에는 이슈 마커를 넣을 수 없습니다. 본문에서 실행하세요.',
   'Issue markers inside a code block open no issue. Run this on a line outside the code block.':
     '코드 블록 안의 이슈 마커는 이슈를 열지 않습니다. 코드 블록 밖의 줄에서 실행하세요.',
+  'Issue markers inside a comment open no issue. Run this on a line outside the comment.':
+    '주석 안의 이슈 마커는 이슈를 열지 않습니다. 주석 밖의 줄에서 실행하세요.',
   'This marker ID appears more than once in this note.': '이 마커 ID는 이 노트에 두 번 이상 있습니다.',
   'This marker ID is already used in {0}.': '이 마커 ID는 이미 {0}에서 쓰고 있습니다.',
   'Marker ID {0} appears twice in this note, so the two questions merge into one issue. Delete one of these markers and insert it again with "Insert issue marker".':
@@ -268,10 +274,10 @@ const obsidianKo: Record<string, string> = {
     '이제 새 첨부 파일은 각 노트 옆 images 폴더에 저장됩니다.',
   'The marked block of {0} was edited after it was installed. Replace the block with the new version? Text outside the block is kept.':
     '{0}의 표시된 블록이 설치 후 고쳐졌습니다. 블록을 새 버전으로 바꿀까요? 블록 밖의 내용은 그대로 둡니다.',
-  'Research automation set up ({0} written, {1} merged, {2} skipped, {3} removed). Researchers: see {4}. Admin setup: {5} (run `git config core.hooksPath {6}`).':
-    '연구노트 자동화를 설정했습니다 (생성 {0} · 병합 {1} · 건너뜀 {2} · 정리 {3}). 연구원 안내는 {4}, 관리자 설정은 {5} 문서를 확인하고 `git config core.hooksPath {6}`을 실행하세요.',
-  'Remove {0} file(s) left by the previous layout ({1})? Afterwards run `git config core.hooksPath {2}` so the pre-commit hook keeps working.':
-    '이전 구조에서 남은 파일 {0}개를 삭제할까요? ({1}) 삭제 후 `git config core.hooksPath {2}`를 실행해야 pre-commit 훅이 계속 동작합니다.',
+  'Research automation set up ({0} written, {1} merged, {2} skipped, {3} removed). Researchers: see {4}. Admin setup: {5} (run "git config core.hooksPath {6}").':
+    '연구노트 자동화를 설정했습니다 (생성 {0} · 병합 {1} · 건너뜀 {2} · 정리 {3}). 연구원 안내는 {4}, 관리자 설정은 {5} 문서를 확인하고 "git config core.hooksPath {6}"를 실행하세요.',
+  'Remove {0} file(s) left by the previous layout ({1})? Afterwards run "git config core.hooksPath {2}" so the pre-commit hook keeps working.':
+    '이전 구조에서 남은 파일 {0}개를 삭제할까요? ({1}) 삭제 후 "git config core.hooksPath {2}"를 실행해야 pre-commit 훅이 계속 동작합니다.',
   'Remove': '삭제',
   'Delete these lines from .gitignore so agent skills can be committed: {0}':
     '에이전트 스킬이 커밋되도록 .gitignore에서 다음 줄을 직접 지우세요: {0}',
@@ -290,9 +296,9 @@ const obsidianKo: Record<string, string> = {
   '{0} table(s) were not exported: with no blank line above, the reading view shows them as text. Add a blank line above a table to export it.':
     '표 {0}개는 내보내지 않았습니다. 바로 위에 빈 줄이 없어 읽기 화면에서 표가 아닌 글로 보입니다. 내보내려면 표 위에 빈 줄을 넣으세요.',
   '{0} table(s) were not exported: they are inside a comment, so the reading view does not show them at all.':
-    '표 {0}개는 내보내지 않았습니다. 주석(`<!-- -->`, `%% %%`) 안에 있어 읽기 화면에 아예 보이지 않습니다.',
-  'Excel would read cells like {0} as dates or drop their leading zeros. Open the CSV with Data → From Text/CSV and set those columns to Text.':
-    '{0} 같은 칸은 엑셀에서 날짜로 바뀌거나 앞자리 0이 사라집니다. 엑셀에서는 데이터 → 텍스트/CSV에서로 열고 그 열의 형식을 텍스트로 지정하세요.',
+    '표 {0}개는 내보내지 않았습니다. 주석(<!-- -->, %% %%) 안에 있어 읽기 화면에 아예 보이지 않습니다.',
+  'Excel would read cells like {0} as dates or times, or drop their leading zeros. Open the CSV with Data → From Text/CSV and set those columns to Text.':
+    '{0} 같은 칸은 엑셀에서 날짜·시각으로 바뀌거나 앞자리 0이 사라집니다. 엑셀에서는 데이터 → 텍스트/CSV에서로 열고 그 열의 형식을 텍스트로 지정하세요.',
   'These table CSV files no longer match a table in the note. Move them to the trash?\n\n{0}':
     '다음 표 CSV 파일은 이 노트에 더 이상 해당하는 표가 없습니다. 휴지통으로 옮길까요?\n\n{0}',
   'The table CSV files of the deleted note(s) are still in the folder. Move them to the trash?\n\n{0}':
@@ -431,6 +437,10 @@ const obsidianKo: Record<string, string> = {
     '전역 샘플에 같은 별칭 {0}({1})이 이미 있습니다. 자동완성에는 로컬과 전역으로 구분되어 둘 다 보입니다.',
   'This experiment already has the alias {0} ({1}).': '이 실험에 같은 별칭 {0}({1})이 이미 있습니다.',
   'Global samples already have the alias {0} ({1}).': '전역 샘플에 같은 별칭 {0}({1})이 이미 있습니다.',
+  '{0} samples in this experiment already have the alias {1} ({2}).':
+    '이 실험에 같은 별칭 {1}을(를) 쓰는 샘플이 {0}개 있습니다({2}).',
+  '{0} Global samples already have the alias {1} ({2}).':
+    '전역 샘플에 같은 별칭 {1}을(를) 쓰는 샘플이 {0}개 있습니다({2}).',
   'Use the existing sample {0}': '있는 샘플 {0} 쓰기',
   'Nothing is registered; its ID goes where this one would have.':
     '새로 등록하지 않고, 만들려던 자리에 그 샘플의 ID를 넣습니다.',
@@ -535,7 +545,7 @@ const obsidianKo: Record<string, string> = {
     '{0}에 같은 이름이 있어 옮기지 않은 카탈로그 파일: {1}',
   'Auto-sync unit operation TOC': '유닛오퍼레이션 TOC 자동 정렬',
   "Reorder a workflow note's Related Unit Operations list to match heading order after edits, and tidy the --- separators immediately when a block is moved. Off, the order is left as you arranged it but the names and links still follow the headings.":
-    '편집 후 워크플로 노트의 Related Unit Operations 목록을 헤딩 순서에 맞게 정렬하고, 블록을 옮기면 `---` 구분선도 즉시 정리합니다. 끄면 순서는 그대로 두고 이름·링크만 헤딩에 맞춰 갱신합니다.',
+    '편집 후 워크플로 노트의 Related Unit Operations 목록을 헤딩 순서에 맞게 정렬하고, 블록을 옮기면 구분선(---)도 즉시 정리합니다. 끄면 순서는 그대로 두고 이름·링크만 헤딩에 맞춰 갱신합니다.',
   'Auto-update last updated date': '마지막 갱신일 자동 기록',
   "Set a lab note's last_updated_date to today (once a day) when you edit it, change its status or discussion flag, or the AI edits it. Editing a workflow note also updates its experiment README. Changes pulled from git are ignored. A date you type by hand is kept for the rest of that day; turning this off and on resumes it at once.":
     '연구노트를 편집하거나 상태·논의 표시를 바꾸거나 AI가 고치면 last_updated_date를 오늘 날짜로 바꿉니다(하루 한 번). 워크플로 노트를 고치면 실험 README도 함께 바뀝니다. git으로 받아온 변경은 반영하지 않습니다. 날짜를 손으로 고친 노트는 그날 하루 동안 고친 날짜를 그대로 두고, 이 설정을 껐다 켜면 바로 다시 기록합니다.',
@@ -563,7 +573,7 @@ const obsidianKo: Record<string, string> = {
   'New MCP token issued. The old token no longer works.':
     '새 MCP 토큰을 발급했습니다. 옛 토큰은 더 이상 쓸 수 없습니다.',
   'The new token could not be copied. Use "Copy token".':
-    '새 토큰을 복사하지 못했습니다. `토큰 복사`를 누르세요.',
+    '새 토큰을 복사하지 못했습니다. "토큰 복사"를 누르세요.',
   'Current token ends in {0}.': '현재 토큰 끝자리: {0}',
   'MCP token copied to clipboard.': 'MCP 토큰을 클립보드에 복사했습니다.',
   'New MCP token copied to clipboard.': '새 MCP 토큰을 클립보드에 복사했습니다.',
@@ -593,7 +603,7 @@ const obsidianKo: Record<string, string> = {
   'Open a note first.': '먼저 노트를 여세요.',
   'Open a markdown note first.': '먼저 마크다운 노트를 여세요.',
   'No results to summarize yet. Write them in "Results & Discussions" and run this again.':
-    '아직 요약할 결과가 없습니다. `Results & Discussions`에 결과를 적은 뒤 다시 실행하세요.',
+    '아직 요약할 결과가 없습니다. "Results & Discussions"에 결과를 적은 뒤 다시 실행하세요.',
   'Nothing to summarize.': '요약할 내용이 없습니다.',
   'Nothing to extract.': '추출할 내용이 없습니다.',
   'Created {0} sample(s).': '샘플 {0}개를 생성했습니다.',
@@ -612,6 +622,8 @@ const obsidianKo: Record<string, string> = {
   '{0} is not in the workflow catalog.': '{0}은(는) 워크플로 카탈로그에도 없습니다.',
   'Rename it back to "{0}"?': '"{0}"(으)로 이름을 되돌릴까요?',
   'Rename back': '이름 되돌리기',
+  'Kept the name "{0}". If the title or the README checklist no longer match the file name later, run "{1}".':
+    '이름 "{0}"을(를) 그대로 두었습니다. 나중에 제목이나 README 체크리스트가 파일 이름과 맞지 않으면 "{1}"을(를) 실행하세요.',
   'Renamed items keep their old names in the workflow notes and README checklists already made: {0} note(s) use them. Rename those by hand if needed.':
     '이름이 바뀌는 항목도 이미 만든 워크플로 노트와 README 체크리스트에서는 옛 이름 그대로입니다. 그 항목을 쓰는 노트는 {0}개입니다. 필요하면 직접 고치세요.',
   'Renamed items keep their old names in the workflow notes and README checklists already made.':
@@ -782,6 +794,7 @@ const obsidianKo: Record<string, string> = {
   'Already in {0}; skipped': '{0}에 이미 있어 건너뛰었습니다',
   'Blank page; skipped': '빈 페이지라 건너뛰었습니다',
   'No worksheet QR code; left alone': '기록지 QR 코드가 없어 그대로 두었습니다',
+  'Cancelled; the scan is still waiting to be assigned.': '취소했습니다. 스캔은 그대로 할당을 기다립니다.',
   'Failed: {0}': '실패: {0}',
   'HEIC photo, which Obsidian cannot open. On iPhone set Settings → Camera → Formats → Most Compatible, or share the photo as JPEG.':
     'HEIC 사진이라 Obsidian에서 열 수 없습니다. iPhone 설정 → 카메라 → 포맷 → "높은 호환성"으로 바꾸거나 JPEG로 공유하세요.',
@@ -828,9 +841,9 @@ const obsidianKo: Record<string, string> = {
   'The scan folder {0} could not be read: {1}': '스캔 폴더 {0}을(를) 읽지 못했습니다: {1}',
   'No new files in the scan folder.': '스캔 폴더에 새 파일이 없습니다.',
   '{0} file(s) that were already in the folder when it was set are skipped. Read them with "{1}".':
-    '폴더를 지정할 때 이미 있던 파일 {0}개는 건너뜁니다. 그 파일도 처리하려면 설정의 "{1}"을 누르세요.',
+    '폴더를 지정할 때 이미 있던 파일 {0}개는 건너뜁니다. 그 파일도 처리하려면 설정의 "{1}"를 누르세요.',
   'Files that were already in the folder when it was set are skipped. Read them with "{0}", or set the folder again to take what is in it now as the starting point.':
-    '폴더를 지정할 때 이미 있던 파일은 건너뜁니다. 그 파일도 처리하려면 설정의 "{0}"을 누르세요. 폴더 경로를 다시 지정하면 지금 들어 있는 파일을 기준으로 삼습니다.',
+    '폴더를 지정할 때 이미 있던 파일은 건너뜁니다. 그 파일도 처리하려면 설정의 "{0}"를 누르세요. 폴더 경로를 다시 지정하면 지금 들어 있는 파일을 기준으로 삼습니다.',
   'Worksheet paper size': '기록지 용지 크기',
   'Scan folder': '스캔 폴더',
   'A folder on this PC where photos and scans arrive (Google Drive folder, scanner share, KakaoTalk downloads…). Checked every 30 seconds. Stored for this PC only; set it on one PC.':
@@ -942,10 +955,23 @@ const obsidianKo: Record<string, string> = {
     'partbank가 당분간 요청을 더 받지 않습니다. 잠시 후 다시 시도하세요.',
   'partbank returned an error ({0}).': 'partbank가 오류를 돌려줬습니다({0}).',
   'Search partbank': 'partbank에서 검색',
-  'Register a part, plasmid or primer from partbank': 'partbank의 부품·플라스미드·프라이머를 등록',
-  'Nothing found in partbank.': 'partbank에서 찾지 못했습니다.',
+  'Find and register partbank {0}': 'partbank의 {0} 중에서 찾아 등록',
+  'Nothing found among partbank {0}.': 'partbank {0} 중에서 찾지 못했습니다.',
+  'Search parts with @dna; or @sample;.': '부품은 @dna;나 @sample;에서 검색하세요.',
+  'Search plasmids with @plasmid; or @sample;.': '플라스미드는 @plasmid;나 @sample;에서 검색하세요.',
+  'parts': '부품',
+  'devices': '디바이스',
+  'plasmids': '플라스미드',
+  'primers': '프라이머',
+  'molecules': '분자',
+  'strains': '균주',
+  '{0} and {1}': '{0}·{1}',
+  ', ': '·',
   '"{0}" is already the alias of {1}.': '"{0}"은(는) 이미 {1}의 별칭입니다.',
   '{0} already stands for this partbank item.': '이 partbank 항목은 이미 {0}으로 등록돼 있습니다.',
+  '{0} in {1} already stands for this partbank item, so it was used instead of registering a second one.':
+    '이 partbank 항목은 이미 {1}에 {0}으로 등록돼 있어, 새로 등록하지 않고 그 시료를 썼습니다.',
+  'Sample added to Global samples: {0}': '전역 샘플에 추가했습니다: {0}',
   'partbank keeps strains, but this vault has no sample type for them. Add the custom sample type "{0}"?':
     'partbank에는 균주가 있지만 이 보관함에는 균주용 시료 타입이 없습니다. 사용자 정의 타입 "{0}"을(를) 추가할까요?',
   'Add {0}': '{0} 추가',
@@ -965,6 +991,8 @@ const obsidianKo: Record<string, string> = {
   'This sample is linked to the partbank app on another PC.':
     '다른 PC의 partbank 앱에 연결된 시료입니다.',
   'The storage location is unchanged.': '보관 위치가 그대로입니다.',
+  'partbank shows no stock for {0}, so the current location is kept. To clear it, empty the location in Edit sample.':
+    'partbank에 {0}의 보이는 재고가 없어 지금 위치를 유지합니다. 지우려면 "샘플 편집"에서 위치를 비우세요.',
   'Store the storage location of {0} as read from partbank?\n{1}':
     'partbank에서 읽은 {0}의 보관 위치를 저장할까요?\n{1}',
   'Store': '저장',

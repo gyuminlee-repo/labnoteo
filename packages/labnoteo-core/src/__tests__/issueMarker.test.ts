@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   ISSUE_MARKER_ID_PREFIX,
   codeBlockRanges,
+  commentRanges,
   fencedCodeRanges,
   findEnclosingHeading,
   findIssueMarkerRanges,
@@ -271,6 +272,91 @@ describe('indented code blocks', () => {
 
   it('ignores headings in them', () => {
     expect(findEnclosingHeading('## Results\n\n    # not a heading\n\n@issue;ISS-a;x', 5)).toBe('Results');
+  });
+});
+
+// #266: the reading view hides comments, so a marker in one is switched off.
+describe('markers in comments', () => {
+  const md = [
+    '<!-- 이슈 끔: @issue;ISS-c1;형광 판독 기준 재검토 -->',
+    '',
+    '<!--',
+    '@issue;ISS-c2;여러 줄 주석 안',
+    '-->',
+    '%% @issue;ISS-c3;옵시디언 주석 %%',
+    '%%',
+    '@issue;ISS-c4;여러 줄 옵시디언 주석',
+    '%%',
+    '<!-- 메모 --> @issue;ISS-live1;주석 뒤 진짜 마커',
+    '`<!--` 를 설명하는 줄 @issue;ISS-live2;코드 스팬 안 기호는 주석이 아님',
+    '```',
+    '<!--',
+    '```',
+    '@issue;ISS-live3;펜스 안 기호는 주석을 열지 않음',
+    '',
+    '    <!-- 들여쓴 코드',
+    '',
+    '@issue;ISS-live4;들여쓴 코드 안 기호도 마찬가지',
+  ].join('\n');
+
+  it('are not read, and comment marks in code are text', () => {
+    const scan = parseIssueMarkers(md);
+    expect(scan.markers.map(m => m.id)).toEqual(['ISS-live1', 'ISS-live2', 'ISS-live3', 'ISS-live4']);
+    expect(scan.malformed).toEqual([]);
+  });
+
+  it('skips a malformed marker in a comment too', () => {
+    expect(parseIssueMarkers('<!-- @issue;제목만 -->')).toEqual({ markers: [], malformed: [] });
+  });
+
+  it('runs a comment left open to the end', () => {
+    expect(parseIssueMarkers('본문\n<!--\n@issue;ISS-a;x\n\n@issue;ISS-b;y').markers).toEqual([]);
+    expect(commentRanges('a %% b')).toEqual([{ start: 2, end: 6 }]);
+  });
+
+  it('keeps a marker whose topic is followed by a comment', () => {
+    expect(parseIssueMarkers('@issue;ISS-a;주제 <!-- 메모 -->').markers.map(m => m.id)).toEqual(['ISS-a']);
+  });
+
+  it('gives the editor the same markers', () => {
+    const comments = commentRanges(md);
+    const code = codeBlockRanges(md);
+    const lineAt = (offset: number): number => md.slice(0, offset).split('\n').length;
+    const styled = findIssueMarkerRanges(md, at => comments.some(c => at >= c.start && at < c.end))
+      .filter(r => !code.some(c => r.start < c.end && r.end > c.start))
+      .map(r => lineAt(r.start));
+    expect(styled).toEqual(parseIssueMarkers(md).markers.map(m => m.line));
+  });
+
+  it('handles CRLF text', () => {
+    const crlf = '<!--\r\n@issue;ISS-a;x\r\n-->\r\n@issue;ISS-b;y\r\n';
+    expect(reassignIssueMarkerIds(crlf, () => 'ISS-new')).toEqual({
+      content: '<!--\r\n@issue;ISS-a;x\r\n-->\r\n@issue;ISS-new;y\r\n',
+      count: 1,
+    });
+  });
+
+  it('leaves their markers alone when IDs are reassigned', () => {
+    const out = reassignIssueMarkerIds('<!-- @issue;ISS-a;x --> @issue;ISS-b;y', () => 'ISS-new');
+    expect(out).toEqual({ content: '<!-- @issue;ISS-a;x --> @issue;ISS-new;y', count: 1 });
+  });
+
+  it('refuses to insert a marker into one', () => {
+    const doc = '<!--\n끝난 논의\n-->\n';
+    const at = doc.indexOf('끝난');
+    expect(planIssueMarkerInsertion(doc, at, at, 'ISS-x', '주제')).toEqual({ reason: 'comment' });
+    expect(planIssueMarkerInsertion(doc, at, at + 5, 'ISS-x')).toEqual({ reason: 'comment' });
+    const open = '%% 끝까지 주석';
+    expect(planIssueMarkerInsertion(open, 3, 3, 'ISS-x', '주제')).toEqual({ reason: 'comment' });
+  });
+
+  it('inserts after a closed comment, which holds no live marker', () => {
+    const doc = '<!-- @issue;ISS-old;x -->';
+    const plan = planIssueMarkerInsertion(doc, doc.length, doc.length, 'ISS-x', '새 논의');
+    expect(plan).toEqual({
+      edit: { from: doc.length, to: doc.length, insert: ' @issue;ISS-x;새 논의' },
+      cursor: doc.length + ' @issue;ISS-x;새 논의'.length,
+    });
   });
 });
 

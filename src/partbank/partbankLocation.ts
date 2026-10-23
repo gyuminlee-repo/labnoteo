@@ -130,7 +130,9 @@ export function describeChange(change: LocationChange, plugin: LabnotePlugin): s
 
 /**
  * Refresh one sample's location, asking before it is written. Returns whether
- * anything was stored.
+ * anything was stored. When partbank shows no stock the stored location is
+ * kept without asking, by the same judgement as {@link checkedByDefault}: a
+ * single Enter on that prompt used to erase a hand-typed location (#269).
  */
 export async function refreshOneLocation(
   plugin: LabnotePlugin,
@@ -152,6 +154,15 @@ export async function refreshOneLocation(
   const before = args.record.location ?? null;
   if ((before ?? '') === (after ?? '')) {
     new Notice(plugin.t('The storage location is unchanged.'));
+    return false;
+  }
+  if (!after) {
+    new Notice(
+      plugin.t(
+        'partbank shows no stock for {0}, so the current location is kept. To clear it, empty the location in Edit sample.',
+        args.id
+      )
+    );
     return false;
   }
   const change: LocationChange = {

@@ -127,11 +127,93 @@ function codeLines(lines: readonly string[]): boolean[] {
   return code;
 }
 
+const HTML_COMMENT_OPEN = '<!--';
+const HTML_COMMENT_CLOSE = '-->';
+const OBSIDIAN_COMMENT = '%%';
+
+/** Start of the run of exactly `n` backticks closing a code span, or -1. */
+function closingBackticks(line: string, from: number, n: number): number {
+  for (let j = from; j < line.length; ) {
+    if (line[j] !== '`') {
+      j++;
+      continue;
+    }
+    let k = j;
+    while (k < line.length && line[k] === '`') k++;
+    if (k - j === n) return j;
+    j = k;
+  }
+  return -1;
+}
+
+/**
+ * Character ranges of the comments in `md` — HTML `<!-- … -->` and Obsidian
+ * `%% … %%`, either of which may run over several lines; one left open runs to
+ * the end of the text. The reading view hides them, so a marker in one is
+ * switched off: it is neither read nor styled (#266). Comment marks in code
+ * are text — in code blocks, fenced or indented as {@link codeBlockRanges}
+ * reads them, and in an inline code span.
+ */
+export function commentRanges(md: string): IssueMarkerRange[] {
+  const ranges: IssueMarkerRange[] = [];
+  const raws = md.split('\n');
+  const code = codeLines(raws.map(raw => raw.replace(/\r$/, '')));
+  let open: { close: string; start: number } | undefined;
+  let offset = 0;
+  for (let li = 0; li < raws.length; li++) {
+    const line = raws[li];
+    let i = 0;
+    while (!code[li] && i < line.length) {
+      if (open) {
+        const close = line.indexOf(open.close, i);
+        if (close < 0) break;
+        i = close + open.close.length;
+        ranges.push({ start: open.start, end: offset + i });
+        open = undefined;
+      } else if (line[i] === '`') {
+        let n = 1;
+        while (line[i + n] === '`') n++;
+        const close = closingBackticks(line, i + n, n);
+        i = close < 0 ? i + n : close + n;
+      } else if (line.startsWith(HTML_COMMENT_OPEN, i)) {
+        open = { close: HTML_COMMENT_CLOSE, start: offset + i };
+        i += HTML_COMMENT_OPEN.length;
+      } else if (line.startsWith(OBSIDIAN_COMMENT, i)) {
+        open = { close: OBSIDIAN_COMMENT, start: offset + i };
+        i += OBSIDIAN_COMMENT.length;
+      } else {
+        i++;
+      }
+    }
+    offset += line.length + 1;
+  }
+  if (open) ranges.push({ start: open.start, end: md.length });
+  return ranges;
+}
+
+const inRanges = (ranges: readonly IssueMarkerRange[], at: number): boolean =>
+  ranges.some(r => at >= r.start && at < r.end);
+
+/**
+ * Where the marker of `line` starts: its first candidate that `hidden` does
+ * not switch off, or -1. The marker owns the rest of the line, so a candidate
+ * after the first live one is part of its topic.
+ */
+function markerStart(line: string, hidden?: (at: number) => boolean): number {
+  const re = new RegExp(MARKER_START_RE.source, 'gi');
+  for (let m = re.exec(line); m; m = re.exec(line)) {
+    if (!hidden?.(m.index)) return m.index;
+  }
+  return -1;
+}
+
 /**
  * Find every `@issue` marker in `md`.
  *
  * Code blocks, fenced or indented, are skipped: a note that documents the
  * marker syntax by example must not open issues for its own examples (#224).
+ * So are markers in a comment (see {@link commentRanges}), which the reading
+ * view hides (#266).
  *
  * Expects LF-normalised text, like the other parsers here.
  */
@@ -141,12 +223,16 @@ export function parseIssueMarkers(md: string): IssueMarkerScan {
 
   const lines = md.split('\n');
   const code = codeLines(lines);
+  const comments = commentRanges(md);
+  let offset = 0;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    const lineStart = offset;
+    offset += line.length + 1;
     if (code[i]) continue;
 
     // Only the FIRST candidate matters: the marker owns the rest of the line.
-    const at = line.search(MARKER_START_RE);
+    const at = markerStart(line, a => inRanges(comments, lineStart + a));
     if (at === -1) continue;
 
     const text = line.slice(at);
@@ -184,13 +270,17 @@ export interface IssueMarkerRange {
  * hands over arbitrary slices of the document, where a block may have opened
  * outside the slice. The editor drops the markers inside
  * {@link codeBlockRanges} of the whole document instead (#120, #224), and
- * reading mode filters code by DOM.
+ * reading mode filters code by DOM. Comments are the same, except that a
+ * commented candidate can leave a live one later on its line, so the editor
+ * passes `hidden` (offsets within `text`) for the {@link commentRanges} of the
+ * whole document (#266).
  */
-export function findIssueMarkerRanges(text: string): IssueMarkerRange[] {
+export function findIssueMarkerRanges(text: string, hidden?: (at: number) => boolean): IssueMarkerRange[] {
   const ranges: IssueMarkerRange[] = [];
   let offset = 0;
   for (const line of text.split('\n')) {
-    const at = line.search(MARKER_START_RE);
+    const lineStart = offset;
+    const at = markerStart(line, hidden && (a => hidden(lineStart + a)));
     if (at !== -1) {
       const m = line.slice(at).match(MARKER_RE);
       if (m && (m[2] ?? '').trim()) {
@@ -283,7 +373,7 @@ export function generateIssueMarkerId(): string {
  * topic and line endings; returns the text and how many IDs changed. For a
  * copied note (#89): its markers would otherwise share their IDs with the
  * original's, merging both discussions into one issue. Markers are found as
- * {@link parseIssueMarkers} finds them (fenced code skipped), so what
+ * {@link parseIssueMarkers} finds them (code and comments skipped), so what
  * `issue-sync` and `validate` read is what gets a new ID.
  */
 export function reassignIssueMarkerIds(
@@ -293,11 +383,15 @@ export function reassignIssueMarkerIds(
   let count = 0;
   const raws = md.split('\n');
   const code = codeLines(raws.map(raw => raw.replace(/\r$/, '')));
+  const comments = commentRanges(md);
+  let offset = 0;
   const lines = raws.map((raw, i) => {
+    const lineStart = offset;
+    offset += raw.length + 1;
     const cr = raw.endsWith('\r') ? '\r' : '';
     const line = cr ? raw.slice(0, -1) : raw;
     if (code[i]) return raw;
-    const at = line.search(MARKER_START_RE);
+    const at = markerStart(line, a => inRanges(comments, lineStart + a));
     if (at === -1) return raw;
     const m = line.slice(at).match(MARKER_RE);
     if (!m) return raw;
@@ -325,7 +419,7 @@ export function renderIssueMarker(marker: { id: string; title: string }): string
  */
 export type IssueMarkerInsertion =
   | { edit: { from: number; to: number; insert: string }; cursor: number }
-  | { reason: 'conflict' | 'table' | 'frontMatter' | 'codeBlock' };
+  | { reason: 'conflict' | 'table' | 'frontMatter' | 'codeBlock' | 'comment' };
 
 const isHeadingLine = (line: string): boolean => /^ {0,3}#{1,6}(?:\s|$)/.test(line);
 const isTableRow = (line: string): boolean => /^\s*\|/.test(line);
@@ -354,6 +448,8 @@ const isTableRow = (line: string): boolean => /^\s*\|/.test(line);
  * - A line in a code block, fenced (fences included, #120) or indented (#224),
  *   is refused (`codeBlock`): the automation skips code, so the marker would
  *   open no issue.
+ * - A marker that would land in a comment is refused (`comment`) for the same
+ *   reason (#266).
  *
  * `topic`, when given, is the topic instead of the selected text (#100: typed
  * for a bare caret). Where the marker goes is decided the same way.
@@ -406,23 +502,29 @@ export function planIssueMarkerInsertion(
   if (isTableRow(line)) return { reason: 'table' };
 
   let edit: { from: number; to: number; insert: string };
-  let resultLine: string;
   if (isHeadingLine(line)) {
     edit = { from: lineEnd, to: lineEnd, insert: '\n' + marker };
-    resultLine = marker;
   } else if (appendAtEnd) {
-    const insert = pad(lineEnd, lineStart) + marker;
-    edit = { from: lineEnd, to: lineEnd, insert };
-    resultLine = line + insert;
+    edit = { from: lineEnd, to: lineEnd, insert: pad(lineEnd, lineStart) + marker };
   } else {
     const lead = /^[ \t]*/.exec(doc.slice(from, to))![0];
-    const insert = (lead || pad(from, lineStart)) + marker;
-    edit = { from, to, insert };
-    resultLine = doc.slice(lineStart, from) + insert + doc.slice(to, toLineEnd);
+    edit = { from, to, insert: (lead || pad(from, lineStart)) + marker };
   }
 
-  const candidates = resultLine.match(new RegExp(MARKER_START_RE.source, 'gi')) ?? [];
-  if (candidates.length > 1) return { reason: 'conflict' };
+  // Judged on the note as it would read, since the marker may open or close
+  // a comment's line.
+  const after = doc.slice(0, edit.from) + edit.insert + doc.slice(edit.to);
+  const comments = commentRanges(after);
+  const markerAt = edit.from + edit.insert.length - marker.length;
+  if (inRanges(comments, markerAt)) return { reason: 'comment' };
+  const resultStart = after.lastIndexOf('\n', markerAt - 1) + 1;
+  const resultEnd = after.indexOf('\n', markerAt);
+  const resultLine = after.slice(resultStart, resultEnd === -1 ? after.length : resultEnd);
+  let live = 0;
+  for (const m of resultLine.matchAll(new RegExp(MARKER_START_RE.source, 'gi'))) {
+    if (!inRanges(comments, resultStart + m.index!)) live++;
+  }
+  if (live > 1) return { reason: 'conflict' };
   return { edit, cursor: edit.from + edit.insert.length };
 }
 

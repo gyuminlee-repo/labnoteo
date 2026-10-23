@@ -71,9 +71,12 @@ opens its own Issue (requires Setup research automation).
   line's whole text is replaced by the marker.
 - A multi-line selection is not folded into one line: the marker goes at the end of its last line,
   with list marks left out of the topic.
-- On a heading it goes on the line below. Inside a table, the front matter or a code block
-  (including code indented four spaces after a blank line) it is not inserted.
-- Markers inside code blocks open no Issue and are not validated.
+- On a heading it goes on the line below. Inside a table, the front matter, a code block
+  (including code indented four spaces after a blank line) or a comment (`<!-- -->`, `%% %%`) it is
+  not inserted.
+- Markers inside code blocks or comments are not highlighted, open no Issue and are not validated.
+  Commenting out a marker leaves an Issue it already opened as it is. Rerun `Setup research
+  automation` after updating for the server automation to skip comments.
 
 ## Workflows
 
@@ -172,8 +175,8 @@ Export note tables to `<note name>.labnote_tableN.csv` next to the note.
 - A cell starting with `=` or `@`, or with a `+`/`-` that is not part of a number, gets a leading
   tab so Excel shows it as typed instead of evaluating it. Numbers like `-80` are left alone. In a
   column where such a cell appears, like `+/-`, a lone `+` or `-` gets the tab too.
-- Opening the CSV by double-clicking it in Excel turns `3-1`, `1/2` and `SEPT9` into dates and
-  drops the leading zero of `007`. The file holds the text as typed; Excel is what changes it.
+- Opening the CSV by double-clicking it in Excel turns `3-1`, `1/2` and `SEPT9` into dates,
+  `2:1` and `10:30` into times (`2:01`), and drops the leading zero of `007`. The file holds the text as typed; Excel is what changes it.
   Open it with Data → From Text/CSV and set those columns to Text. When a table has such cells,
   the export notice says so with an example.
 
@@ -255,6 +258,10 @@ two characters on it searches after a short pause and lists each hit with its na
 whether it is yours, shared with you, or public. Picking one reads the item and its storage
 location, registers it, and inserts `ID;alias`.
 
+- **Each typed type searches its own kinds.** `@dna` searches parts, devices and molecules,
+  `@plasmid` plasmids, `@primer` primers, `@protein`, `@reagent` and `@rna` molecules only, a strain
+  type strains only, and `@sample` everything. A part like sfGFP is therefore found under `@dna` or
+  `@sample`, not `@protein`. The Search partbank row and the empty result name what was searched.
 - **The type you typed wins.** Only when it is open (`@sample`, a link, a catalog) does the
   partbank kind decide: part and device → `DNA`, plasmid → `Plasmid`, primer → `Primer`,
   molecules by their kind (`protein`/`enzyme` → `Protein`, `rna` → `RNA`, `dna` → `DNA`, the rest
@@ -269,7 +276,8 @@ location, registers it, and inserts `ID;alias`.
 ### Refresh storage location from partbank
 
 In the sample view's context menu and in the definition window. It reads the location as
-`storage / box / position` and stores it after showing the change once.
+`storage / box / position` and stores it after showing the change once. When partbank shows no
+stock, the current location is kept without asking (empty it in Edit sample to clear it).
 **Refresh storage locations from partbank** (command palette) does every linked sample at once,
 listing only what changes as `old → new`; an entry that would become empty is unchecked by default
 so a hand-written location is not wiped. Because the value is stored, it stays visible offline and
@@ -297,7 +305,9 @@ when no global sample folder is set. This is not the workflow [Update catalogs](
 ### Send to labnoteo
 
 The detail screens in partbank have a **labnoteo로 보내기** button that opens Obsidian and asks
-whether to register that item, letting you switch the destination to Global there. Links naming an
+whether to register that item, letting you switch the destination to Global there. Even with Global
+picked, an item this experiment already has is reused rather than registered again, and the notice
+says where that sample is. Links naming an
 address that is not in the settings are refused. After registering, `ID;alias` goes to the cursor
 of an open note after asking, or to the clipboard.
 

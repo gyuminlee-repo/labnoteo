@@ -115,7 +115,7 @@ describe('createSampleInteractive', () => {
       JSON.stringify({ 'RNA-7': { type: 'RNA', alias: 'siKIF', descriptions: [], sources: [] } })
     );
     answer('siKIF', '', '');
-    vi.mocked(pickModal).mockResolvedValueOnce(false);
+    vi.mocked(pickModal).mockResolvedValueOnce(null);
 
     await createSampleInteractive(new App(), plugin, { type: 'RNA', folder: GLOBAL, mode: 'generate' });
 
@@ -137,7 +137,7 @@ describe('createSampleInteractive', () => {
     );
     Notice.reset();
     answer('배지성분-1', '', '');
-    vi.mocked(pickModal).mockResolvedValueOnce(false);
+    vi.mocked(pickModal).mockResolvedValueOnce(null);
 
     const created = await add();
 
@@ -158,7 +158,7 @@ describe('createSampleInteractive', () => {
     );
     Notice.reset();
     answer('배지성분-1');
-    vi.mocked(pickModal).mockResolvedValueOnce(true);
+    vi.mocked(pickModal).mockResolvedValueOnce('RNA-3');
 
     const created = await add();
 
@@ -173,6 +173,55 @@ describe('createSampleInteractive', () => {
     expect(Object.keys(JSON.parse(await fs.read(REGISTRY)))).toEqual(['RNA-3']);
     expect(Notice.shown).toContain('Using the existing sample RNA-3 instead of creating one.');
     expect(Notice.shown.some(m => m.includes('Sample added'))).toBe(false);
+  });
+
+  // #274: with two samples already sharing the alias, both are offered.
+  it('lists every sample that has the alias, with its description and location', async () => {
+    await fs.write(
+      REGISTRY,
+      JSON.stringify({
+        'RNA-3': { type: 'RNA', alias: 'R1', descriptions: ['first run'], sources: [], location: 'Freezer-1' },
+        'RNA-4': { type: 'RNA', alias: 'r1', descriptions: [], sources: [] },
+        'RNA-5': { type: 'RNA', alias: 'R2', descriptions: [], sources: [] },
+      })
+    );
+    Notice.reset();
+    answer('R1');
+    vi.mocked(pickModal).mockResolvedValueOnce('RNA-4');
+
+    const created = await add();
+
+    const [, items, opts] = vi.mocked(pickModal).mock.calls[0];
+    expect(opts).toMatchObject({ title: '2 samples in this experiment already have the alias R1 (RNA-3, RNA-4).' });
+    expect(items).toEqual([
+      { label: 'Use the existing sample RNA-3', value: 'RNA-3', description: 'first run · Freezer-1' },
+      {
+        label: 'Use the existing sample RNA-4',
+        value: 'RNA-4',
+        description: 'Nothing is registered; its ID goes where this one would have.',
+      },
+      expect.objectContaining({ label: 'Create a new sample anyway', value: null }),
+    ]);
+    expect(created).toMatchObject({ id: 'RNA-4', referenceText: 'RNA-4;r1', reused: true });
+    expect(Object.keys(JSON.parse(await fs.read(REGISTRY)))).toEqual(['RNA-3', 'RNA-4', 'RNA-5']);
+  });
+
+  it('names every Global sample with the alias when adding to Local', async () => {
+    await fs.write(
+      `${GLOBAL}/RNA.json`,
+      JSON.stringify({
+        'RNA-7': { type: 'RNA', alias: 'siKIF', descriptions: [], sources: [] },
+        'RNA-8': { type: 'RNA', alias: 'siKIF', descriptions: [], sources: [] },
+      })
+    );
+    Notice.reset();
+    answer('siKIF', '', '');
+
+    await add();
+
+    expect(Notice.shown[0]).toBe(
+      'Global samples already have the alias siKIF (RNA-7, RNA-8). Autocomplete will show both, marked Local and Global.'
+    );
   });
 
   it('registers nothing when the same-alias question is closed', async () => {

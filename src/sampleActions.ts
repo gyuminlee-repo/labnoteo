@@ -337,44 +337,60 @@ export async function createSampleInteractive(
   // shows the two with identical text and no Local/Global tag to tell them
   // apart. Ask before the remaining prompts rather than after the sample is
   // written (#248); re-entering a known id is the merge flow, which stays.
-  const sibling = alias && !existing ? await sampleWithAliasIn(plugin, type, folder, alias) : undefined;
-  if (sibling) {
-    const reuse = await pickModal<boolean>(
+  // Every one is listed (#274): when two already share the alias, offering only
+  // the first hides the one the user may have meant.
+  const siblings = alias && !existing ? await samplesWithAliasIn(plugin, type, folder, alias) : [];
+  if (siblings.length > 0) {
+    const records = await loadSamplesByType(plugin.fs, folder, type);
+    const inGlobal = isSameSampleFolder(folder, plugin.settings.globalSampleFolder);
+    const reuse = await pickModal<string | null>(
       app,
       [
-        {
+        ...siblings.map(sibling => ({
           label: plugin.t('Use the existing sample {0}', sibling),
-          value: true,
-          description: plugin.t('Nothing is registered; its ID goes where this one would have.'),
-        },
+          value: sibling,
+          description:
+            [records[sibling]?.descriptions?.[0], records[sibling]?.location].filter(Boolean).join(' · ') ||
+            plugin.t('Nothing is registered; its ID goes where this one would have.'),
+        })),
         {
           label: plugin.t('Create a new sample anyway'),
-          value: false,
+          value: null,
           description: plugin.t('Both keep the alias, and only their descriptions tell them apart.'),
         },
       ],
       {
-        title: plugin.t(
-          isSameSampleFolder(folder, plugin.settings.globalSampleFolder)
-            ? 'Global samples already have the alias {0} ({1}).'
-            : 'This experiment already has the alias {0} ({1}).',
-          alias!,
-          sibling
-        ),
+        title:
+          siblings.length === 1
+            ? plugin.t(
+                inGlobal
+                  ? 'Global samples already have the alias {0} ({1}).'
+                  : 'This experiment already has the alias {0} ({1}).',
+                alias!,
+                siblings[0]
+              )
+            : plugin.t(
+                inGlobal
+                  ? '{0} Global samples already have the alias {1} ({2}).'
+                  : '{0} samples in this experiment already have the alias {1} ({2}).',
+                String(siblings.length),
+                alias!,
+                siblings.join(', ')
+              ),
       }
     );
     if (reuse === undefined) return undefined;
-    if (reuse) {
-      const record = (await loadSamplesByType(plugin.fs, folder, type))[sibling];
+    if (reuse !== null) {
+      const record = records[reuse];
       const reusedAlias = record?.alias ?? null;
       const reusedDesc = record?.descriptions?.[0] ?? null;
-      new Notice(plugin.t('Using the existing sample {0} instead of creating one.', sibling));
+      new Notice(plugin.t('Using the existing sample {0} instead of creating one.', reuse));
       return {
-        id: sibling,
+        id: reuse,
         alias: reusedAlias,
         description: reusedDesc,
-        definitionText: buildSampleDefinitionText(type, sibling, reusedAlias, reusedDesc),
-        referenceText: buildSampleReferenceText(sibling, reusedAlias),
+        definitionText: buildSampleDefinitionText(type, reuse, reusedAlias, reusedDesc),
+        referenceText: buildSampleReferenceText(reuse, reusedAlias),
         reused: true,
       };
     }
@@ -420,13 +436,13 @@ export async function createSampleInteractive(
 
   // Only Global holds the alias: the two are told apart by the Local/Global
   // tag in autocomplete, so a notice is enough (#109).
-  const twin = alias && !sibling ? await globalSampleWithAlias(plugin, type, folder, alias) : undefined;
-  if (twin) {
+  const twins = alias && siblings.length === 0 ? await globalSamplesWithAlias(plugin, type, folder, alias) : [];
+  if (twins.length > 0) {
     new Notice(
       plugin.t(
         'Global samples already have the alias {0} ({1}). Autocomplete will show both, marked Local and Global.',
         alias!,
-        twin
+        twins.join(', ')
       ),
       8000
     );
@@ -455,31 +471,31 @@ export async function createSampleInteractive(
 }
 
 /**
- * The ID of a Global `type` sample with `alias` (trimmed, case ignored) when a
- * sample is being added to the Local `folder`: the two would look alike in
- * autocomplete (#109). Undefined for a Global folder or no such sample.
+ * The IDs of the Global `type` samples with `alias` (trimmed, case ignored)
+ * when a sample is being added to the Local `folder`: they would look alike in
+ * autocomplete (#109). Empty for a Global folder or no such sample.
  */
-async function globalSampleWithAlias(
+async function globalSamplesWithAlias(
   plugin: LabnotePlugin,
   type: string,
   folder: string,
   alias: string
-): Promise<string | undefined> {
+): Promise<string[]> {
   const globalFolder = plugin.settings.globalSampleFolder;
-  if (!globalFolder || isSameSampleFolder(folder, globalFolder)) return undefined;
-  return sampleWithAliasIn(plugin, type, globalFolder, alias);
+  if (!globalFolder || isSameSampleFolder(folder, globalFolder)) return [];
+  return samplesWithAliasIn(plugin, type, globalFolder, alias);
 }
 
-/** The ID of a `type` sample in `folder` with `alias` (trimmed, case ignored). */
-async function sampleWithAliasIn(
+/** The IDs of the `type` samples in `folder` with `alias` (trimmed, case ignored). */
+async function samplesWithAliasIn(
   plugin: LabnotePlugin,
   type: string,
   folder: string,
   alias: string
-): Promise<string | undefined> {
+): Promise<string[]> {
   const wanted = alias.trim().toLowerCase();
   const records = await loadSamplesByType(plugin.fs, folder, type);
-  return Object.keys(records).find(id => records[id].alias?.trim().toLowerCase() === wanted);
+  return Object.keys(records).filter(id => records[id].alias?.trim().toLowerCase() === wanted);
 }
 
 /**
