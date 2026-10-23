@@ -249,7 +249,7 @@ async function removeLegacyAssets(host: LabnoteHost): Promise<number> {
 
   const ok = await host.confirm(
     host.t(
-      'Remove {0} file(s) left by the previous layout ({1})? Afterwards run `git config core.hooksPath {2}` so the pre-commit hook keeps working.',
+      'Remove {0} file(s) left by the previous layout ({1})? Afterwards run "git config core.hooksPath {2}" so the pre-commit hook keeps working.',
       String(present.length),
       present.join(', '),
       HOOKS_DIR_PATH
@@ -303,7 +303,7 @@ export async function setupResearchAutomationCommand(
   host.notify(
     'info',
     host.t(
-      'Research automation set up ({0} written, {1} merged, {2} skipped, {3} removed). Researchers: see {4}. Admin setup: {5} (run `git config core.hooksPath {6}`).',
+      'Research automation set up ({0} written, {1} merged, {2} skipped, {3} removed). Researchers: see {4}. Admin setup: {5} (run "git config core.hooksPath {6}").',
       String(result.written),
       String(result.merged),
       String(result.skipped),

@@ -268,10 +268,10 @@ const obsidianKo: Record<string, string> = {
     '이제 새 첨부 파일은 각 노트 옆 images 폴더에 저장됩니다.',
   'The marked block of {0} was edited after it was installed. Replace the block with the new version? Text outside the block is kept.':
     '{0}의 표시된 블록이 설치 후 고쳐졌습니다. 블록을 새 버전으로 바꿀까요? 블록 밖의 내용은 그대로 둡니다.',
-  'Research automation set up ({0} written, {1} merged, {2} skipped, {3} removed). Researchers: see {4}. Admin setup: {5} (run `git config core.hooksPath {6}`).':
-    '연구노트 자동화를 설정했습니다 (생성 {0} · 병합 {1} · 건너뜀 {2} · 정리 {3}). 연구원 안내는 {4}, 관리자 설정은 {5} 문서를 확인하고 `git config core.hooksPath {6}`을 실행하세요.',
-  'Remove {0} file(s) left by the previous layout ({1})? Afterwards run `git config core.hooksPath {2}` so the pre-commit hook keeps working.':
-    '이전 구조에서 남은 파일 {0}개를 삭제할까요? ({1}) 삭제 후 `git config core.hooksPath {2}`를 실행해야 pre-commit 훅이 계속 동작합니다.',
+  'Research automation set up ({0} written, {1} merged, {2} skipped, {3} removed). Researchers: see {4}. Admin setup: {5} (run "git config core.hooksPath {6}").':
+    '연구노트 자동화를 설정했습니다 (생성 {0} · 병합 {1} · 건너뜀 {2} · 정리 {3}). 연구원 안내는 {4}, 관리자 설정은 {5} 문서를 확인하고 "git config core.hooksPath {6}"를 실행하세요.',
+  'Remove {0} file(s) left by the previous layout ({1})? Afterwards run "git config core.hooksPath {2}" so the pre-commit hook keeps working.':
+    '이전 구조에서 남은 파일 {0}개를 삭제할까요? ({1}) 삭제 후 "git config core.hooksPath {2}"를 실행해야 pre-commit 훅이 계속 동작합니다.',
   'Remove': '삭제',
   'Delete these lines from .gitignore so agent skills can be committed: {0}':
     '에이전트 스킬이 커밋되도록 .gitignore에서 다음 줄을 직접 지우세요: {0}',
@@ -290,7 +290,7 @@ const obsidianKo: Record<string, string> = {
   '{0} table(s) were not exported: with no blank line above, the reading view shows them as text. Add a blank line above a table to export it.':
     '표 {0}개는 내보내지 않았습니다. 바로 위에 빈 줄이 없어 읽기 화면에서 표가 아닌 글로 보입니다. 내보내려면 표 위에 빈 줄을 넣으세요.',
   '{0} table(s) were not exported: they are inside a comment, so the reading view does not show them at all.':
-    '표 {0}개는 내보내지 않았습니다. 주석(`<!-- -->`, `%% %%`) 안에 있어 읽기 화면에 아예 보이지 않습니다.',
+    '표 {0}개는 내보내지 않았습니다. 주석(<!-- -->, %% %%) 안에 있어 읽기 화면에 아예 보이지 않습니다.',
   'Excel would read cells like {0} as dates or drop their leading zeros. Open the CSV with Data → From Text/CSV and set those columns to Text.':
     '{0} 같은 칸은 엑셀에서 날짜로 바뀌거나 앞자리 0이 사라집니다. 엑셀에서는 데이터 → 텍스트/CSV에서로 열고 그 열의 형식을 텍스트로 지정하세요.',
   'These table CSV files no longer match a table in the note. Move them to the trash?\n\n{0}':
@@ -535,7 +535,7 @@ const obsidianKo: Record<string, string> = {
     '{0}에 같은 이름이 있어 옮기지 않은 카탈로그 파일: {1}',
   'Auto-sync unit operation TOC': '유닛오퍼레이션 TOC 자동 정렬',
   "Reorder a workflow note's Related Unit Operations list to match heading order after edits, and tidy the --- separators immediately when a block is moved. Off, the order is left as you arranged it but the names and links still follow the headings.":
-    '편집 후 워크플로 노트의 Related Unit Operations 목록을 헤딩 순서에 맞게 정렬하고, 블록을 옮기면 `---` 구분선도 즉시 정리합니다. 끄면 순서는 그대로 두고 이름·링크만 헤딩에 맞춰 갱신합니다.',
+    '편집 후 워크플로 노트의 Related Unit Operations 목록을 헤딩 순서에 맞게 정렬하고, 블록을 옮기면 구분선(---)도 즉시 정리합니다. 끄면 순서는 그대로 두고 이름·링크만 헤딩에 맞춰 갱신합니다.',
   'Auto-update last updated date': '마지막 갱신일 자동 기록',
   "Set a lab note's last_updated_date to today (once a day) when you edit it, change its status or discussion flag, or the AI edits it. Editing a workflow note also updates its experiment README. Changes pulled from git are ignored. A date you type by hand is kept for the rest of that day; turning this off and on resumes it at once.":
     '연구노트를 편집하거나 상태·논의 표시를 바꾸거나 AI가 고치면 last_updated_date를 오늘 날짜로 바꿉니다(하루 한 번). 워크플로 노트를 고치면 실험 README도 함께 바뀝니다. git으로 받아온 변경은 반영하지 않습니다. 날짜를 손으로 고친 노트는 그날 하루 동안 고친 날짜를 그대로 두고, 이 설정을 껐다 켜면 바로 다시 기록합니다.',
@@ -563,7 +563,7 @@ const obsidianKo: Record<string, string> = {
   'New MCP token issued. The old token no longer works.':
     '새 MCP 토큰을 발급했습니다. 옛 토큰은 더 이상 쓸 수 없습니다.',
   'The new token could not be copied. Use "Copy token".':
-    '새 토큰을 복사하지 못했습니다. `토큰 복사`를 누르세요.',
+    '새 토큰을 복사하지 못했습니다. "토큰 복사"를 누르세요.',
   'Current token ends in {0}.': '현재 토큰 끝자리: {0}',
   'MCP token copied to clipboard.': 'MCP 토큰을 클립보드에 복사했습니다.',
   'New MCP token copied to clipboard.': '새 MCP 토큰을 클립보드에 복사했습니다.',
@@ -593,7 +593,7 @@ const obsidianKo: Record<string, string> = {
   'Open a note first.': '먼저 노트를 여세요.',
   'Open a markdown note first.': '먼저 마크다운 노트를 여세요.',
   'No results to summarize yet. Write them in "Results & Discussions" and run this again.':
-    '아직 요약할 결과가 없습니다. `Results & Discussions`에 결과를 적은 뒤 다시 실행하세요.',
+    '아직 요약할 결과가 없습니다. "Results & Discussions"에 결과를 적은 뒤 다시 실행하세요.',
   'Nothing to summarize.': '요약할 내용이 없습니다.',
   'Nothing to extract.': '추출할 내용이 없습니다.',
   'Created {0} sample(s).': '샘플 {0}개를 생성했습니다.',
@@ -828,9 +828,9 @@ const obsidianKo: Record<string, string> = {
   'The scan folder {0} could not be read: {1}': '스캔 폴더 {0}을(를) 읽지 못했습니다: {1}',
   'No new files in the scan folder.': '스캔 폴더에 새 파일이 없습니다.',
   '{0} file(s) that were already in the folder when it was set are skipped. Read them with "{1}".':
-    '폴더를 지정할 때 이미 있던 파일 {0}개는 건너뜁니다. 그 파일도 처리하려면 설정의 "{1}"을 누르세요.',
+    '폴더를 지정할 때 이미 있던 파일 {0}개는 건너뜁니다. 그 파일도 처리하려면 설정의 "{1}"를 누르세요.',
   'Files that were already in the folder when it was set are skipped. Read them with "{0}", or set the folder again to take what is in it now as the starting point.':
-    '폴더를 지정할 때 이미 있던 파일은 건너뜁니다. 그 파일도 처리하려면 설정의 "{0}"을 누르세요. 폴더 경로를 다시 지정하면 지금 들어 있는 파일을 기준으로 삼습니다.',
+    '폴더를 지정할 때 이미 있던 파일은 건너뜁니다. 그 파일도 처리하려면 설정의 "{0}"를 누르세요. 폴더 경로를 다시 지정하면 지금 들어 있는 파일을 기준으로 삼습니다.',
   'Worksheet paper size': '기록지 용지 크기',
   'Scan folder': '스캔 폴더',
   'A folder on this PC where photos and scans arrive (Google Drive folder, scanner share, KakaoTalk downloads…). Checked every 30 seconds. Stored for this PC only; set it on one PC.':
