@@ -129,26 +129,34 @@ export async function collectLinkedCandidates(
  * Register `item` as a sample in `folder`, or reuse the sample that already
  * stands for it. The storage location is read in the same pass, so a freshly
  * registered sample shows where it is kept without a second command.
+ *
+ * `lookIn` is the experiment's own sample folder, searched (with Global and
+ * the catalogs) for the item even when `folder` is Global: writing to Global
+ * must not register a second ID for an item this experiment already has
+ * (#270). It defaults to `folder`. A reused sample reports where it was found.
  */
 export async function registerPartbankItem(
   plugin: LabnotePlugin,
   client: PartbankClient,
   item: PartbankItem,
-  opts: { folder: string; type?: string } = { folder: '' }
+  opts: { folder: string; type?: string; lookIn?: string } = { folder: '' }
 ): Promise<RegisteredPartbankSample | undefined> {
   const type = opts.type ?? (await resolveSampleType(plugin, item));
   if (!type) return undefined;
   const folder = opts.folder;
+  const lookIn = opts.lookIn ?? folder;
   const source = sourceForItem(item, client.kind, client.origin);
 
-  const existing = findLinkedSample(source, await collectLinkedCandidates(plugin, type, folder));
+  const existing = findLinkedSample(source, await collectLinkedCandidates(plugin, type, lookIn));
   if (existing) {
+    const foundIn =
+      existing.scope === 'local' ? lookIn : existing.scope === 'global' ? plugin.settings.globalSampleFolder : folder;
     return {
       type,
       id: existing.id,
       alias: existing.record.alias,
       referenceText: buildSampleReferenceText(existing.id, existing.record.alias),
-      folder,
+      folder: foundIn,
       reused: true,
     };
   }
@@ -258,22 +266,38 @@ async function warnOnAliasClash(
   }
 }
 
-/** Say what happened, including when the sample landed in Global (#64). */
+/**
+ * Say what happened, including when the sample landed in Global (#64).
+ * `chosenFolder` is the folder the user picked, when they picked one: Global
+ * chosen is then told apart from Global by default, and a sample reused from
+ * elsewhere says where it is (#270).
+ */
 export function noticeForRegistration(
   plugin: LabnotePlugin,
-  result: RegisteredPartbankSample
+  result: RegisteredPartbankSample,
+  chosenFolder?: string
 ): void {
   if (result.reused) {
-    new Notice(plugin.t('{0} already stands for this partbank item.', result.id));
+    new Notice(
+      chosenFolder !== undefined && !isSameSampleFolder(result.folder, chosenFolder)
+        ? plugin.t(
+            '{0} in {1} already stands for this partbank item, so it was used instead of registering a second one.',
+            result.id,
+            result.folder
+          )
+        : plugin.t('{0} already stands for this partbank item.', result.id)
+    );
     return;
   }
   const landedInGlobal = isSameSampleFolder(result.folder, plugin.settings.globalSampleFolder);
   new Notice(
-    landedInGlobal
-      ? plugin.t(
-          '{0} was added to Global samples because this note is outside an experiment folder.',
-          result.id
-        )
-      : plugin.t('Sample added: {0}', result.id)
+    !landedInGlobal
+      ? plugin.t('Sample added: {0}', result.id)
+      : chosenFolder !== undefined
+        ? plugin.t('Sample added to Global samples: {0}', result.id)
+        : plugin.t(
+            '{0} was added to Global samples because this note is outside an experiment folder.',
+            result.id
+          )
   );
 }

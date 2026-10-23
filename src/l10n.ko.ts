@@ -967,6 +967,9 @@ const obsidianKo: Record<string, string> = {
   ', ': '·',
   '"{0}" is already the alias of {1}.': '"{0}"은(는) 이미 {1}의 별칭입니다.',
   '{0} already stands for this partbank item.': '이 partbank 항목은 이미 {0}으로 등록돼 있습니다.',
+  '{0} in {1} already stands for this partbank item, so it was used instead of registering a second one.':
+    '이 partbank 항목은 이미 {1}에 {0}으로 등록돼 있어, 새로 등록하지 않고 그 시료를 썼습니다.',
+  'Sample added to Global samples: {0}': '전역 샘플에 추가했습니다: {0}',
   'partbank keeps strains, but this vault has no sample type for them. Add the custom sample type "{0}"?':
     'partbank에는 균주가 있지만 이 보관함에는 균주용 시료 타입이 없습니다. 사용자 정의 타입 "{0}"을(를) 추가할까요?',
   'Add {0}': '{0} 추가',

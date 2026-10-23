@@ -302,7 +302,9 @@ when no global sample folder is set. This is not the workflow [Update catalogs](
 ### Send to labnoteo
 
 The detail screens in partbank have a **labnoteo로 보내기** button that opens Obsidian and asks
-whether to register that item, letting you switch the destination to Global there. Links naming an
+whether to register that item, letting you switch the destination to Global there. Even with Global
+picked, an item this experiment already has is reused rather than registered again, and the notice
+says where that sample is. Links naming an
 address that is not in the settings are refused. After registering, `ID;alias` goes to the cursor
 of an open note after asking, or to the clipboard.
 

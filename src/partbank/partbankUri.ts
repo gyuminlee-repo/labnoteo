@@ -85,24 +85,30 @@ export async function handleImportUri(
   const type = await resolveSampleType(plugin, item);
   if (!type) return;
 
-  const folder = await pickImportFolder(plugin, item.name ?? item.kid ?? request.id, type);
-  if (!folder) return;
+  const target = await pickImportFolder(plugin, item.name ?? item.kid ?? request.id, type);
+  if (!target) return;
 
-  const result = await registerPartbankItem(plugin, client, item, { folder, type });
+  // Looked up in this experiment too, whichever folder was picked (#270).
+  const result = await registerPartbankItem(plugin, client, item, {
+    folder: target.folder,
+    type,
+    lookIn: plugin.localSampleFolder(),
+  });
   if (!result) return;
-  noticeForRegistration(plugin, result);
+  noticeForRegistration(plugin, result, target.chosen ? target.folder : undefined);
   await deliverReference(plugin, result.referenceText);
 }
 
 /**
  * Where the sample goes: this note's experiment, or Global. Shown rather than
- * assumed, since the user may not have the intended note open.
+ * assumed, since the user may not have the intended note open. `chosen` is
+ * false when there was only one place to offer.
  */
 async function pickImportFolder(
   plugin: LabnotePlugin,
   itemName: string,
   type: string
-): Promise<string | undefined> {
+): Promise<{ folder: string; chosen: boolean } | undefined> {
   const local = plugin.localSampleFolder();
   const globalFolder = plugin.settings.globalSampleFolder;
   // Outside an experiment the local folder already *is* the global one.
@@ -112,9 +118,9 @@ async function pickImportFolder(
       plugin.t('Register "{0}" from partbank as a {1} sample in {2}?', itemName, type, local),
       plugin.t('Register')
     );
-    return ok ? local : undefined;
+    return ok ? { folder: local, chosen: false } : undefined;
   }
-  return pickModal(
+  const folder = await pickModal(
     plugin.app,
     [
       { label: plugin.t('Local: {0}', local), value: local },
@@ -122,6 +128,7 @@ async function pickImportFolder(
     ],
     { title: plugin.t('Register "{0}" from partbank as a {1} sample where?', itemName, type) }
   );
+  return folder === undefined ? undefined : { folder, chosen: true };
 }
 
 /** Put the reference where the user can use it. */
