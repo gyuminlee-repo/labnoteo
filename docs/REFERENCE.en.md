@@ -412,6 +412,9 @@ Draft an experimental method with the configured LLM.
   already has content. Run elsewhere, it asks which of the note's unit operations to fill.
 - In a note without unit operations, the front matter and heading lines the model added are dropped
   and the draft goes after the cursor's line.
+- The draft starts with a `> [!note] AI draft (model, date) — review it, then delete this line`
+  line. Delete it once you have checked the draft; left in place, it does not shift the step
+  numbers of the printed worksheet.
 - It goes in only if that note is still open when the reply arrives; if you moved to another note,
   the reply opens in the answer dialog (return to the note and press `Insert into note`, or `Copy`).
   A note that was only renamed meanwhile is still the same note, so the reply goes in.
@@ -475,7 +478,10 @@ current note.
   added to the note on its own.
 - With no answer and no tool called, it says the request may be outside the tools it can use.
 - The end notice counts changes made, lookups, writes you denied, and failed calls, and says when
-  nothing in the vault changed.
+  nothing in the vault changed. Failed or denied calls are named with their target and reason, up
+  to three (`Failed: update_section (Method) — …`, then `+N more`).
+- When at least one change was made, an empty final answer does not bring up the "The model gave no
+  answer" notice.
 
 ## Views and the rest
 

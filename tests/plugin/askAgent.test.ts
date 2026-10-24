@@ -144,12 +144,51 @@ describe('askAgentCommand (#77)', () => {
       executed: [
         { call: c, outcome: 'done', mutates: true },
         { call: c, outcome: 'done', mutates: false },
-        { call: c, outcome: 'failed', mutates: true },
+        { call: c, outcome: 'failed', mutates: true, error: 'Sample not found' },
       ],
       stoppedAtLimit: false,
     });
     await askAgentCommand(plugin);
-    expect(Notice.shown).toContain('AI tool calls: 1 change(s) made, 1 lookup(s), 1 failed.');
+    expect(Notice.shown).toContain('AI tool calls: 1 change(s) made, 1 lookup(s), 1 failed. Failed: create_sample — Sample not found.');
+  });
+
+  // #281: the end notice counted failures without saying why.
+  it('names the first failures with their target and reason, and counts the rest', async () => {
+    const fail = (alias: string, error: string) => ({
+      call: { id: alias, name: 'create_sample', arguments: { alias, documentPath: 'labnote/001_A/001_WD010_A.labnote.md' } },
+      outcome: 'failed' as const,
+      mutates: true,
+      error,
+    });
+    vi.mocked(runAgent).mockResolvedValue({
+      content: '끝',
+      executed: [
+        fail('pET', 'Alias "pET" is already used by DNA-1 in this experiment'),
+        fail('IPTG', 'x'.repeat(120)),
+        { call: { id: 'r', name: 'update_section', arguments: { heading: 'Method' } }, outcome: 'rejected', mutates: true, error: 'No "Method" section' },
+        fail('YE-22', 'bad'),
+      ],
+      stoppedAtLimit: false,
+    });
+    await askAgentCommand(plugin);
+    const notice = Notice.shown.find(n => n.startsWith('AI tool calls'))!;
+    expect(notice).toContain('Failed: create_sample (pET) — Alias "pET" is already used by DNA-1 in this experiment; ');
+    expect(notice).toContain(`create_sample (IPTG) — ${'x'.repeat(79)}…; `);
+    expect(notice).toContain('update_section (Method) — No "Method" section; +1 more.');
+    expect(notice).toContain('Nothing in the vault changed.');
+  });
+
+  // #286: after a change the end notice is the answer, without "try again".
+  it('does not ask to try again when the assistant changed something without answering', async () => {
+    const c = { id: 'call_0', name: 'create_sample', arguments: {} };
+    vi.mocked(runAgent).mockResolvedValue({
+      content: '',
+      thinkingOnly: true,
+      executed: [{ call: c, outcome: 'done', mutates: true }],
+      stoppedAtLimit: false,
+    });
+    await askAgentCommand(plugin);
+    expect(Notice.shown.filter(n => n !== 'Contacting Fake…')).toEqual(['AI tool calls: 1 change(s) made.']);
   });
 
   it('lists its tools and asks the model to say what it cannot do', async () => {

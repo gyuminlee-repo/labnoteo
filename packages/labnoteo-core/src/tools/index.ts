@@ -245,16 +245,21 @@ function outsideVaultError(args: Record<string, unknown>, key: string): ToolResu
 /**
  * Whether a section's enclosing heading is the one `wanted` names: its full
  * text, or for a unit operation heading `[USW230 Sequence Embedding] alias`,
- * the bracketed text or the id alone. Case-insensitive.
+ * the bracketed text, the id alone, the whole heading without brackets
+ * (`USW230 Sequence Embedding alias`, or `… | alias` as the note's unit
+ * operation list shows it), or the alias alone (#311). Case-insensitive.
  */
 function matchesParentHeading(parent: string, wanted: string): boolean {
   const p = parent.trim().toLowerCase();
   const w = wanted.trim().toLowerCase();
   if (p === w) return true;
-  const unitOp = p.match(/^\[([^\]]+)\]/);
+  const unitOp = p.match(/^\[([^\]]+)\]\s*(.*)$/);
   if (!unitOp) return false;
   const inner = unitOp[1].trim();
-  return inner === w || inner.split(/\s+/)[0] === w;
+  const alias = unitOp[2].trim();
+  if (inner === w || inner.split(/\s+/)[0] === w) return true;
+  const loose = (text: string) => text.replace(/[[\]|]/g, ' ').replace(/\s+/g, ' ').trim();
+  return loose(p) === loose(w) || (alias !== '' && alias === w);
 }
 
 /** Candidate list for an ambiguous `update_section`, readable by people and models. */
@@ -810,7 +815,8 @@ export function createLabnoteTools(): ToolDef[] {
           parentHeading: {
             type: 'string',
             description:
-              'Enclosing heading of the target section: its full text, the unit operation without brackets ("USW230 Sequence Embedding"), or just the unit operation id ("USW230").',
+              'Enclosing heading of the target section: its full text, the unit operation without brackets ("USW230 Sequence Embedding"), or just the unit operation id ("USW230"). ' +
+              'A unit operation added twice is told apart by its alias: "USW230 Sequence Embedding rerun", "USW230 Sequence Embedding | rerun" (as the note\'s unit operation list shows it) or the alias alone ("rerun").',
           },
           occurrence: {
             type: 'integer',

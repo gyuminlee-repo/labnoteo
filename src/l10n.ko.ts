@@ -73,6 +73,8 @@ const obsidianKo: Record<string, string> = {
   'The model gave no answer. Try again or choose another model.':
     '모델이 답을 주지 않았습니다. 다시 시도하거나 다른 모델을 고르세요.',
   'The AI used no tools; nothing in the vault changed.': 'AI가 도구를 쓰지 않았습니다. 보관함은 바뀌지 않았습니다.',
+  'Failed: {0}.': '실패: {0}.',
+  '+{0} more': '외 {0}건',
   'AI tool calls: {0}.': 'AI 도구 호출: {0}.',
   '{0} change(s) made': '변경 {0}건',
   '{0} lookup(s)': '조회 {0}건',
@@ -88,6 +90,7 @@ const obsidianKo: Record<string, string> = {
     '그 노트가 더 이상 열려 있지 않습니다. 답변을 복사해서 쓰세요.',
   'Inserted the summary into {0}.': '요약을 {0}에 넣었습니다.',
   'AI summary ({0}, {1})': 'AI 요약 ({0}, {1})',
+  'AI draft ({0}, {1}) — review it, then delete this line': 'AI 초안 ({0}, {1}) — 검토 후 이 줄을 지우세요',
   'AI workflow results summary ({0}, {1})': 'AI 워크플로 결과 요약 ({0}, {1})',
   'AI experiment results summary ({0}, {1})': 'AI 실험 결과 요약 ({0}, {1})',
   '"{0}" already has an AI summary. Replace it with a new one?': '"{0}"에 이미 AI 요약이 있습니다. 새 요약으로 바꿀까요?',

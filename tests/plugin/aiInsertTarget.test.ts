@@ -305,7 +305,8 @@ describe('draftMethodCommand (#112)', () => {
     replyAfterSwitch('1. 원심분리');
     await draftMethodCommand(plugin);
 
-    expect(start.text).toContain('#### Method\n\n1. 원심분리');
+    // #280: the draft is marked as the model's until someone removes the line.
+    expect(start.text).toMatch(/#### Method\n\n> \[!note\] AI draft \(llama3\.1, [\d-]+\) — review it, then delete this line\n\n1\. 원심분리/);
     expect(Notice.shown).toContain('Inserted the Method draft into 001_WD010_A.labnote.md.');
   });
 
@@ -316,7 +317,7 @@ describe('draftMethodCommand (#112)', () => {
     await draftMethodCommand(plugin);
 
     expect(other.replaceRange).not.toHaveBeenCalled();
-    expect(dialog().content).toBe('1. 원심분리');
+    expect(dialog().content).toMatch(/^> \[!note\] AI draft .*\n\n1\. 원심분리$/);
   });
 
   it("writes into the Method from the dialog after returning", async () => {
@@ -327,7 +328,7 @@ describe('draftMethodCommand (#112)', () => {
     open = back;
 
     expect(await dialog().onInsert()).toBe(true);
-    expect(back.text).toContain('#### Method\n\n1. 원심분리');
+    expect(back.text).toMatch(/#### Method\n\n> \[!note\] AI draft .*\n\n1\. 원심분리/);
     expect(plugin.markUserEdit).toHaveBeenCalledWith(NOTE);
   });
 });

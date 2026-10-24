@@ -222,7 +222,10 @@ MCP 클라이언트나 로컬 `claude` CLI에 노출합니다. **데스크톱 �
   않고** 후보 목록(상위 헤딩·순번·줄 번호)을 오류로 돌려줍니다. `parentHeading`
   (상위 헤딩 전체, 대괄호를 뺀 `USW230 Sequence Embedding`, 또는 id `USW230`)이나
   `occurrence`(1부터, `parentHeading`으로 거른 뒤의 순번)를 넣어 다시 호출하면 됩니다.
-  같은 유닛 오퍼레이션을 두 번 넣은 노트는 둘을 함께 지정합니다.
+  같은 유닛 오퍼레이션을 두 번 넣은 노트는 별칭으로 가릅니다. `parentHeading`에 별칭까지 쓴
+  `USW230 Sequence Embedding 재실행`, 유닛 오퍼레이션 목록에 보이는 대로 쓴
+  `USW230 Sequence Embedding | 재실행`, 별칭만 쓴 `재실행`이 모두 통합니다. 별칭이 없으면
+  `occurrence`를 함께 지정합니다.
   `heading`이 글자 그대로 맞는 절이 없으면 이모지·대괄호·대소문자·연속 공백을 무시하고 다시
   찾습니다(README의 `## 🧪 Related Workflows`는 `Related Workflows`로도 찾음). 그래도 없으면
   오류에 그 노트의 헤딩 목록을 담아 돌려줍니다. `content`의 첫 줄이 대상 절과 같은 헤딩이면

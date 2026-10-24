@@ -55,8 +55,12 @@ export interface AgentRun {
   content: string;
   /** True when the final turn had reasoning but no answer (#195). */
   thinkingOnly?: boolean;
-  /** Every call of a known tool, in order; `mutates` tells writes from reads. */
-  executed: Array<{ call: ToolCall; outcome: ToolOutcome; mutates: boolean }>;
+  /**
+   * Every tool call, in order; `mutates` tells writes from reads. A call of a
+   * tool that does not exist counts as a failed read. `error` is why a call
+   * was rejected or failed (#281).
+   */
+  executed: Array<{ call: ToolCall; outcome: ToolOutcome; mutates: boolean; error?: string }>;
   /** True when the cap stopped the loop before the model finished. */
   stoppedAtLimit: boolean;
 }
@@ -127,7 +131,9 @@ export async function runAgent(
     for (const call of turn.toolCalls) {
       const tool = tools.find(t => t.name === call.name);
       if (!tool) {
-        history.push(resultMessage(call, { error: `Unknown tool: ${call.name}` }));
+        const error = `Unknown tool: ${call.name}`;
+        history.push(resultMessage(call, { error }));
+        executed.push({ call, outcome: 'failed', mutates: false, error });
         continue;
       }
 
@@ -137,7 +143,7 @@ export async function runAgent(
         const preview = tool.describe ? await tool.describe(deps.ctx, call.arguments) : undefined;
         if (preview && 'error' in preview) {
           history.push(resultMessage(call, { error: preview.error }));
-          executed.push({ call, outcome: 'rejected', mutates: true });
+          executed.push({ call, outcome: 'rejected', mutates: true, error: preview.error });
           continue;
         }
         if (!(await deps.confirm(call, tool, preview))) {
@@ -159,7 +165,11 @@ export async function runAgent(
             : payload
         )
       );
-      executed.push({ call, outcome: res.ok ? 'done' : 'failed', mutates: !!tool.mutates });
+      executed.push(
+        res.ok
+          ? { call, outcome: 'done', mutates: !!tool.mutates }
+          : { call, outcome: 'failed', mutates: !!tool.mutates, error: res.error }
+      );
     }
   }
 

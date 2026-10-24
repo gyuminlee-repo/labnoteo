@@ -115,7 +115,36 @@ export function toolRunNotice(plugin: LabnotePlugin, executed: AgentRun['execute
   if (c.denied > 0) parts.push(plugin.t('{0} denied by you', String(c.denied)));
   if (c.failed > 0) parts.push(plugin.t('{0} failed', String(c.failed)));
   const summary = plugin.t('AI tool calls: {0}.', parts.join(', '));
-  return c.changed > 0 ? summary : `${summary} ${plugin.t('Nothing in the vault changed.')}`;
+  const why = failureReasons(plugin, executed);
+  const text = why ? `${summary} ${why}` : summary;
+  return c.changed > 0 ? text : `${text} ${plugin.t('Nothing in the vault changed.')}`;
+}
+
+/** Failures named in the end notice; the rest are counted. */
+const NAMED_FAILURES = 3;
+/** Characters of a failure reason shown in the end notice. */
+const FAILURE_REASON_MAX = 80;
+
+/**
+ * Why tool calls failed or were rejected (#281), as `tool (target) — reason`
+ * for the first few, the target being the alias, ID, heading or note the call
+ * named. All of them go to the console.
+ */
+function failureReasons(plugin: LabnotePlugin, executed: AgentRun['executed']): string {
+  const failed = executed.filter(e => e.outcome === 'failed' || e.outcome === 'rejected');
+  if (failed.length === 0) return '';
+  for (const e of failed) console.warn('[labnoteo] AI tool call failed:', e.call.name, e.call.arguments, e.error);
+  const named = failed.slice(0, NAMED_FAILURES).map(e => {
+    const args = e.call.arguments as Record<string, unknown>;
+    const pick = [args.alias, args.id, args.heading, args.documentPath].find(v => typeof v === 'string' && v.trim());
+    const target = typeof pick === 'string' ? pick.split('/').pop() : undefined;
+    const reason = (e.error ?? '').replace(/\s+/g, ' ').trim();
+    const short = reason.length > FAILURE_REASON_MAX ? `${reason.slice(0, FAILURE_REASON_MAX - 1)}…` : reason;
+    return `${e.call.name}${target ? ` (${target})` : ''}${short ? ` — ${short}` : ''}`;
+  });
+  const more = failed.length - named.length;
+  const list = more > 0 ? `${named.join('; ')}; ${plugin.t('+{0} more', String(more))}` : named.join('; ');
+  return plugin.t('Failed: {0}.', list);
 }
 
 async function complete(
@@ -304,7 +333,8 @@ export async function draftMethodCommand(plugin: LabnotePlugin): Promise<void> {
       },
       { role: 'user', content: `Draft a Method subsection for this note.\n\nContext:\n${text.slice(0, 6000)}` },
     ]);
-    const draft = out ? cleanMethodDraft(out) : '';
+    const cleaned = out ? cleanMethodDraft(out) : '';
+    const draft = cleaned ? withDraftHeader(plugin, cleaned) : '';
     if (draft) {
       await deliverToNote(plugin, note, draft, t => writeMethodDraft(plugin, t, null, draft), 'Inserted the Method draft into {0}.');
     }
@@ -324,8 +354,22 @@ export async function draftMethodCommand(plugin: LabnotePlugin): Promise<void> {
     },
   ]);
   if (!out) return;
-  const body = extractMethodBody(out) || out.trim();
+  const body = withDraftHeader(plugin, extractMethodBody(out) || out.trim());
   await deliverToNote(plugin, note, body, t => writeMethodDraft(plugin, t, loc, body), 'Inserted the Method draft into {0}.');
+}
+
+/**
+ * `draft` under a one-line `> [!note] AI draft (model, date)` callout (#280),
+ * so a Method the model wrote reads as unchecked until someone removes it.
+ * Summaries and the worksheet leave the line out.
+ */
+function withDraftHeader(plugin: LabnotePlugin, draft: string): string {
+  const header = plugin.t(
+    'AI draft ({0}, {1}) — review it, then delete this line',
+    plugin.settings.llmModel || plugin.settings.llmProvider,
+    getSeoulDateString()
+  );
+  return `> [!note] ${header}\n\n${draft}`;
 }
 
 /** Where a workflow note's result summary goes (#279). */
@@ -843,15 +887,19 @@ export async function askAgentCommand(plugin: LabnotePlugin): Promise<void> {
     }
     const answer = run.content;
     if (!answer.trim()) {
-      // No answer to show; the tool summary below still says what happened (#161, #186).
-      new Notice(
-        run.thinkingOnly
-          ? noAnswerMessage(plugin, true)
-          : run.executed.length === 0
-            ? plugin.t('The assistant gave no answer. What you asked may be outside the tools it can use.')
-            : plugin.t('The assistant gave no answer.'),
-        10000
-      );
+      // No answer to show; the tool summary below still says what happened
+      // (#161, #186). After a change that summary is the answer: "try again"
+      // would invite doing it twice (#286).
+      if (countToolOutcomes(run.executed).changed === 0) {
+        new Notice(
+          run.thinkingOnly
+            ? noAnswerMessage(plugin, true)
+            : run.executed.length === 0
+              ? plugin.t('The assistant gave no answer. What you asked may be outside the tools it can use.')
+              : plugin.t('The assistant gave no answer.'),
+          10000
+        );
+      }
     } else {
       // The answer only goes in on request (#77), possibly minutes later, so
       // the note must still be the one open.
