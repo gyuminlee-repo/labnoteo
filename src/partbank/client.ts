@@ -37,7 +37,9 @@ export type PartbankErrorKind =
   | 'notFound'
   | 'rateLimited'
   | 'timeout'
-  | 'server';
+  | 'server'
+  /** The address answered, but not the way partbank's API does (#278). */
+  | 'notPartbank';
 
 export class PartbankError extends Error {
   constructor(
@@ -91,8 +93,11 @@ export class PartbankClient {
 
   /** The signed-in user's name, which is what "test connection" reports. */
   async whoAmI(): Promise<string> {
-    const me = await this.request<{ username?: string; email?: string }>('/auth/me');
-    return me.username?.trim() || me.email?.trim() || '';
+    const me = await this.request<{ username?: unknown; email?: unknown } | null>('/auth/me');
+    const name = [me?.username, me?.email].find((v): v is string => typeof v === 'string' && Boolean(v.trim()));
+    // Any web server can answer 200 with JSON; partbank's account call names the account.
+    if (!name) throw new PartbankError('notPartbank', 200, 'no account in the response');
+    return name.trim();
   }
 
   /**
@@ -187,7 +192,8 @@ export class PartbankClient {
       try {
         return (res.json ?? JSON.parse(res.text)) as T;
       } catch {
-        throw new PartbankError('server', res.status, 'malformed response');
+        // A login page or a site's front page, not partbank's API.
+        throw new PartbankError('notPartbank', res.status, 'malformed response');
       }
     }
     throw new PartbankError(statusKind(res.status), res.status, res.text?.slice(0, 200) ?? '');

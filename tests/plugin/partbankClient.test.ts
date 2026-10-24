@@ -17,6 +17,8 @@ import {
   type PartbankConnectionConfig,
 } from '../../src/partbank/client';
 import type { SampleSource } from '@labnoteo/core';
+import { PartbankFeature } from '../../src/partbank/partbankFeature';
+import type LabnotePlugin from '../../src/main';
 
 const WEB = 'https://partbank.kbiofoundry.kr';
 const DESKTOP = 'http://127.0.0.1:47830';
@@ -192,9 +194,17 @@ describe('failures', () => {
     await expect(desktopClient().whoAmI()).rejects.toMatchObject({ kind: 'offline' });
   });
 
-  it('reads a non-JSON body as a server error', async () => {
+  // #278: a site's front page answered 200 and read as "Connected." or a server error.
+  it('reads a non-JSON body as not being partbank', async () => {
     stub([{ status: 200, text: '<html>login</html>' }]);
-    await expect(desktopClient().whoAmI()).rejects.toMatchObject({ kind: 'server' });
+    await expect(desktopClient().whoAmI()).rejects.toMatchObject({ kind: 'notPartbank' });
+  });
+
+  it('reads an account answer without a username or email as not being partbank', async () => {
+    for (const body of [{}, { ok: true }, null, { username: '  ' }]) {
+      stub([json(body)]);
+      await expect(webClient().whoAmI()).rejects.toMatchObject({ kind: 'notPartbank' });
+    }
   });
 
   // `requestUrl` has no timeout of its own, so a stalled call would hang.
@@ -271,5 +281,30 @@ describe('picking the connection for a link', () => {
     expect(connectionForOrigin('http://localhost:47830', connections)?.kind).toBe('desktop');
     expect(connectionForOrigin('https://evil.example.com', connections)).toBeUndefined();
     expect(connectionForOrigin('', connections)).toBeUndefined();
+  });
+});
+
+// #278: Test connection against a wrong address said "item no longer in partbank" or "Connected."
+describe('describeProbeError', () => {
+  const plugin = {
+    t: (key: string) => key,
+    settings: { partbankDesktopUrl: DESKTOP, partbankWebUrl: WEB, partbankDefaultConnection: 'web' },
+  } as unknown as LabnotePlugin;
+  const feature = new PartbankFeature(plugin, { get: () => undefined, set: () => undefined });
+
+  it('says no partbank API is at the address for a 404 or a foreign answer', () => {
+    for (const kind of ['notFound', 'notPartbank'] as const) {
+      expect(feature.describeProbeError(new PartbankError(kind, 404, ''), 'web')).toBe(
+        'No partbank API was found at this address. Check the address.'
+      );
+    }
+  });
+
+  it('leaves the other failures to describeError', () => {
+    const err = new PartbankError('unauthorized', 401, '');
+    expect(feature.describeProbeError(err, 'web')).toBe(feature.describeError(err, 'web'));
+    expect(feature.describeError(new PartbankError('notPartbank', 200, ''), 'web')).toBe(
+      'The address answered, but not as partbank does. Check the partbank address in the settings.'
+    );
   });
 });

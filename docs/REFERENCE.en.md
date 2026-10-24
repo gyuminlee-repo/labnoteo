@@ -278,7 +278,9 @@ that does not use partbank keeps the menus it always had.
 ### Connections
 
 Two connections, each with an address, an API key and a `Test connection` button that answers with
-the account name.
+the account name. It tests what the fields hold now, saved or not; a malformed address is not
+called. An address that answers but not as partbank's API (another site, a login page) gets
+"No partbank API was found at this address".
 
 - **partbank server** — your lab's server (default `https://partbank.kbiofoundry.kr`). Its links
   work for the whole team, so **use this one in a shared vault**.
@@ -312,8 +314,13 @@ location, registers it, and inserts `ID;alias`.
   when it does not exist. Decline and the strain is not registered.
 - It registers where any other sample would (the experiment's Local registry, or Global outside an
   experiment). **An item already registered** is not registered twice: its existing ID is inserted
-  instead, looked up in this experiment, then Global, then the product catalogs. The KID is kept
-  with the link rather than as the sample ID, and shows in the sample definition window.
+  instead, looked up in this experiment, then Global, then the product catalogs. A sample moved to
+  another type with Change type is found too, and the notice says which type it is registered as.
+  One found in a catalog is reported as "Used ID from the partbank catalog (folder)", adding that
+  saving the note copies it into this experiment's registry when the reference went into a note of
+  an experiment. The KID is kept with the link rather than as the sample ID, and shows in the
+  sample definition window. The description holds the KID, the name and partbank's description up
+  to 1000 characters, cut between words beyond that (for samples registered from 0.125.0 on).
 
 ### Refresh storage location from partbank
 
@@ -321,8 +328,9 @@ In the sample view's context menu and in the definition window. It reads the loc
 `storage / box / position` and stores it after showing the change once. When partbank shows no
 stock, the current location is kept without asking (empty it in Edit sample to clear it).
 **Refresh storage locations from partbank** (command palette) does every linked sample at once,
-listing only what changes as `old → new`; an entry that would become empty is unchecked by default
-so a hand-written location is not wiped. Because the value is stored, it stays visible offline and
+listing only what changes as `old → new`. A sample partbank shows no stock for is left out of the
+list and keeps its location, so a hand-written one is not wiped; the closing notice counts those and
+the samples that could not be read. Because the value is stored, it stays visible offline and
 in the sample list table and search.
 
 partbank only reports the stock **the calling account can see**, so the same vault can end up with
@@ -339,7 +347,9 @@ another PC says so instead.
 Download the items in your own workspace on the default connection into the global sample folder
 as `{Type}_partbank-web.json` (or `-desktop`), which the autocomplete then offers under
 `{Type} catalog search` without any searching. Downloading again keeps the sample ID each item
-already had and writes the file sorted by KID, so the git diff stays small. Items with the same
+already had and writes the file sorted by KID, so the git diff stays small. An item a Global sample
+of another type already stands for (after Change type) is not added to this type's catalog, so it
+keeps one ID. Items with the same
 name within a file get ` (KID)` after the alias. Items other people share with your groups are
 not included; register those through [Search partbank](#search-partbank). It stops with a notice
 when no global sample folder is set. This is not the workflow [Update catalogs](#update-catalogs).

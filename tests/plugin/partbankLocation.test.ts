@@ -10,10 +10,12 @@ import { Notice, __setRequestUrlHandler, type RequestUrlResponse } from '../stub
 import {
   PartbankLocationProvider,
   applyLocationChanges,
-  checkedByDefault,
   linkedSamplesIn,
   locationChangesOf,
+  locationRefreshNotice,
+  refreshLocationsIn,
   refreshOneLocation,
+  storableChanges,
   type LocationChange,
 } from '../../src/partbank/partbankLocation';
 import { PartbankFeature } from '../../src/partbank/partbankFeature';
@@ -150,7 +152,7 @@ describe('linkedSamplesIn', () => {
   });
 });
 
-describe('locationChangesOf / checkedByDefault', () => {
+describe('locationChangesOf / storableChanges', () => {
   const row = (before: string | null, after: string | null): LocationChange => ({
     type: 'DNA',
     id: 'DNA-1',
@@ -166,12 +168,20 @@ describe('locationChangesOf / checkedByDefault', () => {
     ).toHaveLength(2);
   });
 
-  // partbank showing no stock is often a sharing boundary, not a move, and
-  // the text may have been typed by hand.
-  it('leaves a change that would empty the location unticked', () => {
-    expect(checkedByDefault(row('A', 'B'))).toBe(true);
-    expect(checkedByDefault(row('A', null))).toBe(false);
-    expect(checkedByDefault(row('A', ''))).toBe(false);
+  // #294: partbank showing no stock is often a sharing boundary, not a move, and
+  // the text may have been typed by hand; the single refresh keeps it (#269).
+  it('leaves out a change that would empty the location, and counts it', () => {
+    const { offer, noStock } = storableChanges([row('A', 'B'), row('A', null), row('A', '')]);
+    expect(offer).toEqual([row('A', 'B')]);
+    expect(noStock).toBe(2);
+  });
+
+  it('adds the kept and unread counts to every closing notice', () => {
+    const plugin = fakePlugin(new MemFileSystem());
+    expect(locationRefreshNotice(plugin, 'Done.', 0, 0)).toBe('Done.');
+    expect(locationRefreshNotice(plugin, 'Done.', 2, 1)).toBe(
+      'Done. {0} sample(s) with no stock in partbank keep their current location. {0} sample(s) could not be read from partbank.'
+    );
   });
 });
 
@@ -230,6 +240,33 @@ describe('refreshOneLocation', () => {
     expect((await loadSamplesByType(fs, LOCAL, 'DNA'))['DNA-1'].location).toBe('4도 냉장고 B칸');
     expect(Notice.shown.slice(shownBefore)).toEqual([
       'partbank shows no stock for {0}, so the current location is kept. To clear it, empty the location in Edit sample.',
+    ]);
+  });
+});
+
+describe('refreshLocationsIn (#294)', () => {
+  it('keeps locations partbank would empty without listing them, and says so', async () => {
+    const fs = new MemFileSystem();
+    const plugin = fakePlugin(fs);
+    (plugin as unknown as { partbank: PartbankFeature }).partbank = fakeFeature(plugin);
+    await upsertSampleRecord(fs, LOCAL, 'DNA', 'DNA-1', {
+      alias: 'gfp',
+      description: null,
+      location: '4도 냉장고 B칸',
+      source: source(),
+    });
+    __setRequestUrlHandler(
+      () => ({ status: 200, text: JSON.stringify({ items: [] }), headers: {} }) as RequestUrlResponse
+    );
+    const shownBefore = Notice.shown.length;
+
+    // No app is set up, so reaching the pick list would throw.
+    await refreshLocationsIn(plugin, [LOCAL]);
+
+    expect((await loadSamplesByType(fs, LOCAL, 'DNA'))['DNA-1'].location).toBe('4도 냉장고 B칸');
+    expect(Notice.shown.slice(shownBefore)).toEqual([
+      'Reading storage locations from partbank…',
+      'Checked {0} linked sample(s); no storage location changed. {0} sample(s) with no stock in partbank keep their current location.',
     ]);
   });
 });

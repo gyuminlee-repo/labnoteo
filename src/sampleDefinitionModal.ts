@@ -91,12 +91,18 @@ class SampleDefinitionModal extends Modal {
       // `labnote-sample-def-row` widens the value column; the labels are short
       // but the values (the JSON path above all) are not. Scoped to these rows
       // so the button row below keeps Obsidian's default right alignment.
-      new Setting(contentEl)
-        .setClass('labnote-sample-def-row')
-        .setName(name)
-        .addText(text => {
+      const row = new Setting(contentEl).setClass('labnote-sample-def-row').setName(name);
+      // A partbank description runs to 1000 characters (#300); one line shows a sliver of it.
+      if (name === t('Description')) {
+        row.addTextArea(area => {
+          area.setValue(value).setDisabled(true);
+          area.inputEl.rows = Math.min(8, Math.max(1, Math.ceil(value.length / 60)));
+        });
+      } else {
+        row.addText(text => {
           text.setValue(value).setDisabled(true);
         });
+      }
     }
 
     const isEditable = scope !== 'catalog';

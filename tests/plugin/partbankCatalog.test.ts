@@ -5,7 +5,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import type { PartbankItem, SampleSource } from '@labnoteo/core';
-import { catalogFileName, planCatalogFile } from '../../src/partbank/partbankCatalog';
+import type { SampleRecord } from '@labnoteo/core/lib/sampleStorage';
+import { catalogFileName, heldByOtherTypes, itemSourceKey, planCatalogFile } from '../../src/partbank/partbankCatalog';
 
 const WEB = 'https://partbank.kbiofoundry.kr';
 
@@ -136,5 +137,23 @@ describe('planCatalogFile', () => {
       idFactory()
     );
     expect(Object.keys(records)).toEqual(['DNA-1']);
+  });
+});
+
+// #301: a sample moved to another type kept its partbank link, and the download gave the item a second id.
+describe('heldByOtherTypes', () => {
+  const source = (id: string): SampleSource => ({ system: 'partbank', connection: 'web', origin: WEB, type: 'part', id, kid: null });
+  const rec = (id: string) => ({ type: 'x', alias: null, descriptions: [], sources: [], location: null, source: source(id) });
+
+  it('lists the items a Global sample of another type stands for', () => {
+    const globals = new Map<string, Record<string, SampleRecord>>([
+      ['DNA', { 'DNA-1': rec('a1') }],
+      ['Plasmid', { 'Plasmid-1': rec('b1') }],
+      ['Other', { 'Other-1': { ...rec('x'), source: null } }],
+    ]);
+    const held = heldByOtherTypes(globals, 'Plasmid');
+    expect(held.has(itemSourceKey(item('KBp_A', 'A', 'a1'), 'web', WEB))).toBe(true);
+    expect(held.has(itemSourceKey(item('KBp_B', 'B', 'b1'), 'web', WEB))).toBe(false);
+    expect(held.size).toBe(1);
   });
 });

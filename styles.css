@@ -288,7 +288,12 @@ body > input.labnote-datetime-picker {
   min-width: 0;
 }
 
-.labnote-sample-def-row .setting-item-control input {
+.labnote-sample-def-row .setting-item-control input,
+.labnote-sample-def-row .setting-item-control textarea {
   width: 100%;
   min-width: 0;
+}
+
+.labnote-sample-def-row .setting-item-control textarea {
+  resize: vertical;
 }

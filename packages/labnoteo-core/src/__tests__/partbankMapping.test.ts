@@ -198,9 +198,24 @@ describe('descriptionForItem', () => {
     expect(
       descriptionForItem({ type: 'part', id: 'x', kid: null, name: '', description: 'a;b\n c' })
     ).toBe('a,b c');
-    const long = descriptionForItem({ type: 'part', id: 'x', kid: null, name: '', description: 'x'.repeat(400) });
-    expect(long).toHaveLength(200);
+    const long = descriptionForItem({ type: 'part', id: 'x', kid: null, name: '', description: 'x'.repeat(1400) });
+    expect(long).toHaveLength(1000);
     expect(long!.endsWith('…')).toBe(true);
+  });
+
+  // #300: a 300-character description lost its last sentence at 200.
+  it('keeps descriptions up to 1000 characters and cuts longer ones between words', () => {
+    const text = 'word '.repeat(150).trim();
+    expect(descriptionForItem({ type: 'part', id: 'x', kid: null, name: '', description: text })).toBe(text);
+    const long = descriptionForItem({ type: 'part', id: 'x', kid: null, name: '', description: 'word '.repeat(300) })!;
+    expect(long.endsWith('word…')).toBe(true);
+    expect(Array.from(long).length).toBeLessThanOrEqual(1000);
+  });
+
+  it('does not split a surrogate pair where it cuts', () => {
+    const long = descriptionForItem({ type: 'part', id: 'x', kid: null, name: '', description: '🧬'.repeat(1200) })!;
+    expect(Array.from(long)).toHaveLength(1000);
+    expect(long).toBe(`${'🧬'.repeat(999)}…`);
   });
 
   it('is null when the item carries nothing to say', () => {

@@ -196,8 +196,22 @@ export interface PartbankItem {
   moleculeType?: string | null;
 }
 
-/** How far a description may run before it is cut. */
-const DESCRIPTION_BUDGET = 200;
+/** Characters a description may run to before it is cut (#300). */
+const DESCRIPTION_BUDGET = 1000;
+
+/**
+ * `text` within `budget` characters, ending in `…` when cut: at the last space
+ * in the second half of the budget, else mid-word. Counts code points, so an
+ * emoji or other surrogate pair is never split.
+ */
+function cutText(text: string, budget: number): string {
+  const chars = Array.from(text);
+  if (chars.length <= budget) return text;
+  const head = chars.slice(0, budget - 1).join('');
+  const space = head.lastIndexOf(' ');
+  const cut = space > 0 && Array.from(head.slice(0, space)).length >= budget / 2 ? head.slice(0, space) : head;
+  return `${cut.trimEnd()}…`;
+}
 
 /**
  * The alias to register a partbank item under. partbank names routinely hold
@@ -231,9 +245,7 @@ export function descriptionForItem(item: PartbankItem): string | null {
   if (parts.length === 0) return null;
   // `;` ends a description in a note (#98) and a line break would split it.
   const joined = parts.join(' · ').replace(/;/g, ',').replace(/\s+/g, ' ').trim();
-  return joined.length > DESCRIPTION_BUDGET
-    ? `${joined.slice(0, DESCRIPTION_BUDGET - 1).trimEnd()}…`
-    : joined;
+  return cutText(joined, DESCRIPTION_BUDGET);
 }
 
 /** The link to store for an item fetched over `connection` at `origin`. */
@@ -287,6 +299,8 @@ export interface LinkedSample {
   record: SampleRecord;
   /** Where it was found: the note's own registry, the global one, or a catalog. */
   scope: 'local' | 'global' | 'catalog';
+  /** The sample folder it was read from (a catalog's is the folder holding the catalog file). */
+  folder?: string;
 }
 
 /**
