@@ -22,7 +22,7 @@ export interface RemoveWorkflowFromReadmeResult {
  * — are still recognised for removal.
  */
 function isChecklistLineForFile(line: string, fileName: string): boolean {
-  const match = line.trim().match(/^(?:-\s+)?\[[ xX]\]\s*\[.*?\]\(([^)]+)\)/);
+  const match = line.trim().match(/^(?:[-*+]\s+)?\[[ xX]\]\s*\[.*?\]\(([^)]+)\)/);
   if (!match) return false;
   const link = match[1].replace(/^\.\//, '');
   const linkFile = link.split('/').pop();

@@ -167,7 +167,18 @@ const obsidianKo: Record<string, string> = {
 
   // Notices / results
   'Experiment created: {0}': '실험이 생성되었습니다: {0}',
-  'Workflow numbering is already sequential.': '워크플로 번호가 이미 순서대로입니다.',
+  'README.labnote.md has no "Related Workflows" section, so the workflow was not added to its checklist. Add the section back, then run "{0}".':
+    'README.labnote.md에 "Related Workflows" 절이 없어 워크플로를 체크리스트에 넣지 못했습니다. 절을 되살린 뒤 "{0}"을(를) 실행하세요.',
+  '{0} already has this ID and alias, so the two would read the same in the README checklist. Give this one its own alias to tell them apart.':
+    '{0}에 같은 ID와 별칭이 이미 있어 README 체크리스트에서 둘이 똑같이 보입니다. 구분하려면 이 워크플로에 다른 별칭을 주세요.',
+  'Workflow notes moved out of {0} are still in its README checklist. Run "{1}" in {0} to remove them.':
+    '{0}에서 옮겨 간 워크플로 노트가 아직 그 README 체크리스트에 있습니다. {0}에서 "{1}"을(를) 실행하면 지울 수 있습니다.',
+  'Workflow numbering already follows the README checklist.': '워크플로 번호가 이미 README 체크리스트 순서와 같습니다.',
+  'New numbers follow the order of the README checklist.': '새 번호는 README 체크리스트 순서를 따릅니다.',
+  'New numbers follow the current file numbers.': '새 번호는 지금 파일 번호 순서를 따릅니다.',
+  '{0} → {1} (name format fixed)': '{0} → {1} (이름 형식 고침)',
+  'Workflow notes share a number: {0}. Run "{1}" to give each its own.':
+    '번호가 겹치는 워크플로 노트가 있습니다: {0}. "{1}"을(를) 실행하면 노트마다 번호가 따로 붙습니다.',
   'Renumber {0} workflow file(s) in {1}?': '{1}의 워크플로 파일 {0}개의 번호를 다시 매길까요?',
   'Renumbered {0} workflow file(s).': '워크플로 파일 {0}개의 번호를 다시 매겼습니다.',
   'Renumber {0} workflow file(s) in {1} and add {2} file(s) missing from the README checklist?':

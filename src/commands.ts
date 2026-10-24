@@ -65,11 +65,16 @@ import {
   createWorkflowFileName,
   createWorkflowContent,
   parseWorkflowChecklistFromReadme,
-  generateWorkflowChecklist,
-  updateReadmeWorkflowSection,
+  insertWorkflowChecklistEntries,
+  hasWorkflowChecklistSection,
+  findSameAliasWorkflow,
+  isWorkflowChecklistEntryLine,
+  workflowChecklistEntryLabel,
   parseExperimenterFromReadme,
   reconcileWorkflowChecklist,
   planWorkflowRenumber,
+  workflowChecklistOrder,
+  isMisnumberedWorkflowFileName,
   planRenumberMoves,
   planTableCsvMoves,
   siblingTableCsvs,
@@ -199,10 +204,22 @@ export function experimentTitleHint(host: Pick<LabnoteHost, 't'>): (value: strin
 export function workflowAliasHint(
   host: Pick<LabnoteHost, 't'>,
   id: string,
-  name: string
+  name: string,
+  /** The experiment folder's file names: an alias another workflow of this ID has is flagged (#297). */
+  existing: readonly string[] = []
 ): (value: string) => PromptHint {
   const budget = workflowAliasBudget(id, name);
   return value => {
+    const twin = findSameAliasWorkflow(existing, id, name, value);
+    if (twin) {
+      return {
+        text: host.t(
+          '{0} already has this ID and alias, so the two would read the same in the README checklist. Give this one its own alias to tell them apart.',
+          twin
+        ),
+        warn: true,
+      };
+    }
     const length = workflowAliasLength(value);
     if (budget === 0) {
       return {
@@ -515,12 +532,23 @@ export async function insertIssueMarkerCommand(editor: Editor, host: LabnoteHost
     return false;
   };
 
+  // A README workflow entry whose link became the marker would no longer be an
+  // entry (#293): there the marker always goes after the link.
+  const lineAt = (text: string, offset: number): string => {
+    const nl = text.indexOf('\n', offset);
+    return text.slice(text.lastIndexOf('\n', offset - 1) + 1, nl === -1 ? text.length : nl);
+  };
+
   let doc = editor.getValue();
   const from = editor.posToOffset(editor.getCursor('from'));
   const to = editor.posToOffset(editor.getCursor('to'));
   let plan;
   if (from !== to) {
-    plan = planIssueMarkerInsertion(doc, from, to, newId(doc));
+    const selected = doc.slice(from, to);
+    plan =
+      !selected.includes('\n') && isWorkflowChecklistEntryLine(lineAt(doc, from))
+        ? planIssueMarkerInsertion(doc, to, to, newId(doc), selected)
+        : planIssueMarkerInsertion(doc, from, to, newId(doc));
   } else {
     // Refuse a line that cannot take a marker before asking for a topic.
     const probe = planIssueMarkerInsertion(doc, from, to, newId(doc), '-');
@@ -529,7 +557,7 @@ export async function insertIssueMarkerCommand(editor: Editor, host: LabnoteHost
       await host.prompt({
         title: host.t('Issue topic sentence'),
         prompt: host.t('This sentence becomes the issue title. Keep the sentence from this line or type another.'),
-        value: issueSentenceRange(doc, from)?.text ?? '',
+        value: workflowChecklistEntryLabel(lineAt(doc, from)) ?? issueSentenceRange(doc, from)?.text ?? '',
         validate: v => (v.trim() ? null : host.t('Enter the topic sentence of the issue.')),
       })
     )?.trim();
@@ -539,7 +567,7 @@ export async function insertIssueMarkerCommand(editor: Editor, host: LabnoteHost
     const caret = editor.posToOffset(editor.getCursor('from'));
     const sentence = issueSentenceRange(doc, caret);
     plan =
-      sentence && sentence.text === topic
+      sentence && sentence.text === topic && !isWorkflowChecklistEntryLine(lineAt(doc, caret))
         ? // As if the sentence had been selected: it becomes the marker.
           planIssueMarkerInsertion(doc, sentence.from, sentence.to, newId(doc))
         : // A new sentence leaves the line as written.
@@ -703,17 +731,25 @@ interface CreatedWorkflow {
   fileName: string;
   /** Human-readable `id name [alias]` used for checklist/link display. */
   displayTitle: string;
-  /** Whether it was added to the README checklist (false without a README). */
-  registered: boolean;
+  /** Whether it was added to the README checklist; see {@link registerWorkflowInReadme}. */
+  registered: WorkflowRegistration;
 }
 
-/** The "created" notice, plus a warning when no README checklist lists it (#88). */
+/** The "created" notice, plus a warning when no README checklist lists it (#88, #298). */
 function notifyWorkflowCreated(host: LabnoteHost, created: CreatedWorkflow): void {
   host.notify('info', host.t('Workflow created: {0}', created.fileName));
-  if (!created.registered) {
+  if (created.registered === 'noReadme') {
     host.notify(
       'warn',
       host.t('This experiment has no README.labnote.md, so the workflow was not added to a checklist.')
+    );
+  } else if (created.registered === 'noSection') {
+    host.notify(
+      'warn',
+      host.t(
+        'README.labnote.md has no "Related Workflows" section, so the workflow was not added to its checklist. Add the section back, then run "{0}".',
+        host.t('Sync workflow checklist with folder')
+      )
     );
   }
 }
@@ -731,6 +767,8 @@ async function createWorkflowFile(
   chosen: WorkflowItem,
   stamp: (content: string) => string
 ): Promise<CreatedWorkflow | undefined> {
+  // Listed before the prompt, which warns about an alias already in use (#297).
+  const existingFiles = await host.fs.list(labnoteDir);
   // Ask for an optional per-instance alias. The catalog name stays inside the
   // `[id name]` prefix; the alias (if any) is appended after it.
   const alias = await workflowAliasModal(app, {
@@ -740,7 +778,7 @@ async function createWorkflowFile(
     placeholder: host.t('Enter a name for this workflow'),
     about: workflowConcept(host),
     description: chosen.description ? catalogDescription(chosen.id, chosen.description) : undefined,
-    hint: workflowAliasHint(host, chosen.id, chosen.name),
+    hint: workflowAliasHint(host, chosen.id, chosen.name, existingFiles),
   });
   if (alias === undefined) return undefined; // cancelled
   const cleanAlias = alias.trim();
@@ -751,8 +789,7 @@ async function createWorkflowFile(
     experimenter = parseExperimenterFromReadme(await host.fs.read(readmePath));
   }
 
-  const existingFiles = await host.fs.list(labnoteDir);
-  const sequence = getNextWorkflowNumber(existingFiles);
+  const sequence = getNextWorkflowNumber(await host.fs.list(labnoteDir));
   const info = { id: chosen.id, name: chosen.name, description: chosen.description };
   const fileName = createWorkflowFileName(sequence, info, cleanAlias || undefined);
   const workflowPath = posix.join(labnoteDir, fileName);
@@ -780,13 +817,16 @@ async function createWorkflowFile(
   return { path: workflowPath, fileName, displayTitle, registered };
 }
 
+/** What {@link registerWorkflowInReadme} did. */
+export type WorkflowRegistration = 'registered' | 'noSection' | 'noReadme';
+
 /**
- * Append a new workflow to the README "Related Workflows" checklist
+ * Add a new workflow to the README "Related Workflows" checklist
  * (non-destructive) and stamp the README's `last_updated_date`: creating a
  * workflow is a change to the experiment. Applied through the vault to the
  * README as it is at write time, so an open README editor neither overwrites it
- * nor loses its own unsaved text. Returns false, writing nothing, without a
- * README.
+ * nor loses its own unsaved text. Writes nothing without a README or without
+ * the section to list it in (#298), and says which.
  */
 export async function registerWorkflowInReadme(
   app: App,
@@ -794,14 +834,16 @@ export async function registerWorkflowInReadme(
   readmePath: string,
   entry: { title: string; fileName: string },
   stamp: (content: string) => string = c => c
-): Promise<boolean> {
-  if (!(await host.fs.exists(readmePath))) return false;
+): Promise<WorkflowRegistration> {
+  if (!(await host.fs.exists(readmePath))) return 'noReadme';
+  if (!hasWorkflowChecklistSection(await host.fs.read(readmePath))) return 'noSection';
   await processNoteThroughVault(app, host, readmePath, readme => {
-    const items = parseWorkflowChecklistFromReadme(readme);
-    items.push({ done: false, title: entry.title, fileName: entry.fileName });
-    return stamp(updateReadmeWorkflowSection(readme, generateWorkflowChecklist(items)));
+    if (!hasWorkflowChecklistSection(readme)) return readme;
+    return stamp(
+      insertWorkflowChecklistEntries(readme, [{ done: false, title: entry.title, fileName: entry.fileName }])
+    );
   });
-  return true;
+  return 'registered';
 }
 
 /**
@@ -1058,7 +1100,7 @@ export interface ReadmeSyncControl {
 
 /**
  * Renumber an experiment's workflow files to a gap-free `001, 002, ...`
- * sequence, in their current order.
+ * sequence, in the order of the README checklist (#289).
  *
  * Ordering and the target names come from `planWorkflowRenumber`, the rename
  * sequence from `planRenumberMoves` (straight to the target, parked under a
@@ -1081,15 +1123,23 @@ export async function renumberWorkflowsCommand(
   if (!labnoteDir) return;
 
   const existing = await host.fs.list(labnoteDir);
-  const renames = planWorkflowRenumber(existing);
   const readmePath = posix.join(labnoteDir, README);
+  const readmeBefore = (await host.fs.exists(readmePath)) ? await host.fs.read(readmePath) : undefined;
+  // The checklist is where the researcher orders the experiment (#289).
+  const order = readmeBefore === undefined ? [] : workflowChecklistOrder(readmeBefore, existing, labnoteDir);
+  const renames = planWorkflowRenumber(existing, order);
   // Files the checklist does not list are renumbered too, so register them in
   // the same run; otherwise one takes 001 and the overview starts at 002 (#56).
-  const unlisted = (await host.fs.exists(readmePath))
-    ? planWorkflowChecklistSync(await host.fs.read(readmePath), existing, undefined, undefined, labnoteDir).added.length
-    : 0;
+  const syncPlan =
+    readmeBefore === undefined
+      ? undefined
+      : planWorkflowChecklistSync(readmeBefore, existing, undefined, undefined, labnoteDir);
+  const unlisted = syncPlan?.added.length ?? 0;
+  // Without the section nothing can be listed or follow the new numbers (#298).
+  const noSection = host.t('README.labnote.md has no "Related Workflows" section.');
   if (renames.length === 0 && unlisted === 0) {
-    host.notify('info', host.t('Workflow numbering is already sequential.'));
+    if (syncPlan && !syncPlan.hasSection) host.notify('warn', noSection);
+    else host.notify('info', host.t('Workflow numbering already follows the README checklist.'));
     return;
   }
 
@@ -1105,7 +1155,23 @@ export async function renumberWorkflowsCommand(
             folder,
             String(unlisted)
           );
-  if (!(await host.confirm(question))) return;
+  const preview =
+    renames.length === 0
+      ? ''
+      : `\n\n${host.t(
+          order.length > 0
+            ? 'New numbers follow the order of the README checklist.'
+            : 'New numbers follow the current file numbers.'
+        )}\n${listFileNames(
+          host,
+          renames.map(r =>
+            isMisnumberedWorkflowFileName(r.from)
+              ? host.t('{0} → {1} (name format fixed)', r.from, r.to)
+              : `${r.from} → ${r.to}`
+          )
+        )}`;
+  const sectionNote = syncPlan && !syncPlan.hasSection ? `\n\n${noSection}` : '';
+  if (!(await host.confirm(`${question}${preview}${sectionNote}`))) return;
 
   await readmeSync.flushNow(labnoteDir);
   readmeSync.hold(labnoteDir);
@@ -1575,6 +1641,11 @@ export async function syncWorkflowChecklistCommand(
   const relinked = plan.unescaped.length + normalizeWorkflowChecklistLinks(readme, labnoteDir).count;
 
   const samplesBrought = adoptSamples ? await adoptSamples(labnoteDir, names) : 0;
+  // The checklist cannot order notes that share a number (#288).
+  const clashNotice = (): void => {
+    if (plan.numberClashes.length === 0) return;
+    host.notify('warn', workflowNumberClashNotice(host, plan.numberClashes));
+  };
 
   if (
     plan.added.length === 0 &&
@@ -1598,6 +1669,7 @@ export async function syncWorkflowChecklistCommand(
           : 'The workflow checklist already matches the folder.'
       )
     );
+    clashNotice();
     return;
   }
 
@@ -1632,6 +1704,12 @@ export async function syncWorkflowChecklistCommand(
     parts.push(host.t('Brought {0} local sample(s) into {1}.', String(samplesBrought), posix.basename(labnoteDir)));
   }
   host.notify('info', parts.join(' '));
+  clashNotice();
+}
+
+/** The warning that workflow notes `names` share a number, pointing at "Renumber workflows" (#288). */
+export function workflowNumberClashNotice(host: Pick<LabnoteHost, 't'>, names: readonly string[]): string {
+  return host.t('Workflow notes share a number: {0}. Run "{1}" to give each its own.', names.join(', '), host.t('Renumber workflows'));
 }
 
 // === README auto-sync on native rename / delete ==============================
@@ -1696,11 +1774,12 @@ export async function processNoteThroughVault(
 }
 
 /**
- * After workflow files were renamed in the file explorer, reorder the README
- * "Related Workflows" checklist to match the new `NNN` order. `renames` are the
- * old->new basenames accumulated for one experiment folder; passing them lets
- * reconcile relink correctly even when Obsidian's "Automatically update
- * internal links" setting is off. Only writes when the section actually changes.
+ * After workflow files were renamed in the file explorer, relink their README
+ * "Related Workflows" entries and move an entry the new number puts out of
+ * order. `renames` are the old->new basenames accumulated for one experiment
+ * folder; passing them lets reconcile relink correctly even when Obsidian's
+ * "Automatically update internal links" setting is off. Only writes when the
+ * section actually changes.
  */
 export async function syncReadmeOrderOnRename(
   app: App,
@@ -1724,6 +1803,7 @@ export async function syncReadmeOrderOnRename(
       reconcileWorkflowChecklist(content, renames, {
         labelFor: name => labels.get(name) ?? defaultWorkflowTitle(name),
         dir: labnoteDir,
+        move: true,
       }).content
   );
 }

@@ -63,6 +63,7 @@ import {
   createWorkflowCommand,
   renumberWorkflowsCommand,
   syncWorkflowChecklistCommand,
+  workflowNumberClashNotice,
   addWorkflowFileToChecklist,
   moveTableCsvs,
   retitleWorkflowAfterRename,
@@ -190,6 +191,8 @@ export default class LabnotePlugin extends Plugin {
   private readonly copyIdsRenewed = new Map<string, Set<string>>();
   // Pending "moved in but not listed" notices, coalesced per experiment folder.
   private readonly movedInTimers = new Map<string, number>();
+  // Pending "moved out but still listed" notices, per experiment folder left (#287).
+  private readonly movedAwayTimers = new Map<string, number>();
   // Notes moved between experiments whose Local samples may need bringing
   // along (#97), coalesced per (old experiment, new experiment) pair.
   private readonly samplesMoved = new Map<
@@ -293,6 +296,8 @@ export default class LabnotePlugin extends Plugin {
       window.clearTimeout(handle);
     }
     this.movedInTimers.clear();
+    for (const handle of this.movedAwayTimers.values()) window.clearTimeout(handle);
+    this.movedAwayTimers.clear();
     for (const pending of this.samplesMoved.values()) {
       window.clearTimeout(pending.timer);
     }
@@ -814,6 +819,7 @@ export default class LabnotePlugin extends Plugin {
         }
         this.noticeWorkflowMovedIn(oldPath, newPath);
         this.noticeWorkflowMovedOut(oldPath, newPath);
+        this.noticeWorkflowMovedAway(oldPath, newPath);
         const strayOrigin = this.strayWorkflows.get(oldPath);
         this.strayWorkflows.delete(oldPath);
         // Only same-folder workflow-file renames touch the README.
@@ -838,7 +844,7 @@ export default class LabnotePlugin extends Plugin {
           case 'broken':
             // Recorded synchronously so a follow-up rename finds the origin.
             this.strayWorkflows.set(newPath, effect.origin);
-            this.run(() => this.offerWorkflowNameFix(file, effect.suggestion));
+            this.run(() => this.offerWorkflowNameFix(file, effect.suggestion, effect.origin));
             return;
         }
       })
@@ -1151,15 +1157,18 @@ export default class LabnotePlugin extends Plugin {
 
   /**
    * Tell the user a workflow note fell out of the naming format and, when a
-   * fix is known and its name is free, offer to rename it. The prompt waits for
-   * open modals to close: a file-explorer rename opens Obsidian's "update
-   * links" prompt at the same time, and answering ours first would make that
-   * one rewrite links for the stale rename.
+   * fix is known and its name is free, offer to rename it; otherwise offer its
+   * original name `origin` back (#307), e.g. after the number lost a digit.
+   * The prompt waits for open modals to close: a file-explorer rename opens
+   * Obsidian's "update links" prompt at the same time, and answering ours
+   * first would make that one rewrite links for the stale rename.
    */
-  private async offerWorkflowNameFix(file: TFile, suggestion: string | undefined): Promise<void> {
+  private async offerWorkflowNameFix(file: TFile, suggestion: string | undefined, origin: string): Promise<void> {
     const brokenPath = file.path;
     const name = file.name;
-    const target = suggestion ? posix.join(posix.dirname(brokenPath), suggestion) : undefined;
+    const dir = posix.dirname(brokenPath);
+    const fixed = suggestion ? posix.join(dir, suggestion) : undefined;
+    const target = fixed && !this.app.vault.getAbstractFileByPath(fixed) ? fixed : posix.join(dir, origin);
     const warn = (): void =>
       this.host.notify(
         'warn',
@@ -1168,7 +1177,7 @@ export default class LabnotePlugin extends Plugin {
           name
         )
       );
-    if (!suggestion || !target || this.app.vault.getAbstractFileByPath(target)) {
+    if (this.app.vault.getAbstractFileByPath(target)) {
       warn();
       return;
     }
@@ -1181,15 +1190,28 @@ export default class LabnotePlugin extends Plugin {
       return;
     }
 
-    const ok = await this.host.confirm(
-      this.t(
-        '"{0}" is no longer a workflow note: its name must end in .labnote.md, so the README checklist stopped following it. Rename it to "{1}"?',
-        name,
-        suggestion
-      ),
-      { confirmLabel: this.t('Fix name') }
-    );
-    if (!ok || file.path !== brokenPath || this.app.vault.getAbstractFileByPath(target)) return;
+    const ok =
+      target === fixed
+        ? await this.host.confirm(
+            this.t(
+              '"{0}" is no longer a workflow note: its name must end in .labnote.md, so the README checklist stopped following it. Rename it to "{1}"?',
+              name,
+              suggestion!
+            ),
+            { confirmLabel: this.t('Fix name') }
+          )
+        : await this.host.confirm(
+            `${this.t(
+              '"{0}" is no longer a workflow note: its name must start with ###_ and end in .labnote.md, so the README checklist stopped following it.',
+              name
+            )} ${this.t('Rename it back to "{0}"?', origin)}`,
+            { confirmLabel: this.t('Rename back') }
+          );
+    if (file.path !== brokenPath || this.app.vault.getAbstractFileByPath(target)) return;
+    if (!ok) {
+      if (target !== fixed) warn();
+      return;
+    }
     await this.app.fileManager.renameFile(file, target);
   }
 
@@ -1501,7 +1523,7 @@ export default class LabnotePlugin extends Plugin {
       value: originalAlias,
       about: workflowConcept(this.host),
       description,
-      hint: workflowAliasHint(this.host, heading.id, heading.name),
+      hint: workflowAliasHint(this.host, heading.id, heading.name, await this.fs.list(posix.dirname(copyPath))),
     });
     if (alias === undefined || this.unloaded) return;
     if (!this.copiedWorkflows.has(copyPath) || file.path !== copyPath) return;
@@ -1562,6 +1584,49 @@ export default class LabnotePlugin extends Plugin {
   }
 
   /**
+   * A workflow note moved to another experiment folder leaves its entry in the
+   * README checklist of the one it left (#287). Point the user at the sync
+   * command there, once per folder for a batch of moves, if an entry is left.
+   * Entries are not removed automatically: the move may be undone.
+   */
+  private noticeWorkflowMovedAway(oldPath: string, newPath: string): void {
+    if (!isValidWorkflowPath(oldPath) || !isValidWorkflowPath(newPath)) return;
+    const oldDir = posix.dirname(oldPath);
+    // Renaming or moving a whole experiment folder renames every note in it;
+    // by then its old folder no longer exists.
+    if (oldDir === posix.dirname(newPath) || !this.app.vault.getAbstractFileByPath(oldDir)) return;
+
+    const pending = this.movedAwayTimers.get(oldDir);
+    if (pending !== undefined) window.clearTimeout(pending);
+    this.movedAwayTimers.set(
+      oldDir,
+      window.setTimeout(() => {
+        this.movedAwayTimers.delete(oldDir);
+        this.run(async () => {
+          const readmePath = posix.join(oldDir, 'README.labnote.md');
+          if (this.unloaded || !(await this.fs.exists(readmePath))) return;
+          const plan = planWorkflowChecklistSync(
+            await this.fs.read(readmePath),
+            await this.fs.list(oldDir),
+            undefined,
+            undefined,
+            oldDir
+          );
+          if (!plan.stale.some(s => s.reason !== 'subfolder')) return;
+          this.host.notify(
+            'warn',
+            this.t(
+              'Workflow notes moved out of {0} are still in its README checklist. Run "{1}" in {0} to remove them.',
+              posix.basename(oldDir),
+              this.t('Sync workflow checklist with folder')
+            )
+          );
+        });
+      }, 1000)
+    );
+  }
+
+  /**
    * A workflow note moved into an experiment folder from elsewhere is not
    * listed in that folder's README. Point the user at the sync command, once
    * per folder for a batch of moves, and only if something is unlisted.
@@ -1590,6 +1655,10 @@ export default class LabnotePlugin extends Plugin {
             undefined,
             dir
           );
+          // Even a note the checklist already lists can take a number another note has (#288).
+          if (plan.numberClashes.length > 0) {
+            this.host.notify('warn', workflowNumberClashNotice(this.host, plan.numberClashes));
+          }
           if (plan.added.length === 0) return;
           this.host.notify(
             'warn',

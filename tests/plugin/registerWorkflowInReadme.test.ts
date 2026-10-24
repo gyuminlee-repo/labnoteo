@@ -52,10 +52,11 @@ describe('registerWorkflowInReadme', () => {
     const fs = new MemFileSystem({ [README]: README_TEXT });
     const { app, processed } = makeApp(true);
 
-    expect(await registerWorkflowInReadme(app, hostFor(fs), README, ENTRY, stampToday)).toBe(true);
+    expect(await registerWorkflowInReadme(app, hostFor(fs), README, ENTRY, stampToday)).toBe('registered');
 
     expect(processed).toHaveLength(1);
-    expect(processed[0]).toContain('[WT010 Seq](./001_WT010_Seq.labnote.md)');
+    // The existing entry is left as written (#293).
+    expect(processed[0]).toContain('- [ ] [WT010 Seq](001_WT010_Seq.labnote.md)\n- [ ] [WD010 Design](./002_WD010_Design.labnote.md)\n');
     expect(processed[0]).toContain('- [ ] [WD010 Design](./002_WD010_Design.labnote.md)');
     expect(processed[0]).toContain("last_updated_date: '2026-10-13'");
     // The adapter copy is untouched: the open editor saves the vault write.
@@ -85,12 +86,31 @@ describe('registerWorkflowInReadme', () => {
     expect(written).toContain("last_updated_date: '2026-10-13'");
   });
 
+  // #298: a heading translated to Korean is still the section.
+  it('registers under a translated heading', async () => {
+    const translated = README_TEXT.replace('## 🗂️ Related Workflows', '## 관련 워크플로');
+    const fs = new MemFileSystem({ [README]: translated });
+    const { app, processed } = makeApp(true, () => translated);
+
+    expect(await registerWorkflowInReadme(app, hostFor(fs), README, ENTRY, stampToday)).toBe('registered');
+    expect(processed[0]).toContain('- [ ] [WD010 Design](./002_WD010_Design.labnote.md)');
+  });
+
+  it('writes nothing, not even the date, without the section (#298)', async () => {
+    const bare = README_TEXT.replace('## 🗂️ Related Workflows\n\n- [ ] [WT010 Seq](001_WT010_Seq.labnote.md)\n\n', '');
+    const fs = new MemFileSystem({ [README]: bare });
+    const { app, processed } = makeApp(true, () => bare);
+
+    expect(await registerWorkflowInReadme(app, hostFor(fs), README, ENTRY, stampToday)).toBe('noSection');
+    expect(processed).toEqual([]);
+  });
+
   // #88: the caller warns that the workflow is in no checklist.
   it('does nothing and says so when the experiment has no README', async () => {
     const fs = new MemFileSystem();
     const { app, processed } = makeApp(true);
 
-    expect(await registerWorkflowInReadme(app, hostFor(fs), README, ENTRY, stampToday)).toBe(false);
+    expect(await registerWorkflowInReadme(app, hostFor(fs), README, ENTRY, stampToday)).toBe('noReadme');
 
     expect(processed).toEqual([]);
     expect(fs.snapshot()).toEqual({});

@@ -44,9 +44,8 @@ import {
   createWorkflowFileName,
   sanitizeWorkflowName,
   createWorkflowContent,
-  parseWorkflowChecklistFromReadme,
-  generateWorkflowChecklist,
-  updateReadmeWorkflowSection,
+  insertWorkflowChecklistEntries,
+  hasWorkflowChecklistSection,
   parseExperimenterFromReadme,
 } from '../lib/workflowStructure';
 import {
@@ -905,15 +904,23 @@ export function createLabnoteTools(): ToolDef[] {
         );
 
         const readme = await ctx.fs.read(readmePath);
-        const items = parseWorkflowChecklistFromReadme(readme);
-        items.push({ done: false, title: [info.id, info.name, alias].filter(Boolean).join(' '), fileName });
-        await writeNote(
-          ctx,
-          readmePath,
-          updateReadmeWorkflowSection(readme, generateWorkflowChecklist(items))
-        );
+        // A README whose section was renamed beyond recognition lists nothing (#298).
+        if (!hasWorkflowChecklistSection(readme)) {
+          return {
+            ok: true,
+            data: {
+              path: workflowPath,
+              fileName,
+              registered: false,
+              warning:
+                'The README has no "Related Workflows" section, so the workflow was not added to its checklist. Tell the user.',
+            },
+          };
+        }
+        const title = [info.id, info.name, alias].filter(Boolean).join(' ');
+        await writeNote(ctx, readmePath, insertWorkflowChecklistEntries(readme, [{ done: false, title, fileName }]));
 
-        return { ok: true, data: { path: workflowPath, fileName } };
+        return { ok: true, data: { path: workflowPath, fileName, registered: true } };
       },
       async describe(ctx, args) {
         const resolved = await resolveWorkflowCreate(ctx, args);

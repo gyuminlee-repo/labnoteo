@@ -54,7 +54,7 @@ export class WorkflowTreeView extends ItemView {
   private query = '';
   private searchTimer: number | undefined;
   /** README checklist progress by path, valid while the file's mtime is unchanged. */
-  private readonly progress = new Map<string, { mtime: number; done: number; total: number }>();
+  private readonly progress = new Map<string, { mtime: number; items: { done: boolean; fileName: string }[] }>();
   private readonly reading = new Set<string>();
 
   constructor(leaf: WorkspaceLeaf, private readonly plugin: LabnotePlugin) {
@@ -85,7 +85,15 @@ export class WorkflowTreeView extends ItemView {
       })
     );
     const onTree = (file: TAbstractFile, oldPath?: string): void => {
-      if (file instanceof TFolder || file.name === README || oldPath?.endsWith(`/${README}`)) {
+      // A workflow note coming or going changes its experiment's progress (#287).
+      const isNote = (path: string | undefined): boolean => !!path && /\.labnote\.md$/i.test(path);
+      if (
+        file instanceof TFolder ||
+        file.name === README ||
+        oldPath?.endsWith(`/${README}`) ||
+        isNote(file.path) ||
+        isNote(oldPath)
+      ) {
         this.scheduleRender();
       }
     };
@@ -188,7 +196,9 @@ export class WorkflowTreeView extends ItemView {
    * The README's "Related Workflows" progress as last read. The metadata
    * cache's list items would count every checkbox in the README, so the
    * checklist parser reads the text; a stale entry is re-read in the
-   * background and the tree drawn again once it is in.
+   * background and the tree drawn again once it is in. Only entries whose
+   * note is there count, checked on every draw: a note moved to another
+   * experiment leaves its entry behind (#287).
    */
   private checklistProgress(file: TFile): { done: number; total: number } | undefined {
     const cached = this.progress.get(file.path);
@@ -197,18 +207,24 @@ export class WorkflowTreeView extends ItemView {
       void this.app.vault
         .cachedRead(file)
         .then(text => {
-          const items = parseWorkflowChecklistFromReadme(text);
-          this.progress.set(file.path, {
-            mtime: file.stat.mtime,
-            done: items.filter(i => i.done).length,
-            total: items.length,
-          });
+          this.progress.set(file.path, { mtime: file.stat.mtime, items: parseWorkflowChecklistFromReadme(text) });
           this.scheduleRender();
         })
         .catch(() => undefined)
         .finally(() => this.reading.delete(file.path));
     }
-    return cached ? { done: cached.done, total: cached.total } : undefined;
+    if (!cached) return undefined;
+    const folder = posix.dirname(file.path);
+    const present = cached.items.filter(item => {
+      let link = item.fileName;
+      try {
+        link = decodeURI(link);
+      } catch {
+        // Looked up as written.
+      }
+      return [posix.join(folder, link), link].some(p => this.app.vault.getAbstractFileByPath(p) instanceof TFile);
+    });
+    return { done: present.filter(i => i.done).length, total: present.length };
   }
 
   async refresh(): Promise<void> {

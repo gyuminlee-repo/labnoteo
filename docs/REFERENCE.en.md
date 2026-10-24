@@ -71,6 +71,9 @@ opens its own Issue (requires Setup research automation).
   line's whole text is replaced by the marker.
 - A multi-line selection is not folded into one line: the marker goes at the end of its last line,
   with list marks left out of the topic.
+- On a README workflow checklist line the link is never replaced: the marker always goes after it,
+  and the topic box is prefilled with the label rather than the link. A line whose link became the
+  marker would no longer be a workflow entry.
 - On a heading it goes on the line below. Inside a table, the front matter, a code block
   (including code indented four spaces after a blank line) or a comment (`<!-- -->`, `%% %%`) it is
   not inserted.
@@ -82,7 +85,13 @@ opens its own Issue (requires Setup research automation).
 
 ### Create workflow
 
-Create a numbered workflow note.
+Create a numbered workflow note and add it to the README checklist.
+
+- The new line goes right after the last entry with the same or a lower number. Existing lines,
+  and to-dos or notes written between them, are left alone.
+- The section is found under a translated heading such as `## 관련 워크플로`. If the heading was
+  changed to anything else, the first `##` section holding workflow entries is used; with neither,
+  you are told the workflow was not listed.
 
 - Under a Korean UI the catalog is also searchable by Korean names and shows Korean descriptions
   (as does Insert unit operation; words of the English description still match, and items a lab
@@ -93,13 +102,27 @@ Create a numbered workflow note.
 - The alias prompt says what a workflow is and shows the chosen item's description. As you type it
   counts the characters that go into the file name (`n/room left`, which differs per workflow),
   turning the warning colour past it. Saving is not blocked.
+- If the experiment already has a workflow with the same ID and alias (both empty included), the
+  prompt warns with that file's name, since the two would read the same in the checklist. Saving
+  is not blocked.
 - On Windows, it warns when the path including the vault folder reaches 260 characters.
 
 ### Renumber workflows
 
-Renumber an experiment folder's workflows from 001 without gaps, and list any workflow missing
-from the checklist. The `<note name>.labnote_tableN.csv` files made by `Export tables to CSV` move
-to the new number too; a CSV whose new name is taken stays put, with a notice.
+Renumber an experiment folder's workflows from 001 without gaps **in the order of the README
+checklist**, and list any workflow missing from the checklist. The `<note name>.labnote_tableN.csv`
+files made by `Export tables to CSV` move to the new number too; a CSV whose new name is taken stays
+put, with a notice.
+
+- Reorder the checklist lines and run it to turn that order into numbers. A file the checklist does
+  not list goes where its number puts it.
+- The confirmation shows what the order follows and each changed file as `old → new` (more than ten
+  are summed up as "+N more"). A name whose number has the wrong number of digits (`01_…`) is fixed
+  too, marked "name format fixed".
+- Nothing changes when the numbers already follow the checklist; a README without the section is
+  reported.
+- When two notes share a number, moving a note in and `Sync workflow checklist with folder` point at
+  this command.
 
 ### Sync workflow checklist with folder
 
@@ -442,14 +465,17 @@ its view is left as it is.
 
 ### Renaming a workflow file
 
-- Renaming a workflow file in the file explorer automatically reorders the README checklist to
-  match the new number prefix.
+- Renaming a workflow file in the file explorer relinks its README checklist line. Only when the new
+  number no longer fits between its neighbours does **that line** move to its number, with the more
+  deeply indented sub-tasks under it. Your own to-do and note lines, the order of other entries, and
+  markers or notes after a link stay as they are.
 - A renamed note takes its `_tableN.csv` files along. An entry whose label matched the old file
   name follows the new name, and so do the note's `title` and `## [ID name]` heading if they
   matched it. Labels and titles you edited by hand are kept.
-- If a rename breaks the `###_….labnote.md` format, you are warned and offered a fixed name; once
-  the format is back (by accepting the offer or fixing it by hand), the checklist follows the file
-  again.
+- If a rename breaks the `###_….labnote.md` format, you are warned and offered a fixed name. When
+  there is no fix (the number became `01_`, say) or its name is taken, you are offered the old name
+  back. Once the format is back (by accepting either offer or fixing it by hand), the checklist
+  follows the file again.
 - Changing only the catalog ID in a workflow file name, so that it no longer matches the note's
   `## [ID name]`, warns and offers the old name back.
 - Renaming or moving an experiment's `README.labnote.md` warns and offers the old name back.
@@ -466,6 +492,9 @@ dropped — and its leftover `.labnote_tableN.csv` files are moved to the trash 
 - A workflow moved into another experiment folder is not listed automatically; you get a notice.
   Run `Sync workflow checklist with folder` there. `Insert workflow` (README right-click) creates a
   new workflow from the catalog, so do not use it to register a moved file.
+- Its line stays in the README checklist of the experiment it left, and a notice says to run the
+  same command there, which removes it after asking. The workflow view's progress counts only notes
+  still in the folder.
 - If the moved note uses Local samples of its old experiment, you are asked whether to bring them
   into the new experiment's registry: copied if other notes in the old experiment still use them,
   moved otherwise. When they would be copied, you choose between bringing copies and moving those

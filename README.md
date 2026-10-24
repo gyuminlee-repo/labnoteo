@@ -1,6 +1,6 @@
 # Labnote Assistant for Obsidian (labnoteo)
 
-**버전 0.121.0**
+**버전 0.122.0**
 
 [English](README.en.md)
 
@@ -57,7 +57,7 @@ Obsidian 설치와 git·GitHub 계정 준비부터 커뮤니티 플러그인·�
 | 논의 표시 전환 (`Toggle discussion flag`) | 실험의 `discuss` 표시를 켜고 끕니다 — 다음 push 때 GitHub Issue 생성 |
 | 논의 이슈 마커 삽입 (`Insert issue marker`) | 커서 위치에 `@issue;<ID>;<주제문장>` 마커를 넣습니다 — 마커마다 별도 Issue |
 | 워크플로 생성 (`Create workflow`) | 카탈로그에서 골라 번호가 매겨진 워크플로 노트를 만들고 체크리스트에 등록합니다 |
-| 워크플로 번호 다시 매기기 (`Renumber workflows`) | 실험 폴더의 워크플로 번호를 001부터 빈틈없이 다시 매깁니다 |
+| 워크플로 번호 다시 매기기 (`Renumber workflows`) | 실험 폴더의 워크플로 번호를 README 체크리스트 순서대로 001부터 빈틈없이 다시 매깁니다 |
 | 폴더와 워크플로 체크리스트 맞추기 (`Sync workflow checklist with folder`) | 옮겨 오거나 복사한 워크플로를 체크리스트에 맞추고, 어긋난 라벨·제목·실험자를 확인 후 고칩니다 |
 | 유닛 오퍼레이션 삽입 (`Insert unit operation`) | 카탈로그에서 고른 유닛 오퍼레이션을 워크플로 노트에 넣고 목차를 갱신합니다 |
 | 카탈로그 업데이트 (`Update catalogs`) | 보관함의 `resources/workflows/` 카탈로그를 이 플러그인 버전에 맞춥니다(연구실이 고친 값은 그대로) |

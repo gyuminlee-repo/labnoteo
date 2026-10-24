@@ -3,7 +3,13 @@ import {
   parseExperimenterFromReadme,
   reconcileWorkflowChecklist,
   parseWorkflowChecklistFromReadme,
-  updateReadmeWorkflowSection,
+  insertWorkflowChecklistEntries,
+  isWorkflowChecklistEntryLine,
+  workflowChecklistEntryLabel,
+  workflowChecklistOrder,
+  isMisnumberedWorkflowFileName,
+  workflowNumberClashes,
+  hasWorkflowChecklistSection,
   generateWorkflowChecklist,
   sanitizeWorkflowName,
   planWorkflowRenumber,
@@ -200,45 +206,43 @@ describe('planWorkflowExperimenterSync', () => {
 });
 
 describe('reconcileWorkflowChecklist', () => {
-  it('reorders checklist entries by numeric NNN prefix', () => {
+  it('leaves the checklist order alone without renames (#289)', () => {
     const readme = readmeWith([
       '- [ ] [Design](./002_WD010_Design.labnote.md)',
       '- [x] [Assay](./001_WS010_Assay.labnote.md)',
     ]);
     const res = reconcileWorkflowChecklist(readme, []);
-    expect(res.changed).toBe(true);
-    const order = parseWorkflowChecklistFromReadme(res.content).map(i => i.fileName);
-    expect(order).toEqual(['001_WS010_Assay.labnote.md', '002_WD010_Design.labnote.md']);
+    expect(res.changed).toBe(false);
+    expect(res.content).toBe(readme);
   });
 
-  it('remaps a renamed file (old->new basename) and re-sorts by the new NNN', () => {
+  it('relinks a renamed file in place unless asked to move it', () => {
     const readme = readmeWith([
       '- [ ] [Assay](./001_WS010_Assay.labnote.md)',
       '- [ ] [Design](./002_WD010_Design.labnote.md)',
     ]);
-    const res = reconcileWorkflowChecklist(readme, [
-      { from: '001_WS010_Assay.labnote.md', to: '003_WS010_Assay.labnote.md' },
+    const renames = [{ from: '001_WS010_Assay.labnote.md', to: '003_WS010_Assay.labnote.md' }];
+    const order = (md: string) => parseWorkflowChecklistFromReadme(md).map(i => i.fileName);
+    expect(order(reconcileWorkflowChecklist(readme, renames).content)).toEqual([
+      '003_WS010_Assay.labnote.md',
+      '002_WD010_Design.labnote.md',
     ]);
-    expect(res.changed).toBe(true);
-    const order = parseWorkflowChecklistFromReadme(res.content).map(i => i.fileName);
-    // 002 now sorts before the renamed 003; the link followed the file.
-    expect(order).toEqual(['002_WD010_Design.labnote.md', '003_WS010_Assay.labnote.md']);
+    // Renamed in the explorer: the entry moves to its number.
+    expect(order(reconcileWorkflowChecklist(readme, renames, { move: true }).content)).toEqual([
+      '002_WD010_Design.labnote.md',
+      '003_WS010_Assay.labnote.md',
+    ]);
   });
 
-  it('keeps non-standard/manual links after the standard ones', () => {
+  it('keeps non-standard/manual links where they are', () => {
     const readme = readmeWith([
       '- [ ] [Manual](./manual-notes.labnote.md)',
       '- [ ] [Second](./002_WD010_Second.labnote.md)',
       '- [ ] [First](./001_WD010_First.labnote.md)',
     ]);
     const res = reconcileWorkflowChecklist(readme, []);
-    expect(res.changed).toBe(true);
-    const order = parseWorkflowChecklistFromReadme(res.content).map(i => i.fileName);
-    expect(order).toEqual([
-      '001_WD010_First.labnote.md',
-      '002_WD010_Second.labnote.md',
-      'manual-notes.labnote.md',
-    ]);
+    expect(res.changed).toBe(false);
+    expect(res.content).toBe(readme);
   });
 
   it('is idempotent: a second pass with no renames reports no change', () => {
@@ -320,8 +324,9 @@ describe('vault-absolute checklist links (#102)', () => {
 // only `.labnote.md` links were parsed back out and regenerated. Everything in
 // between was deleted with no message — and this section is exactly where a
 // researcher keeps loose to-dos, so the loss was routine rather than exotic.
-describe('updateReadmeWorkflowSection preserves lines it does not own', () => {
+describe('insertWorkflowChecklistEntries preserves lines it does not own', () => {
   const entry = (n: string, title: string) => `- [ ] [${title}](./${n}.labnote.md)`;
+  const assay = { done: false, title: 'Assay', fileName: '002_WS010_Assay.labnote.md' };
 
   it("keeps the researcher's own checkbox lines", () => {
     const readme = readmeWith([
@@ -330,30 +335,16 @@ describe('updateReadmeWorkflowSection preserves lines it does not own', () => {
       '- [x] 시약 재주문',
     ]);
 
-    const updated = updateReadmeWorkflowSection(
-      readme,
-      generateWorkflowChecklist([
-        { done: false, title: 'Design', fileName: '001_WD010_Design.labnote.md' },
-        { done: false, title: 'Assay', fileName: '002_WS010_Assay.labnote.md' },
-      ])
-    );
+    const updated = insertWorkflowChecklistEntries(readme, [assay]);
 
     expect(updated).toContain('- [ ] 김박사님께 annealing 온도 문의');
     expect(updated).toContain('- [x] 시약 재주문');
-    expect(updated).toContain('002_WS010_Assay.labnote.md');
+    expect(updated).toContain(entry('001_WD010_Design', 'Design') + '\n' + entry('002_WS010_Assay', 'Assay'));
   });
 
   it('keeps a checkbox link that points somewhere other than a workflow note', () => {
     const readme = readmeWith([entry('001_WD010_Design', 'Design'), '- [x] [protocol](./protocol.md)']);
-
-    const updated = updateReadmeWorkflowSection(
-      readme,
-      generateWorkflowChecklist([
-        { done: false, title: 'Design', fileName: '001_WD010_Design.labnote.md' },
-      ])
-    );
-
-    expect(updated).toContain('- [x] [protocol](./protocol.md)');
+    expect(insertWorkflowChecklistEntries(readme, [assay])).toContain('- [x] [protocol](./protocol.md)');
   });
 
   it('keeps prose and the instruction blockquote', () => {
@@ -365,32 +356,28 @@ describe('updateReadmeWorkflowSection preserves lines it does not own', () => {
       '재현성 관련 메모는 아래 Notes 절에 적었습니다.',
     ]);
 
-    const updated = updateReadmeWorkflowSection(
-      readme,
-      generateWorkflowChecklist([
-        { done: false, title: 'Design', fileName: '001_WD010_Design.labnote.md' },
-      ])
-    );
+    const updated = insertWorkflowChecklistEntries(readme, [assay]);
 
     expect(updated).toContain('> 워크플로를 추가하려면 명령 팔레트를 사용하세요.');
     expect(updated).toContain('재현성 관련 메모는 아래 Notes 절에 적었습니다.');
   });
 
-  it('groups regenerated entries where the first one was', () => {
-    // Entries interleaved with a note must not end up split across it.
+  it('leaves a to-do between entries where it was when an entry moves (#290)', () => {
     const readme = readmeWith([
       entry('002_WD010_Second', 'Second'),
       '- [ ] 손으로 적은 할 일',
       entry('001_WD010_First', 'First'),
     ]);
 
-    const { content } = reconcileWorkflowChecklist(readme, []);
-    const lines = content.split('\n');
-    const first = lines.findIndex(l => l.includes('001_WD010_First'));
-    const second = lines.findIndex(l => l.includes('002_WD010_Second'));
+    const { content } = reconcileWorkflowChecklist(
+      readme,
+      [{ from: '001_WD010_First.labnote.md', to: '003_WD010_First.labnote.md' }],
+      { move: true }
+    );
 
-    expect(second).toBe(first + 1);
-    expect(content).toContain('- [ ] 손으로 적은 할 일');
+    expect(content).toBe(
+      readmeWith([entry('002_WD010_Second', 'Second'), '- [ ] 손으로 적은 할 일', entry('003_WD010_First', 'First')])
+    );
   });
 
   it('does not touch a checkbox line in a later section', () => {
@@ -404,31 +391,103 @@ describe('updateReadmeWorkflowSection preserves lines it does not own', () => {
       '- [ ] [Other](./999_WD999_Other.labnote.md)',
     ].join('\n');
 
-    const updated = updateReadmeWorkflowSection(
-      readme,
-      generateWorkflowChecklist([
-        { done: false, title: 'Design', fileName: '001_WD010_Design.labnote.md' },
-      ])
-    );
+    const updated = insertWorkflowChecklistEntries(readme, [assay]);
 
     expect(updated).toContain('- [ ] [Other](./999_WD999_Other.labnote.md)');
+    expect(updated).toContain(entry('001_WD010_Design', 'Design') + '\n' + entry('002_WS010_Assay', 'Assay'));
   });
 
   it('inserts after the blockquote when the section has no entries yet', () => {
     const readme = readmeWith(['> 지침 문구']);
 
-    const updated = updateReadmeWorkflowSection(
-      readme,
-      generateWorkflowChecklist([
-        { done: false, title: 'Design', fileName: '001_WD010_Design.labnote.md' },
-      ])
-    );
+    const updated = insertWorkflowChecklistEntries(readme, [
+      { done: false, title: 'Design', fileName: '001_WD010_Design.labnote.md' },
+    ]);
 
     const lines = updated.split('\n');
     const quote = lines.findIndex(l => l.startsWith('> '));
     const inserted = lines.findIndex(l => l.includes('001_WD010_Design'));
     expect(inserted).toBeGreaterThan(quote);
     expect(lines[inserted - 1].trim()).toBe('');
+  });
+});
+
+describe('checklist lines are edited in place (#293, #290)', () => {
+  const A = '001_WD010_A.labnote.md';
+  const B = '002_WB030_B.labnote.md';
+  const C = '003_WT020_C.labnote.md';
+
+  it('reads entries with any list marker, indent and a tail', () => {
+    const readme = readmeWith([
+      `* [ ] [A](./${A}) @issue;LN-x;확인 필요`,
+      `  + [x] [B](./${B}) 메모`,
+      `[ ] [C](${C})`,
+    ]);
+    expect(parseWorkflowChecklistFromReadme(readme)).toEqual([
+      { done: false, title: 'A', fileName: A },
+      { done: true, title: 'B', fileName: B },
+      { done: false, title: 'C', fileName: C },
+    ]);
+  });
+
+  it('keeps the tail, marker and indent of a relinked and relabelled entry', () => {
+    const readme = readmeWith([`  * [x] [WD010 A](./${A}) @issue;LN-x;확인 필요`]);
+    const res = reconcileWorkflowChecklist(readme, [{ from: A, to: '004_WD010_A.labnote.md' }], {
+      labelFor: () => 'WD010 A 2차',
+    });
+    expect(res.content).toBe(readmeWith(['  * [x] [WD010 A 2차](./004_WD010_A.labnote.md) @issue;LN-x;확인 필요']));
+  });
+
+  it('keeps the tail when a label is replaced or an entry removed', () => {
+    const readme = readmeWith([`- [ ] [Old](./${A}) 메모`, `- [ ] [B](./${B}) 남김`]);
+    expect(relabelWorkflowChecklistEntries(readme, [{ fileName: A, from: 'Old', to: 'New' }])).toBe(
+      readmeWith([`- [ ] [New](./${A}) 메모`, `- [ ] [B](./${B}) 남김`])
+    );
+    expect(removeWorkflowChecklistEntries(readme, [A])).toBe(readmeWith([`- [ ] [B](./${B}) 남김`]));
+  });
+
+  it('moves an entry together with the lines indented under it', () => {
+    const readme = readmeWith([
+      `- [ ] [A](./${A})`,
+      '    - [ ] A의 하위 할 일',
+      '- [ ] 같은 깊이의 할 일',
+      `- [ ] [B](./${B})`,
+    ]);
+    const res = reconcileWorkflowChecklist(readme, [{ from: A, to: '003_WD010_A.labnote.md' }], { move: true });
+    expect(res.content).toBe(
+      readmeWith([
+        '- [ ] 같은 깊이의 할 일',
+        `- [ ] [B](./${B})`,
+        '- [ ] [A](./003_WD010_A.labnote.md)',
+        '    - [ ] A의 하위 할 일',
+      ])
+    );
+  });
+
+  it('leaves an entry that is still in number order where it is', () => {
+    const readme = readmeWith([`- [ ] [A](./${A})`, `- [ ] [B](./${B})`, '- [ ] 할 일']);
+    const res = reconcileWorkflowChecklist(readme, [{ from: B, to: '006_WB030_B.labnote.md' }], { move: true });
+    expect(res.content).toBe(readmeWith([`- [ ] [A](./${A})`, '- [ ] [B](./006_WB030_B.labnote.md)', '- [ ] 할 일']));
+  });
+
+  it('inserts a new entry after the last one at or below its number, in the marker style used', () => {
+    const readme = readmeWith([`* [ ] [C](./${C})`, `* [ ] [A](./${A})`, '* [ ] 할 일']);
+    expect(insertWorkflowChecklistEntries(readme, [{ done: false, title: 'B', fileName: B }])).toBe(
+      readmeWith([`* [ ] [C](./${C})`, `* [ ] [A](./${A})`, `* [ ] [B](./${B})`, '* [ ] 할 일'])
+    );
+    expect(
+      insertWorkflowChecklistEntries(readme, [{ done: false, title: 'D', fileName: '004_WD010_D.labnote.md' }])
+    ).toBe(readmeWith([`* [ ] [C](./${C})`, `* [ ] [A](./${A})`, '* [ ] [D](./004_WD010_D.labnote.md)', '* [ ] 할 일']));
+    expect(
+      insertWorkflowChecklistEntries(readme, [{ done: false, title: 'Z', fileName: '000_WD010_Z.labnote.md' }])
+    ).toBe(readmeWith(['* [ ] [Z](./000_WD010_Z.labnote.md)', `* [ ] [C](./${C})`, `* [ ] [A](./${A})`, '* [ ] 할 일']));
+  });
+
+  it('tells a workflow entry line and gives its label', () => {
+    expect(isWorkflowChecklistEntryLine(`- [ ] [WD010 A \\[1\\]](./${A}) 메모`)).toBe(true);
+    expect(isWorkflowChecklistEntryLine(`- [ ] @issue;LN-x;[A](./${A})`)).toBe(false);
+    expect(workflowChecklistEntryLabel(`- [ ] [WD010 A](./${A})`)).toBe('WD010 A');
+    expect(workflowChecklistEntryLabel('- [ ] 할 일')).toBeUndefined();
   });
 });
 
@@ -497,6 +556,92 @@ describe('buildRenumberStagingName', () => {
     for (const name of staged) {
       expect(renames.some(r => r.from === name)).toBe(false);
     }
+  });
+});
+
+describe('planWorkflowRenumber by checklist order (#289)', () => {
+  const A = '001_WD010_A.labnote.md';
+  const B = '002_WB030_B.labnote.md';
+  const C = '003_WT020_C.labnote.md';
+
+  it('numbers files in the order the checklist lists them', () => {
+    const readme = readmeWith([`- [ ] [C](./${C})`, '- [ ] 할 일', `- [ ] [A](./${A})`, `- [ ] [B](./${B})`]);
+    const order = workflowChecklistOrder(readme, [A, B, C, 'README.labnote.md']);
+    expect(order).toEqual([C, A, B]);
+    expect(planWorkflowRenumber([A, B, C], order)).toEqual([
+      { from: C, to: '001_WT020_C.labnote.md' },
+      { from: A, to: '002_WD010_A.labnote.md' },
+      { from: B, to: '003_WB030_B.labnote.md' },
+    ]);
+  });
+
+  it('plans nothing when the numbers already follow the checklist', () => {
+    expect(planWorkflowRenumber([A, B, C], [A, B, C])).toEqual([]);
+  });
+
+  it('lists a file once and skips entries without a file', () => {
+    const readme = readmeWith([`- [ ] [A](./${A})`, `- [ ] [A again](./${A})`, '- [ ] [Gone](./004_WD010_Gone.labnote.md)']);
+    expect(workflowChecklistOrder(readme, [A, B])).toEqual([A]);
+  });
+
+  it('puts an unlisted file before the first listed one that sorts after it', () => {
+    const moved = '002_WT100_Moved.labnote.md';
+    expect(planWorkflowRenumber([A, moved, C], [A, C])).toEqual([]);
+    // C (003) is the first listed file after it, even though A comes later.
+    expect(planWorkflowRenumber([A, moved, C], [C, A])).toEqual([
+      { from: moved, to: '001_WT100_Moved.labnote.md' },
+      { from: C, to: '002_WT020_C.labnote.md' },
+      { from: A, to: '003_WD010_A.labnote.md' },
+    ]);
+  });
+
+  it('fixes a number with the wrong number of digits', () => {
+    const short = '01_WB030_B.labnote.md';
+    expect(isMisnumberedWorkflowFileName(short)).toBe(true);
+    expect(isMisnumberedWorkflowFileName(A)).toBe(false);
+    expect(isMisnumberedWorkflowFileName('01_notes.labnote.md')).toBe(false);
+    expect(planWorkflowRenumber([A, short], [A, short])).toEqual([{ from: short, to: '002_WB030_B.labnote.md' }]);
+  });
+
+  it('swaps two files, parking only on a name still taken', () => {
+    const renames = planWorkflowRenumber([A, B], [B, A]);
+    expect(renames).toEqual([
+      { from: B, to: '001_WB030_B.labnote.md' },
+      { from: A, to: '002_WD010_A.labnote.md' },
+    ]);
+    expect(planRenumberMoves(renames, [A, B])).toEqual([
+      { from: B, to: '001_WB030_B.labnote.md' },
+      { from: A, to: '002_WD010_A.labnote.md' },
+    ]);
+  });
+});
+
+describe('finding the Related Workflows section (#298)', () => {
+  const entry = '- [ ] [A](./001_WD010_A.labnote.md)';
+  const md = (heading: string) => ['# E', '', heading, '', entry, '', '## Summary and Discussion', ''].join('\n');
+
+  it('matches a translated or decorated heading', () => {
+    for (const heading of ['## 관련 워크플로', '## 🗂️ 관련 워크플로 (Related Workflows)', '## related workflows']) {
+      expect(hasWorkflowChecklistSection(md(heading))).toBe(true);
+      expect(parseWorkflowChecklistFromReadme(md(heading))).toHaveLength(1);
+    }
+  });
+
+  it('falls back to the first section holding a workflow entry', () => {
+    expect(parseWorkflowChecklistFromReadme(md('## 실험 단계'))).toHaveLength(1);
+    expect(hasWorkflowChecklistSection(md('## 실험 단계').replace(entry, ''))).toBe(false);
+  });
+});
+
+describe('workflowNumberClashes (#288)', () => {
+  it('lists the files that share a number', () => {
+    const names = ['001_WD010_A.labnote.md', '002_WB030_B.labnote.md', '002_WT020_C.labnote.md', 'README.labnote.md'];
+    expect(workflowNumberClashes(names)).toEqual(['002_WB030_B.labnote.md', '002_WT020_C.labnote.md']);
+    expect(planWorkflowChecklistSync(readmeWith([]), names).numberClashes).toEqual([
+      '002_WB030_B.labnote.md',
+      '002_WT020_C.labnote.md',
+    ]);
+    expect(planWorkflowChecklistSync('# no section', names).numberClashes).toHaveLength(2);
   });
 });
 
