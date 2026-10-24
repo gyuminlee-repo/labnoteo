@@ -27,6 +27,7 @@ import {
   commentRanges,
   findIssueMarkerRanges,
   findSampleIdRanges,
+  markerSpanAcrossRuns,
   staleSampleAliasEnd,
   type IssueMarkerRange,
 } from '@labnoteo/core';
@@ -325,12 +326,53 @@ export function createSampleReadingHighlighter(
   };
 }
 
+/** Elements that stay on the line of the text before them; anything else ends it. */
+const INLINE_TAGS = new Set(['A', 'B', 'CODE', 'DEL', 'EM', 'I', 'INS', 'KBD', 'MARK', 'S', 'SPAN', 'STRONG', 'SUB', 'SUP', 'U']);
+
+/**
+ * Wrap each marker whose topic runs into a link, code, bold or italics in
+ * one marker span, those elements included (#292). Done before the text
+ * nodes are styled, so the sample IDs inside such a marker stay plain, as
+ * they do in a marker of plain text.
+ */
+function wrapFormattedMarkers(root: HTMLElement): void {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const starts: Text[] = [];
+  let node: Node | null;
+  while ((node = walker.nextNode())) {
+    const textNode = node as Text;
+    if (!/@issue[;:]/i.test(textNode.data)) continue;
+    if (textNode.parentElement?.closest(`code, pre, a, .${ISSUE_MARKER_CLASS}`)) continue;
+    starts.push(textNode);
+  }
+  for (const textNode of starts) {
+    const line: ChildNode[] = [];
+    for (let n = textNode.nextSibling; n; n = n.nextSibling) {
+      const inline = n.nodeType === Node.TEXT_NODE || (n.nodeType === Node.ELEMENT_NODE && INLINE_TAGS.has(n.nodeName));
+      if (!inline) break;
+      line.push(n);
+    }
+    const runs = [textNode, ...line].map(n => ({ text: n.textContent ?? '', isText: n.nodeType === Node.TEXT_NODE }));
+    const span = markerSpanAcrossRuns(runs);
+    if (!span) continue;
+    const taken = line.slice(0, span.lastRun);
+    const last = taken[taken.length - 1];
+    if (last.nodeType === Node.TEXT_NODE && span.endInLast < (last as Text).length) (last as Text).splitText(span.endInLast);
+    const marker = textNode.splitText(span.start);
+    const el = document.createElement('span');
+    el.className = ISSUE_MARKER_CLASS;
+    marker.before(el);
+    el.append(marker, ...taken);
+  }
+}
+
 function highlightTextNodes(
   root: HTMLElement,
   types: string[],
   colors: Record<string, string>,
   opts: MarkerOptions = {}
 ): void {
+  wrapFormattedMarkers(root);
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const targets: Text[] = [];
   let node: Node | null;

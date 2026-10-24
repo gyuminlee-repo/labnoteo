@@ -292,6 +292,45 @@ export function findIssueMarkerRanges(text: string, hidden?: (at: number) => boo
   return ranges;
 }
 
+/** A piece of a rendered line: a text node, or an inline element such as a link or bold. */
+export interface InlineRun {
+  text: string;
+  /** A text node, which a line break inside may end the line in. */
+  isText: boolean;
+}
+
+/**
+ * The reading view splits a marker whose topic has a link, code, bold or
+ * italics into a text node and the elements after it (#292). Given a text
+ * node and the inline siblings after it up to the next line break or block,
+ * where a marker starting in that text node ends: the runs after the first
+ * it takes whole, the last of them only up to `endInLast`. Undefined when no
+ * marker starting there runs on past the text node, which the text node
+ * alone then shows. A topic made only of formatting (`@issue;ID;` then bold)
+ * counts, since the line is read whole.
+ */
+export function markerSpanAcrossRuns(
+  runs: readonly InlineRun[]
+): { start: number; lastRun: number; endInLast: number } | undefined {
+  if (runs.length < 2 || !runs[0].isText) return undefined;
+  const first = runs[0].text;
+  const lineStart = first.lastIndexOf('\n') + 1;
+  let line = first.slice(lineStart);
+  let lastRun = 0;
+  let endInLast = first.length;
+  for (let i = 1; i < runs.length; i++) {
+    const run = runs[i];
+    const nl = run.isText ? run.text.indexOf('\n') : -1;
+    line += nl === -1 ? run.text : run.text.slice(0, nl);
+    lastRun = i;
+    endInLast = nl === -1 ? run.text.length : nl;
+    if (nl !== -1) break;
+  }
+  const marker = findIssueMarkerRanges(line)[0];
+  if (!marker || lineStart + marker.start >= first.length) return undefined;
+  return { start: lineStart + marker.start, lastRun, endInLast };
+}
+
 /**
  * Character ranges of the fenced code blocks in `md`, fence lines included,
  * fenced exactly as {@link parseIssueMarkers} fences them: a marker the editor
@@ -499,7 +538,6 @@ export function planIssueMarkerInsertion(
   if (codeBlockRanges(doc).some(r => lineStart >= r.start && lineStart <= r.end)) {
     return { reason: 'codeBlock' };
   }
-  if (isTableRow(line)) return { reason: 'table' };
 
   let edit: { from: number; to: number; insert: string };
   if (isHeadingLine(line)) {
@@ -517,6 +555,10 @@ export function planIssueMarkerInsertion(
   const comments = commentRanges(after);
   const markerAt = edit.from + edit.insert.length - marker.length;
   if (inRanges(comments, markerAt)) return { reason: 'comment' };
+  // After the comment check, so a commented-out table line gets the comment
+  // reason (#282); before the conflict one, so a table row holding a marker
+  // is still refused as a table.
+  if (isTableRow(line)) return { reason: 'table' };
   const resultStart = after.lastIndexOf('\n', markerAt - 1) + 1;
   const resultEnd = after.indexOf('\n', markerAt);
   const resultLine = after.slice(resultStart, resultEnd === -1 ? after.length : resultEnd);
