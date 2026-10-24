@@ -220,7 +220,9 @@ describe('runAgent', () => {
       });
       expect(asked).toBe(0);
       expect(ran).toEqual([]);
-      expect(run.executed).toEqual([{ call: call('write_thing'), outcome: 'rejected', mutates: true }]);
+      expect(run.executed).toEqual([
+        { call: call('write_thing'), outcome: 'rejected', mutates: true, error: 'Section not found: Results' },
+      ]);
       const toolMessage = provider.seen[1][provider.seen[1].length - 1];
       expect(toolMessage.content).toBe(JSON.stringify({ error: 'Section not found: Results' }));
     });
@@ -259,8 +261,10 @@ describe('runAgent', () => {
 
     const second = provider.seen[1];
     expect(second[second.length - 1].content).toContain('Unknown tool');
-    // An unknown name never counts as executed.
-    expect(run.executed).toEqual([]);
+    // Counted as a failed read, so the end notice can say why (#281).
+    expect(run.executed).toEqual([
+      { call: call('no_such_tool'), outcome: 'failed', mutates: false, error: 'Unknown tool: no_such_tool' },
+    ]);
   });
 
   it('tells the model which arguments the tool ignored', async () => {

@@ -53,6 +53,21 @@ describe('listWorksheetUnitOps', () => {
     });
   });
 
+  it('leaves the AI draft line out of the Method steps (#280)', () => {
+    const md = buildNote([hw('UHW010')]).replace(
+      '#### Method\n- (method used in this step)',
+      '#### Method\n> [!note] AI draft (llama3.1, 2026-10-24) — review it, then delete this line\n\n1. Thaw cells\n2. Spin'
+    );
+    expect(listWorksheetUnitOps(md)[0].sections.find(s => s.title === 'Method')).toEqual({
+      type: 'steps',
+      title: 'Method',
+      steps: [
+        { text: 'Thaw cells', sub: [] },
+        { text: 'Spin', sub: [] },
+      ],
+    });
+  });
+
   it('drops blank lines from written text', () => {
     const md = buildNote([hw('UHW010')]).replace(
       '#### Results & Discussions\n- (Any results and discussions. Link file path if needed)',

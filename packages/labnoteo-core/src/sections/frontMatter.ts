@@ -17,6 +17,11 @@ export interface FrontMatterParse {
   parseError?: string;
 }
 
+/** `md` without its leading `---` YAML front matter, when it has one. */
+export function stripFrontMatter(md: string): string {
+  return md.replace(/^---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/, '');
+}
+
 /**
  * Parse a `---` front-matter block using a real YAML parser (js-yaml).
  *

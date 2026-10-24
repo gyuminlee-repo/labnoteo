@@ -133,6 +133,8 @@ import { refreshAutomationFiles } from './scaffold/scaffold';
 import {
   draftMethodCommand,
   summarizeResultsCommand,
+  summarizeExperimentCommand,
+  isExperimentReadme,
   extractSamplesCommand,
   askAgentCommand,
 } from './llm/commands';
@@ -528,8 +530,23 @@ export default class LabnotePlugin extends Plugin {
     });
     this.addCommand({
       id: 'ai-summarize-results',
-      name: this.paletteName('AI: Summarize results'),
-      callback: () => this.run(() => summarizeResultsCommand(this)),
+      name: this.paletteName('AI: Summarize workflow results'),
+      checkCallback: checking => {
+        const path = this.app.workspace.getActiveFile()?.path;
+        if (path && isExperimentReadme(path)) return false;
+        if (!checking) this.run(() => summarizeResultsCommand(this));
+        return true;
+      },
+    });
+    this.addCommand({
+      id: 'ai-summarize-experiment',
+      name: this.paletteName('AI: Summarize experiment results'),
+      checkCallback: checking => {
+        const path = this.app.workspace.getActiveFile()?.path;
+        if (!path || !isExperimentReadme(path)) return false;
+        if (!checking) this.run(() => summarizeExperimentCommand(this));
+        return true;
+      },
     });
     this.addCommand({
       id: 'ai-extract-samples',

@@ -10,6 +10,7 @@
 import { findSectionMatches, sectionBodyEnd, stepFence, type OpenFence } from './sectionEdit';
 import { UNIT_OP_HEADING_PATTERN } from './workflowSectionParser';
 import { scanDocumentHead, isBeforeBody } from './documentHead';
+import { stripFrontMatter } from './frontMatter';
 import { SW_PLACEHOLDERS, HW_PLACEHOLDERS } from '../lib/unitOpTemplate';
 
 /** The `#### Method` subsection of one unit operation. */
@@ -124,7 +125,7 @@ export function listUnitOpMethods(md: string): UnitOpMethodLocation[] {
  * whole section.
  */
 export function cleanMethodDraft(output: string): string {
-  const noFront = output.trim().replace(/^---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/, '');
+  const noFront = stripFrontMatter(output.trim());
   const body = extractMethodBody(noFront);
   if (body) return body;
   return noFront

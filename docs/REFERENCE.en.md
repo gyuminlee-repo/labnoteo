@@ -412,17 +412,26 @@ Draft an experimental method with the configured LLM.
   already has content. Run elsewhere, it asks which of the note's unit operations to fill.
 - In a note without unit operations, the front matter and heading lines the model added are dropped
   and the draft goes after the cursor's line.
+- The draft starts with a `> [!note] AI draft (model, date) — review it, then delete this line`
+  line. Delete it once you have checked the draft; left in place, it does not shift the step
+  numbers of the printed worksheet.
 - It goes in only if that note is still open when the reply arrives; if you moved to another note,
   the reply opens in the answer dialog (return to the note and press `Insert into note`, or `Copy`).
   A note that was only renamed meanwhile is still the same note, so the reply goes in.
 
-### AI: Summarize results
+### AI: Summarize workflow results
 
-Summarize results with the configured LLM, wrapped in a `> [!note] AI summary (model, date)`
-callout and inserted after the cursor's line.
+Summarize the results of a workflow note with the configured LLM. Not listed in an experiment
+README, which has the next command.
 
-- With the cursor in the front matter or above the first heading, it is appended at the end of the
-  note (the last section).
+- Only the result sections go to the model (`Results & Discussions`, `QC Metrics`, `Discussion`,
+  `Conclusions and Discussion` and sections of your own), each headed by its unit operation;
+  front matter, reagent and equipment lists stay out.
+- The summary goes at the end of `Conclusions and Discussion` as a
+  `> [!note] AI workflow results summary (model, date)` callout (at the end of the note without
+  that section). Running it again asks before replacing the summary already there.
+- In a note outside the template the whole note is sent and the summary goes after the cursor's
+  line as `> [!note] AI summary (model, date)`.
 - In a workflow note with no results written yet — its `Results & Discussions`, `QC Metrics`,
   `Discussion` and `Conclusions and Discussion` empty or still holding the template wording, and
   no section of the researcher's own — it stops instead of asking the model, so nothing is
@@ -432,6 +441,20 @@ callout and inserted after the cursor's line.
   reads, and it is told not to invent a measurement that is not in the note.
 - Moving to another note while waiting opens the answer dialog, as for the Method draft.
 - The summary and the Method draft ask the model to write in Obsidian's interface language.
+
+### AI: Summarize experiment results
+
+From an experiment README, summarize the whole experiment. Listed only in a README.
+
+- Reads the result sections of every workflow note in the folder, in README checklist order (notes
+  the checklist misses come after, by number), plus your own notes in the README's
+  `Summary and Discussion`. Open notes are read as they are in the editor.
+- About 10,000 characters of results are sent, shared among the notes; what a short note leaves
+  goes to the others.
+- The summary goes at the end of `Summary and Discussion` as a
+  `> [!note] AI experiment results summary (model, date)` callout. Running it again asks before
+  replacing it.
+- When no workflow note has results written yet it stops without asking the model.
 
 ### AI: Extract sample definitions
 
@@ -455,7 +478,10 @@ current note.
   added to the note on its own.
 - With no answer and no tool called, it says the request may be outside the tools it can use.
 - The end notice counts changes made, lookups, writes you denied, and failed calls, and says when
-  nothing in the vault changed.
+  nothing in the vault changed. Failed or denied calls are named with their target and reason, up
+  to three (`Failed: update_section (Method) — …`, then `+N more`).
+- When at least one change was made, an empty final answer does not bring up the "The model gave no
+  answer" notice.
 
 ## Views and the rest
 

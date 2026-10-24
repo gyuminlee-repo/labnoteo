@@ -8,6 +8,7 @@
  * added themselves.
  */
 import { stepFence, type OpenFence } from '../sections/sectionEdit';
+import { stripFrontMatter } from '../sections/frontMatter';
 import { HW_PLACEHOLDERS, SW_PLACEHOLDERS } from './unitOpTemplate';
 
 /**
@@ -69,6 +70,7 @@ export function stripTemplatePlaceholders(md: string): string {
 }
 
 interface HeadingSection {
+  level: number;
   title: string;
   body: string[];
 }
@@ -84,7 +86,7 @@ function sections(md: string): HeadingSection[] {
     fence = next;
     const heading = inFence ? null : HEADING_RE.exec(line);
     if (heading) {
-      current = { title: heading[2].trim(), body: [] };
+      current = { level: heading[1].length, title: heading[2].trim(), body: [] };
       out.push(current);
     } else if (current) {
       current.body.push(line);
@@ -125,4 +127,47 @@ export function hasRecordedResults(md: string): boolean {
     ({ title, body }) =>
       !BRACKET_HEADING_RE.test(title) && !TEMPLATE_HEADINGS.has(title) && written(body)
   );
+}
+
+/**
+ * The result sections of a workflow note, each headed by the unit operation
+ * it is in (`[UHW010 Liquid Handling] 조건 A › Results & Discussions`), for a
+ * model to summarize (#279, #306): the sections {@link hasRecordedResults}
+ * counts, with nothing of the front matter, the template, the reagent lists
+ * or earlier AI answers. Empty when nothing is written in.
+ */
+export function extractResultSections(md: string): string {
+  const text = stripTemplatePlaceholders(stripAiCallouts(stripFrontMatter(md)));
+  const out: string[] = [];
+  let block = '';
+  for (const { level, title, body } of sections(text)) {
+    if (BRACKET_HEADING_RE.test(title)) {
+      block = level >= 3 ? title : '';
+      continue;
+    }
+    if (level <= 2) block = '';
+    if (TEMPLATE_HEADINGS.has(title) || !written(body)) continue;
+    const content = body
+      .filter(line => !RULE_RE.test(line.trim()))
+      .join('\n')
+      .trim();
+    out.push(`### ${block ? `${block} › ` : ''}${title}\n${content}`);
+  }
+  return out.join('\n\n');
+}
+
+/**
+ * Split `total` characters between texts of `lengths` (#306): each gets an
+ * equal share, and what a short one leaves goes to the others in turn.
+ */
+export function shareBudget(lengths: readonly number[], total: number): number[] {
+  const out = lengths.map(() => 0);
+  const order = lengths.map((len, i) => ({ len, i })).sort((a, b) => a.len - b.len);
+  let left = total;
+  order.forEach(({ len, i }, k) => {
+    const share = Math.floor(left / (order.length - k));
+    out[i] = Math.min(len, share);
+    left -= out[i];
+  });
+  return out;
 }

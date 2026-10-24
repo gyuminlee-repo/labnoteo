@@ -59,7 +59,14 @@ export {
 
 // Whether a note holds results, so the AI summary stops instead of inventing
 // them (#257).
-export { hasRecordedResults, stripAiCallouts, stripTemplatePlaceholders } from './lib/noteResults';
+export {
+  extractResultSections,
+  hasRecordedResults,
+  shareBudget,
+  stripAiCallouts,
+  stripTemplatePlaceholders,
+} from './lib/noteResults';
+export { findAiCalloutInSection, planSectionAppend, sectionText } from './sections/summaryInsert';
 
 // Scanned worksheet pages filed under each unit operation.
 export {
@@ -82,6 +89,7 @@ export {
 export {
   parseFrontMatterYaml,
   serializeFrontMatterEntry,
+  stripFrontMatter,
   planDateInsertion,
   type DateInsertion,
 } from './sections/frontMatter';

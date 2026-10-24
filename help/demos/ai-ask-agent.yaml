@@ -1,5 +1,5 @@
 id: ai-ask-agent
-order: 29
+order: 30
 section: ai
 title: { ko: "AI: 어시스턴트에게 요청", en: "AI: Ask assistant" }
 seed: basic

@@ -553,6 +553,19 @@ describe('update_section', () => {
       expect(after).not.toContain('embed-2');
     });
 
+    // #311: an aliased unit operation could only be named with its brackets.
+    it('tells repeated unit operations apart by alias, with or without brackets', async () => {
+      for (const parentHeading of ['USW230 Sequence Embedding 재실행', 'USW230 Sequence Embedding | 재실행', '재실행']) {
+        await fs.write(NOTE_PATH, doc);
+        const res = await run({ parentHeading });
+        expect(res.ok).toBe(true);
+        expect(res.data).toMatchObject({ parentHeading: '[USW230 Sequence Embedding] 재실행', total: 1 });
+        expect(await fs.read(NOTE_PATH)).toContain('embed-1');
+      }
+      await fs.write(NOTE_PATH, doc);
+      expect((await run({ parentHeading: '재' })).error).toContain('No "Method" section under "재"');
+    });
+
     it('takes occurrence alone and rejects out-of-range or bad values', async () => {
       await fs.write(NOTE_PATH, doc);
       expect((await run({ occurrence: 3 })).ok).toBe(true);

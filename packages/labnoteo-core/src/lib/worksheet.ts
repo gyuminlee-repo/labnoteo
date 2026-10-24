@@ -11,6 +11,7 @@ import { listUnitOpBlocks, WORKSHEET_SCANS_HEADING } from '../sections/scanInser
 import { stepFence, type OpenFence } from '../sections/sectionEdit';
 import { fitRow, SEPARATOR_ROW_RE, splitTableRow } from './exportTablesCsv';
 import { HW_PLACEHOLDERS, SW_PLACEHOLDERS } from './unitOpTemplate';
+import { stripAiCallouts } from './noteResults';
 
 export type UnitOpKind = 'hw' | 'sw';
 
@@ -197,7 +198,9 @@ const trimBlankEdges = (lines: string[]): string[] => {
 };
 
 function toSection(raw: RawSection): WorksheetSection {
-  const body = trimBlankEdges(raw.lines.map(l => l.trimEnd()));
+  // The `> [!note] AI draft` line over a drafted Method would print as step 1 (#280).
+  const lines = raw.title === 'Method' ? stripAiCallouts(raw.lines.join('\n')).split('\n') : raw.lines;
+  const body = trimBlankEdges(lines.map(l => l.trimEnd()));
   const text = body.join('\n').trim();
   if (raw.title === 'Meta') {
     const fields = body
