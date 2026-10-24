@@ -1,7 +1,7 @@
 {
   "name": "labnoteo",
   "private": true,
-  "version": "0.122.0",
+  "version": "0.123.0",
   "type": "module",
   "description": "Markdown-based lab notebook with sample tracking, workflow checklists, and LLM assistance for biology and bioinformatics experiments.",
   "license": "Apache-2.0",
