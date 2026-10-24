@@ -65,8 +65,9 @@ import {
   createWorkflowFileName,
   createWorkflowContent,
   parseWorkflowChecklistFromReadme,
-  generateWorkflowChecklist,
-  updateReadmeWorkflowSection,
+  insertWorkflowChecklistEntries,
+  isWorkflowChecklistEntryLine,
+  workflowChecklistEntryLabel,
   parseExperimenterFromReadme,
   reconcileWorkflowChecklist,
   planWorkflowRenumber,
@@ -515,12 +516,23 @@ export async function insertIssueMarkerCommand(editor: Editor, host: LabnoteHost
     return false;
   };
 
+  // A README workflow entry whose link became the marker would no longer be an
+  // entry (#293): there the marker always goes after the link.
+  const lineAt = (text: string, offset: number): string => {
+    const nl = text.indexOf('\n', offset);
+    return text.slice(text.lastIndexOf('\n', offset - 1) + 1, nl === -1 ? text.length : nl);
+  };
+
   let doc = editor.getValue();
   const from = editor.posToOffset(editor.getCursor('from'));
   const to = editor.posToOffset(editor.getCursor('to'));
   let plan;
   if (from !== to) {
-    plan = planIssueMarkerInsertion(doc, from, to, newId(doc));
+    const selected = doc.slice(from, to);
+    plan =
+      !selected.includes('\n') && isWorkflowChecklistEntryLine(lineAt(doc, from))
+        ? planIssueMarkerInsertion(doc, to, to, newId(doc), selected)
+        : planIssueMarkerInsertion(doc, from, to, newId(doc));
   } else {
     // Refuse a line that cannot take a marker before asking for a topic.
     const probe = planIssueMarkerInsertion(doc, from, to, newId(doc), '-');
@@ -529,7 +541,7 @@ export async function insertIssueMarkerCommand(editor: Editor, host: LabnoteHost
       await host.prompt({
         title: host.t('Issue topic sentence'),
         prompt: host.t('This sentence becomes the issue title. Keep the sentence from this line or type another.'),
-        value: issueSentenceRange(doc, from)?.text ?? '',
+        value: workflowChecklistEntryLabel(lineAt(doc, from)) ?? issueSentenceRange(doc, from)?.text ?? '',
         validate: v => (v.trim() ? null : host.t('Enter the topic sentence of the issue.')),
       })
     )?.trim();
@@ -539,7 +551,7 @@ export async function insertIssueMarkerCommand(editor: Editor, host: LabnoteHost
     const caret = editor.posToOffset(editor.getCursor('from'));
     const sentence = issueSentenceRange(doc, caret);
     plan =
-      sentence && sentence.text === topic
+      sentence && sentence.text === topic && !isWorkflowChecklistEntryLine(lineAt(doc, caret))
         ? // As if the sentence had been selected: it becomes the marker.
           planIssueMarkerInsertion(doc, sentence.from, sentence.to, newId(doc))
         : // A new sentence leaves the line as written.
@@ -797,9 +809,9 @@ export async function registerWorkflowInReadme(
 ): Promise<boolean> {
   if (!(await host.fs.exists(readmePath))) return false;
   await processNoteThroughVault(app, host, readmePath, readme => {
-    const items = parseWorkflowChecklistFromReadme(readme);
-    items.push({ done: false, title: entry.title, fileName: entry.fileName });
-    return stamp(updateReadmeWorkflowSection(readme, generateWorkflowChecklist(items)));
+    return stamp(
+      insertWorkflowChecklistEntries(readme, [{ done: false, title: entry.title, fileName: entry.fileName }])
+    );
   });
   return true;
 }
@@ -1696,11 +1708,12 @@ export async function processNoteThroughVault(
 }
 
 /**
- * After workflow files were renamed in the file explorer, reorder the README
- * "Related Workflows" checklist to match the new `NNN` order. `renames` are the
- * old->new basenames accumulated for one experiment folder; passing them lets
- * reconcile relink correctly even when Obsidian's "Automatically update
- * internal links" setting is off. Only writes when the section actually changes.
+ * After workflow files were renamed in the file explorer, relink their README
+ * "Related Workflows" entries and move an entry the new number puts out of
+ * order. `renames` are the old->new basenames accumulated for one experiment
+ * folder; passing them lets reconcile relink correctly even when Obsidian's
+ * "Automatically update internal links" setting is off. Only writes when the
+ * section actually changes.
  */
 export async function syncReadmeOrderOnRename(
   app: App,
@@ -1724,6 +1737,7 @@ export async function syncReadmeOrderOnRename(
       reconcileWorkflowChecklist(content, renames, {
         labelFor: name => labels.get(name) ?? defaultWorkflowTitle(name),
         dir: labnoteDir,
+        move: true,
       }).content
   );
 }

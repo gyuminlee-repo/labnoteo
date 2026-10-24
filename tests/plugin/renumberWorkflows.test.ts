@@ -111,7 +111,7 @@ describe('renumberWorkflowsCommand (#41)', () => {
   }
 
   it('renames each file once and writes the README only while the sync is held', async () => {
-    const h = harness({ relink: true });
+    const h = harness({ relink: false });
 
     await renumberWorkflowsCommand(h.app, h.host, h.sync);
 

@@ -301,15 +301,15 @@ export function createWorkflowFileName(
 }
 
 /**
- * A "Related Workflows" checklist entry: optional `-` marker, checkbox, link
- * title, and a `.labnote.md` target.
+ * A "Related Workflows" checklist entry: indent and list marker, checkbox, link
+ * title, a `.labnote.md` target, and whatever follows the link on the line.
  *
- * Deliberately ONE regex shared by the parser and the section rewriter. While
- * the two disagreed the difference was deleted in silence: the rewriter
- * consumed every `[ ]`/`- [x]` line in the section, but only lines matching
- * this pattern were parsed back out and regenerated. A researcher's own
- * `- [ ] ask Dr. Kim about the annealing temp` therefore disappeared the next
- * time anything touched the checklist.
+ * Deliberately ONE regex shared by the parser and every writer. While the two
+ * disagreed the difference was deleted in silence: a researcher's own
+ * `- [ ] ask Dr. Kim about the annealing temp` disappeared the next time
+ * anything touched the checklist, and so did an `@issue` marker or a note
+ * written after an entry's link (#293). Writers therefore change an entry's
+ * link or label in place and keep its prefix and tail.
  *
  * The link part stays permissive (optional `./`, any characters up to the
  * suffix) so manually created links with non-ASCII file names are recognised —
@@ -317,7 +317,38 @@ export function createWorkflowFileName(
  * object is safe to share.
  */
 const CHECKLIST_ENTRY_RE =
-  /^(?:-\s+)?\[([ x])\]\s*\[(.+?)\]\((?:\.\/)?([^)]+\.labnote\.md)\)/i;
+  /^(\s*(?:[-*+]\s+)?)\[([ x])\]\s*\[(.+?)\]\((?:\.\/)?([^)]+\.labnote\.md)\)(.*)$/i;
+
+/** One checklist entry line, split so a writer can change one part of it. */
+interface ChecklistEntryLine {
+  /** Line index in the README. */
+  index: number;
+  /** Indentation and list marker (`- `, `  * `), possibly empty. */
+  prefix: string;
+  /** The checkbox character as written (` `, `x` or `X`). */
+  box: string;
+  /** The label as written, still escaped. */
+  raw: string;
+  /** The link as written, without a leading `./`. */
+  link: string;
+  /** Everything after the link: an `@issue` marker, a note. */
+  tail: string;
+}
+
+function parseChecklistEntryLine(line: string, index: number): ChecklistEntryLine | null {
+  const m = CHECKLIST_ENTRY_RE.exec(line);
+  if (!m) return null;
+  return { index, prefix: m[1], box: m[2], raw: m[3], link: m[4], tail: m[5] };
+}
+
+/** The link as written into a checklist line; one with a folder part is not made relative (#102). */
+function checklistLinkText(fileName: string): string {
+  return fileName.includes('/') ? fileName : `./${fileName}`;
+}
+
+function renderChecklistEntryLine(e: Omit<ChecklistEntryLine, 'index'>): string {
+  return `${e.prefix}[${e.box}] [${e.raw}](${checklistLinkText(e.link)})${e.tail}`;
+}
 
 /**
  * A checklist label as written into the link text. An alias may carry
@@ -333,16 +364,25 @@ function unescapeChecklistLabel(raw: string): string {
   return raw.replace(/\\([\\[\]])/g, '$1');
 }
 
-/** Whether `line` is a workflow checklist entry this module owns. */
-function isWorkflowChecklistLine(line: string): boolean {
-  return CHECKLIST_ENTRY_RE.test(line.trim());
+/**
+ * Whether `line` is a workflow checklist entry (`- [ ] [label](./….labnote.md)`).
+ * An `@issue` marker that replaced its link text would stop it being one (#293).
+ */
+export function isWorkflowChecklistEntryLine(line: string): boolean {
+  return CHECKLIST_ENTRY_RE.test(line);
+}
+
+/** The label of a workflow checklist entry line, unescaped; undefined for any other line. */
+export function workflowChecklistEntryLabel(line: string): string | undefined {
+  const e = parseChecklistEntryLine(line, 0);
+  return e ? unescapeChecklistLabel(e.raw) : undefined;
 }
 
 /**
  * Find the `## Related Workflows` header and the line the section ends on (the
  * next `## ` heading, or end of document). `header` is -1 when absent.
  */
-function findWorkflowSection(lines: string[]): { header: number; end: number } {
+function findWorkflowSection(lines: readonly string[]): { header: number; end: number } {
   const header = lines.findIndex(line => /^##\s.*Related Workflows/i.test(line.trim()));
   if (header === -1) return { header: -1, end: lines.length };
 
@@ -357,36 +397,108 @@ function findWorkflowSection(lines: string[]): { header: number; end: number } {
  * Looks for items in the "Related Workflows" section
  */
 export function parseWorkflowChecklistFromReadme(readmeContent: string): WorkflowChecklistItem[] {
+  // Downstream commands still validate each name via `parseWorkflowFileName`.
+  return entriesInLines(readmeContent.split('\n')).map(e => ({
+    done: e.box.toLowerCase() === 'x',
+    title: unescapeChecklistLabel(e.raw),
+    fileName: e.link,
+  }));
+}
+
+/** The checklist entry lines of the "Related Workflows" section of `lines`. */
+function entriesInLines(lines: readonly string[]): ChecklistEntryLine[] {
+  const { header, end } = findWorkflowSection(lines);
+  if (header === -1) return [];
+  const entries: ChecklistEntryLine[] = [];
+  for (let i = header + 1; i < end; i++) {
+    const e = parseChecklistEntryLine(lines[i], i);
+    if (e) entries.push(e);
+  }
+  return entries;
+}
+
+/** The `NNN` of a checklist link's workflow file name, or undefined when it is not one. */
+function checklistSequence(link: string): number | undefined {
+  const parsed = parseWorkflowFileName(link.split('/').pop() ?? link);
+  return parsed ? parseInt(parsed.sequence, 10) : undefined;
+}
+
+const leadingSpace = (line: string): number => /^\s*/.exec(line)![0].length;
+
+/**
+ * End (exclusive) of the entry at line `start`: the entry and the indented,
+ * non-blank lines under it, which belong to it (a sub-task, a note). A line
+ * at the entry's own depth — a researcher's to-do between two entries — does
+ * not, so it stays where it was written when the entry moves (#290).
+ */
+function entryBlockEnd(lines: readonly string[], start: number, end: number): number {
+  const depth = leadingSpace(lines[start]);
+  let i = start + 1;
+  while (i < end && lines[i].trim() !== '' && leadingSpace(lines[i]) > depth) i++;
+  return i;
+}
+
+/**
+ * Where a checklist line for workflow number `seq` goes among `entries`: after
+ * the block of the last numbered entry at or below `seq`, else before the
+ * first numbered entry. Entries are compared by number, not position, so an
+ * order the researcher arranged by hand is left alone. Without a number (or
+ * with no numbered entry) it goes after the last entry.
+ */
+function checklistInsertAt(
+  lines: readonly string[],
+  entries: readonly ChecklistEntryLine[],
+  seq: number | undefined,
+  end: number
+): number {
+  const last = entries[entries.length - 1];
+  const afterLast = entryBlockEnd(lines, last.index, end);
+  if (seq === undefined) return afterLast;
+  const numbered = entries.filter(e => checklistSequence(e.link) !== undefined);
+  if (numbered.length === 0) return afterLast;
+  const below = numbered.filter(e => checklistSequence(e.link)! <= seq);
+  if (below.length === 0) return numbered[0].index;
+  return entryBlockEnd(lines, below[below.length - 1].index, end);
+}
+
+/**
+ * Add checklist entries for `items` to the "Related Workflows" section. Each
+ * goes where {@link checklistInsertAt} puts it, written with the list marker
+ * of the entries already there. Every other line — an entry's tail, the
+ * researcher's own to-dos, prose — stays as it was. With no entry yet the
+ * first one goes after the instruction blockquote. Unchanged without the
+ * section.
+ */
+export function insertWorkflowChecklistEntries(
+  readmeContent: string,
+  items: readonly WorkflowChecklistItem[]
+): string {
   const lines = readmeContent.split('\n');
-  const headerIndex = lines.findIndex(line => /^##\s.*Related Workflows/i.test(line.trim()));
-  
-  if (headerIndex === -1) {
-    return [];
-  }
-  
-  const items: WorkflowChecklistItem[] = [];
-  
-  // Start from line after header
-  for (let i = headerIndex + 1; i < lines.length; i++) {
-    const line = lines[i].trim();
-    
-    // Stop at next section
-    if (line.startsWith('## ')) {
-      break;
+  if (items.length === 0 || findWorkflowSection(lines).header === -1) return readmeContent;
+  for (const item of items) {
+    const { header, end } = findWorkflowSection(lines);
+    const entries = entriesInLines(lines);
+    const line = renderChecklistEntryLine({
+      prefix: entries[0]?.prefix ?? '- ',
+      box: item.done ? 'x' : ' ',
+      raw: escapeChecklistLabel(item.title),
+      link: item.fileName,
+      tail: '',
+    });
+    if (entries.length > 0) {
+      lines.splice(checklistInsertAt(lines, entries, checklistSequence(item.fileName), end), 0, line);
+      continue;
     }
-    
-    // Downstream commands still validate each name via `parseWorkflowFileName`.
-    const checkboxMatch = line.match(CHECKLIST_ENTRY_RE);
-    if (checkboxMatch) {
-      items.push({
-        done: checkboxMatch[1].toLowerCase() === 'x',
-        title: unescapeChecklistLabel(checkboxMatch[2]),
-        fileName: checkboxMatch[3],
-      });
-    }
+    // After the header, past the blank lines and the instruction blockquote.
+    let at = header + 1;
+    while (at < end && lines[at].trim() === '') at++;
+    while (at < end && lines[at].trim().startsWith('>')) at++;
+    while (at < end && lines[at].trim() === '') at++;
+    // Keep a blank line between the new entry and whatever follows it.
+    const separator = at < lines.length && lines[at].trim() !== '' ? [''] : [];
+    lines.splice(at, 0, line, ...separator);
   }
-  
-  return items;
+  return lines.join('\n');
 }
 
 /**
@@ -398,70 +510,19 @@ export function generateWorkflowChecklist(items: WorkflowChecklistItem[]): strin
     return '';
   }
   
+  // Standard Markdown task-list item (`- [ ]`) so Obsidian renders an
+  // interactive checkbox instead of literal `[ ]` text.
   return items
-    .map(item => {
-      const checkbox = item.done ? '[x]' : '[ ]';
-      // Standard Markdown task-list item (`- [ ]`) so Obsidian renders an
-      // interactive checkbox instead of literal `[ ]` text. A link with a
-      // folder part is not made relative: `./labnote/001_A/…` would double the folder (#102).
-      const link = item.fileName.includes('/') ? item.fileName : `./${item.fileName}`;
-      return `- ${checkbox} [${escapeChecklistLabel(item.title)}](${link})`;
-    })
+    .map(item =>
+      renderChecklistEntryLine({
+        prefix: '- ',
+        box: item.done ? 'x' : ' ',
+        raw: escapeChecklistLabel(item.title),
+        link: item.fileName,
+        tail: '',
+      })
+    )
     .join('\n');
-}
-
-/**
- * Update Related Workflows section in README content
- * @param readmeContent Current README content
- * @param newChecklistContent New checklist content to insert
- * @returns Updated README content
- */
-export function updateReadmeWorkflowSection(
-  readmeContent: string,
-  newChecklistContent: string
-): string {
-  const lines = readmeContent.split('\n');
-  const { header, end } = findWorkflowSection(lines);
-  if (header === -1) {
-    return readmeContent;
-  }
-
-  const newEntries = newChecklistContent === '' ? [] : newChecklistContent.split('\n');
-
-  // Replace ONLY the lines this module owns (see CHECKLIST_ENTRY_RE) and leave
-  // every other line in the section byte-for-byte intact: the researcher's own
-  // checkboxes, prose, and the instruction blockquote all live here too. The
-  // regenerated block lands where the first entry was, so entries stay
-  // together even when notes were interleaved between them.
-  const out: string[] = [];
-  let replaced = false;
-  for (let i = 0; i < lines.length; i++) {
-    const insideSection = i > header && i < end;
-    if (insideSection && isWorkflowChecklistLine(lines[i])) {
-      if (!replaced) {
-        out.push(...newEntries);
-        replaced = true;
-      }
-      continue;
-    }
-    out.push(lines[i]);
-  }
-  if (replaced || newEntries.length === 0) {
-    return out.join('\n');
-  }
-
-  // No entry to anchor to: insert after the header, past the blank lines and
-  // the instruction blockquote. `out` still mirrors `lines` here, so the
-  // indices line up.
-  let at = header + 1;
-  while (at < end && lines[at].trim() === '') at++;
-  while (at < end && lines[at].trim().startsWith('>')) at++;
-  while (at < end && lines[at].trim() === '') at++;
-
-  // Keep a blank line between the new block and whatever follows it.
-  const separator = at < lines.length && lines[at].trim() !== '' ? [''] : [];
-  out.splice(at, 0, ...newEntries, ...separator);
-  return out.join('\n');
 }
 
 /**
@@ -723,29 +784,34 @@ export interface ReconcileChecklistOptions {
    * folder has a file of the same name goes back to `./<file name>` (#102).
    */
   dir?: string;
+  /**
+   * Move an entry whose number a rename changed when it now sits out of number
+   * order with its neighbours (a file renamed in the explorer). Off for
+   * "Renumber workflows", whose new numbers already follow the checklist.
+   */
+  move?: boolean;
 }
 
 /**
- * Reorder the README "Related Workflows" checklist to match the on-disk `NNN`
- * order after workflow files were renamed in the file explorer.
+ * Follow workflow files renamed in the file explorer or by "Renumber
+ * workflows" in the README "Related Workflows" checklist.
  *
  * `renames` (old->new basenames captured from vault rename events) are applied
- * to each item's link first, so reordering is correct even when Obsidian's
+ * to each entry's link, so the checklist follows even when Obsidian's
  * "Automatically update internal links" setting is off. When Obsidian has
  * already rewritten a link, the remap is usually a no-op — but not when one
  * file's new name is another file's old name (two workflows with the same id
  * and name, renumbered): the already-updated link is then remapped a second
  * time onto the wrong file. Batches that can do that pass `opts.baseline`, the
  * README as it was before the batch, so every link is remapped exactly once.
- * Standard items are then sorted by the numeric `NNN` prefix of their
- * (remapped) filename (`001 < 010 < 100`, ties broken by name); non-standard or
- * manually authored links that `parseWorkflowFileName` cannot decode are kept,
- * in their original relative order, after the standard ones.
  *
- * This function ONLY reorders/relinks. It never drops an entry whose file is
- * missing on disk — deletion is handled separately (surgically) so a user's
- * manual order is not clobbered on delete. Returns `{changed:false}` when the
- * README has no "Related Workflows" section or the content is unaffected.
+ * Only an entry's link and label change, in place: its checkbox, list marker
+ * and whatever follows the link (#293) stay, and so does the order the
+ * researcher gave the entries, with their own lines among them (#290, #289).
+ * With `opts.move` an entry a rename put out of number order moves, alone with
+ * the lines indented under it. Entries whose file is missing are never dropped
+ * — deletion is handled separately. Returns `{changed:false}` when the README
+ * has no "Related Workflows" section or the content is unaffected.
  */
 export function reconcileWorkflowChecklist(
   readmeContent: string,
@@ -753,12 +819,15 @@ export function reconcileWorkflowChecklist(
   opts: ReconcileChecklistOptions = {}
 ): ReconcileChecklistResult {
   const dir = opts.dir;
-  const items = parseWorkflowChecklistFromReadme(opts.baseline ?? readmeContent).map(item =>
-    dir === undefined ? item : { ...item, fileName: normalizeChecklistLink(item.fileName, dir) }
-  );
-  if (items.length === 0) {
+  const lines = readmeContent.split('\n');
+  const current = entriesInLines(lines);
+  if (current.length === 0) {
     return { changed: false, content: readmeContent };
   }
+  // The baseline gives each entry the link it had before the batch; entries
+  // pair up by position, which a batch of renames does not change.
+  const baseline = opts.baseline === undefined ? undefined : entriesInLines(opts.baseline.split('\n'));
+  const source = baseline && baseline.length === current.length ? baseline : current;
 
   // Remap each link by basename (a checklist link may carry a `./` or subpath).
   // Chained hops are collapsed first so a file that moved twice before this
@@ -772,47 +841,58 @@ export function reconcileWorkflowChecklist(
     origin.set(r.to, r.from);
   }
   const baseName = (fileName: string): string => fileName.split('/').pop() ?? fileName;
-  const remapped = items.map(item => {
-    const base = baseName(item.fileName);
+  const renumbered: string[] = [];
+  current.forEach((entry, k) => {
+    const written = dir === undefined ? source[k].link : normalizeChecklistLink(source[k].link, dir);
+    const base = baseName(written);
     const to = remap.get(base);
-    const moved = to ? { ...item, fileName: to } : item;
-    if (!opts.labelFor) return moved;
-    const oldName = to ? base : origin.get(base);
-    const newName = to ?? base;
-    if (oldName === undefined || !labelMatchesFileName(item.title, oldName)) return moved;
-    return { ...moved, title: opts.labelFor(newName) };
+    const link = to ?? written;
+    let raw = entry.raw;
+    if (opts.labelFor) {
+      const oldName = to ? base : origin.get(base);
+      const label = unescapeChecklistLabel(entry.raw);
+      if (oldName !== undefined && labelMatchesFileName(label, oldName)) {
+        raw = escapeChecklistLabel(opts.labelFor(to ?? base));
+      }
+    }
+    if (link !== entry.link || raw !== entry.raw) {
+      lines[entry.index] = renderChecklistEntryLine({ ...entry, raw, link });
+    }
+    const was = checklistSequence(origin.get(base) ?? base);
+    if (opts.move && was !== checklistSequence(link)) renumbered.push(link);
   });
+  for (const link of renumbered) moveEntryIntoNumberOrder(lines, link);
 
-  const content = updateReadmeWorkflowSection(
-    readmeContent,
-    generateWorkflowChecklist(sortWorkflowChecklistItems(remapped))
-  );
+  const content = lines.join('\n');
   return { changed: content !== readmeContent, content };
 }
 
 /**
- * Checklist order: standard `NNN` items first (numeric, ties broken by name),
- * then the ones `parseWorkflowFileName` cannot decode in their original
- * relative order. Stable.
+ * Move the entry linking to `link` when its number no longer fits between its
+ * numbered neighbours, to where {@link checklistInsertAt} would put it. An
+ * entry still in order — renamed 004 → 006 at the end of the list — stays, so
+ * the lines around it are not reshuffled.
  */
-function sortWorkflowChecklistItems(items: WorkflowChecklistItem[]): WorkflowChecklistItem[] {
-  const baseName = (fileName: string): string => fileName.split('/').pop() ?? fileName;
-  const decorated = items.map((item, index) => {
-    const parsed = parseWorkflowFileName(baseName(item.fileName));
-    return {
-      item,
-      index,
-      seq: parsed ? parseInt(parsed.sequence, 10) : Number.POSITIVE_INFINITY,
-      name: parsed ? parsed.safeName : '',
-    };
-  });
-  decorated.sort((a, b) => {
-    if (a.seq !== b.seq) return a.seq - b.seq;
-    if (a.seq === Number.POSITIVE_INFINITY) return a.index - b.index;
-    if (a.name !== b.name) return a.name < b.name ? -1 : 1;
-    return a.index - b.index;
-  });
-  return decorated.map(d => d.item);
+function moveEntryIntoNumberOrder(lines: string[], link: string): void {
+  const entries = entriesInLines(lines);
+  const at = entries.findIndex(e => e.link === link);
+  const seq = checklistSequence(link);
+  if (at === -1 || seq === undefined) return;
+  const prev = entries.slice(0, at).reverse().find(e => checklistSequence(e.link) !== undefined);
+  const next = entries.slice(at + 1).find(e => checklistSequence(e.link) !== undefined);
+  const inOrder =
+    (!prev || checklistSequence(prev.link)! <= seq) && (!next || checklistSequence(next.link)! >= seq);
+  if (inOrder) return;
+
+  const { end } = findWorkflowSection(lines);
+  const start = entries[at].index;
+  const block = lines.splice(start, entryBlockEnd(lines, start, end) - start);
+  const rest = entriesInLines(lines);
+  if (rest.length === 0) {
+    lines.splice(start, 0, ...block);
+    return;
+  }
+  lines.splice(checklistInsertAt(lines, rest, seq, findWorkflowSection(lines).end), 0, ...block);
 }
 
 /** A checklist entry {@link planWorkflowChecklistSync} proposes to remove. */
@@ -872,7 +952,7 @@ export interface WorkflowChecklistSyncPlan {
    * {@link normalizeWorkflowChecklistLabels}.
    */
   unescaped: string[];
-  /** README with `added` appended and the checklist re-sorted; unchanged when nothing is added. */
+  /** README with `added` inserted by number (see {@link insertWorkflowChecklistEntries}); unchanged when nothing is added. */
   content: string;
 }
 
@@ -1222,12 +1302,7 @@ export function planWorkflowChecklistSync(
       content: readmeContent,
     };
   }
-  const kept =
-    dir === undefined ? items : items.map(item => ({ ...item, fileName: normalizeChecklistLink(item.fileName, dir) }));
-  const content = updateReadmeWorkflowSection(
-    readmeContent,
-    generateWorkflowChecklist(sortWorkflowChecklistItems([...kept, ...added]))
-  );
+  const content = insertWorkflowChecklistEntries(readmeContent, added);
   return { hasSection, added, stale, relabel, duplicates, unescaped, content };
 }
 
@@ -1276,23 +1351,13 @@ function checklistEntries(
   readmeContent: string,
   dir?: string
 ): { index: number; done: boolean; raw: string; link: string; target: string | null }[] {
-  const lines = readmeContent.split('\n');
-  const { header, end } = findWorkflowSection(lines);
-  if (header === -1) return [];
-  const entries = [];
-  for (let i = header + 1; i < end; i++) {
-    const m = lines[i].trim().match(CHECKLIST_ENTRY_RE);
-    if (m) {
-      entries.push({
-        index: i,
-        done: m[1].toLowerCase() === 'x',
-        raw: m[2],
-        link: m[3],
-        target: linkTargetInFolder(m[3], dir),
-      });
-    }
-  }
-  return entries;
+  return entriesInLines(readmeContent.split('\n')).map(e => ({
+    index: e.index,
+    done: e.box.toLowerCase() === 'x',
+    raw: e.raw,
+    link: e.link,
+    target: linkTargetInFolder(e.link, dir),
+  }));
 }
 
 /**
@@ -1318,7 +1383,7 @@ export function dedupeWorkflowChecklistEntries(
       continue;
     }
     drop.add(index);
-    if (done) lines[kept] = lines[kept].replace(/^(\s*(?:-\s+)?)\[ \]/, '$1[x]');
+    if (done) lines[kept] = lines[kept].replace(/^(\s*(?:[-*+]\s+)?)\[ \]/, '$1[x]');
   }
   return lines.filter((_, i) => !drop.has(i)).join('\n');
 }
@@ -1348,14 +1413,10 @@ export function relabelWorkflowChecklistEntries(
 ): string {
   if (relabel.length === 0) return readmeContent;
   const lines = readmeContent.split('\n');
-  const { header, end } = findWorkflowSection(lines);
-  if (header === -1) return readmeContent;
-  for (let i = header + 1; i < end; i++) {
-    const m = lines[i].trim().match(CHECKLIST_ENTRY_RE);
-    if (!m) continue;
-    const target = linkTargetInFolder(m[3], dir);
-    const r = relabel.find(x => x.fileName === target && x.from === unescapeChecklistLabel(m[2]));
-    if (r) lines[i] = lines[i].replace(`[${m[2]}](`, () => `[${escapeChecklistLabel(r.to)}](`);
+  for (const e of entriesInLines(lines)) {
+    const target = linkTargetInFolder(e.link, dir);
+    const r = relabel.find(x => x.fileName === target && x.from === unescapeChecklistLabel(e.raw));
+    if (r) lines[e.index] = renderChecklistEntryLine({ ...e, raw: escapeChecklistLabel(r.to) });
   }
   return lines.join('\n');
 }
@@ -1373,14 +1434,8 @@ export function removeWorkflowChecklistEntries(
   if (links.length === 0) return readmeContent;
   const wanted = new Set(links);
   const lines = readmeContent.split('\n');
-  const { header, end } = findWorkflowSection(lines);
-  if (header === -1) return readmeContent;
-  const kept = lines.filter((line, i) => {
-    if (i <= header || i >= end) return true;
-    const match = line.trim().match(CHECKLIST_ENTRY_RE);
-    return !(match && wanted.has(match[3]));
-  });
-  return kept.join('\n');
+  const drop = new Set(entriesInLines(lines).filter(e => wanted.has(e.link)).map(e => e.index));
+  return drop.size === 0 ? readmeContent : lines.filter((_, i) => !drop.has(i)).join('\n');
 }
 
 /**

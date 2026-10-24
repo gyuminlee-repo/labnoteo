@@ -44,9 +44,7 @@ import {
   createWorkflowFileName,
   sanitizeWorkflowName,
   createWorkflowContent,
-  parseWorkflowChecklistFromReadme,
-  generateWorkflowChecklist,
-  updateReadmeWorkflowSection,
+  insertWorkflowChecklistEntries,
   parseExperimenterFromReadme,
 } from '../lib/workflowStructure';
 import {
@@ -905,13 +903,8 @@ export function createLabnoteTools(): ToolDef[] {
         );
 
         const readme = await ctx.fs.read(readmePath);
-        const items = parseWorkflowChecklistFromReadme(readme);
-        items.push({ done: false, title: [info.id, info.name, alias].filter(Boolean).join(' '), fileName });
-        await writeNote(
-          ctx,
-          readmePath,
-          updateReadmeWorkflowSection(readme, generateWorkflowChecklist(items))
-        );
+        const title = [info.id, info.name, alias].filter(Boolean).join(' ');
+        await writeNote(ctx, readmePath, insertWorkflowChecklistEntries(readme, [{ done: false, title, fileName }]));
 
         return { ok: true, data: { path: workflowPath, fileName } };
       },

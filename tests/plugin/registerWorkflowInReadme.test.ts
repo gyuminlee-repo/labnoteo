@@ -55,7 +55,8 @@ describe('registerWorkflowInReadme', () => {
     expect(await registerWorkflowInReadme(app, hostFor(fs), README, ENTRY, stampToday)).toBe(true);
 
     expect(processed).toHaveLength(1);
-    expect(processed[0]).toContain('[WT010 Seq](./001_WT010_Seq.labnote.md)');
+    // The existing entry is left as written (#293).
+    expect(processed[0]).toContain('- [ ] [WT010 Seq](001_WT010_Seq.labnote.md)\n- [ ] [WD010 Design](./002_WD010_Design.labnote.md)\n');
     expect(processed[0]).toContain('- [ ] [WD010 Design](./002_WD010_Design.labnote.md)');
     expect(processed[0]).toContain("last_updated_date: '2026-10-13'");
     // The adapter copy is untouched: the open editor saves the vault write.
