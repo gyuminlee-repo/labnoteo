@@ -5,6 +5,9 @@ import {
   findMetaDateFieldInLine,
   findPairedMetaDate,
   isEndBeforeStart,
+  isPlausibleMetaDate,
+  shouldWriteOnCommit,
+  clampDateTimeLocal,
   fromDateTimeLocalValue,
   readLastUpdatedDate,
   toDateTimeLocalValue,
@@ -116,6 +119,45 @@ describe('datetime-local conversions', () => {
     expect(toDateTimeLocalValue('')).toBe('');
     expect(toDateTimeLocalValue('not a date')).toBe('');
     expect(fromDateTimeLocalValue('2026-09-06')).toBe('');
+  });
+
+  it('reads a dotted date typed by hand (#309)', () => {
+    expect(toDateTimeLocalValue('2026.10.23 14:00')).toBe('2026-10-23T14:00');
+    expect(toDateTimeLocalValue('2026.10.23. 14:00')).toBe('2026-10-23T14:00');
+    expect(toDateTimeLocalValue('2026.10.23')).toBe('2026-10-23T00:00');
+    expect(isEndBeforeStart('2026.10.23 14:00', '2026-10-23 13:00')).toBe(true);
+  });
+});
+
+// #309: Enter wrote the current time over a value the picker could not read.
+describe('shouldWriteOnCommit', () => {
+  it('keeps a stored value when nothing was picked', () => {
+    expect(shouldWriteOnCommit("2026.10.23 14:00", '2026-10-23T14:00', '2026-10-23T14:00')).toBe(false);
+    expect(shouldWriteOnCommit('sometime', '2026-10-24T09:00', '2026-10-24T09:00')).toBe(false);
+    expect(shouldWriteOnCommit('2026-10-23', '2026-10-23T00:00', '2026-10-23T00:00')).toBe(false);
+  });
+
+  it('writes a changed value, or the shown one into an empty field', () => {
+    expect(shouldWriteOnCommit('2026-10-23 14:00', '2026-10-23T14:00', '2026-10-23T15:00')).toBe(true);
+    expect(shouldWriteOnCommit('', '2026-10-24T09:00', '2026-10-24T09:00')).toBe(true);
+  });
+});
+
+// #308: stepping the year past the field's limit wrote 0001 into the note.
+describe('isPlausibleMetaDate / clampDateTimeLocal', () => {
+  it('takes years 1900-2100 only', () => {
+    expect(isPlausibleMetaDate('2026-10-23T14:00')).toBe(true);
+    expect(isPlausibleMetaDate('1900-01-01T00:00')).toBe(true);
+    expect(isPlausibleMetaDate('2100-12-31T23:59')).toBe(true);
+    for (const v of ['0001-10-23T14:00', '0202-10-23T14:00', '2101-01-01T00:00', '']) {
+      expect(isPlausibleMetaDate(v)).toBe(false);
+    }
+  });
+
+  it('keeps a prefilled time within the paired date', () => {
+    expect(clampDateTimeLocal('2026-10-24T09:00', undefined, '2026-10-20T10:00')).toBe('2026-10-20T10:00');
+    expect(clampDateTimeLocal('2026-10-24T09:00', '2026-10-25T10:00')).toBe('2026-10-25T10:00');
+    expect(clampDateTimeLocal('2026-10-24T09:00', '2026-10-20T10:00')).toBe('2026-10-24T09:00');
   });
 });
 

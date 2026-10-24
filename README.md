@@ -50,7 +50,7 @@ Obsidian 설치와 git·GitHub 계정 준비부터 커뮤니티 플러그인·�
 
 | 명령어 | 하는 일 |
 | --- | --- |
-| 날짜 삽입 (`Insert date`) | 커서 위치에 오늘 날짜를 넣습니다(머리말과 `#### Meta`에서는 값이 빈 줄만 채움) |
+| 날짜 삽입 (`Insert date`) | 커서 위치에 오늘 날짜를 넣습니다(머리말과 `#### Meta`에서는 값이 빈 줄만 채움, 표 칸에서도 됨) |
 | 날짜 및 시간 삽입 (`Insert date and time`) | 커서 위치에 현재 타임스탬프를 넣습니다 |
 | 실험 생성 (`Create experiment`) | 새 `.labnote.md` 실험 노트와 번호가 붙은 실험 폴더를 만듭니다 |
 | 실험 상태 변경 (`Change experiment status`) | 실험의 `status` frontmatter를 피커로 바꿉니다(워크플로 뷰의 실험 우클릭에도 있음) |

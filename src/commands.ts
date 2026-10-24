@@ -101,6 +101,7 @@ import { removeWorkflowFromReadme } from '@labnoteo/core/lib/workflowDelete';
 // Re-exported so command registration in main.ts imports every command from one
 // place; the implementation lives under src/scaffold with its asset registry.
 export { setupResearchAutomationCommand } from './scaffold/scaffold';
+import { tableCellHostView } from './tableCellTarget';
 import { isVaultGitRepository } from './scaffold/scaffold';
 import { removeSourcesForDocument } from '@labnoteo/core/lib/sampleStorage';
 
@@ -467,6 +468,12 @@ export async function confirmCompleted(host: LabnoteHost, labnoteDir: string, re
  * warning, since the text would break the YAML (#106).
  */
 export function insertDateCommand(editor: Editor, host: LabnoteHost, text: string): boolean {
+  // A table cell has an editor of its own holding just that cell (#303): the
+  // front matter and Meta checks below would read the cell as the note.
+  if (tableCellHostView(editor)) {
+    editor.replaceSelection(text);
+    return true;
+  }
   const plan = planDateInsertion(
     editor.getValue(),
     editor.posToOffset(editor.getCursor('from')),
@@ -482,8 +489,17 @@ export function insertDateCommand(editor: Editor, host: LabnoteHost, text: strin
     );
     return false;
   }
-  editor.replaceRange(plan.text, editor.offsetToPos(plan.from), editor.offsetToPos(plan.to));
-  editor.setCursor(editor.offsetToPos(plan.from + plan.text.length));
+  // One transaction: a second dispatch could reach an editor that has moved on (#303).
+  const from = editor.offsetToPos(plan.from);
+  const lines = plan.text.split('\n');
+  const end =
+    lines.length === 1
+      ? { line: from.line, ch: from.ch + plan.text.length }
+      : { line: from.line + lines.length - 1, ch: lines[lines.length - 1].length };
+  editor.transaction({
+    changes: [{ from, to: editor.offsetToPos(plan.to), text: plan.text }],
+    selection: { from: end },
+  });
   return true;
 }
 

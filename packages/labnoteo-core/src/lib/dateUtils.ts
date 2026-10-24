@@ -91,13 +91,46 @@ export function findMetaDateFieldInLine(line: string): MetaDateFieldMatch | null
 
 /**
  * Convert a stored `YYYY-MM-DD HH:mm` (or bare `YYYY-MM-DD`) value into the
- * `YYYY-MM-DDTHH:mm` form an `<input type="datetime-local">` expects. Returns
- * an empty string when the value is missing or not a recognised date.
+ * `YYYY-MM-DDTHH:mm` form an `<input type="datetime-local">` expects. The
+ * dotted `YYYY.MM.DD HH:mm` people type by hand reads too (#309). Returns an
+ * empty string when the value is missing or not a recognised date.
  */
 export function toDateTimeLocalValue(value: string): string {
-  const m = /^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}))?/.exec(value.trim());
+  const m =
+    /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}:\d{2}))?/.exec(value.trim()) ??
+    /^(\d{4})\.(\d{2})\.(\d{2})\.?(?:\s+(\d{2}:\d{2}))?/.exec(value.trim());
   if (!m) return '';
-  return `${m[1]}T${m[2] ?? '00:00'}`;
+  return `${m[1]}-${m[2]}-${m[3]}T${m[4] ?? '00:00'}`;
+}
+
+/**
+ * Whether closing the picker with Enter should write its value (#309). A
+ * field that already held something keeps it when nothing was picked: the
+ * picker shows the current time for a value it cannot read, and a date-only
+ * value as midnight, so writing back what it shows would change the note.
+ */
+export function shouldWriteOnCommit(stored: string, initial: string, current: string): boolean {
+  return stored.trim() === '' || current !== initial;
+}
+
+/**
+ * Whether a picked `YYYY-MM-DDTHH:mm` (or stored) value is a believable
+ * experiment date, years 1900–2100 (#308). The native field wraps a year
+ * stepped past its limit to 0001 and passes through 0002, 0020, 0202 while a
+ * year is typed; none of those should reach the note.
+ */
+export function isPlausibleMetaDate(value: string): boolean {
+  const m = /^(\d{4})-\d{2}-\d{2}/.exec(value);
+  if (!m) return false;
+  const year = Number(m[1]);
+  return year >= 1900 && year <= 2100;
+}
+
+/** `value` moved inside `min`/`max` (same `YYYY-MM-DDTHH:mm` form), when given. */
+export function clampDateTimeLocal(value: string, min?: string, max?: string): string {
+  if (min && value < min) return min;
+  if (max && value > max) return max;
+  return value;
 }
 
 /** Inverse of {@link toDateTimeLocalValue}; returns '' for unparseable input. */

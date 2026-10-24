@@ -26,11 +26,14 @@ import {
 import { Prec, RangeSetBuilder, Transaction } from '@codemirror/state';
 import { Notice } from 'obsidian';
 import {
+  clampDateTimeLocal,
   findMetaDateFieldInLine,
   findPairedMetaDate,
   fromDateTimeLocalValue,
   getSeoulDateTimeString,
   isEndBeforeStart,
+  isPlausibleMetaDate,
+  shouldWriteOnCommit,
   toDateTimeLocalValue,
 } from '@labnoteo/core/lib/dateUtils';
 
@@ -40,6 +43,8 @@ export interface MetaDatePickerLabels {
   pick: string;
   /** Notice for an End_date earlier than its Start_date (#192). */
   endBeforeStart: (end: string, start: string) => string;
+  /** Notice for a picked year outside 1900–2100, which was not written (#308). */
+  implausibleYear: string;
 }
 
 const VALUE_CLASS = 'labnote-date-value';
@@ -183,13 +188,17 @@ function openPickerOnLine(
   const match = findMetaDateFieldInLine(line.text);
   if (!match) return;
 
-  const initial =
-    toDateTimeLocalValue(match.value) || toDateTimeLocalValue(getSeoulDateTimeString());
   const originalLine = line.text;
   let written = false;
+  /** The field shows a year the note did not get (#308); said once on closing. */
+  let rejected = false;
   // The other date of the block bounds this one; no bound while it is empty (#192).
   const paired = findPairedMetaDate(view.state.doc.toJSON(), lineNumber - 1);
   const bound = paired ? toDateTimeLocalValue(paired.value) : '';
+  const range = bound ? (match.field === 'End_date' ? { min: bound } : { max: bound }) : {};
+  const initial =
+    toDateTimeLocalValue(match.value) ||
+    clampDateTimeLocal(toDateTimeLocalValue(getSeoulDateTimeString()), range.min, range.max);
 
   // The document may have changed while the picker was open, so the target
   // line is resolved again on every write instead of trusting captured offsets.
@@ -225,8 +234,11 @@ function openPickerOnLine(
     x,
     y,
     initial,
-    ...(bound ? (match.field === 'End_date' ? { min: bound } : { max: bound }) : {}),
+    ...range,
+    keepUnchanged: !shouldWriteOnCommit(match.value, initial, initial),
     onPick: picked => {
+      rejected = !isPlausibleMetaDate(picked);
+      if (rejected) return;
       const value = fromDateTimeLocalValue(picked);
       const found = value ? currentLine() : null;
       if (!value || !found) return;
@@ -243,6 +255,7 @@ function openPickerOnLine(
       written = true;
     },
     onClose: reason => {
+      if (rejected && reason !== 'cancel') new Notice(labels.implausibleYear, 8000);
       if (written) {
         const picked = currentLine()?.current.text;
         replaceLine(originalLine, false);
@@ -272,6 +285,8 @@ interface DateTimePickerOptions {
   /** Earliest / latest value the native calendar offers, same shape (#192). */
   min?: string;
   max?: string;
+  /** Enter leaves the note alone while the field still shows `initial` (#309). */
+  keepUnchanged?: boolean;
   /** Write a chosen value into the note. May run more than once per field. */
   onPick: (value: string) => void;
   onClose: (reason: PickerCloseReason) => void;
@@ -326,7 +341,7 @@ function openDateTimePicker(opts: DateTimePickerOptions): void {
   };
   const handle = {
     commit: (): void => {
-      pick();
+      if (!opts.keepUnchanged || input.value !== opts.initial) pick();
       finish('commit');
     },
     cancel: (): void => finish('cancel'),

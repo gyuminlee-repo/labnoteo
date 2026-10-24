@@ -22,9 +22,28 @@ Insert the current date. Inside the front matter it only fills a line with an em
 `Start_date`/`End_date` line of a unit operation's `#### Meta` it fills that value (with a value
 already there, it points to the 📅 picker).
 
+While a table cell is being edited, the date goes in at the cursor in that cell. In reading view
+the command is still listed and says to switch to the editing view and place the cursor first.
+
 ### Insert date and time
 
-Insert the current timestamp. The front matter rule is the same as Insert date.
+Insert the current timestamp. The front matter and table cell rules are the same as Insert date.
+
+### Date picker (📅)
+
+Click the 📅 icon at the end of a `Start_date`/`End_date` line in `#### Meta`, or the value
+itself, to open a date and time field. A changed value goes into the note at once; Enter or a
+click elsewhere closes the field, and Escape puts back the value it opened with. One Ctrl+Z undoes
+everything changed while it was open.
+
+- Enter without picking anything keeps a value that is already there. Dotted dates such as
+  `2026.10.23 14:00` are read and shown; a value the field cannot read is left as it is too. An
+  empty value shows the current time, and Enter writes it.
+- With a `Start_date` in the same block, the `End_date` calendar starts at that date, and closing
+  with an end earlier than the start says so (the value is still written).
+- Years outside 1900–2100, such as 0001 after stepping the year with the arrow keys or the digits
+  passed through while typing a year, are not written; closing says the date was kept.
+- Works in editing views only, including notes opened in a separate window.
 
 ## Experiments
 

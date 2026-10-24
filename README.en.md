@@ -51,7 +51,7 @@ Under a Korean UI the command palette shows each name as `Korean (English)` (e.g
 
 | Command | What it does |
 | --- | --- |
-| Insert date | Insert today's date at the cursor (in the front matter and `#### Meta`, only into empty values) |
+| Insert date | Insert today's date at the cursor (in the front matter and `#### Meta`, only into empty values; table cells too) |
 | Insert date and time | Insert the current timestamp at the cursor |
 | Create experiment | Create a new `.labnote.md` experiment note and its numbered experiment folder |
 | Change experiment status | Change an experiment's `status` frontmatter through a picker (also on the workflow view's right-click menu) |
