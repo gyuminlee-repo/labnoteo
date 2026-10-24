@@ -55,7 +55,8 @@ const obsidianKo: Record<string, string> = {
   'Open user guide': '사용법 열기',
   'Toggle MCP server': 'MCP 서버 켜기/끄기',
   'AI: Draft Method section': 'AI: Method 섹션 초안 작성',
-  'AI: Summarize results': 'AI: 결과 요약',
+  'AI: Summarize workflow results': 'AI: 워크플로 결과 요약',
+  'AI: Summarize experiment results': 'AI: 실험 결과 요약',
   'AI: Extract sample definitions': 'AI: 샘플 정의 추출',
   'AI: Ask assistant (uses tools)': 'AI: 어시스턴트에게 요청 (툴 사용)',
   'Ask the AI assistant': 'AI 어시스턴트에게 요청',
@@ -87,6 +88,14 @@ const obsidianKo: Record<string, string> = {
     '그 노트가 더 이상 열려 있지 않습니다. 답변을 복사해서 쓰세요.',
   'Inserted the summary into {0}.': '요약을 {0}에 넣었습니다.',
   'AI summary ({0}, {1})': 'AI 요약 ({0}, {1})',
+  'AI workflow results summary ({0}, {1})': 'AI 워크플로 결과 요약 ({0}, {1})',
+  'AI experiment results summary ({0}, {1})': 'AI 실험 결과 요약 ({0}, {1})',
+  '"{0}" already has an AI summary. Replace it with a new one?': '"{0}"에 이미 AI 요약이 있습니다. 새 요약으로 바꿀까요?',
+  'In an experiment README, run "{0}".': '실험 README에서는 "{0}"을(를) 실행하세요.',
+  'Open an experiment README first.': '실험 README를 먼저 여세요.',
+  'No results are written in the workflow notes of this experiment yet, so there is nothing to summarize.':
+    '이 실험의 워크플로 노트에 아직 적힌 결과가 없어 요약할 것이 없습니다.',
+  'Summarized the results of {0} workflow note(s) into {1}.': '워크플로 노트 {0}개의 결과를 요약해 {1}에 넣었습니다.',
   'Inserted the Method draft into {0}.': 'Method 초안을 {0}에 넣었습니다.',
 
   // View titles / ribbon

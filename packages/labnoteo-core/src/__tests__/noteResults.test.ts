@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import { createWorkflowContent } from '../lib/workflowStructure';
 import { buildHwUnitOpMarkdown, buildSwUnitOpMarkdown } from '../lib/unitOpTemplate';
-import { hasRecordedResults, stripAiCallouts, stripTemplatePlaceholders } from '../lib/noteResults';
+import { extractResultSections, shareBudget, hasRecordedResults, stripAiCallouts, stripTemplatePlaceholders } from '../lib/noteResults';
 
 const META = { experimenter: 'Dr. Kim', dateTime: '2026-10-15 10:00' };
 
@@ -78,5 +78,45 @@ describe('stripTemplatePlaceholders', () => {
     expect(out).toContain('- DNA-1');
     expect(out).not.toContain('(Any results and discussions');
     expect(out).not.toContain('(e.g. enzyme, buffer, etc.)');
+  });
+});
+
+// #279: the summary sent the whole note, reagent lists and front matter included.
+describe('extractResultSections', () => {
+  it('keeps the result sections, each under its unit operation', () => {
+    const md = [
+      '---',
+      'title: WD010 A',
+      '---',
+      '## [WD010 A]',
+      '> desc',
+      '### [UHW010 Spin] 조건 A',
+      '#### Reagent',
+      '- Tris',
+      '#### Results & Discussions',
+      '- (Any results and discussions. Link file path if needed)',
+      '수율 82%',
+      '---',
+      '### [UHW020 Mix]',
+      '#### Results & Discussions',
+      '- (Any results and discussions. Link file path if needed)',
+      '## Conclusions and Discussion',
+      '> [!note] AI summary (m, 2026-01-01)',
+      '> - 옛 요약',
+      '결론 메모',
+    ].join('\n');
+    expect(extractResultSections(md)).toBe(
+      '### [UHW010 Spin] 조건 A › Results & Discussions\n수율 82%\n\n### Conclusions and Discussion\n결론 메모'
+    );
+    expect(extractResultSections('## [WD010 A]\n### [UHW010 Spin]\n#### Method\n1. 원심분리')).toBe('');
+  });
+});
+
+// #306: one long note took the whole budget of an experiment summary.
+describe('shareBudget', () => {
+  it('gives what short texts leave to the long ones', () => {
+    expect(shareBudget([100, 5000, 9000], 6000)).toEqual([100, 2950, 2950]);
+    expect(shareBudget([10, 20], 100)).toEqual([10, 20]);
+    expect(shareBudget([], 100)).toEqual([]);
   });
 });

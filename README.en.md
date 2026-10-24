@@ -65,7 +65,8 @@ Under a Korean UI the command palette shows each name as `Korean (English)` (e.g
 | Export tables to CSV | Export the note's tables to `<note name>.labnote_tableN.csv` (Excel-compatible UTF-8 with BOM) |
 | Setup research automation | Scaffold GitHub Actions + scripts into the current vault (see [Research automation](#research-automation)) |
 | AI: Draft Method section | Draft a unit operation's `#### Method` with the configured LLM |
-| AI: Summarize results | Summarize results with the configured LLM, wrapped in a callout |
+| AI: Summarize workflow results | Summarize a workflow note's result sections into a callout at the end of `Conclusions and Discussion` |
+| AI: Summarize experiment results | From an experiment README, summarize the results of all its workflow notes at the end of `Summary and Discussion` |
 | AI: Extract sample definitions | Find samples in the note text and register them (the note body is not changed) |
 | AI: Ask assistant (uses tools) | State a goal and let the model reach it with Labnote's tools — every write is confirmed first |
 | Toggle MCP server | Start/stop the local MCP server (see [Copilot guide](docs/COPILOT.md)) |

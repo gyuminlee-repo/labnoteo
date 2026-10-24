@@ -64,7 +64,8 @@ Obsidian 설치와 git·GitHub 계정 준비부터 커뮤니티 플러그인·�
 | 표 CSV 내보내기 (`Export tables to CSV`) | 노트의 표를 `<노트이름>.labnote_tableN.csv`로 내보냅니다(엑셀 호환 UTF-8 BOM) |
 | 연구노트 자동화 설정 (`Setup research automation`) | GitHub Actions·스크립트를 현재 보관함에 설치합니다([연구노트 자동화](#연구노트-자동화) 참고) |
 | AI: Method 섹션 초안 (`AI: Draft Method section`) | 설정된 LLM으로 유닛 오퍼레이션의 `#### Method` 초안을 씁니다 |
-| AI: 결과 요약 (`AI: Summarize results`) | 설정된 LLM으로 결과 요약을 콜아웃으로 감싸 넣습니다 |
+| AI: 워크플로 결과 요약 (`AI: Summarize workflow results`) | 워크플로 노트의 결과 절을 요약해 `Conclusions and Discussion` 끝에 콜아웃으로 넣습니다 |
+| AI: 실험 결과 요약 (`AI: Summarize experiment results`) | 실험 README에서 모든 워크플로 노트의 결과를 요약해 `Summary and Discussion` 끝에 넣습니다 |
 | AI: 샘플 정의 추출 (`AI: Extract sample definitions`) | 노트 본문에서 샘플을 찾아 대장에만 등록합니다(본문은 바꾸지 않음) |
 | AI: 어시스턴트에게 요청 (`AI: Ask assistant (uses tools)`) | 목표를 말하면 모델이 Labnote 툴로 수행합니다 — 보관함 수정 전 매번 확인 |
 | MCP 서버 토글 (`Toggle MCP server`) | 로컬 MCP 서버를 켜고 끕니다([Copilot 가이드](docs/COPILOT.md#선택-labnote-툴-연결--mcp) 참고) |

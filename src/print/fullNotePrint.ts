@@ -9,6 +9,7 @@
  */
 import { Component, MarkdownRenderer, TFile } from 'obsidian';
 import { getSeoulDateString } from '@labnoteo/core/lib/dateUtils';
+import { stripFrontMatter } from '@labnoteo/core';
 import { encodePagePayload, payloadLabel, unitOpFingerprint, type PagePayload } from '@labnoteo/core/lib/scanPayload';
 import { bodyBox, buildPrintHtml, escapeHtml, openHtmlInBrowser, printHtml, type PrintPage } from './printPages';
 import { noteTitleOf, type WorksheetDeps } from './worksheetPrint';
@@ -75,7 +76,6 @@ export function unitOpOfRenderedHeading(text: string): { opId: string; fingerpri
   return m ? { opId: m[1], fingerprint: unitOpFingerprint(m[2].trim(), m[3].trim()) } : undefined;
 }
 
-const stripFrontMatter = (md: string): string => md.replace(/^---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/, '');
 
 export async function printFullNoteCommand(deps: WorksheetDeps, file: TFile): Promise<void> {
   const { app, host, t } = deps;

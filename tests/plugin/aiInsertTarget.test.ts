@@ -7,7 +7,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { EditTarget } from '@labnoteo/core';
 import { Notice, __setGetLanguage } from '../stubs/obsidian';
-import { draftMethodCommand, replyLanguageInstruction, summarizeResultsCommand } from '../../src/llm/commands';
+import {
+  draftMethodCommand,
+  replyLanguageInstruction,
+  summarizeExperimentCommand,
+  summarizeResultsCommand,
+} from '../../src/llm/commands';
 import { aiAnswerModal, type AiAnswerOpts } from '../../src/modals';
 import type LabnotePlugin from '../../src/main';
 
@@ -111,7 +116,7 @@ describe('summarizeResultsCommand (#112)', () => {
     expect(plugin.markUserEdit).not.toHaveBeenCalled();
     const opts = dialog();
     // #150: the summary is a callout naming the model and the date.
-    expect(opts.content).toMatch(/^> \[!note\] AI summary \(llama3\.1, \d{4}-\d{2}-\d{2}\)\n> - 요약$/);
+    expect(opts.content).toMatch(/^> \[!note\] AI workflow results summary \(llama3\.1, \d{4}-\d{2}-\d{2}\)\n> - 요약$/);
     expect(opts.sourcePath).toBe(NOTE);
 
     expect(await opts.onInsert()).toBe(false);
@@ -168,6 +173,126 @@ describe('summarizeResultsCommand (#112)', () => {
     expect(await dialog().onInsert()).toBe(true);
     expect(back.text).toContain('- 요약');
     expect(plugin.markUserEdit).toHaveBeenCalledWith(NOTE);
+  });
+});
+
+// #279: the summary went after the cursor line, and the model got the whole note.
+describe('summarizeResultsCommand in a workflow note (#279)', () => {
+  const NOTE_BODY = [
+    '---',
+    'title: WD010 A',
+    '---',
+    '## [WD010 A]',
+    '',
+    '### [UHW010 Spin] 조건 A',
+    '',
+    '#### Reagent',
+    '- Tris 50 mM',
+    '',
+    '#### Results & Discussions',
+    '수율 82%',
+    '',
+    '## Conclusions and Discussion',
+    '',
+    '내 결론 메모',
+    '',
+    '',
+  ].join('\n');
+
+  it('sends only the result sections and puts the summary at the end of Conclusions', async () => {
+    const start = makeTarget(NOTE, 0);
+    start.text = NOTE_BODY;
+    open = start;
+    replyAfterSwitch('- 수율 82%');
+    await summarizeResultsCommand(plugin);
+
+    const [messages] = chat.mock.calls[0] as [{ role: string; content: string }[]];
+    expect(messages[1].content).toContain('[UHW010 Spin] 조건 A › Results & Discussions\n수율 82%');
+    expect(messages[1].content).not.toContain('Tris');
+    expect(messages[1].content).not.toContain('title: WD010 A');
+    expect(start.text).toMatch(/내 결론 메모\n\n> \[!note\] AI workflow results summary \(llama3\.1, [\d-]+\)\n> - 수율 82%\n/);
+  });
+
+  it('asks before replacing the summary an earlier run left there', async () => {
+    const start = makeTarget(NOTE, 0);
+    start.text = NOTE_BODY.replace('내 결론 메모\n', '내 결론 메모\n\n> [!note] AI workflow results summary (old, 2026-01-01)\n> - 옛 요약\n');
+    open = start;
+    replyAfterSwitch('- 새 요약');
+    await summarizeResultsCommand(plugin);
+
+    expect(plugin.host.confirm).toHaveBeenCalledWith(expect.stringContaining('already has an AI summary'), expect.objectContaining({ destructive: true }));
+    expect(start.text).not.toContain('옛 요약');
+    expect(start.text.match(/AI workflow results summary/g)).toHaveLength(1);
+    expect(start.text).toContain('내 결론 메모\n\n> [!note] AI workflow results summary (llama3.1');
+  });
+
+  it('points a README at the experiment summary instead', async () => {
+    open = makeTarget('labnote/001_Test/README.labnote.md', 0);
+    await summarizeResultsCommand(plugin);
+    expect(chat).not.toHaveBeenCalled();
+    expect(Notice.shown).toContain('In an experiment README, run "AI: Summarize experiment results".');
+  });
+});
+
+// #306: there was no way to summarize a whole experiment.
+describe('summarizeExperimentCommand (#306)', () => {
+  const README = 'labnote/001_Test/README.labnote.md';
+  const README_BODY = [
+    '---',
+    'title: Test',
+    '---',
+    '## 🗂️ Related Workflows',
+    '- [ ] [B](./002_WB030_B.labnote.md)',
+    '- [ ] [A](./001_WD010_A.labnote.md)',
+    '',
+    '## Summary and Discussion',
+    '',
+    '연구원 메모',
+    '',
+  ].join('\n');
+  const notes: Record<string, string> = {
+    [NOTE]: '## [WD010 A]\n\n### [UHW010 Spin]\n\n#### Results & Discussions\nA 결과\n',
+    [OTHER]: '## [WB030 B]\n\n### [UHW020 Mix]\n\n#### Results & Discussions\nB 결과\n',
+  };
+
+  function withVault(texts: Record<string, string>): void {
+    const tfiles = Object.keys(texts).map(p => ({ path: p, name: p.split('/').pop()!, parent: { path: 'labnote/001_Test' } }));
+    plugin.app = {
+      vault: {
+        getFileByPath: (p: string) => tfiles.find(f => f.path === p) ?? files.get(p),
+        getMarkdownFiles: () => tfiles,
+        cachedRead: async (f: { path: string }) => texts[f.path],
+      },
+      workspace: { getLeavesOfType: () => [] },
+    } as unknown as LabnotePlugin['app'];
+  }
+
+  it('sends the results of each workflow in checklist order with the README notes, into Summary and Discussion', async () => {
+    withVault(notes);
+    const start = makeTarget(README, 0);
+    start.text = README_BODY;
+    open = start;
+    replyAfterSwitch('- 전체 요약');
+    await summarizeExperimentCommand(plugin);
+
+    const [messages] = chat.mock.calls[0] as [{ role: string; content: string }[]];
+    const user = messages[1].content;
+    expect(user).toContain('연구원 메모');
+    expect(user.indexOf('B 결과')).toBeLessThan(user.indexOf('A 결과'));
+    expect(start.text).toMatch(/연구원 메모\n\n> \[!note\] AI experiment results summary \(llama3\.1, [\d-]+\)\n> - 전체 요약\n$/);
+    expect(Notice.shown).toContain('Summarized the results of 2 workflow note(s) into README.labnote.md.');
+  });
+
+  it('stops without asking the model while no workflow note has results', async () => {
+    withVault({ [NOTE]: '## [WD010 A]\n\n### [UHW010 Spin]\n\n#### Results & Discussions\n- (Any results and discussions. Link file path if needed)\n' });
+    const start = makeTarget(README, 0);
+    start.text = README_BODY;
+    open = start;
+    await summarizeExperimentCommand(plugin);
+    expect(chat).not.toHaveBeenCalled();
+    expect(Notice.shown).toContain(
+      'No results are written in the workflow notes of this experiment yet, so there is nothing to summarize.'
+    );
   });
 });
 

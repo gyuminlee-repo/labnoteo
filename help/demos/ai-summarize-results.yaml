@@ -1,21 +1,19 @@
 id: ai-summarize-results
 order: 27
 section: ai
-title: { ko: "AI: 결과 요약", en: "AI: Summarize results" }
+title: { ko: "AI: 워크플로 결과 요약", en: "AI: Summarize workflow results" }
 seed: basic
 ai: true
 steps:
-  - caption: { ko: 요약을 넣을 자리에 커서를 둡니다, en: Put the cursor where the summary should go }
+  - caption: { ko: 결과를 적은 워크플로 노트를 엽니다, en: Open a workflow note with results written in }
     tool: open_file
     args: { path: { ko: labnote/001_GFP_발현/001_WB030_DNA_Assembly_1차.labnote.md, en: labnote/001_GFP_expression/001_WB030_DNA_Assembly_run1.labnote.md } }
-  - tool: editor_move
-    args: { text: { ko: 두 클론은, en: Both clones }, ch: end }
-  - caption: { ko: "팔레트에서 AI: 결과 요약", en: "Run AI: Summarize results from the palette" }
+  - caption: { ko: "팔레트에서 AI: 워크플로 결과 요약", en: "Run AI: Summarize workflow results from the palette" }
     palette: ai-summarize-results
   - tool: ui_wait
     args: { notice: '', timeoutMs: 300000 }
     fastForward: true
-  - caption: { ko: AI 요약 콜아웃이 들어갔습니다, en: An AI summary callout is inserted }
-    highlight: { selector: .cm-line, text: { ko: AI 요약, en: AI summary } }
+  - caption: { ko: Conclusions and Discussion 끝에 요약 콜아웃이 들어갔습니다, en: A summary callout goes in at the end of Conclusions and Discussion }
+    highlight: { selector: .cm-line, text: { ko: AI 워크플로 결과 요약, en: AI workflow results summary } }
     poster: true
     hold: 2500

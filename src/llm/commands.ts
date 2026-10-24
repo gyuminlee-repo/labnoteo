@@ -18,6 +18,12 @@ import {
   extractMethodBody,
   planBlockInsert,
   hasRecordedResults,
+  extractResultSections,
+  shareBudget,
+  findAiCalloutInSection,
+  planSectionAppend,
+  sectionText,
+  stripFrontMatter,
   stripAiCallouts,
   stripTemplatePlaceholders,
   replaceSectionBodyAt,
@@ -38,6 +44,12 @@ import {
   noteLabsamplesFolder,
   type SampleRecord,
 } from '@labnoteo/core/lib/sampleStorage';
+import {
+  diagnoseWorkflowPath,
+  parseWorkflowFileName,
+  workflowChecklistOrder,
+  workflowLabelFor,
+} from '@labnoteo/core/lib/workflowStructure';
 import type LabnotePlugin from '../main';
 import { createLlmProvider, type ChatMessage } from './provider';
 import { describeLlmError } from './llmError';
@@ -316,11 +328,76 @@ export async function draftMethodCommand(plugin: LabnotePlugin): Promise<void> {
   await deliverToNote(plugin, note, body, t => writeMethodDraft(plugin, t, loc, body), 'Inserted the Method draft into {0}.');
 }
 
-/** Summarize the whole note as a block after the cursor's line. */
+/** Where a workflow note's result summary goes (#279). */
+const CONCLUSIONS_HEADING = 'Conclusions and Discussion';
+/** Where an experiment's summary goes in its README (#306). */
+const README_SUMMARY_HEADING = 'Summary and Discussion';
+/** Characters of results sent for a whole experiment, shared among its notes (#306). */
+const EXPERIMENT_RESULTS_BUDGET = 10000;
+
+/** The callout titles an earlier run of a summary wrote, in English and in the UI language. */
+function summaryTitles(plugin: LabnotePlugin, key: string): string[] {
+  const before = (title: string) => title.split(' (')[0].trim();
+  return [...new Set([before(key), before(plugin.t(key))])];
+}
+
+/**
+ * Put a summary callout at the end of the section `heading` (the note's end
+ * without one), over the summary an earlier run left there when `replace`.
+ * Reads the note now, after the reply arrived.
+ */
+async function writeSummary(
+  plugin: LabnotePlugin,
+  target: EditTarget,
+  heading: string,
+  titles: readonly string[],
+  block: string
+): Promise<void> {
+  const text = await target.getText();
+  const earlier = findAiCalloutInSection(text, heading, titles);
+  if (earlier) {
+    await target.replaceRange(earlier.start, earlier.end, block);
+    await target.revealOffset?.(earlier.start);
+  } else {
+    const plan = planSectionAppend(text, heading, block) ?? {
+      offset: text.length,
+      text: `${text.endsWith('\n') ? '\n' : '\n\n'}${block}\n`,
+    };
+    await target.replaceRange(plan.offset, plan.offset, plan.text);
+    await target.revealOffset?.(plan.offset + plan.text.length);
+  }
+  plugin.markUserEdit(target.path);
+}
+
+/** Ask before a summary replaces the one an earlier run wrote in `heading`. */
+async function confirmReplaceSummary(plugin: LabnotePlugin, text: string, heading: string, titles: readonly string[]): Promise<boolean> {
+  if (!findAiCalloutInSection(text, heading, titles)) return true;
+  return plugin.host.confirm(plugin.t('"{0}" already has an AI summary. Replace it with a new one?', heading), {
+    confirmLabel: plugin.t('Replace'),
+    destructive: true,
+  });
+}
+
+/** Whether `path` is an experiment README, which has a summary command of its own (#306). */
+export function isExperimentReadme(path: string): boolean {
+  return diagnoseWorkflowPath(path).kind === 'readme';
+}
+
+/**
+ * Summarize the results of the active note (#279). In a workflow note only
+ * its result sections are sent, and the summary goes at the end of
+ * `Conclusions and Discussion`, replacing the one an earlier run put there;
+ * in any other note the whole note is sent and the summary goes after the
+ * cursor's line.
+ */
 export async function summarizeResultsCommand(plugin: LabnotePlugin): Promise<void> {
   const target = plugin.host.editTarget();
   if (!target) {
     new Notice(plugin.t('Open a note to insert into.'));
+    return;
+  }
+  if (isExperimentReadme(target.path)) {
+    new Notice(plugin.t('In an experiment README, run "{0}".', plugin.t('AI: Summarize experiment results')));
     return;
   }
   const note = noteRef(plugin, target.path);
@@ -341,6 +418,12 @@ export async function summarizeResultsCommand(plugin: LabnotePlugin): Promise<vo
     );
     return;
   }
+  const workflow = diagnoseWorkflowPath(target.path).kind === 'ok';
+  const titles = summaryTitles(plugin, 'AI workflow results summary ({0}, {1})');
+  if (workflow && !(await confirmReplaceSummary(plugin, text, CONCLUSIONS_HEADING, titles))) return;
+  const results = workflow
+    ? extractResultSections(text)
+    : stripTemplatePlaceholders(stripAiCallouts(stripFrontMatter(text)));
   const out = await complete(plugin, [
     {
       role: 'system',
@@ -351,13 +434,114 @@ export async function summarizeResultsCommand(plugin: LabnotePlugin): Promise<vo
     },
     {
       role: 'user',
-      content: `Summarize these results:\n\n${stripTemplatePlaceholders(stripAiCallouts(text)).slice(0, 6000)}`,
+      content: `Summarize these results:\n\n${results.slice(0, 6000)}`,
     },
   ]);
   if (!out) return;
-  const header = plugin.t('AI summary ({0}, {1})', plugin.settings.llmModel || plugin.settings.llmProvider, getSeoulDateString());
+  const model = plugin.settings.llmModel || plugin.settings.llmProvider;
+  if (!workflow) {
+    const block = toNoteCallout(out, plugin.t('AI summary ({0}, {1})', model, getSeoulDateString()));
+    await deliverToNote(plugin, note, block, t => insertBlock(plugin, t, block), 'Inserted the summary into {0}.');
+    return;
+  }
+  const block = toNoteCallout(out, plugin.t('AI workflow results summary ({0}, {1})', model, getSeoulDateString()));
+  await deliverToNote(
+    plugin,
+    note,
+    block,
+    t => writeSummary(plugin, t, CONCLUSIONS_HEADING, titles, block),
+    'Inserted the summary into {0}.'
+  );
+}
+
+/** A note's text as the researcher sees it: from its open editor, else from the vault. */
+async function readNoteNow(plugin: LabnotePlugin, path: string): Promise<string | undefined> {
+  for (const leaf of plugin.app.workspace.getLeavesOfType('markdown')) {
+    const view = leaf.view as { file?: { path: string }; editor?: { getValue(): string }; getMode?: () => string };
+    if (view.file?.path === path && view.editor && view.getMode?.() === 'source') return view.editor.getValue();
+  }
+  const file = plugin.app.vault.getFileByPath(path);
+  return file ? plugin.app.vault.cachedRead(file) : undefined;
+}
+
+/**
+ * The workflow notes of the experiment in `dir`: in the README checklist's
+ * order, then the ones it does not list, by number.
+ */
+function experimentNotes(plugin: LabnotePlugin, dir: string, readme: string): string[] {
+  const names = plugin.app.vault
+    .getMarkdownFiles()
+    .filter(f => f.parent?.path === dir && parseWorkflowFileName(f.name))
+    .map(f => f.name)
+    .sort();
+  const listed = workflowChecklistOrder(readme, names, dir);
+  return [...listed, ...names.filter(n => !listed.includes(n))];
+}
+
+/**
+ * Summarize a whole experiment from its README (#306): the result sections of
+ * every workflow note, in checklist order and within a shared budget, plus
+ * the README's own `Summary and Discussion` notes. The summary goes at the
+ * end of that section, replacing the one an earlier run put there.
+ */
+export async function summarizeExperimentCommand(plugin: LabnotePlugin): Promise<void> {
+  const target = plugin.host.editTarget();
+  if (!target || !isExperimentReadme(target.path)) {
+    new Notice(plugin.t('Open an experiment README first.'));
+    return;
+  }
+  const note = noteRef(plugin, target.path);
+  const readme = await target.getText();
+  const dir = target.path.slice(0, target.path.lastIndexOf('/'));
+  const collected: Array<{ label: string; results: string }> = [];
+  for (const name of experimentNotes(plugin, dir, readme)) {
+    const text = await readNoteNow(plugin, `${dir}/${name}`);
+    const results = text === undefined ? '' : extractResultSections(text);
+    if (results) collected.push({ label: workflowLabelFor(name, text), results });
+  }
+  if (collected.length === 0) {
+    new Notice(
+      plugin.t('No results are written in the workflow notes of this experiment yet, so there is nothing to summarize.'),
+      8000
+    );
+    return;
+  }
+  const titles = summaryTitles(plugin, 'AI experiment results summary ({0}, {1})');
+  if (!(await confirmReplaceSummary(plugin, readme, README_SUMMARY_HEADING, titles))) return;
+  const memo = stripAiCallouts(sectionText(readme, README_SUMMARY_HEADING) ?? '').trim();
+  const shares = shareBudget(
+    collected.map(c => c.results.length),
+    EXPERIMENT_RESULTS_BUDGET
+  );
+  const body = collected.map((c, i) => `## ${c.label}\n${c.results.slice(0, shares[i])}`).join('\n\n');
+  const out = await complete(plugin, [
+    {
+      role: 'system',
+      content:
+        'You summarize a whole experiment for its lab notebook overview from the results of its workflows, given in order: ' +
+        '3–8 concise Markdown bullet points on what was found and how the workflows connect, then one line on what is still open. ' +
+        'No preamble, no code fences. Use only what is written; never invent a number, a result or a conclusion. ' +
+        replyLanguageInstruction(),
+    },
+    {
+      role: 'user',
+      content: `${memo ? `The researcher's own notes on the experiment:\n${memo.slice(0, 2000)}\n\n` : ''}Results of each workflow:\n\n${body}`,
+    },
+  ]);
+  if (!out) return;
+  const header = plugin.t(
+    'AI experiment results summary ({0}, {1})',
+    plugin.settings.llmModel || plugin.settings.llmProvider,
+    getSeoulDateString()
+  );
   const block = toNoteCallout(out, header);
-  await deliverToNote(plugin, note, block, t => insertBlock(plugin, t, block), 'Inserted the summary into {0}.');
+  await deliverToNote(
+    plugin,
+    note,
+    block,
+    t => writeSummary(plugin, t, README_SUMMARY_HEADING, titles, block),
+    plugin.t('Summarized the results of {0} workflow note(s) into {1}.', String(collected.length), '{0}')
+  );
 }
 
 /**
