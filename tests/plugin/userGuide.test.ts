@@ -6,9 +6,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { LabnoteHost } from '@labnoteo/core';
 import { MemFileSystem } from '../../packages/labnoteo-core/src/fs/memFileSystem';
-import { openUserGuide } from '../../src/userGuide';
-import { applyAsset, managedFileContent } from '../../src/scaffold/scaffold';
-import { QUICKSTART_ASSET, QUICKSTART_DOC_CONTENT, QUICKSTART_DOC_PATH } from '../../src/scaffold/assets';
+import { QUICKSTART_BACKUP_PATH, guideVersion, openUserGuide } from '../../src/userGuide';
+import { applyAsset, managedFileContent, upsertManagedBlock } from '../../src/scaffold/scaffold';
+import { contentHash } from '../../src/scaffold/installRecord';
+import { INSTALL_RECORD_PATH, QUICKSTART_ASSET, QUICKSTART_DOC_CONTENT, QUICKSTART_DOC_PATH } from '../../src/scaffold/assets';
 import obsidianKo from '../../src/l10n.ko';
 
 function makeHost(files: Record<string, string> = {}, confirmResult = true) {
@@ -46,6 +47,72 @@ describe('openUserGuide', () => {
     expect(await fs.read(QUICKSTART_DOC_PATH)).toBe('# my notes\n');
     expect(host.notify).not.toHaveBeenCalled();
     expect(host.openFile).toHaveBeenCalledWith(QUICKSTART_DOC_PATH);
+  });
+});
+
+// #305: a guide whose marked block was edited stayed at an old release, and
+// "Open user guide" opened it without a word.
+describe('openUserGuide with a guide left at an older release', () => {
+  const VERSION = guideVersion(QUICKSTART_DOC_CONTENT)!;
+  const OLD = '# 연구노트 퀵스타트\n\n옛 설명서(partbank 없음)';
+  const oldFile = (inner: string) => upsertManagedBlock('', inner) + '\n연구실 규칙\n';
+  const record = (hash: string, pluginVersion = '0.100.0') =>
+    JSON.stringify({ pluginVersion, files: { [QUICKSTART_DOC_PATH]: hash } });
+
+  it('carries the release it was written for', () => {
+    expect(VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(guideVersion(OLD)).toBeUndefined();
+  });
+
+  it('brings an unedited old block up to date without asking', async () => {
+    const { fs, host, asHost } = makeHost({
+      [QUICKSTART_DOC_PATH]: oldFile(OLD),
+      [INSTALL_RECORD_PATH]: record(contentHash(`${OLD}\n`)),
+    });
+    await openUserGuide(asHost, VERSION);
+    expect(host.confirm).not.toHaveBeenCalled();
+    expect(await fs.read(QUICKSTART_DOC_PATH)).toBe(oldFile(QUICKSTART_DOC_CONTENT));
+    expect(await fs.exists(QUICKSTART_BACKUP_PATH)).toBe(false);
+    expect(host.openFile).toHaveBeenCalledWith(QUICKSTART_DOC_PATH);
+  });
+
+  it('asks before replacing an edited old block, keeping the old file as a backup', async () => {
+    const edited = oldFile(`${OLD}\n우리 연구실 메모`);
+    const { fs, host, asHost } = makeHost({
+      [QUICKSTART_DOC_PATH]: edited,
+      [INSTALL_RECORD_PATH]: record(contentHash(QUICKSTART_DOC_CONTENT)),
+    });
+    await openUserGuide(asHost, VERSION);
+    expect(host.confirm).toHaveBeenCalledTimes(1);
+    expect(await fs.read(QUICKSTART_BACKUP_PATH)).toBe(edited);
+    expect(await fs.read(QUICKSTART_DOC_PATH)).toBe(oldFile(QUICKSTART_DOC_CONTENT));
+    expect(await fs.read(QUICKSTART_DOC_PATH)).toContain('연구실 규칙');
+  });
+
+  it('opens an edited old block as it is when declined', async () => {
+    const edited = oldFile(`${OLD}\n우리 연구실 메모`);
+    const { fs, host, asHost } = makeHost({ [QUICKSTART_DOC_PATH]: edited }, false);
+    await openUserGuide(asHost, VERSION);
+    expect(host.confirm).toHaveBeenCalledTimes(1);
+    expect(await fs.read(QUICKSTART_DOC_PATH)).toBe(edited);
+    expect(await fs.exists(QUICKSTART_BACKUP_PATH)).toBe(false);
+    expect(host.openFile).toHaveBeenCalledWith(QUICKSTART_DOC_PATH);
+  });
+
+  it('leaves an edited block of this release, and a guide a newer plugin recorded', async () => {
+    const mine = oldFile(`${QUICKSTART_DOC_CONTENT.trim()}\n우리 연구실 메모`);
+    const a = makeHost({ [QUICKSTART_DOC_PATH]: mine });
+    await openUserGuide(a.asHost, VERSION);
+    expect(a.host.confirm).not.toHaveBeenCalled();
+    expect(await a.fs.read(QUICKSTART_DOC_PATH)).toBe(mine);
+
+    const b = makeHost({
+      [QUICKSTART_DOC_PATH]: oldFile(OLD),
+      [INSTALL_RECORD_PATH]: record(contentHash(`${OLD}\n`), '99.0.0'),
+    });
+    await openUserGuide(b.asHost, VERSION);
+    expect(b.host.confirm).not.toHaveBeenCalled();
+    expect(await b.fs.read(QUICKSTART_DOC_PATH)).toBe(oldFile(OLD));
   });
 });
 
@@ -89,6 +156,9 @@ describe('user guide strings are translated', () => {
     'Open user guide',
     'User guide',
     'Created the user guide: {0}',
+    'Replace with the new version',
+    'Updated the user guide to labnoteo {0}.',
+    '{0} was edited, so it was left at its earlier version. Run "Open user guide" to get the new version.',
     'New here? Open the quick-start guide. Searching "Labnote" in the command palette lists every command.',
     'Click an experiment to open its README, or right-click it to change its status or toggle its discussion flag. Right-click a catalog item to create a workflow or insert a unit operation. No experiment yet? Run "{0}" first.',
     'Type @dna (or another type) in a note, or right-click → "{0}" to register a sample.',

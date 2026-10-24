@@ -17,6 +17,7 @@ import {
   issueSentenceRange,
   parseIssueMarkers,
   planIssueMarkerInsertion,
+  markerSpanAcrossRuns,
   reassignIssueMarkerIds,
   renderIssueMarker,
   resetIssueMarkerIdCounter,
@@ -350,6 +351,14 @@ describe('markers in comments', () => {
     expect(planIssueMarkerInsertion(open, 3, 3, 'ISS-x', '주제')).toEqual({ reason: 'comment' });
   });
 
+  it('gives the comment as the reason for a commented-out table line (#282)', () => {
+    const doc = '<!--\n| 시료 | 농도 |\n| --- | --- |\n-->\n';
+    const at = doc.indexOf('시료');
+    expect(planIssueMarkerInsertion(doc, at, at, 'ISS-x', '주제')).toEqual({ reason: 'comment' });
+    const live = '| 시료 @issue;ISS-a;x | 농도 |';
+    expect(planIssueMarkerInsertion(live, 3, 3, 'ISS-x', '주제')).toEqual({ reason: 'table' });
+  });
+
   it('inserts after a closed comment, which holds no live marker', () => {
     const doc = '<!-- @issue;ISS-old;x -->';
     const plan = planIssueMarkerInsertion(doc, doc.length, doc.length, 'ISS-x', '새 논의');
@@ -645,5 +654,39 @@ describe('findEnclosingHeading', () => {
 
   it('is undefined before any heading', () => {
     expect(findEnclosingHeading('prose\n@issue;ISS-a;x', 2)).toBeUndefined();
+  });
+});
+
+// #292: a marker whose topic had a link, code, bold or italics was
+// highlighted only up to that element in the reading view.
+describe('markerSpanAcrossRuns', () => {
+  const text = (t: string) => ({ text: t, isText: true });
+  const el = (t: string) => ({ text: t, isText: false });
+
+  it('takes the formatted elements and text after them to the end of the line', () => {
+    expect(markerSpanAcrossRuns([text('측정값 @issue;ISS-a;'), el('pET-28a'), text(' 농도가 '), el('낮음'), text('?')])).toEqual({
+      start: 4,
+      lastRun: 4,
+      endInLast: 1,
+    });
+  });
+
+  it('stops at a line break inside a later text node', () => {
+    expect(markerSpanAcrossRuns([text('@issue;ISS-a;주제 '), el('code'), text(' 끝\n다음 줄')])).toEqual({
+      start: 0,
+      lastRun: 2,
+      endInLast: 2,
+    });
+  });
+
+  it('reads a topic made only of formatting', () => {
+    expect(markerSpanAcrossRuns([text('@issue;ISS-a;'), el('굵은 주제')])).toEqual({ start: 0, lastRun: 1, endInLast: 5 });
+  });
+
+  it('leaves markers that end in the text node, and text that is no marker', () => {
+    expect(markerSpanAcrossRuns([text('@issue;ISS-a;주제\n다음 '), el('굵게')])).toBeUndefined();
+    expect(markerSpanAcrossRuns([text('그냥 글 '), el('굵게')])).toBeUndefined();
+    expect(markerSpanAcrossRuns([text('@issue;ISS-a;')])).toBeUndefined();
+    expect(markerSpanAcrossRuns([el('@issue;ISS-a;'), text('x')])).toBeUndefined();
   });
 });

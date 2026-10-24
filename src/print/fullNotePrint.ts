@@ -9,7 +9,7 @@
  */
 import { Component, MarkdownRenderer, TFile } from 'obsidian';
 import { getSeoulDateString } from '@labnoteo/core/lib/dateUtils';
-import { encodePagePayload, payloadLabel, type PagePayload } from '@labnoteo/core/lib/scanPayload';
+import { encodePagePayload, payloadLabel, unitOpFingerprint, type PagePayload } from '@labnoteo/core/lib/scanPayload';
 import { bodyBox, buildPrintHtml, escapeHtml, openHtmlInBrowser, printHtml, type PrintPage } from './printPages';
 import { noteTitleOf, type WorksheetDeps } from './worksheetPrint';
 
@@ -18,6 +18,8 @@ export interface MeasuredBlock {
   bottom: number;
   /** Set when the block is a unit-operation heading. */
   opId?: string;
+  /** {@link unitOpFingerprint} of that heading's name and alias. */
+  fingerprint?: string;
 }
 
 export interface NotePageSlice {
@@ -27,6 +29,7 @@ export interface NotePageSlice {
   /** Unit operation the page starts in: 1-based index and ID, or 0 and ''. */
   unitOpIndex: number;
   opId: string;
+  fingerprint?: string;
 }
 
 /**
@@ -35,15 +38,17 @@ export interface NotePageSlice {
  */
 export function sliceIntoPages(blocks: readonly MeasuredBlock[], pageHeight: number): NotePageSlice[] {
   // The unit operation each block belongs to.
-  const opAt: { unitOpIndex: number; opId: string }[] = [];
+  const opAt: { unitOpIndex: number; opId: string; fingerprint?: string }[] = [];
   let unitOpIndex = 0;
   let opId = '';
+  let fingerprint: string | undefined;
   for (const b of blocks) {
     if (b.opId) {
       unitOpIndex++;
       opId = b.opId;
+      fingerprint = b.fingerprint;
     }
-    opAt.push({ unitOpIndex, opId });
+    opAt.push(fingerprint ? { unitOpIndex, opId, fingerprint } : { unitOpIndex, opId });
   }
   const pages: NotePageSlice[] = [];
   let from = 0;
@@ -58,7 +63,17 @@ export function sliceIntoPages(blocks: readonly MeasuredBlock[], pageHeight: num
   return pages;
 }
 
-const UNIT_OP_TITLE_RE = /^\s*\[([A-Z]+\d+)\s+[^\]]+\]/;
+const UNIT_OP_TITLE_RE = /^\s*\[([A-Z]+\d+)\s+([^\]]+)\]([^\n]*)/;
+
+/**
+ * The unit operation a rendered `h3` heading names. Pages are cut from the
+ * rendered note, so its position can differ from the Markdown's (a heading in
+ * a code block); the fingerprint comes from the heading's own words (#304).
+ */
+export function unitOpOfRenderedHeading(text: string): { opId: string; fingerprint: string } | undefined {
+  const m = UNIT_OP_TITLE_RE.exec(text);
+  return m ? { opId: m[1], fingerprint: unitOpFingerprint(m[2].trim(), m[3].trim()) } : undefined;
+}
 
 const stripFrontMatter = (md: string): string => md.replace(/^---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/, '');
 
@@ -87,8 +102,8 @@ export async function printFullNoteCommand(deps: WorksheetDeps, file: TFile): Pr
     const children = Array.from(measure.children) as HTMLElement[];
     const blocks: MeasuredBlock[] = children.map(el => {
       const heading = el.matches('h3') ? el : el.querySelector(':scope > h3');
-      const opId = heading ? UNIT_OP_TITLE_RE.exec(heading.textContent ?? '')?.[1] : undefined;
-      return { top: el.offsetTop, bottom: el.offsetTop + el.offsetHeight, opId };
+      const op = heading ? unitOpOfRenderedHeading(heading.textContent ?? '') : undefined;
+      return { top: el.offsetTop, bottom: el.offsetTop + el.offsetHeight, ...op };
     });
     const slices = sliceIntoPages(blocks, box.height * pxPerMm);
     if (slices.length === 0) {
@@ -102,6 +117,7 @@ export async function printFullNoteCommand(deps: WorksheetDeps, file: TFile): Pr
         noteId,
         unitOpIndex: s.unitOpIndex,
         opId: s.opId,
+        fingerprint: s.fingerprint,
         page: i + 1,
         pageCount: slices.length,
         printedOn,

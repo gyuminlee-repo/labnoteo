@@ -41,6 +41,10 @@ const obsidianKo: Record<string, string> = {
     '카탈로그에 새 항목 {0}개, 바뀐 항목 {1}개가 있습니다. 명령 팔레트에서 "{2}"을(를) 실행하세요.',
   'Insert date': '날짜 삽입',
   'Insert date and time': '날짜 및 시간 삽입',
+  'Switch to the editing view and put the cursor where the date goes, then run this again.':
+    '편집 화면으로 바꿔 날짜를 넣을 곳에 커서를 둔 뒤 다시 실행하세요.',
+  'Only years 1900–2100 are written; the date in the note was kept.':
+    '1900~2100년만 기록합니다. 노트의 날짜는 그대로 두었습니다.',
   'End_date {0} is earlier than Start_date {1}.': 'End_date({0})가 Start_date({1})보다 이릅니다.',
   'Pick date and time': '날짜 및 시간 선택',
   'Export tables to CSV': '표를 CSV로 내보내기',
@@ -90,6 +94,13 @@ const obsidianKo: Record<string, string> = {
   'Samples': '샘플',
 
   // User guide / view hints
+  'This user guide was written for labnoteo {0}, older than the installed {1}, and its marked block was edited. Replace the block with the new version? The current file is kept as {2}; in a Git vault that copy is committed too. Cancel opens it as it is.':
+    '이 설명서는 labnoteo {0} 기준으로, 설치된 {1}보다 오래됐고 관리 블록이 고쳐져 있습니다. 블록을 새 버전으로 바꿀까요? 지금 파일은 {2}로 남깁니다(git 보관함이면 이 사본도 커밋됩니다). 취소하면 그대로 엽니다.',
+  'an earlier version': '이전 버전',
+  'Replace with the new version': '새 버전으로 바꾸기',
+  'Updated the user guide to labnoteo {0}.': '설명서를 labnoteo {0} 기준으로 바꿨습니다.',
+  '{0} was edited, so it was left at its earlier version. Run "Open user guide" to get the new version.':
+    '{0}이(가) 고쳐져 있어 이전 버전으로 두었습니다. "사용법 열기"를 실행하면 새 버전으로 바꿀 수 있습니다.',
   'Created the user guide: {0}': '사용법 문서를 만들었습니다: {0}',
   'Updated {0} automation file(s) to this plugin version: {1}':
     '자동화 파일 {0}개를 이 플러그인 버전에 맞게 갱신했습니다: {1}',
@@ -173,6 +184,12 @@ const obsidianKo: Record<string, string> = {
     '{0}에 같은 ID와 별칭이 이미 있어 README 체크리스트에서 둘이 똑같이 보입니다. 구분하려면 이 워크플로에 다른 별칭을 주세요.',
   'Workflow notes moved out of {0} are still in its README checklist. Run "{1}" in {0} to remove them.':
     '{0}에서 옮겨 간 워크플로 노트가 아직 그 README 체크리스트에 있습니다. {0}에서 "{1}"을(를) 실행하면 지울 수 있습니다.',
+  'The unit operation it was printed from was renamed since, so it is unclear which block it belongs to.':
+    '출력한 뒤 유닛 오퍼레이션 제목이나 별칭이 바뀌어 어느 블록인지 확인할 수 없습니다.',
+  'This printout is from before 0.123.0 and does not say which block it is, so check that it went to the right one.':
+    '0.123.0 이전 출력본이라 어느 블록인지 적혀 있지 않습니다. 맞는 블록에 붙었는지 확인하세요.',
+  'The block is no longer where it was printed from, so check that the scan went to the right one.':
+    '출력한 뒤 블록 위치가 바뀌었습니다. 맞는 블록에 붙었는지 확인하세요.',
   'Workflow numbering already follows the README checklist.': '워크플로 번호가 이미 README 체크리스트 순서와 같습니다.',
   'New numbers follow the order of the README checklist.': '새 번호는 README 체크리스트 순서를 따릅니다.',
   'New numbers follow the current file numbers.': '새 번호는 지금 파일 번호 순서를 따릅니다.',

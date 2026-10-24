@@ -1,6 +1,6 @@
 # Labnote Assistant for Obsidian (labnoteo)
 
-**Version 0.122.0**
+**Version 0.123.0**
 
 [한국어](README.md)
 
@@ -51,7 +51,7 @@ Under a Korean UI the command palette shows each name as `Korean (English)` (e.g
 
 | Command | What it does |
 | --- | --- |
-| Insert date | Insert today's date at the cursor (in the front matter and `#### Meta`, only into empty values) |
+| Insert date | Insert today's date at the cursor (in the front matter and `#### Meta`, only into empty values; table cells too) |
 | Insert date and time | Insert the current timestamp at the cursor |
 | Create experiment | Create a new `.labnote.md` experiment note and its numbered experiment folder |
 | Change experiment status | Change an experiment's `status` frontmatter through a picker (also on the workflow view's right-click menu) |
@@ -81,7 +81,7 @@ Under a Korean UI the command palette shows each name as `Korean (English)` (e.g
 | Import scanned pages | Drop photos, PDFs or zips to file them in their notes by QR code |
 | Process scan folder now | Process the PC scan folder set in settings right away (desktop only) |
 | Assign unmatched scans | File the pages whose QR code could not be read by picking the note and unit operation |
-| Open user guide | Open the researcher quick start (`QUICKSTART.md`), creating it in the vault if missing |
+| Open user guide | Open the researcher quick start (`QUICKSTART.md`), creating it or bringing an outdated copy up to this version |
 
 > **What each command does in detail** — where it inserts, what it confirms before writing, and how
 > it handles file names, numbering, moves and copies — is in the

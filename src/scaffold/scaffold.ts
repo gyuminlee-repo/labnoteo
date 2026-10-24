@@ -143,6 +143,23 @@ function blockEdited(current: string, asset: ScaffoldAsset, recorded: string | u
   return !blockIsTemplate(inner, recorded) && !blockIsTemplate(inner, contentHash(asset.content));
 }
 
+/**
+ * How the block of a marked file compares with `asset` (#305): `current`
+ * when it is the template, `outdated` when it is the template it was last
+ * reconciled with (`recorded`), `edited` otherwise, which includes a block
+ * that cannot be told apart without a record. `none` without the markers.
+ */
+export function managedBlockStatus(
+  current: string,
+  asset: ScaffoldAsset,
+  recorded: string | undefined
+): 'none' | 'current' | 'outdated' | 'edited' {
+  const inner = managedBlockInner(current);
+  if (inner === undefined) return 'none';
+  if (inner === asset.content.replace(/\r\n/g, '\n').trim()) return 'current';
+  return blockIsTemplate(inner, recorded) ? 'outdated' : 'edited';
+}
+
 /** A `managed-block` file as first written: the block, then the asset's trailer. */
 export function managedFileContent(asset: ScaffoldAsset): string {
   const block = upsertManagedBlock('', asset.content);
@@ -484,12 +501,23 @@ export async function refreshAutomationFiles(
       )
     );
   }
-  if (result.pending.length > 0) {
+  // The guide has a command of its own that brings it up to date (#305).
+  const setupPending = result.pending.filter(p => p !== QUICKSTART_DOC_PATH);
+  if (setupPending.length < result.pending.length) {
+    host.notify(
+      'info',
+      host.t(
+        '{0} was edited, so it was left at its earlier version. Run "Open user guide" to get the new version.',
+        QUICKSTART_DOC_PATH
+      )
+    );
+  }
+  if (setupPending.length > 0) {
     host.notify(
       'info',
       host.t(
         'These automation files changed after they were installed, or cannot be checked against an earlier version, so they were left as they are: {0}. Run "Setup research automation" to get the new version.',
-        shortList(host, result.pending)
+        shortList(host, setupPending)
       )
     );
   }

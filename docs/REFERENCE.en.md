@@ -22,9 +22,28 @@ Insert the current date. Inside the front matter it only fills a line with an em
 `Start_date`/`End_date` line of a unit operation's `#### Meta` it fills that value (with a value
 already there, it points to the 📅 picker).
 
+While a table cell is being edited, the date goes in at the cursor in that cell. In reading view
+the command is still listed and says to switch to the editing view and place the cursor first.
+
 ### Insert date and time
 
-Insert the current timestamp. The front matter rule is the same as Insert date.
+Insert the current timestamp. The front matter and table cell rules are the same as Insert date.
+
+### Date picker (📅)
+
+Click the 📅 icon at the end of a `Start_date`/`End_date` line in `#### Meta`, or the value
+itself, to open a date and time field. A changed value goes into the note at once; Enter or a
+click elsewhere closes the field, and Escape puts back the value it opened with. One Ctrl+Z undoes
+everything changed while it was open.
+
+- Enter without picking anything keeps a value that is already there. Dotted dates such as
+  `2026.10.23 14:00` are read and shown; a value the field cannot read is left as it is too. An
+  empty value shows the current time, and Enter writes it.
+- With a `Start_date` in the same block, the `End_date` calendar starts at that date, and closing
+  with an end earlier than the start says so (the value is still written).
+- Years outside 1900–2100, such as 0001 after stepping the year with the arrow keys or the digits
+  passed through while typing a year, are not written; closing says the date was kept.
+- Works in editing views only, including notes opened in a separate window.
 
 ## Experiments
 
@@ -366,6 +385,14 @@ Print the whole note split into pages, with a QR code on each. READMEs too.
 Drop photos, PDFs or zips to file them in their notes by QR code, then show the results (open note,
 undo, delete earlier scan). Also the scan icon in the left ribbon.
 
+Each result names the block it went to (`note › [UHW290 Name] alias`). From 0.123.0 the QR code
+also carries a fingerprint of the block's name and alias, so a page still finds its block after
+blocks above it were removed or reordered, instead of sliding into the next block of the same ID.
+The result asks you to check when the block was found somewhere else or the printout is older than
+0.123.0. A page whose block was renamed since printing is not guessed: it goes to unmatched scans.
+Plugins before 0.123.0 do not read the new QR codes, so everyone sharing a vault should update
+before scanning new printouts.
+
 ### Process scan folder now
 
 Process the PC scan folder set in settings right away (desktop only).
@@ -450,6 +477,11 @@ Scaffold GitHub Actions and scripts into the current vault. See
 
 Open the researcher quick start (`QUICKSTART.md`), creating it in the vault if missing. No Setup
 research automation needed. Also a button at the top of the settings tab.
+
+The guide says which release it was written for at the top. Plugin updates replace its marked block
+while nobody edited it. A guide from an older release whose block was edited asks first: replacing
+keeps the old file as `QUICKSTART.backup.md` (committed too in a Git vault), and Cancel opens it as
+it is. Text below the block is always kept.
 
 ## Inserting while in reading view
 

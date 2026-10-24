@@ -21,8 +21,17 @@ export function summarizeResults(t: Translator, results: readonly ScanResult[]):
 
 export function describeResult(t: Translator, r: ScanResult): string {
   switch (r.status) {
-    case 'filed':
-      return t('Filed in {0}', r.notePath ?? '');
+    case 'filed': {
+      const where = r.block ? `${r.notePath ?? ''} › ${r.block}` : (r.notePath ?? '');
+      const filed = t('Filed in {0}', where);
+      if (r.legacy) {
+        return `${filed} ${t('This printout is from before 0.123.0 and does not say which block it is, so check that it went to the right one.')}`;
+      }
+      if (r.matchedBy && r.matchedBy !== 'index') {
+        return `${filed} ${t('The block is no longer where it was printed from, so check that the scan went to the right one.')}`;
+      }
+      return filed;
+    }
     case 'duplicate':
       return t('Already in {0}; skipped', r.notePath ?? '');
     case 'blank':
@@ -53,6 +62,7 @@ export function describeResult(t: Translator, r: ScanResult): string {
         'note-only': t('The QR code names the note but no unit operation.'),
         'no-unit-op': t('The unit operation it was printed from is no longer in the note.'),
         ambiguous: t('The note has several unit operations it could belong to.'),
+        renamed: t('The unit operation it was printed from was renamed since, so it is unclear which block it belongs to.'),
       };
       return `${why[r.reason ?? 'no-qr'] ?? ''} ${t('Assign it with "{0}".', t('Assign unmatched scans'))}`;
     }

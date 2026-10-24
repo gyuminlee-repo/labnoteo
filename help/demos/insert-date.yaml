@@ -23,6 +23,15 @@ steps:
   - palette: insert-datetime
     poster: true
     hold: 1500
+  - caption: { ko: 표 칸을 편집하는 중에도 그 칸에 넣습니다, en: While editing a table cell it goes into that cell }
+    tool: ui_click
+    args: { selector: .cm-table-widget td, nth: 1 }
+  - tool: ui_press
+    args: { keys: End }
+  - palette: insert-date
+    hold: 1200
+  - tool: ui_press
+    args: { keys: Escape }
   - caption: { ko: 값을 바꿀 때는 📅을 눌러 입력 칸에서 고칩니다, en: "To change a value, click 📅 and edit it in the field" }
     tool: ui_click
     args: { selector: .labnote-date-pick, nth: 0 }

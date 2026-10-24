@@ -13,6 +13,7 @@ import {
 } from '../sections/workflowSectionParser';
 import { createWorkflowContent } from '../lib/workflowStructure';
 import { buildHwUnitOpMarkdown } from '../lib/unitOpTemplate';
+import { unitOpFingerprint } from '../lib/scanPayload';
 
 function buildNote(ops: string[]): string {
   let md = createWorkflowContent({ id: 'WD010', name: 'Design', description: 'desc' }, 'Dr. Kim', undefined, {
@@ -67,6 +68,40 @@ describe('resolveScanTarget', () => {
     expect(resolveScanTarget(blocks, 2, 'UHW010')).toMatchObject({ kind: 'ambiguous' });
     expect(resolveScanTarget(blocks, 1, 'UHW999')).toEqual({ kind: 'missing' });
     expect(resolveScanTarget(blocks, 0, '')).toEqual({ kind: 'note' });
+  });
+});
+
+describe('resolveScanTarget with a block fingerprint (#304)', () => {
+  /** Two UHW010 blocks told apart by alias, as in the issue. */
+  const note = (aliases: string[]): string => {
+    const left = [...aliases];
+    return buildNote(aliases.map(() => 'UHW010')).replace(/^### \[UHW010 Op UHW010\]$/gm, h => `${h} ${left.shift()}`);
+  };
+  const fp = (alias: string) => unitOpFingerprint('Op UHW010', alias);
+
+  it('takes the block at the printed position only when its name and alias still match', () => {
+    const blocks = listUnitOpBlocks(note(['조건 A', '조건 B']));
+    expect(resolveScanTarget(blocks, 2, 'UHW010', fp('조건 B'))).toMatchObject({ kind: 'block', by: 'index', block: { index: 2 } });
+  });
+
+  it('finds the block after the one above it was removed', () => {
+    const blocks = listUnitOpBlocks(note(['조건 B', '조건 C']));
+    expect(resolveScanTarget(blocks, 1, 'UHW010', fp('조건 C'))).toMatchObject({
+      kind: 'block',
+      by: 'fingerprint',
+      block: { index: 2, alias: '조건 C' },
+    });
+  });
+
+  it('reports a renamed block instead of guessing, even when one block of the ID is left', () => {
+    const blocks = listUnitOpBlocks(note(['조건 Z']));
+    expect(resolveScanTarget(blocks, 1, 'UHW010', fp('조건 A'))).toMatchObject({ kind: 'renamed', candidates: [{ index: 1 }] });
+    expect(resolveScanTarget(blocks, 1, 'UHW999', fp('조건 A'))).toEqual({ kind: 'missing' });
+  });
+
+  it('asks when two blocks have the same name and alias', () => {
+    const blocks = listUnitOpBlocks(note(['조건 A', '조건 A']));
+    expect(resolveScanTarget(blocks, 3, 'UHW010', fp('조건 A'))).toMatchObject({ kind: 'ambiguous' });
   });
 });
 

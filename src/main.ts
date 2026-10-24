@@ -77,6 +77,7 @@ import {
   experimentTitleHint,
   workflowAliasHint,
   workflowConcept,
+  writeNoteThroughVault,
   type ReadmeSyncControl,
 } from './commands';
 import { loadWorkflows } from '@labnoteo/core/lib/workflowDataLoader';
@@ -230,6 +231,7 @@ export default class LabnotePlugin extends Plugin {
       createMetaDatePickerExtension({
         pick: this.t('Pick date and time'),
         endBeforeStart: (end, start) => this.t('End_date {0} is earlier than Start_date {1}.', end, start),
+        implausibleYear: this.t('Only years 1900–2100 are written; the date in the note was kept.'),
       })
     );
     this.registerViews();
@@ -338,6 +340,25 @@ export default class LabnotePlugin extends Plugin {
     });
   }
 
+  /**
+   * The date commands, also listed in reading view (#296), where they only
+   * say how to use them: a date has no place to go without a cursor. The
+   * active editor, not the active Markdown view, so canvas cards and hover
+   * previews keep working.
+   */
+  private insertDateFromPalette(checking: boolean, now: () => string): boolean {
+    const reading = this.app.workspace.getActiveViewOfType(MarkdownView)?.getMode() === 'preview';
+    const editor = this.app.workspace.activeEditor?.editor;
+    if (!reading && !editor) return false;
+    if (checking) return true;
+    if (reading || !editor) {
+      this.host.notify('info', this.t('Switch to the editing view and put the cursor where the date goes, then run this again.'));
+    } else {
+      insertDateCommand(editor, this.host, now());
+    }
+    return true;
+  }
+
   private paletteName(key: string): string {
     return bilingualName(this.t, key);
   }
@@ -346,17 +367,13 @@ export default class LabnotePlugin extends Plugin {
     this.addCommand({
       id: 'insert-date',
       name: this.paletteName('Insert date'),
-      editorCallback: editor => {
-        insertDateCommand(editor, this.host, getSeoulDateString());
-      },
+      checkCallback: checking => this.insertDateFromPalette(checking, getSeoulDateString),
     });
 
     this.addCommand({
       id: 'insert-datetime',
       name: this.paletteName('Insert date and time'),
-      editorCallback: editor => {
-        insertDateCommand(editor, this.host, getSeoulDateTimeString());
-      },
+      checkCallback: checking => this.insertDateFromPalette(checking, getSeoulDateTimeString),
     });
 
     this.addCommand({
@@ -2059,7 +2076,10 @@ export default class LabnotePlugin extends Plugin {
     this.addCommand({
       id: 'open-user-guide',
       name: this.paletteName('Open user guide'),
-      callback: () => void openUserGuide(this.host, this.manifest.version),
+      callback: () =>
+        void openUserGuide(this.host, this.manifest.version, (path, content) =>
+          writeNoteThroughVault(this.app, this.host, path, content)
+        ),
     });
   }
 

@@ -119,6 +119,14 @@
   font-weight: var(--font-medium);
 }
 
+/* The editor draws a marker in pieces wherever formatting splits its line
+   (#292): no gaps or rounded ends between them, and bold inside stays bold. */
+.markdown-source-view .labnote-issue-marker {
+  padding: 0;
+  border-radius: 0;
+  font-weight: inherit;
+}
+
 /* A marker whose ID another marker of the experiment also uses: both would
    land in one issue. Editor only; the title says where the other one is. */
 .labnote-issue-marker-duplicate {

@@ -98,6 +98,25 @@ describe('refreshAutomationFiles', () => {
     expect(result.pending).toEqual(['DOC.md']);
   });
 
+  it('points an edited guide at "Open user guide" and other files at the setup command (#305)', async () => {
+    const guide: ScaffoldAsset = { vaultPath: QUICKSTART_DOC_PATH, content: 'guide v2', merge: 'managed-block' };
+    const { host, asHost } = makeHost({
+      [ISSUE_SYNC_WORKFLOW_PATH]: 'wf\n',
+      'DOC.md': 'v1 with my notes\n',
+      [QUICKSTART_DOC_PATH]: `${MANAGED_BLOCK_BEGIN}\nguide v1 with lab notes\n${MANAGED_BLOCK_END}\n`,
+      [INSTALL_RECORD_PATH]: record({ 'DOC.md': contentHash('v1\n'), [QUICKSTART_DOC_PATH]: contentHash('guide v1') }),
+    });
+
+    const result = await refreshAutomationFiles(asHost, '1.1.0', [...ASSETS, guide]);
+
+    expect(result.pending).toEqual(['DOC.md', QUICKSTART_DOC_PATH]);
+    const notices = host.notify.mock.calls.map(c => String(c[1]));
+    expect(notices.find(n => n.includes('Open user guide'))).toContain(QUICKSTART_DOC_PATH);
+    const setup = notices.find(n => n.includes('Setup research automation'));
+    expect(setup).toContain('DOC.md');
+    expect(setup).not.toContain(QUICKSTART_DOC_PATH);
+  });
+
   it('stays quiet about an edit already reconciled with the current template', async () => {
     // The setup command records the template even when the overwrite is declined.
     const { asHost } = makeHost({

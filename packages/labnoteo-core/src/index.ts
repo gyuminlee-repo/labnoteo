@@ -110,6 +110,8 @@ export {
   ISSUE_MARKER_ID_PREFIX,
   parseIssueMarkers,
   findIssueMarkerRanges,
+  markerSpanAcrossRuns,
+  type InlineRun,
   fencedCodeRanges,
   codeBlockRanges,
   commentRanges,

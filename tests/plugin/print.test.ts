@@ -3,10 +3,10 @@ import { createWorkflowContent } from '../../packages/labnoteo-core/src/lib/work
 import { buildHwUnitOpMarkdown } from '../../packages/labnoteo-core/src/lib/unitOpTemplate';
 import { findUnitOpInsertOffset, rebuildUnitOpToc } from '../../packages/labnoteo-core/src/sections/workflowSectionParser';
 import { listWorksheetUnitOps, paginateWorksheet } from '../../packages/labnoteo-core/src/lib/worksheet';
-import { decodeScanPayload } from '../../packages/labnoteo-core/src/lib/scanPayload';
+import { decodeScanPayload, unitOpFingerprint } from '../../packages/labnoteo-core/src/lib/scanPayload';
 import { buildPrintHtml, escapeHtml, type PrintPage } from '../../src/print/printPages';
 import { plainInline, worksheetPrintPages } from '../../src/print/worksheetPrint';
-import { sliceIntoPages, type MeasuredBlock } from '../../src/print/fullNotePrint';
+import { sliceIntoPages, unitOpOfRenderedHeading, type MeasuredBlock } from '../../src/print/fullNotePrint';
 
 describe('buildPrintHtml', () => {
   const page = (over: Partial<PrintPage> = {}): PrintPage => ({
@@ -81,6 +81,7 @@ describe('worksheetPrintPages', () => {
         page: i + 1,
         pageCount: pages.length,
         printedOn: '2026-10-15',
+        fingerprint: unitOpFingerprint('Liquid <Handling>', ''),
       });
       expect(p.header).toContain('A &amp; B');
       expect(p.header).not.toContain('<Handling>');
@@ -167,5 +168,25 @@ describe('sliceIntoPages', () => {
       [2, 3],
     ]);
     expect(sliceIntoPages([], 100)).toEqual([]);
+  });
+
+  it('carries the fingerprint of the unit operation each page starts in (#304)', () => {
+    const blocks = [block(0, 40), { ...block(40, 40, 'UHW010'), fingerprint: 'K7QD' }, block(80, 40)];
+    expect(sliceIntoPages(blocks, 50)).toEqual([
+      { from: 0, to: 1, unitOpIndex: 0, opId: '' },
+      { from: 1, to: 2, unitOpIndex: 1, opId: 'UHW010', fingerprint: 'K7QD' },
+      { from: 2, to: 3, unitOpIndex: 1, opId: 'UHW010', fingerprint: 'K7QD' },
+    ]);
+  });
+});
+
+describe('unitOpOfRenderedHeading', () => {
+  it('reads the ID and fingerprints the name and alias as the Markdown heading would', () => {
+    expect(unitOpOfRenderedHeading('[UHW010 Liquid Handling] 2차 정제')).toEqual({
+      opId: 'UHW010',
+      fingerprint: unitOpFingerprint('Liquid Handling', '**2차** 정제'),
+    });
+    expect(unitOpOfRenderedHeading('[UHW010 Liquid Handling]')?.fingerprint).toBe(unitOpFingerprint('Liquid Handling', ''));
+    expect(unitOpOfRenderedHeading('Method')).toBeUndefined();
   });
 });
