@@ -58,7 +58,7 @@ Under a Korean UI the command palette shows each name as `Korean (English)` (e.g
 | Toggle discussion flag | Turn an experiment's `discuss` flag on or off, so the next push opens a GitHub Issue |
 | Insert issue marker | Drop an `@issue;<ID>;<topic>` marker at the cursor — each marker opens its own Issue |
 | Create workflow | Create a numbered workflow note from the catalog and list it in the checklist |
-| Renumber workflows | Renumber an experiment folder's workflows from 001 without gaps |
+| Renumber workflows | Renumber an experiment folder's workflows from 001 without gaps, in README checklist order |
 | Sync workflow checklist with folder | Match the checklist to the folder and fix labels, titles and experimenters that drifted, after asking |
 | Insert unit operation | Insert a unit operation from the catalog into a workflow note and refresh the TOC |
 | Update catalogs | Bring the vault's `resources/workflows/` catalogs up to this plugin version, keeping values the lab edited |
