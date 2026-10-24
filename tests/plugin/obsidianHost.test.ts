@@ -125,3 +125,39 @@ describe('editTarget in reading view (#216)', () => {
     expect(await reading.host.editTarget()!.getSelectionRange!()).toBeUndefined();
   });
 });
+
+// #291: "View usages" opened each note at its top.
+describe('openFile', () => {
+  function openSetup(mode: 'source' | 'preview') {
+    const view = new MarkdownView();
+    view.mode = mode;
+    const editor = fakeEditor('text');
+    view.editor = editor;
+    const leaf = { view, openFile: vi.fn(async () => undefined) };
+    const app = {
+      vault: { getAbstractFileByPath: (p: string) => new TFile(p) },
+      workspace: { getLeaf: () => leaf },
+    } as unknown as App;
+    return { host: createObsidianHost(app, new MemFileSystem(), t), leaf, editor };
+  }
+
+  it('puts the cursor on the given line and column', async () => {
+    const { host, leaf, editor } = openSetup('source');
+    await host.openFile(NOTE, { line: 12, ch: 4 });
+    expect(leaf.openFile).toHaveBeenCalledWith(expect.any(TFile), { eState: { line: 12 } });
+    expect(editor.setCursor).toHaveBeenCalledWith({ line: 12, ch: 4 });
+    expect(editor.scrollIntoView).toHaveBeenCalled();
+  });
+
+  it('leaves the cursor alone without a position or in reading view', async () => {
+    const plain = openSetup('source');
+    await plain.host.openFile(NOTE);
+    expect(plain.leaf.openFile).toHaveBeenCalledWith(expect.any(TFile), undefined);
+    expect(plain.editor.setCursor).not.toHaveBeenCalled();
+
+    const reading = openSetup('preview');
+    await reading.host.openFile(NOTE, { line: 3 });
+    expect(reading.leaf.openFile).toHaveBeenCalledWith(expect.any(TFile), { eState: { line: 3 } });
+    expect(reading.editor.setCursor).not.toHaveBeenCalled();
+  });
+});

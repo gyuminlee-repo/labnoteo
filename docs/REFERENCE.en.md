@@ -259,6 +259,27 @@ between Local and Global, and changes the type.
 - From a note at the vault root, a Global sample shows scope `global` with no move button, since
   that note has no Local registry of its own.
 
+### Sample view context menu
+
+Right-click a sample in the sample view (Shift+F10 from the keyboard) to copy its ID, insert a
+reference, view usages, edit, delete, move between Local and Global, or change its type.
+
+- **Insert reference** follows the cursor: at the end of the note from the front matter or above
+  the title, on the next line from a heading or a `@type;ID;…` definition line, at the end of the
+  line from another reference, inside the cells on a table row, and at the cursor otherwise. Text
+  selected within one body line is replaced by the reference (a template hint such as
+  `(samples from the previous step)`); a selection across lines, on a heading or definition line,
+  over another reference, or across a table cell's `|` is ignored. A reference with an alias gets a
+  space before any text right after it, since the alias is read up to whitespace.
+- **View usages** lists each line that refers to or defines the sample, with the note path and its
+  section (`[UHW250 …] › Output · line 12`), and opens the note with the cursor on that reference.
+  A Local sample is looked up in its experiment, a Global one in the whole vault, leaving out
+  experiments whose own Local sample has the same ID.
+- **Move to Global / Move to Local** asks first when notes outside the experiment use a Global
+  sample being made Local, and when the destination already has another sample of the same type
+  and alias; moving then shows two samples with the same text in autocomplete (they are not
+  merged).
+
 ### Insert sample list of this experiment
 
 Insert, at the cursor, a Markdown table of every Local sample of this experiment and the Global

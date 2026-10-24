@@ -26,7 +26,8 @@ import {
   changeSampleTypeInteractive,
   setSampleDiscardedInteractive,
   insertSampleReference,
-  sampleUsages,
+  sampleUsageSpots,
+  usageSpotLabel,
   type SampleScope,
 } from '../sampleActions';
 import { pickModal } from '../modals';
@@ -270,19 +271,20 @@ export class SampleTreeView extends ItemView {
     menu.showAtMouseEvent(evt);
   }
 
-  /** The notes that use a sample, picked from a list to open (#130). */
+  /** The places that use a sample, picked from a list to open at the reference (#130, #291). */
   private async showUsages(folder: string, sample: SamplePayload): Promise<void> {
-    const usages = await sampleUsages(this.app, this.plugin, folder, sample.type, sample.id);
-    if (usages.length === 0) {
+    const spots = await sampleUsageSpots(this.app, this.plugin, folder, sample.type, sample.id);
+    if (spots.length === 0) {
       new Notice(this.plugin.t('{0} is not used in any note.', sample.id));
       return;
     }
-    const path = await pickModal(
+    const notes = new Set(spots.map(s => s.path)).size;
+    const spot = await pickModal(
       this.app,
-      usages.map(p => ({ label: p, value: p })),
-      { title: this.plugin.t('Notes using {0} ({1})', sample.id, String(usages.length)) }
+      spots.map(s => ({ label: s.path, description: usageSpotLabel(this.plugin.t, s), value: s })),
+      { title: this.plugin.t('Notes using {0} ({1})', sample.id, String(notes)) }
     );
-    if (path) await this.plugin.host.openFile(path);
+    if (spot) await this.plugin.host.openFile(spot.path, { line: spot.line, ch: spot.ch });
   }
 
   /** Sample node: copy / insert reference / view usages / edit / delete. */

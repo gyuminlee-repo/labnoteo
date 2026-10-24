@@ -39,6 +39,9 @@ import {
   setSampleDiscarded,
   listExperimentSampleFolders,
   extractSampleInfoFromText,
+  samplesWithAliasIn,
+  findSampleUsageSpots,
+  type SampleUsageSpot,
   type AliasRewriteEdit,
   type SampleInfo,
   type SampleRecord,
@@ -341,7 +344,7 @@ export async function createSampleInteractive(
   // written (#248); re-entering a known id is the merge flow, which stays.
   // Every one is listed (#274): when two already share the alias, offering only
   // the first hides the one the user may have meant.
-  const siblings = alias && !existing ? await samplesWithAliasIn(plugin, type, folder, alias) : [];
+  const siblings = alias && !existing ? await samplesWithAliasIn(plugin.fs, folder, type, alias) : [];
   if (siblings.length > 0) {
     const records = await loadSamplesByType(plugin.fs, folder, type);
     const inGlobal = isSameSampleFolder(folder, plugin.settings.globalSampleFolder);
@@ -485,19 +488,7 @@ async function globalSamplesWithAlias(
 ): Promise<string[]> {
   const globalFolder = plugin.settings.globalSampleFolder;
   if (!globalFolder || isSameSampleFolder(folder, globalFolder)) return [];
-  return samplesWithAliasIn(plugin, type, globalFolder, alias);
-}
-
-/** The IDs of the `type` samples in `folder` with `alias` (trimmed, case ignored). */
-async function samplesWithAliasIn(
-  plugin: LabnotePlugin,
-  type: string,
-  folder: string,
-  alias: string
-): Promise<string[]> {
-  const wanted = alias.trim().toLowerCase();
-  const records = await loadSamplesByType(plugin.fs, folder, type);
-  return Object.keys(records).filter(id => records[id].alias?.trim().toLowerCase() === wanted);
+  return samplesWithAliasIn(plugin.fs, globalFolder, type, alias);
 }
 
 /**
@@ -794,12 +785,39 @@ async function notesReferencingSample(
 }
 
 /**
- * The notes that use the sample `(type, id)` of `folder`, as vault paths, for
- * "View usages" and the MCP `get_sample` (#130, #131). Like
- * {@link notesReferencingSample}, but a Global sample leaves out experiments
- * with a Local record of the same id, since their notes use that one (as
- * {@link rewriteStaleAliases} does). Deleting keeps the stricter check.
+ * The notes that use the sample `(type, id)` of `folder`, for "View usages"
+ * and the MCP `get_sample` (#130, #131). Like {@link notesReferencingSample},
+ * but a Global sample leaves out experiments with a Local record of the same
+ * id, since their notes use that one (as {@link rewriteStaleAliases} does).
+ * Deleting keeps the stricter check.
  */
+async function notesUsingSample(
+  app: App,
+  plugin: LabnotePlugin,
+  folder: string,
+  type: string,
+  id: string
+): Promise<ScopedNote[]> {
+  const docs = await notesInSampleScope(app, folder);
+  const paths = new Set(findSampleUsages(docs, type, id, plugin.settings.customSampleTypes));
+  const using = docs.filter(doc => paths.has(doc.path));
+  if (getExperimentDir(folder)) return using;
+  const shadowed = new Map<string, boolean>();
+  const used: ScopedNote[] = [];
+  for (const doc of using) {
+    const local = noteLabsamplesFolder(doc.path, plugin.settings.globalSampleFolder);
+    if (!isSameSampleFolder(local, folder)) {
+      if (!shadowed.has(local)) {
+        shadowed.set(local, Boolean((await loadSamplesByType(plugin.fs, local, type))[id]));
+      }
+      if (shadowed.get(local)) continue;
+    }
+    used.push(doc);
+  }
+  return used;
+}
+
+/** {@link notesUsingSample} as vault paths. */
 export async function sampleUsages(
   app: App,
   plugin: LabnotePlugin,
@@ -807,21 +825,31 @@ export async function sampleUsages(
   type: string,
   id: string
 ): Promise<string[]> {
-  const paths = await notesReferencingSample(app, plugin, folder, type, id);
-  if (getExperimentDir(folder)) return paths;
-  const shadowed = new Map<string, boolean>();
-  const used: string[] = [];
-  for (const path of paths) {
-    const local = noteLabsamplesFolder(path, plugin.settings.globalSampleFolder);
-    if (!isSameSampleFolder(local, folder)) {
-      if (!shadowed.has(local)) {
-        shadowed.set(local, Boolean((await loadSamplesByType(plugin.fs, local, type))[id]));
-      }
-      if (shadowed.get(local)) continue;
-    }
-    used.push(path);
-  }
-  return used;
+  return (await notesUsingSample(app, plugin, folder, type, id)).map(doc => doc.path);
+}
+
+/**
+ * Each line of {@link notesUsingSample} that uses the sample, with its section
+ * (#291). A note whose reference the line scan misses still gets one spot, at
+ * its top, so the list never drops a note the path list has.
+ */
+export async function sampleUsageSpots(
+  app: App,
+  plugin: LabnotePlugin,
+  folder: string,
+  type: string,
+  id: string
+): Promise<SampleUsageSpot[]> {
+  return (await notesUsingSample(app, plugin, folder, type, id)).flatMap(doc => {
+    const spots = findSampleUsageSpots([doc], type, id);
+    return spots.length > 0 ? spots : [{ path: doc.path, line: 0, ch: 0, heading: '' }];
+  });
+}
+
+/** Where in its note a usage is, for the usage list: the section and the 1-based line. */
+export function usageSpotLabel(t: LabnotePlugin['t'], spot: SampleUsageSpot): string {
+  const line = String(spot.line + 1);
+  return spot.heading ? t('{0} · line {1}', spot.heading, line) : t('Line {0}', line);
 }
 
 /** A note's text, from its open editor when it has one. */
@@ -1186,6 +1214,22 @@ export async function moveSampleInteractive(
       plugin.t('{0} already exists in the destination. Overwrite it?', id),
       plugin.t('Overwrite'),
       { destructive: true }
+    );
+    if (!ok) return false;
+  }
+
+  // Two samples with one alias show the same text in autocomplete (#299). Asked, not refused.
+  const twins = record.alias ? (await samplesWithAliasIn(plugin.fs, tgt, type, record.alias)).filter(other => other !== id) : [];
+  if (twins.length > 0) {
+    const toGlobal = isSameSampleFolder(tgt, plugin.settings.globalSampleFolder);
+    const ok = await confirmModal(
+      app,
+      `${plugin.t(
+        toGlobal ? 'Global samples already have the alias {0} ({1}).' : 'This experiment already has the alias {0} ({1}).',
+        record.alias!,
+        twins.join(', ')
+      )} ${plugin.t('Move {0} there anyway?', id)}`,
+      plugin.t('Move anyway')
     );
     if (!ok) return false;
   }

@@ -108,7 +108,8 @@ class SampleDefinitionModal extends Modal {
     const isEditable = scope !== 'catalog';
     const canOpenFile = isEditable && Platform.isDesktopApp;
 
-    const buttons = new Setting(contentEl);
+    // Up to eight buttons ran off the side of the window in one row (#283).
+    const buttons = new Setting(contentEl).setClass('labnote-sample-def-buttons');
     if (isEditable) {
       buttons.addButton(btn =>
         btn

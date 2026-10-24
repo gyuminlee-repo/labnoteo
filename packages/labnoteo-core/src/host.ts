@@ -133,8 +133,8 @@ export interface LabnoteHost {
   /** The active lab note edit surface, if any. */
   editTarget(): EditTarget | undefined;
 
-  /** Open a file in the platform's editor. */
-  openFile(path: string): Promise<void>;
+  /** Open a file in the platform's editor, with the cursor at `at` (0-based) when given. */
+  openFile(path: string, at?: { line: number; ch?: number }): Promise<void>;
 
   /** Localise a message key with positional args. */
   t(key: string, ...args: Array<string | number | boolean>): string;

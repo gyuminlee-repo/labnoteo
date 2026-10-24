@@ -382,6 +382,8 @@ const obsidianKo: Record<string, string> = {
   'View usages': '사용처 보기',
   '{0} is not used in any note.': '{0}을(를) 쓰는 노트가 없습니다.',
   'Notes using {0} ({1})': '{0}을(를) 쓰는 노트({1}개)',
+  '{0} · line {1}': '{0} · {1}행',
+  'Line {0}': '{0}행',
   'Add sample': '샘플 추가',
   'Search samples': '샘플 검색',
   'Select sample type': '샘플 타입 선택',
@@ -476,6 +478,7 @@ const obsidianKo: Record<string, string> = {
   'Global samples already have the alias {0} ({1}). Autocomplete will show both, marked Local and Global.':
     '전역 샘플에 같은 별칭 {0}({1})이 이미 있습니다. 자동완성에는 로컬과 전역으로 구분되어 둘 다 보입니다.',
   'This experiment already has the alias {0} ({1}).': '이 실험에 같은 별칭 {0}({1})이 이미 있습니다.',
+  'Move {0} there anyway?': '그래도 {0}을(를) 옮길까요?',
   'Global samples already have the alias {0} ({1}).': '전역 샘플에 같은 별칭 {0}({1})이 이미 있습니다.',
   '{0} samples in this experiment already have the alias {1} ({2}).':
     '이 실험에 같은 별칭 {1}을(를) 쓰는 샘플이 {0}개 있습니다({2}).',

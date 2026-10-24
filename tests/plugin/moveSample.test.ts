@@ -206,3 +206,46 @@ describe('moveSampleInteractive — Global -> Local warns about other experiment
     expect(confirmModal).not.toHaveBeenCalled();
   });
 });
+
+// #299: a move could put two samples with one alias side by side without a word.
+describe('moveSampleInteractive — same alias in the destination', () => {
+  const move = (plugin: LabnotePlugin) =>
+    moveSampleInteractive(APP, plugin, {
+      fromScope: 'local',
+      fromFolder: RENDERED_LOCAL,
+      toFolder: GLOBAL,
+      type: TYPE,
+      id: 'Reagent-2',
+    });
+
+  async function setup() {
+    const fs = new MemFileSystem();
+    await putSampleRecord(fs, RENDERED_LOCAL, TYPE, 'Reagent-2', record('Buffer'));
+    await putSampleRecord(fs, GLOBAL, TYPE, 'Reagent-9', record(' buffer '));
+    const { plugin } = makePlugin(fs);
+    (plugin as unknown as { settings: object }).settings = { customSampleTypes: [], globalSampleFolder: GLOBAL };
+    return { fs, plugin };
+  }
+
+  it('asks first, naming the sample that has the alias, and stays put when declined', async () => {
+    const { fs, plugin } = await setup();
+    vi.mocked(confirmModal).mockResolvedValue(false);
+
+    expect(await move(plugin)).toBe(false);
+
+    expect(vi.mocked(confirmModal).mock.calls[0][1]).toBe(
+      'Global samples already have the alias Buffer (Reagent-9). Move Reagent-2 there anyway?'
+    );
+    expect(vi.mocked(confirmModal).mock.calls[0][2]).toBe('Move anyway');
+    expect((await loadSamplesByType(fs, RENDERED_LOCAL, TYPE))['Reagent-2']).toBeDefined();
+    expect((await loadSamplesByType(fs, GLOBAL, TYPE))['Reagent-2']).toBeUndefined();
+  });
+
+  it('moves when confirmed', async () => {
+    const { fs, plugin } = await setup();
+    vi.mocked(confirmModal).mockResolvedValue(true);
+
+    expect(await move(plugin)).toBe(true);
+    expect(Object.keys(await loadSamplesByType(fs, GLOBAL, TYPE)).sort()).toEqual(['Reagent-2', 'Reagent-9']);
+  });
+});

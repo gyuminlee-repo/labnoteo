@@ -146,7 +146,7 @@ export function createObsidianHost(
 
     editTarget,
 
-    async openFile(path: string) {
+    async openFile(path: string, at?: { line: number; ch?: number }) {
       let file = app.vault.getAbstractFileByPath(path);
       // A file just written through the adapter (VaultFileSystem.write) may not
       // be registered in the vault index yet, so getAbstractFileByPath returns
@@ -156,7 +156,13 @@ export function createObsidianHost(
         file = app.vault.getAbstractFileByPath(path);
       }
       if (file instanceof TFile) {
-        await app.workspace.getLeaf(false).openFile(file);
+        const leaf = app.workspace.getLeaf(false);
+        await leaf.openFile(file, at ? { eState: { line: at.line } } : undefined);
+        if (at && leaf.view instanceof MarkdownView && leaf.view.getMode() !== 'preview') {
+          const pos = { line: at.line, ch: at.ch ?? 0 };
+          leaf.view.editor.setCursor(pos);
+          leaf.view.editor.scrollIntoView({ from: pos, to: pos }, true);
+        }
       } else {
         // Last resort: resolve lazily by link text (vault-relative path).
         await app.workspace.openLinkText(path, '', false);

@@ -15,6 +15,8 @@ import {
   insertSampleReference,
   listSampleDefinitions,
   sampleUsages,
+  sampleUsageSpots,
+  usageSpotLabel,
   unregisteredReferences,
   validateAlias,
 } from '../../src/sampleActions';
@@ -499,6 +501,22 @@ describe('editSampleInteractive alias rewrite', () => {
     expect(await sampleUsages(app, p, `${B}/resources/labsamples`, 'RNA', 'RNA-1')).toEqual([
       `${B}/001_WD010_C.labnote.md`,
     ]);
+  });
+
+  // #291: the list gave only paths and opened each note at its top.
+  it('lists where in each note the sample is used, under the same filter', async () => {
+    await fs.write(`${A}/001_WD010_A.labnote.md`, '## [UHW1 PCR] 첫\n#### Input\n- RNA-1;si KIF\n#### Output\n- x RNA-1\n');
+    await fs.write(`${B}/resources/labsamples/RNA.json`, JSON.stringify({ 'RNA-1': RECORD }));
+    await fs.write(`${B}/001_WD010_C.labnote.md`, 'RNA-1;si KIF\n');
+    const { app, p } = editPlugin();
+
+    const spots = await sampleUsageSpots(app, p, GLOBAL, 'RNA', 'RNA-1');
+    expect(spots).toEqual([
+      { path: `${A}/001_WD010_A.labnote.md`, line: 2, ch: 2, heading: '[UHW1 PCR] 첫 › Input' },
+      { path: `${A}/001_WD010_A.labnote.md`, line: 4, ch: 4, heading: '[UHW1 PCR] 첫 › Output' },
+    ]);
+    expect(usageSpotLabel(p.t, spots[0])).toBe('[UHW1 PCR] 첫 › Input · line 3');
+    expect(usageSpotLabel(p.t, { path: 'x', line: 0, ch: 0, heading: '' })).toBe('Line 1');
   });
 });
 

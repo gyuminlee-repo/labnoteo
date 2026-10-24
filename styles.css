@@ -297,3 +297,14 @@ body > input.labnote-datetime-picker {
 .labnote-sample-def-row .setting-item-control textarea {
   resize: vertical;
 }
+
+/* The button row has no label; its empty info column would take half the width. */
+.labnote-sample-def-buttons .setting-item-info {
+  display: none;
+}
+
+.labnote-sample-def-buttons .setting-item-control {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--size-4-2);
+}
