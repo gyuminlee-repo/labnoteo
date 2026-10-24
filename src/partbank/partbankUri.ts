@@ -131,8 +131,12 @@ async function pickImportFolder(
   return folder === undefined ? undefined : { folder, chosen: true };
 }
 
-/** Put the reference where the user can use it. */
-async function deliverReference(plugin: LabnotePlugin, referenceText: string): Promise<void> {
+/**
+ * Put the reference where the user can use it: into the open note if they
+ * agree, onto the clipboard only when there was no note to ask about. Declining
+ * leaves both alone (#284).
+ */
+export async function deliverReference(plugin: LabnotePlugin, referenceText: string): Promise<void> {
   const target = plugin.host.editTarget();
   if (target && plugin.sampleTrackingFor(target.path)) {
     const ok = await confirmModal(
@@ -140,10 +144,8 @@ async function deliverReference(plugin: LabnotePlugin, referenceText: string): P
       plugin.t('Insert {0} into the open note?', referenceText),
       plugin.t('Insert')
     );
-    if (ok) {
-      await insertSampleReference(plugin, target, referenceText);
-      return;
-    }
+    if (ok) await insertSampleReference(plugin, target, referenceText);
+    return;
   }
   await navigator.clipboard.writeText(referenceText);
   new Notice(plugin.t('Copied {0} to the clipboard.', referenceText));

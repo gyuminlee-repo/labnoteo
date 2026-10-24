@@ -638,12 +638,13 @@ describe('listSampleDefinitions', () => {
 
 describe('insertSampleReference', () => {
   /** A minimal EditTarget backed by a mutable string + cursor. */
-  function makeTarget(text: string, cursor: number) {
+  function makeTarget(text: string, cursor: number, selectionEnd?: number) {
     const state = { text, revealed: -1 };
     const target: EditTarget = {
       path: 'labnote/001_Test/001_WD010_Design.labnote.md',
       getText: async () => state.text,
       getCursorOffset: async () => cursor,
+      getSelectionRange: async () => (selectionEnd === undefined ? undefined : { start: cursor, end: selectionEnd }),
       insertAtCursor: async (t: string) => {
         state.text = state.text.slice(0, cursor) + t + state.text.slice(cursor);
       },
@@ -683,6 +684,18 @@ describe('insertSampleReference', () => {
     await insertSampleReference(refPlugin(), target, 'RNA-1;siKIF');
 
     expect(state.text).toBe('## Samples\nused RNA-2;siX here RNA-1;siKIF\n');
+  });
+
+  // #302: the selected template hint stayed, with the reference fused to it.
+  it('replaces the selected text', async () => {
+    const doc = '#### Input\n- (samples from the previous step)\n';
+    const start = doc.indexOf('(');
+    const { target, state } = makeTarget(doc, start, doc.indexOf(')') + 1);
+
+    await insertSampleReference(refPlugin(), target, 'Plasmid-1;pET-28a(+)');
+
+    expect(state.text).toBe('#### Input\n- Plasmid-1;pET-28a(+)\n');
+    expect(state.revealed).toBe(start + 'Plasmid-1;pET-28a(+)'.length);
   });
 });
 

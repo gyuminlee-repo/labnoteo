@@ -22,8 +22,13 @@
  *     Cursor on an existing sample reference — its id or the `;alias;desc`
  *     after it, up to whitespace — -> the end of that line (splitting a
  *     reference corrupts it and can register a mangled fragment as a sample).
- *  4. Otherwise -> at the cursor, padding with a space only when the adjacent
- *     character would fuse with the id (letters/digits in any script, `_;-`).
+ *  S. A selection within one body line (#302) -> replaced by the reference,
+ *     unless the line is a definition or the selection overlaps a reference or
+ *     crosses a table cell's `|`; those fall back to the rules for its start.
+ *  4. Otherwise -> at the cursor, padding with a space when the adjacent
+ *     character would fuse with the id (letters/digits in any script, `_;-`),
+ *     or, for a reference with an alias, before any non-blank character: the
+ *     alias runs up to whitespace and would swallow it (`pET-28a(+)(samples`).
  */
 import { findSampleIdRanges } from './sampleSuggest';
 import { escapeRegExp } from '../lib/regexUtils';
@@ -34,6 +39,8 @@ export interface ReferenceInsert {
   offset: number;
   /** The exact string to insert at `offset` (may include leading/trailing newlines or spaces). */
   text: string;
+  /** End of the selected text `text` replaces, from `offset`; absent for a plain insert. */
+  end?: number;
 }
 
 /** A character that would fuse with a sample id if placed right against it. */
@@ -105,6 +112,23 @@ function isDefinitionLine(line: string, types: readonly string[]): boolean {
   });
 }
 
+/**
+ * Whether `ref` needs a space before the character `after`: a bare id only
+ * before one it would fuse with, a reference with an alias before any
+ * non-blank one, since the alias runs up to whitespace.
+ */
+function keepsApart(ref: string, after: string): boolean {
+  return /[;|]/.test(ref) ? !/\s/.test(after) : ADJACENT.test(after);
+}
+
+/** True when columns `[from, to)` touch a reference's id or its `;alias;desc` tail. */
+function overlapsReference(line: string, from: number, to: number, types: readonly string[]): boolean {
+  return findSampleIdRanges(line, types).some(range => {
+    const tail = REFERENCE_TAIL.exec(line.slice(range.end))?.[0] ?? '';
+    return from <= range.end + tail.length && to >= range.start;
+  });
+}
+
 /** True when column `ch` sits on a reference's id or its `;alias;desc` tail. */
 function isOnReference(line: string, ch: number, types: readonly string[]): boolean {
   return findSampleIdRanges(line, types).some(range => {
@@ -117,9 +141,11 @@ export function planReferenceInsert(
   text: string,
   cursor: number,
   ref: string,
-  types: readonly string[]
+  types: readonly string[],
+  selectionEnd?: number
 ): ReferenceInsert {
   const pos = Math.max(0, Math.min(cursor, text.length));
+  const selEnd = selectionEnd === undefined ? pos : Math.max(pos, Math.min(selectionEnd, text.length));
   const lines = text.split('\n');
 
   // Offset at which each line begins (line i spans [start, start+len], with the
@@ -161,6 +187,20 @@ export function planReferenceInsert(
   const line = lines[cursorLine];
   const lineEnd = lineStart[cursorLine] + line.length;
 
+  // A selection on one line, away from definitions and references: replace it.
+  if (selEnd > pos && selEnd <= lineEnd && !isDefinitionLine(line, types)) {
+    const from = cursorCol;
+    const to = selEnd - lineStart[cursorLine];
+    const crossesCell = TABLE_ROW.test(line) && nextCellPipe(line, from) !== -1 && nextCellPipe(line, from) < to;
+    if (!crossesCell && !overlapsReference(line, from, to, types)) {
+      const before = pos > 0 ? text[pos - 1] : '';
+      const after = selEnd < text.length ? text[selEnd] : '';
+      const lead = before && ADJACENT.test(before) ? ' ' : '';
+      const trail = after && keepsApart(ref, after) ? ' ' : '';
+      return { offset: pos, end: selEnd, text: `${lead}${ref}${trail}` };
+    }
+  }
+
   // Table row: inside the cells, padded with a space against any neighbour.
   if (TABLE_ROW.test(line)) {
     const col = tableInsertColumn(line, cursorCol, types);
@@ -181,10 +221,10 @@ export function planReferenceInsert(
     return { offset: lineEnd, text: `${prefix}${ref}` };
   }
 
-  // Rule 4: at the cursor, padded only when it would fuse with a neighbour.
+  // Rule 4: at the cursor, kept apart from a fusing neighbour before and any text after.
   const before = pos > 0 ? text[pos - 1] : '';
   const after = pos < text.length ? text[pos] : '';
   const lead = before && ADJACENT.test(before) ? ' ' : '';
-  const trail = after && ADJACENT.test(after) ? ' ' : '';
+  const trail = after && keepsApart(ref, after) ? ' ' : '';
   return { offset: pos, text: `${lead}${ref}${trail}` };
 }

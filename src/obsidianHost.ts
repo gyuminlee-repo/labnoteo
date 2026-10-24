@@ -97,6 +97,12 @@ export function createObsidianHost(
         if (inPreview()) return noteView.getViewData().length;
         return editor.posToOffset(editor.getCursor('from'));
       },
+      async getSelectionRange() {
+        if (inPreview()) return undefined;
+        const start = editor.posToOffset(editor.getCursor('from'));
+        const end = editor.posToOffset(editor.getCursor('to'));
+        return end > start ? { start, end } : undefined;
+      },
       async revealOffset(offset: number) {
         await toSource();
         // setCursor treats a bare number as a line index, so convert first.

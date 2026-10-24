@@ -16,10 +16,11 @@ function fakeEditor(initial: string) {
   const editor = {
     text: initial,
     cursor: 0,
+    selectionEnd: undefined as number | undefined,
     getValue: () => editor.text,
     offsetToPos: (offset: number) => ({ line: 0, ch: offset }),
     posToOffset: (pos: { ch: number }) => pos.ch,
-    getCursor: () => ({ line: 0, ch: editor.cursor }),
+    getCursor: (which?: 'from' | 'to') => ({ line: 0, ch: which === 'to' ? editor.selectionEnd ?? editor.cursor : editor.cursor }),
     replaceRange: (text: string, from: { ch: number }, to: { ch: number }) => {
       editor.text = editor.text.slice(0, from.ch) + text + editor.text.slice(to.ch);
     },
@@ -108,5 +109,19 @@ describe('editTarget in reading view (#216)', () => {
     expect(editor.text).toBe('live! text');
     expect(setState).not.toHaveBeenCalled();
     expect(Notice.shown).toEqual([]);
+  });
+
+  // #302
+  it('gives the selection in editing view only', async () => {
+    const { host, editor } = setup({ mode: 'source', data: 'old', editorText: 'live text' });
+    const target = host.editTarget()!;
+    expect(await target.getSelectionRange!()).toBeUndefined();
+    editor.cursor = 5;
+    editor.selectionEnd = 9;
+    expect(await target.getSelectionRange!()).toEqual({ start: 5, end: 9 });
+
+    const reading = setup({ mode: 'preview', data: 'saved', editorText: 'live text' });
+    reading.editor.selectionEnd = 4;
+    expect(await reading.host.editTarget()!.getSelectionRange!()).toBeUndefined();
   });
 });

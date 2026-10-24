@@ -88,6 +88,12 @@ export interface EditTarget {
    */
   getCursorOffset?(): Promise<number>;
   /**
+   * The selected text as `[start, end)` offsets, or undefined when nothing is
+   * selected. Optional: targets whose selection does not map onto the note
+   * (a table cell editor) omit it.
+   */
+  getSelectionRange?(): Promise<{ start: number; end: number } | undefined>;
+  /**
    * Move the cursor to `offset`, scroll it into view, and focus the editor.
    * Optional: hosts without cursor control may omit it.
    */

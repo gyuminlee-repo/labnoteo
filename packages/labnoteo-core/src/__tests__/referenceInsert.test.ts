@@ -125,9 +125,60 @@ describe('planReferenceInsert', () => {
       expect(apply('line1\n\nline3', 6)).toBe('line1\nDNA-1;pUC19\nline3');
     });
 
-    it('does not pad against a non-word symbol', () => {
-      // After `(` (offset 1): before is `(` (no pad), after is `)` (no pad).
-      expect(apply('()', 1)).toBe('(DNA-1;pUC19)');
+    it('pads a bare id only against a fusing neighbour, an aliased reference against any text after', () => {
+      expect(apply('()', 1, 'DNA-1')).toBe('(DNA-1)');
+      expect(apply('()', 1)).toBe('(DNA-1;pUC19 )');
+    });
+
+    // #302: the alias ran into the template hint after it.
+    it('keeps an aliased reference apart from the text after it', () => {
+      expect(apply('- (samples)', 2, 'Plasmid-1;pET-28a(+)')).toBe('- Plasmid-1;pET-28a(+) (samples)');
+    });
+  });
+
+  // #302: inserting over a selection left the selected text in place.
+  describe('a selection -> replaced', () => {
+    const select = (text: string, from: string, ref = REF): string => {
+      const start = text.indexOf(from);
+      const plan = planReferenceInsert(text, start, ref, TYPES, start + from.length);
+      return text.slice(0, plan.offset) + plan.text + text.slice(plan.end ?? plan.offset);
+    };
+
+    it('replaces a selection within one body line', () => {
+      const text = '## [UHW1 PCR]\n#### Input\n- (samples from the previous step)\n';
+      expect(select(text, '(samples from the previous step)', 'Plasmid-1;pET-28a(+)')).toBe(
+        '## [UHW1 PCR]\n#### Input\n- Plasmid-1;pET-28a(+)\n'
+      );
+      expect(select('## A\nuse this one.', 'this', 'DNA-1')).toBe('## A\nuse DNA-1 one.');
+      expect(select('## A\nusethis', 'this')).toBe('## A\nuse DNA-1;pUC19');
+    });
+
+    it('replaces a selection inside a table cell', () => {
+      const text = '## A\n| 시료 | 비고 |\n|---|---|\n| 여기 | x |\n';
+      expect(select(text, '여기')).toBe('## A\n| 시료 | 비고 |\n|---|---|\n| DNA-1;pUC19 | x |\n');
+    });
+
+    it('ignores the selection across lines, over a reference or a cell border, or on a definition line', () => {
+      const plain = (text: string, from: string, to: number): string => {
+        const start = text.indexOf(from);
+        const plan = planReferenceInsert(text, start, REF, TYPES, to);
+        expect(plan.end).toBeUndefined();
+        return text.slice(0, plan.offset) + plan.text + text.slice(plan.offset);
+      };
+      const lines = '## A\nfirst\nsecond';
+      expect(plain(lines, 'first', lines.length)).toBe('## A\nDNA-1;pUC19 first\nsecond');
+      const ref = '## A\nused Other-1;AA here';
+      expect(plain(ref, 'used', ref.indexOf('AA'))).toBe('## A\nDNA-1;pUC19 used Other-1;AA here');
+      const row = '## A\n| a | b |\n';
+      expect(plain(row, 'a', row.indexOf('b') + 1)).toBe('## A\n| DNA-1;pUC19 a | b |\n');
+      const def = '## A\n@DNA;DNA-2;pX;desc\n';
+      expect(plain(def, 'desc', def.indexOf('desc') + 4)).toBe('## A\n@DNA;DNA-2;pX;desc\nDNA-1;pUC19\n');
+    });
+
+    it('ignores the selection in the front matter or on a heading', () => {
+      const text = '---\nt: x\n---\n## Head\nbody';
+      expect(planReferenceInsert(text, 4, REF, TYPES, 8).end).toBeUndefined();
+      expect(planReferenceInsert(text, text.indexOf('Head'), REF, TYPES, text.indexOf('Head') + 4).end).toBeUndefined();
     });
   });
 
@@ -176,7 +227,7 @@ describe('planReferenceInsert', () => {
       // Cursor at the start of `# comment` (offset 21).
       const at = text.indexOf('# comment');
       expect(apply(text, at)).toBe(
-        '## Real\ntext\n```bash\nDNA-1;pUC19# comment\n```\nmore'
+        '## Real\ntext\n```bash\nDNA-1;pUC19 # comment\n```\nmore'
       );
     });
 

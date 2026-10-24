@@ -120,8 +120,9 @@ function validateDescription(plugin: LabnotePlugin): (value: string) => string |
  * Insert a sample reference (`id;alias` / bare `id`) into `target` at the place
  * {@link planReferenceInsert} chooses: appended below the last section when the
  * cursor sits in the front matter or above the title, at the end of the line
- * when the cursor is on an existing reference or heading, otherwise at the
- * cursor (padded so it never fuses with a neighbour). Reveals the spot and marks
+ * when the cursor is on an existing reference or heading, over the selected
+ * text on one line (#302), otherwise at the cursor (padded so it never fuses
+ * with a neighbour). Reveals the spot and marks
  * the note edited so `last_updated_date` refreshes.
  */
 export async function insertSampleReference(
@@ -137,9 +138,10 @@ export async function insertSampleReference(
   }
   const text = await target.getText();
   const cursor = await target.getCursorOffset();
+  const selection = await target.getSelectionRange?.();
   const types = getSampleDisplayMeta(plugin.settings.customSampleTypes).types;
-  const plan = planReferenceInsert(text, cursor, ref, types);
-  await target.replaceRange(plan.offset, plan.offset, plan.text);
+  const plan = planReferenceInsert(text, cursor, ref, types, selection?.end);
+  await target.replaceRange(plan.offset, plan.end ?? plan.offset, plan.text);
   await target.revealOffset?.(plan.offset + plan.text.length);
   plugin.markUserEdit(target.path);
 }
@@ -905,7 +907,8 @@ async function rewriteStaleAliases(
       : newAlias
         ? plugin.t("Replace the old alias '{1}' with '{2}' in {0} note(s)?\n\n{3}", count, oldAlias, newAlias, lines.join('\n'))
         : plugin.t("Remove the old alias '{1}' from {0} note(s)?\n\n{2}", count, oldAlias, lines.join('\n')),
-    plugin.t('Replace')
+    plugin.t('Replace'),
+    { destructive: true }
   );
   if (!oldAlias && !ok) return undefined;
   if (!ok) {

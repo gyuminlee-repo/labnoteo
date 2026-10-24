@@ -350,8 +350,9 @@ The detail screens in partbank have a **labnoteo로 보내기** button that open
 whether to register that item, letting you switch the destination to Global there. Even with Global
 picked, an item this experiment already has is reused rather than registered again, and the notice
 says where that sample is. Links naming an
-address that is not in the settings are refused. After registering, `ID;alias` goes to the cursor
-of an open note after asking, or to the clipboard.
+address that is not in the settings are refused. After registering, it asks whether to put
+`ID;alias` at the cursor of the open note (over the selected text, if any); `Cancel` does nothing.
+With no open note, or one whose samples are not tracked, it goes to the clipboard without asking.
 
 ## Barcodes and scans
 

@@ -200,7 +200,7 @@ export async function applyAsset(
       if (exists && !isUnedited(current, asset, recorded, legacy)) {
         const ok = await host.confirm(
           `${host.t('{0} differs from the new version. Edits made after it was installed are lost if you replace it. Replace it with the new version?', asset.vaultPath)} ${host.t('From then on, updates change only the marked block and keep what you write below it.')}`,
-          { confirmLabel: host.t('Overwrite') }
+          { confirmLabel: host.t('Overwrite'), destructive: true }
         );
         if (!ok) return 'skipped';
       }
@@ -215,7 +215,7 @@ export async function applyAsset(
           'The marked block of {0} was edited after it was installed. Replace the block with the new version? Text outside the block is kept.',
           asset.vaultPath
         ),
-        { confirmLabel: host.t('Overwrite') }
+        { confirmLabel: host.t('Overwrite'), destructive: true }
       );
       if (!ok) return 'skipped';
     }
@@ -240,7 +240,7 @@ export async function applyAsset(
         '{0} differs from the new version. Edits made after it was installed are lost if you replace it. Replace it with the new version?',
         asset.vaultPath
       ),
-      { confirmLabel: host.t('Overwrite') }
+      { confirmLabel: host.t('Overwrite'), destructive: true }
     );
     if (!ok) return 'skipped';
   }
@@ -271,7 +271,7 @@ async function removeLegacyAssets(host: LabnoteHost): Promise<number> {
       present.join(', '),
       HOOKS_DIR_PATH
     ),
-    { confirmLabel: host.t('Remove') }
+    { confirmLabel: host.t('Remove'), destructive: true }
   );
   if (!ok) return 0;
 
