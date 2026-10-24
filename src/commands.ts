@@ -66,6 +66,8 @@ import {
   createWorkflowContent,
   parseWorkflowChecklistFromReadme,
   insertWorkflowChecklistEntries,
+  hasWorkflowChecklistSection,
+  findSameAliasWorkflow,
   isWorkflowChecklistEntryLine,
   workflowChecklistEntryLabel,
   parseExperimenterFromReadme,
@@ -202,10 +204,22 @@ export function experimentTitleHint(host: Pick<LabnoteHost, 't'>): (value: strin
 export function workflowAliasHint(
   host: Pick<LabnoteHost, 't'>,
   id: string,
-  name: string
+  name: string,
+  /** The experiment folder's file names: an alias another workflow of this ID has is flagged (#297). */
+  existing: readonly string[] = []
 ): (value: string) => PromptHint {
   const budget = workflowAliasBudget(id, name);
   return value => {
+    const twin = findSameAliasWorkflow(existing, id, name, value);
+    if (twin) {
+      return {
+        text: host.t(
+          '{0} already has this ID and alias, so the two would read the same in the README checklist. Give this one its own alias to tell them apart.',
+          twin
+        ),
+        warn: true,
+      };
+    }
     const length = workflowAliasLength(value);
     if (budget === 0) {
       return {
@@ -717,17 +731,25 @@ interface CreatedWorkflow {
   fileName: string;
   /** Human-readable `id name [alias]` used for checklist/link display. */
   displayTitle: string;
-  /** Whether it was added to the README checklist (false without a README). */
-  registered: boolean;
+  /** Whether it was added to the README checklist; see {@link registerWorkflowInReadme}. */
+  registered: WorkflowRegistration;
 }
 
-/** The "created" notice, plus a warning when no README checklist lists it (#88). */
+/** The "created" notice, plus a warning when no README checklist lists it (#88, #298). */
 function notifyWorkflowCreated(host: LabnoteHost, created: CreatedWorkflow): void {
   host.notify('info', host.t('Workflow created: {0}', created.fileName));
-  if (!created.registered) {
+  if (created.registered === 'noReadme') {
     host.notify(
       'warn',
       host.t('This experiment has no README.labnote.md, so the workflow was not added to a checklist.')
+    );
+  } else if (created.registered === 'noSection') {
+    host.notify(
+      'warn',
+      host.t(
+        'README.labnote.md has no "Related Workflows" section, so the workflow was not added to its checklist. Add the section back, then run "{0}".',
+        host.t('Sync workflow checklist with folder')
+      )
     );
   }
 }
@@ -745,6 +767,8 @@ async function createWorkflowFile(
   chosen: WorkflowItem,
   stamp: (content: string) => string
 ): Promise<CreatedWorkflow | undefined> {
+  // Listed before the prompt, which warns about an alias already in use (#297).
+  const existingFiles = await host.fs.list(labnoteDir);
   // Ask for an optional per-instance alias. The catalog name stays inside the
   // `[id name]` prefix; the alias (if any) is appended after it.
   const alias = await workflowAliasModal(app, {
@@ -754,7 +778,7 @@ async function createWorkflowFile(
     placeholder: host.t('Enter a name for this workflow'),
     about: workflowConcept(host),
     description: chosen.description ? catalogDescription(chosen.id, chosen.description) : undefined,
-    hint: workflowAliasHint(host, chosen.id, chosen.name),
+    hint: workflowAliasHint(host, chosen.id, chosen.name, existingFiles),
   });
   if (alias === undefined) return undefined; // cancelled
   const cleanAlias = alias.trim();
@@ -765,8 +789,7 @@ async function createWorkflowFile(
     experimenter = parseExperimenterFromReadme(await host.fs.read(readmePath));
   }
 
-  const existingFiles = await host.fs.list(labnoteDir);
-  const sequence = getNextWorkflowNumber(existingFiles);
+  const sequence = getNextWorkflowNumber(await host.fs.list(labnoteDir));
   const info = { id: chosen.id, name: chosen.name, description: chosen.description };
   const fileName = createWorkflowFileName(sequence, info, cleanAlias || undefined);
   const workflowPath = posix.join(labnoteDir, fileName);
@@ -794,13 +817,16 @@ async function createWorkflowFile(
   return { path: workflowPath, fileName, displayTitle, registered };
 }
 
+/** What {@link registerWorkflowInReadme} did. */
+export type WorkflowRegistration = 'registered' | 'noSection' | 'noReadme';
+
 /**
- * Append a new workflow to the README "Related Workflows" checklist
+ * Add a new workflow to the README "Related Workflows" checklist
  * (non-destructive) and stamp the README's `last_updated_date`: creating a
  * workflow is a change to the experiment. Applied through the vault to the
  * README as it is at write time, so an open README editor neither overwrites it
- * nor loses its own unsaved text. Returns false, writing nothing, without a
- * README.
+ * nor loses its own unsaved text. Writes nothing without a README or without
+ * the section to list it in (#298), and says which.
  */
 export async function registerWorkflowInReadme(
   app: App,
@@ -808,14 +834,16 @@ export async function registerWorkflowInReadme(
   readmePath: string,
   entry: { title: string; fileName: string },
   stamp: (content: string) => string = c => c
-): Promise<boolean> {
-  if (!(await host.fs.exists(readmePath))) return false;
+): Promise<WorkflowRegistration> {
+  if (!(await host.fs.exists(readmePath))) return 'noReadme';
+  if (!hasWorkflowChecklistSection(await host.fs.read(readmePath))) return 'noSection';
   await processNoteThroughVault(app, host, readmePath, readme => {
+    if (!hasWorkflowChecklistSection(readme)) return readme;
     return stamp(
       insertWorkflowChecklistEntries(readme, [{ done: false, title: entry.title, fileName: entry.fileName }])
     );
   });
-  return true;
+  return 'registered';
 }
 
 /**

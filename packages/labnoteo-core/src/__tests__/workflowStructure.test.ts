@@ -9,6 +9,7 @@ import {
   workflowChecklistOrder,
   isMisnumberedWorkflowFileName,
   workflowNumberClashes,
+  hasWorkflowChecklistSection,
   generateWorkflowChecklist,
   sanitizeWorkflowName,
   planWorkflowRenumber,
@@ -612,6 +613,23 @@ describe('planWorkflowRenumber by checklist order (#289)', () => {
       { from: B, to: '001_WB030_B.labnote.md' },
       { from: A, to: '002_WD010_A.labnote.md' },
     ]);
+  });
+});
+
+describe('finding the Related Workflows section (#298)', () => {
+  const entry = '- [ ] [A](./001_WD010_A.labnote.md)';
+  const md = (heading: string) => ['# E', '', heading, '', entry, '', '## Summary and Discussion', ''].join('\n');
+
+  it('matches a translated or decorated heading', () => {
+    for (const heading of ['## 관련 워크플로', '## 🗂️ 관련 워크플로 (Related Workflows)', '## related workflows']) {
+      expect(hasWorkflowChecklistSection(md(heading))).toBe(true);
+      expect(parseWorkflowChecklistFromReadme(md(heading))).toHaveLength(1);
+    }
+  });
+
+  it('falls back to the first section holding a workflow entry', () => {
+    expect(parseWorkflowChecklistFromReadme(md('## 실험 단계'))).toHaveLength(1);
+    expect(hasWorkflowChecklistSection(md('## 실험 단계').replace(entry, ''))).toBe(false);
   });
 });
 

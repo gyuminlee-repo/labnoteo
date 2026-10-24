@@ -34,6 +34,18 @@ describe('name prompt hints', () => {
     expect(hint('x').warn).toBe(true);
   });
 
+  it('warns when another workflow of the ID has the same alias, empty included (#297)', () => {
+    const files = ['001_WD010_Design_1차_설계.labnote.md', '002_WD010_Design.labnote.md', 'README.labnote.md'];
+    const hint = workflowAliasHint(host, 'WD010', 'Design', files);
+    expect(hint('1차 설계')).toEqual({
+      text: '001_WD010_Design_1차_설계.labnote.md already has this ID and alias, so the two would read the same in the README checklist. Give this one its own alias to tell them apart.',
+      warn: true,
+    });
+    expect(hint('').text).toContain('002_WD010_Design.labnote.md already has');
+    expect(hint('2차 설계').warn).toBe(false);
+    expect(workflowAliasHint(host, 'WD020', 'Design', files)('1차 설계').warn).toBe(false);
+  });
+
   it('only counts a unit operation alias', () => {
     expect(unitOpAliasHint(host)(' 1차 37도 ')).toEqual({ text: '6 characters · no limit (not used in a file name)' });
   });

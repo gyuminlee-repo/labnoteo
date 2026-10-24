@@ -191,6 +191,8 @@ export default class LabnotePlugin extends Plugin {
   private readonly copyIdsRenewed = new Map<string, Set<string>>();
   // Pending "moved in but not listed" notices, coalesced per experiment folder.
   private readonly movedInTimers = new Map<string, number>();
+  // Pending "moved out but still listed" notices, per experiment folder left (#287).
+  private readonly movedAwayTimers = new Map<string, number>();
   // Notes moved between experiments whose Local samples may need bringing
   // along (#97), coalesced per (old experiment, new experiment) pair.
   private readonly samplesMoved = new Map<
@@ -294,6 +296,8 @@ export default class LabnotePlugin extends Plugin {
       window.clearTimeout(handle);
     }
     this.movedInTimers.clear();
+    for (const handle of this.movedAwayTimers.values()) window.clearTimeout(handle);
+    this.movedAwayTimers.clear();
     for (const pending of this.samplesMoved.values()) {
       window.clearTimeout(pending.timer);
     }
@@ -815,6 +819,7 @@ export default class LabnotePlugin extends Plugin {
         }
         this.noticeWorkflowMovedIn(oldPath, newPath);
         this.noticeWorkflowMovedOut(oldPath, newPath);
+        this.noticeWorkflowMovedAway(oldPath, newPath);
         const strayOrigin = this.strayWorkflows.get(oldPath);
         this.strayWorkflows.delete(oldPath);
         // Only same-folder workflow-file renames touch the README.
@@ -1518,7 +1523,7 @@ export default class LabnotePlugin extends Plugin {
       value: originalAlias,
       about: workflowConcept(this.host),
       description,
-      hint: workflowAliasHint(this.host, heading.id, heading.name),
+      hint: workflowAliasHint(this.host, heading.id, heading.name, await this.fs.list(posix.dirname(copyPath))),
     });
     if (alias === undefined || this.unloaded) return;
     if (!this.copiedWorkflows.has(copyPath) || file.path !== copyPath) return;
@@ -1575,6 +1580,49 @@ export default class LabnotePlugin extends Plugin {
         moved.location,
         this.t('Sync workflow checklist with folder')
       )
+    );
+  }
+
+  /**
+   * A workflow note moved to another experiment folder leaves its entry in the
+   * README checklist of the one it left (#287). Point the user at the sync
+   * command there, once per folder for a batch of moves, if an entry is left.
+   * Entries are not removed automatically: the move may be undone.
+   */
+  private noticeWorkflowMovedAway(oldPath: string, newPath: string): void {
+    if (!isValidWorkflowPath(oldPath) || !isValidWorkflowPath(newPath)) return;
+    const oldDir = posix.dirname(oldPath);
+    // Renaming or moving a whole experiment folder renames every note in it;
+    // by then its old folder no longer exists.
+    if (oldDir === posix.dirname(newPath) || !this.app.vault.getAbstractFileByPath(oldDir)) return;
+
+    const pending = this.movedAwayTimers.get(oldDir);
+    if (pending !== undefined) window.clearTimeout(pending);
+    this.movedAwayTimers.set(
+      oldDir,
+      window.setTimeout(() => {
+        this.movedAwayTimers.delete(oldDir);
+        this.run(async () => {
+          const readmePath = posix.join(oldDir, 'README.labnote.md');
+          if (this.unloaded || !(await this.fs.exists(readmePath))) return;
+          const plan = planWorkflowChecklistSync(
+            await this.fs.read(readmePath),
+            await this.fs.list(oldDir),
+            undefined,
+            undefined,
+            oldDir
+          );
+          if (!plan.stale.some(s => s.reason !== 'subfolder')) return;
+          this.host.notify(
+            'warn',
+            this.t(
+              'Workflow notes moved out of {0} are still in its README checklist. Run "{1}" in {0} to remove them.',
+              posix.basename(oldDir),
+              this.t('Sync workflow checklist with folder')
+            )
+          );
+        });
+      }, 1000)
     );
   }
 

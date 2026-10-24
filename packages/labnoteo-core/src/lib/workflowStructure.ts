@@ -12,7 +12,7 @@ import {
   WORKFLOW_FILE_NAME_MAX,
 } from './regexUtils';
 import { parseFrontMatterYaml, serializeFrontMatterEntry } from '../sections/frontMatter';
-import { stepFence, type OpenFence } from '../sections/sectionEdit';
+import { normalizeHeadingText, stepFence, type OpenFence } from '../sections/sectionEdit';
 import { generateNoteId, NOTE_ID_KEY } from './noteId';
 import {
   commandName,
@@ -378,18 +378,43 @@ export function workflowChecklistEntryLabel(line: string): string | undefined {
   return e ? unescapeChecklistLabel(e.raw) : undefined;
 }
 
+/** Heading words that name the "Related Workflows" section, after {@link normalizeHeadingText}. */
+const WORKFLOW_SECTION_NAMES = ['related workflows', '관련 워크플로'];
+
 /**
- * Find the `## Related Workflows` header and the line the section ends on (the
+ * Find the "Related Workflows" header and the line the section ends on (the
  * next `## ` heading, or end of document). `header` is -1 when absent.
+ *
+ * The heading is matched loosely — emoji and case aside, any `##` heading
+ * containing "Related Workflows" or "관련 워크플로" — since researchers
+ * translate it (#298). Failing that, the first `##` section holding a
+ * workflow entry is taken: a heading renamed to anything else still has its
+ * entries under it.
  */
 function findWorkflowSection(lines: readonly string[]): { header: number; end: number } {
-  const header = lines.findIndex(line => /^##\s.*Related Workflows/i.test(line.trim()));
-  if (header === -1) return { header: -1, end: lines.length };
-
-  for (let i = header + 1; i < lines.length; i++) {
-    if (lines[i].trim().startsWith('## ')) return { header, end: i };
+  const isH2 = (line: string): boolean => /^##\s/.test(line.trim());
+  const endOf = (header: number): number => {
+    for (let i = header + 1; i < lines.length; i++) if (isH2(lines[i])) return i;
+    return lines.length;
+  };
+  const named = lines.findIndex(line => {
+    if (!isH2(line)) return false;
+    const text = normalizeHeadingText(line.trim().replace(/^##\s+/, ''));
+    return WORKFLOW_SECTION_NAMES.some(name => text.includes(name));
+  });
+  if (named !== -1) return { header: named, end: endOf(named) };
+  for (let i = 0; i < lines.length; i++) {
+    if (!isH2(lines[i])) continue;
+    const end = endOf(i);
+    if (lines.slice(i + 1, end).some(isWorkflowChecklistEntryLine)) return { header: i, end };
+    i = end - 1;
   }
-  return { header, end: lines.length };
+  return { header: -1, end: lines.length };
+}
+
+/** Whether the README has a "Related Workflows" section (see {@link findWorkflowSection}) to list workflows in. */
+export function hasWorkflowChecklistSection(readmeContent: string): boolean {
+  return findWorkflowSection(readmeContent.split('\n')).header !== -1;
 }
 
 /**
@@ -1095,6 +1120,22 @@ export function labelMatchesFileName(label: string, fileName: string): boolean {
   );
 }
 
+/**
+ * A workflow file among `names` that a new workflow `id name alias` would be
+ * indistinguishable from (#297): same ID and alias, both possibly empty, so
+ * its checklist label and file name differ only by number. Compared like
+ * {@link labelMatchesFileName}.
+ */
+export function findSameAliasWorkflow(
+  names: readonly string[],
+  id: string,
+  name: string,
+  alias: string
+): string | undefined {
+  const label = [id, name, alias.trim()].filter(Boolean).join(' ');
+  return names.find(file => parseWorkflowFileName(file)?.id === id && labelMatchesFileName(label, file));
+}
+
 /** The `## [ID name] alias` heading a workflow note starts with. */
 export interface WorkflowHeading {
   id: string;
@@ -1292,7 +1333,7 @@ export function planWorkflowChecklistSync(
   subfolders?: WorkflowSubfolderNotes,
   dir: string | undefined = subfolders?.dir
 ): WorkflowChecklistSyncPlan {
-  const hasSection = findWorkflowSection(readmeContent.split('\n')).header !== -1;
+  const hasSection = hasWorkflowChecklistSection(readmeContent);
   const items = parseWorkflowChecklistFromReadme(readmeContent);
   const present = new Set(existingNames);
 
