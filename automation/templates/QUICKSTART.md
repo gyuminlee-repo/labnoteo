@@ -5,8 +5,12 @@
 > Git·GitHub 자동화를 쓰지 않는다면 [명령 찾는 법](#명령%20찾는%20법)·[기록하기](#기록하기)·[샘플 다루기](#샘플%20다루기)만
 > 보면 됩니다. 이 문서는 명령 팔레트 → `Open user guide`(사용법 열기)로 언제든 다시 열 수 있습니다.
 >
-> `BEGIN labnoteo (managed)`와 `END labnoteo (managed)` 표시 사이는 플러그인이 관리합니다. 이 안을 고치면
-> 업데이트 때 덮어쓸지 먼저 묻고, 연구실 규칙은 맨 아래 표시 밖에 적으면 그대로 남습니다.
+> `BEGIN labnoteo (managed)`와 `END labnoteo (managed)` 표시 사이는 플러그인이 관리합니다. 이 안을 고치지
+> 않았다면 플러그인을 업데이트할 때 새 설명서로 바뀝니다. 고쳤다면 그대로 두고, `Open user guide`로 열 때
+> 새 버전으로 바꿀지 묻습니다(바꾸면 옛 파일은 `QUICKSTART.backup.md`로 남음). 연구실 규칙은 맨 아래 표시
+> 밖에 적으면 그대로 남습니다.
+>
+> 이 설명서는 labnoteo 0.122.0 기준입니다.
 
 **처음이라면 [5분 따라하기](#5분%20따라하기)만 먼저 하세요.** 그 아래는 필요할 때 찾아보는 참조입니다.
 
@@ -220,7 +224,7 @@ push하고 잠시 뒤, GitHub 저장소의 **Issues 탭**을 열어 보세요.
 | 실험실에 들고 갈 기록지 출력 | 워크플로 노트에서 → `Print experiment worksheet` (페이지마다 QR) |
 | 손으로 적은 기록지를 노트에 붙이기 | 사진·스캔을 스캔 폴더에 넣거나 `Import scanned pages` 창에 끌어다 놓기 ([출력본 스캔 붙이기](#출력본%20스캔%20붙이기)) |
 | 플러그인 업데이트 | BRAT가 앱 시작 시 자동 확인 · 수동은 `Check for updates to all beta plugins and UPDATE` |
-| 이 문서 다시 열기 | 명령 팔레트 → `Open user guide` (설정의 Labnote Assistant 탭 맨 위 버튼도 같음) |
+| 이 문서 다시 열기 | 명령 팔레트 → `Open user guide` (설정의 Labnote Assistant 탭 맨 위 버튼도 같음). 이 설명서가 설치된 플러그인보다 오래됐으면 새 버전으로 바꾸고, 블록을 고친 적이 있으면 먼저 묻습니다 |
 
 ---
 

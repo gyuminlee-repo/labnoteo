@@ -4,25 +4,70 @@
  * The guide used to appear only as a side effect of "Setup research
  * automation", which also installs Git hooks and GitHub workflows a researcher
  * who just wants to take notes does not need. This writes only `QUICKSTART.md`
- * (when missing) and opens it.
+ * (when missing, or left behind by an older release) and opens it.
  */
 import type { LabnoteHost } from '@labnoteo/core';
 import { QUICKSTART_ASSET, QUICKSTART_DOC_CONTENT, QUICKSTART_DOC_PATH } from './scaffold/assets';
-import { managedFileContent } from './scaffold/scaffold';
+import { managedBlockStatus, managedFileContent, upsertManagedBlock } from './scaffold/scaffold';
 import { compareVersions, contentHash, readInstallRecord, writeInstallRecord } from './scaffold/installRecord';
 
-export async function openUserGuide(host: LabnoteHost, pluginVersion: string): Promise<void> {
-  // An existing copy may carry the researcher's own notes, so never overwrite.
-  if (!(await host.fs.exists(QUICKSTART_DOC_PATH))) {
-    await host.fs.write(QUICKSTART_DOC_PATH, managedFileContent(QUICKSTART_ASSET));
-    // Recorded so later plugin updates refresh the guide while it stays unedited.
-    const record = await readInstallRecord(host);
-    const newer = record.pluginVersion && compareVersions(record.pluginVersion, pluginVersion) > 0;
-    await writeInstallRecord(host, {
+/** Where the guide's text before a replacement is kept. */
+export const QUICKSTART_BACKUP_PATH = 'QUICKSTART.backup.md';
+
+/** The release a copy of the guide was written for, from its version line. */
+export function guideVersion(text: string): string | undefined {
+  return /^> 이 설명서는 labnoteo (\S+) 기준입니다\.$/m.exec(text)?.[1];
+}
+
+/**
+ * Open the guide. A copy whose marked block was left at an older release is
+ * brought up to this one first (#305): silently while the block is the one a
+ * release wrote, after asking when someone edited it (the old file is kept
+ * as {@link QUICKSTART_BACKUP_PATH}). An edited block of this release, a copy
+ * without the markers, or one a newer plugin recorded is opened as it is.
+ * `write` goes through the vault so an open editor of the guide follows.
+ */
+export async function openUserGuide(
+  host: LabnoteHost,
+  pluginVersion: string,
+  write: (path: string, content: string) => Promise<void> = (path, content) => host.fs.write(path, content)
+): Promise<void> {
+  const record = await readInstallRecord(host);
+  const newer = record.pluginVersion !== undefined && compareVersions(record.pluginVersion, pluginVersion) > 0;
+  const remember = (): Promise<void> =>
+    writeInstallRecord(host, {
       pluginVersion: newer ? record.pluginVersion : pluginVersion,
       files: { ...record.files, [QUICKSTART_DOC_PATH]: contentHash(QUICKSTART_DOC_CONTENT) },
     });
+
+  if (!(await host.fs.exists(QUICKSTART_DOC_PATH))) {
+    await write(QUICKSTART_DOC_PATH, managedFileContent(QUICKSTART_ASSET));
+    // Recorded so later plugin updates refresh the guide while it stays unedited.
+    await remember();
     host.notify('info', host.t('Created the user guide: {0}', QUICKSTART_DOC_PATH));
+  } else if (!newer) {
+    const current = await host.fs.read(QUICKSTART_DOC_PATH);
+    const status = managedBlockStatus(current, QUICKSTART_ASSET, record.files[QUICKSTART_DOC_PATH]);
+    const stale = status === 'outdated' || (status === 'edited' && guideVersion(current) !== guideVersion(QUICKSTART_DOC_CONTENT));
+    if (stale) {
+      const replace =
+        status === 'outdated' ||
+        (await host.confirm(
+          host.t(
+            'This user guide was written for labnoteo {0}, older than the installed {1}, and its marked block was edited. Replace the block with the new version? The current file is kept as {2}; in a Git vault that copy is committed too. Cancel opens it as it is.',
+            guideVersion(current) ?? host.t('an earlier version'),
+            pluginVersion,
+            QUICKSTART_BACKUP_PATH
+          ),
+          { confirmLabel: host.t('Replace with the new version') }
+        ));
+      if (replace) {
+        if (status === 'edited') await write(QUICKSTART_BACKUP_PATH, current);
+        await write(QUICKSTART_DOC_PATH, upsertManagedBlock(current, QUICKSTART_ASSET.content));
+        await remember();
+        host.notify('info', host.t('Updated the user guide to labnoteo {0}.', pluginVersion));
+      }
+    }
   }
   await host.openFile(QUICKSTART_DOC_PATH);
 }

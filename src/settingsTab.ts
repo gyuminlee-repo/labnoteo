@@ -19,6 +19,7 @@ import {
 } from './settings';
 import { confirmModal } from './modals';
 import { openUserGuide } from './userGuide';
+import { writeNoteThroughVault } from './commands';
 import { tokenFingerprint } from './llm/mcpServer';
 import { renderScanSettings } from './scan/scanSettings';
 import { renderPartbankSettings } from './partbank/partbankSettings';
@@ -103,7 +104,9 @@ export class LabnoteSettingTab extends PluginSettingTab {
           .onClick(() => {
             // Settings is a modal: close it or the guide opens hidden behind it.
             (this.app as unknown as { setting?: { close(): void } }).setting?.close();
-            void openUserGuide(this.plugin.host, this.plugin.manifest.version);
+            void openUserGuide(this.plugin.host, this.plugin.manifest.version, (path, content) =>
+              writeNoteThroughVault(this.app, this.plugin.host, path, content)
+            );
           })
       );
 

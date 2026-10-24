@@ -9,6 +9,7 @@
  *   - manifest.json                            (Obsidian plugin version)
  *   - versions.json                            ({version: minAppVersion})
  *   - README.md / README.en.md                 (the version badge line)
+ *   - automation/templates/QUICKSTART.md       (the "이 설명서는 labnoteo x.y.z 기준입니다" line)
  *
  * The root `package.json` is itself the plugin package, so it needs no copy.
  *
@@ -59,6 +60,19 @@ function replaceReadmeBadge(content, label) {
   return content.replace(pattern, `**${label} ${version}**`);
 }
 
+/**
+ * Rewrite the version line of the user guide, which "Open user guide" reads to
+ * tell a copy left behind by an older release (#305).
+ */
+function replaceGuideVersion(content) {
+  const pattern = /^> 이 설명서는 labnoteo [^ ]+ 기준입니다\.$/m;
+  if (!pattern.test(content)) {
+    console.error('[sync:versions] no "> 이 설명서는 labnoteo x.y.z 기준입니다." line in QUICKSTART.md');
+    process.exit(1);
+  }
+  return content.replace(pattern, `> 이 설명서는 labnoteo ${version} 기준입니다.`);
+}
+
 /** Every file to keep in step, as {path, next} where `next` is the desired content. */
 const targets = [
   {
@@ -85,6 +99,10 @@ const targets = [
   {
     path: join(root, 'README.en.md'),
     next: replaceReadmeBadge(readFileSync(join(root, 'README.en.md'), 'utf8'), 'Version'),
+  },
+  {
+    path: join(root, 'automation/templates/QUICKSTART.md'),
+    next: replaceGuideVersion(readFileSync(join(root, 'automation/templates/QUICKSTART.md'), 'utf8')),
   },
 ];
 

@@ -81,7 +81,7 @@ Under a Korean UI the command palette shows each name as `Korean (English)` (e.g
 | Import scanned pages | Drop photos, PDFs or zips to file them in their notes by QR code |
 | Process scan folder now | Process the PC scan folder set in settings right away (desktop only) |
 | Assign unmatched scans | File the pages whose QR code could not be read by picking the note and unit operation |
-| Open user guide | Open the researcher quick start (`QUICKSTART.md`), creating it in the vault if missing |
+| Open user guide | Open the researcher quick start (`QUICKSTART.md`), creating it or bringing an outdated copy up to this version |
 
 > **What each command does in detail** — where it inserts, what it confirms before writing, and how
 > it handles file names, numbering, moves and copies — is in the

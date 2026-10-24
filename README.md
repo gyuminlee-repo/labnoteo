@@ -80,7 +80,7 @@ Obsidian 설치와 git·GitHub 계정 준비부터 커뮤니티 플러그인·�
 | 스캔 가져오기 (`Import scanned pages`) | 사진·PDF·zip을 끌어다 놓아 QR로 노트에 붙이고 결과 창을 보여 줍니다 |
 | 스캔 폴더 지금 처리 (`Process scan folder now`) | 설정한 PC 스캔 폴더를 기다리지 않고 바로 처리합니다(데스크톱 전용) |
 | 미인식 스캔 할당 (`Assign unmatched scans`) | QR을 읽지 못한 페이지를 썸네일로 보고 노트·유닛 오퍼레이션을 골라 붙입니다 |
-| 사용법 열기 (`Open user guide`) | 연구원용 퀵스타트(`QUICKSTART.md`)를 열고, 없으면 보관함에 만듭니다 |
+| 사용법 열기 (`Open user guide`) | 연구원용 퀵스타트(`QUICKSTART.md`)를 열고, 없거나 오래됐으면 이 버전으로 만들거나 바꿉니다 |
 
 > **각 명령의 자세한 동작**(삽입 위치 규칙, 확인 창, 파일 이름·번호·복사본 처리, 예외 상황)은
 > **[QUICKSTART](automation/templates/QUICKSTART.md)** 에 있습니다. 특히

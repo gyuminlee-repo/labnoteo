@@ -94,6 +94,13 @@ const obsidianKo: Record<string, string> = {
   'Samples': '샘플',
 
   // User guide / view hints
+  'This user guide was written for labnoteo {0}, older than the installed {1}, and its marked block was edited. Replace the block with the new version? The current file is kept as {2}; in a Git vault that copy is committed too. Cancel opens it as it is.':
+    '이 설명서는 labnoteo {0} 기준으로, 설치된 {1}보다 오래됐고 관리 블록이 고쳐져 있습니다. 블록을 새 버전으로 바꿀까요? 지금 파일은 {2}로 남깁니다(git 보관함이면 이 사본도 커밋됩니다). 취소하면 그대로 엽니다.',
+  'an earlier version': '이전 버전',
+  'Replace with the new version': '새 버전으로 바꾸기',
+  'Updated the user guide to labnoteo {0}.': '설명서를 labnoteo {0} 기준으로 바꿨습니다.',
+  '{0} was edited, so it was left at its earlier version. Run "Open user guide" to get the new version.':
+    '{0}이(가) 고쳐져 있어 이전 버전으로 두었습니다. "사용법 열기"를 실행하면 새 버전으로 바꿀 수 있습니다.',
   'Created the user guide: {0}': '사용법 문서를 만들었습니다: {0}',
   'Updated {0} automation file(s) to this plugin version: {1}':
     '자동화 파일 {0}개를 이 플러그인 버전에 맞게 갱신했습니다: {1}',

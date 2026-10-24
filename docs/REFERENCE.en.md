@@ -478,6 +478,11 @@ Scaffold GitHub Actions and scripts into the current vault. See
 Open the researcher quick start (`QUICKSTART.md`), creating it in the vault if missing. No Setup
 research automation needed. Also a button at the top of the settings tab.
 
+The guide says which release it was written for at the top. Plugin updates replace its marked block
+while nobody edited it. A guide from an older release whose block was edited asks first: replacing
+keeps the old file as `QUICKSTART.backup.md` (committed too in a Git vault), and Cancel opens it as
+it is. Text below the block is always kept.
+
 ## Inserting while in reading view
 
 A command that inserts at the cursor (Insert unit operation, Insert sample list of this experiment,

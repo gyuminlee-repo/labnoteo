@@ -77,6 +77,7 @@ import {
   experimentTitleHint,
   workflowAliasHint,
   workflowConcept,
+  writeNoteThroughVault,
   type ReadmeSyncControl,
 } from './commands';
 import { loadWorkflows } from '@labnoteo/core/lib/workflowDataLoader';
@@ -2075,7 +2076,10 @@ export default class LabnotePlugin extends Plugin {
     this.addCommand({
       id: 'open-user-guide',
       name: this.paletteName('Open user guide'),
-      callback: () => void openUserGuide(this.host, this.manifest.version),
+      callback: () =>
+        void openUserGuide(this.host, this.manifest.version, (path, content) =>
+          writeNoteThroughVault(this.app, this.host, path, content)
+        ),
     });
   }
 
