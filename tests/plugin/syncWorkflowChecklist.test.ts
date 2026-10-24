@@ -137,6 +137,23 @@ describe('syncWorkflowChecklistCommand', () => {
     expect(h.calls).toEqual([`flushNow ${DIR}`, 'notify The workflow checklist already matches the folder.']);
   });
 
+  it('points at "Renumber workflows" when two listed notes share a number (#288)', async () => {
+    const OTHER = '002_WT030_Seq.labnote.md';
+    const h = harness(
+      {
+        [README]: readme([`- [ ] [WD030 Design](./${REGISTERED})`, `- [ ] [WT030 Seq](./${OTHER})`]),
+        [`${DIR}/${REGISTERED}`]: 'x',
+        [`${DIR}/${OTHER}`]: 'y',
+      },
+      true
+    );
+    await syncWorkflowChecklistCommand(h.app, h.host, h.sync, DIR);
+    expect(h.calls.slice(-2)).toEqual([
+      'notify The workflow checklist already matches the folder.',
+      `notify Workflow notes share a number: ${REGISTERED}, ${OTHER}. Run "Renumber workflows" to give each its own.`,
+    ]);
+  });
+
   it('adds a single renamed copy without touching other unlisted files (#44)', async () => {
     const COPY = '003_WD030_Design.labnote.md';
     const h = harness(

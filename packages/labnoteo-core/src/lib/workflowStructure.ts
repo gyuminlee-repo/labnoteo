@@ -596,40 +596,87 @@ export function collapseWorkflowRenames(renames: readonly WorkflowRename[]): Wor
 }
 
 /**
+ * A workflow file name whose number has the wrong number of digits
+ * (`01_WB030_X.labnote.md`, #289): "Renumber workflows" gives it a proper
+ * one. Undefined for a standard name or anything else.
+ */
+function parseMisnumberedWorkflowFileName(fileName: string): ParsedWorkflowFileName | undefined {
+  if (parseWorkflowFileName(fileName)) return undefined;
+  const match = fileName.match(/^(\d{1,4})_([A-Z]{2}\d{3})_(.+)\.labnote\.md$/);
+  return match ? { sequence: match[1], id: match[2], safeName: match[3] } : undefined;
+}
+
+/** Whether {@link planWorkflowRenumber} renames `fileName` only to fix the digits of its number. */
+export function isMisnumberedWorkflowFileName(fileName: string): boolean {
+  return parseMisnumberedWorkflowFileName(fileName) !== undefined;
+}
+
+/**
+ * The workflow files of the folder in the order the README checklist lists
+ * them: in-folder targets present in `existingNames`, each once (#289).
+ */
+export function workflowChecklistOrder(
+  readmeContent: string,
+  existingNames: readonly string[],
+  dir?: string
+): string[] {
+  const present = new Set(existingNames);
+  const order: string[] = [];
+  for (const { target } of checklistEntries(readmeContent, dir)) {
+    if (target !== null && present.has(target) && !order.includes(target)) order.push(target);
+  }
+  return order;
+}
+
+/**
  * Plan a gap-free renumbering of an experiment folder's workflow files.
  *
- * Files are ordered exactly like {@link reconcileWorkflowChecklist} sorts the
- * README checklist (numeric `NNN`, ties broken by name) and then handed the
- * sequence numbers `001, 002, ...` with no gaps. The `id` and name parts are
- * carried over verbatim rather than rebuilt through
+ * Files are ordered as `checklistOrder` (see {@link workflowChecklistOrder})
+ * lists them, since the README checklist is where the researcher arranges the
+ * experiment (#289). A file it does not list goes before the first listed one
+ * whose number and name sort after its own, so a note moved in from another
+ * experiment lands where its number puts it (#56); with no checklist every
+ * file is ordered that way. They are then handed `001, 002, ...` with no gaps.
+ * The `id` and name parts are carried over verbatim rather than rebuilt through
  * {@link createWorkflowFileName}: the on-disk name is already sanitized, and
  * re-sanitizing could alter a name this operation is supposed to leave alone.
  *
- * Entries that {@link parseWorkflowFileName} cannot decode (README, notes,
- * manually named files) are ignored, and files that already carry their target
- * number are omitted, so an already-sequential folder plans to no renames.
+ * Besides standard names, a name whose number has the wrong number of digits
+ * is renumbered too ({@link isMisnumberedWorkflowFileName}). Other entries
+ * (README, notes, manually named files) are ignored, and files that already
+ * carry their target number are omitted, so a folder whose numbers follow the
+ * checklist plans to no renames.
  */
-export function planWorkflowRenumber(fileNames: readonly string[]): WorkflowRename[] {
-  const parsed = fileNames
-    .map(fileName => ({ fileName, parts: parseWorkflowFileName(fileName) }))
-    .filter((e): e is { fileName: string; parts: ParsedWorkflowFileName } => e.parts !== null);
+export function planWorkflowRenumber(
+  fileNames: readonly string[],
+  checklistOrder: readonly string[] = []
+): WorkflowRename[] {
+  const parts = new Map<string, ParsedWorkflowFileName>();
+  for (const fileName of fileNames) {
+    const parsed = parseWorkflowFileName(fileName) ?? parseMisnumberedWorkflowFileName(fileName);
+    if (parsed) parts.set(fileName, parsed);
+  }
+  const before = (a: string, b: string): boolean => {
+    const seqA = parseInt(parts.get(a)!.sequence, 10);
+    const seqB = parseInt(parts.get(b)!.sequence, 10);
+    return seqA !== seqB ? seqA < seqB : a < b;
+  };
 
-  parsed.sort((a, b) => {
-    const seqA = parseInt(a.parts.sequence, 10);
-    const seqB = parseInt(b.parts.sequence, 10);
-    if (seqA !== seqB) return seqA - seqB;
-    if (a.fileName !== b.fileName) return a.fileName < b.fileName ? -1 : 1;
-    return 0;
-  });
+  const listed = new Set(checklistOrder.filter(name => parts.has(name)));
+  const order = [...listed];
+  const unlisted = [...parts.keys()].filter(name => !listed.has(name)).sort((a, b) => (before(a, b) ? -1 : 1));
+  for (const name of unlisted) {
+    const at = order.findIndex(other => listed.has(other) && before(name, other));
+    if (at === -1) order.push(name);
+    else order.splice(at, 0, name);
+  }
 
   const renames: WorkflowRename[] = [];
-  parsed.forEach((entry, index) => {
+  order.forEach((fileName, index) => {
     const sequence = String(index + 1).padStart(3, '0');
-    if (sequence === entry.parts.sequence) return;
-    renames.push({
-      from: entry.fileName,
-      to: `${sequence}_${entry.parts.id}_${entry.parts.safeName}.labnote.md`,
-    });
+    const { id, safeName } = parts.get(fileName)!;
+    const to = `${sequence}_${id}_${safeName}.labnote.md`;
+    if (to !== fileName) renames.push({ from: fileName, to });
   });
   return renames;
 }
@@ -656,11 +703,10 @@ export function buildRenumberStagingName(rename: WorkflowRename, index: number):
  * Every rename asks Obsidian to update links (a prompt when its "Automatically
  * update internal links" setting is off), so a file is moved straight to its
  * target whenever that name is free at that point, and parked under a
- * {@link buildRenumberStagingName} name only when it is still taken. Closing
- * gaps never needs parking: the k-th file's number is at least k, so walking
- * the plan in order always finds the target vacated. Parking is left for
- * duplicate numbers, where a file moves up onto a name not yet vacated.
- * `existingNames` is the folder listing before any move.
+ * {@link buildRenumberStagingName} name only when it is still taken: a file
+ * moving onto a name another file has not vacated yet, as when two files
+ * trade places in the checklist or share a number. `existingNames` is the
+ * folder listing before any move.
  */
 export function planRenumberMoves(
   renames: readonly WorkflowRename[],
@@ -952,6 +998,11 @@ export interface WorkflowChecklistSyncPlan {
    * {@link normalizeWorkflowChecklistLabels}.
    */
   unescaped: string[];
+  /**
+   * Workflow files of the folder whose number another file also has, sorted
+   * (#288). The checklist cannot tell their order; "Renumber workflows" can.
+   */
+  numberClashes: string[];
   /** README with `added` inserted by number (see {@link insertWorkflowChecklistEntries}); unchanged when nothing is added. */
   content: string;
 }
@@ -1291,6 +1342,7 @@ export function planWorkflowChecklistSync(
     if (escapeChecklistLabel(label) !== raw) unescaped.push(label);
   }
 
+  const numberClashes = workflowNumberClashes(existingNames);
   if (!hasSection || added.length === 0) {
     return {
       hasSection,
@@ -1299,11 +1351,22 @@ export function planWorkflowChecklistSync(
       relabel: hasSection ? relabel : [],
       duplicates,
       unescaped,
+      numberClashes,
       content: readmeContent,
     };
   }
   const content = insertWorkflowChecklistEntries(readmeContent, added);
-  return { hasSection, added, stale, relabel, duplicates, unescaped, content };
+  return { hasSection, added, stale, relabel, duplicates, unescaped, numberClashes, content };
+}
+
+/** The workflow file names among `names` that share their number with another, sorted. */
+export function workflowNumberClashes(names: readonly string[]): string[] {
+  const bySequence = new Map<string, string[]>();
+  for (const name of names) {
+    const parsed = parseWorkflowFileName(name);
+    if (parsed) bySequence.set(parsed.sequence, [...(bySequence.get(parsed.sequence) ?? []), name]);
+  }
+  return [...bySequence.values()].filter(group => group.length > 1).flat().sort();
 }
 
 /**

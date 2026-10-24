@@ -6,6 +6,9 @@ import {
   insertWorkflowChecklistEntries,
   isWorkflowChecklistEntryLine,
   workflowChecklistEntryLabel,
+  workflowChecklistOrder,
+  isMisnumberedWorkflowFileName,
+  workflowNumberClashes,
   generateWorkflowChecklist,
   sanitizeWorkflowName,
   planWorkflowRenumber,
@@ -552,6 +555,75 @@ describe('buildRenumberStagingName', () => {
     for (const name of staged) {
       expect(renames.some(r => r.from === name)).toBe(false);
     }
+  });
+});
+
+describe('planWorkflowRenumber by checklist order (#289)', () => {
+  const A = '001_WD010_A.labnote.md';
+  const B = '002_WB030_B.labnote.md';
+  const C = '003_WT020_C.labnote.md';
+
+  it('numbers files in the order the checklist lists them', () => {
+    const readme = readmeWith([`- [ ] [C](./${C})`, '- [ ] 할 일', `- [ ] [A](./${A})`, `- [ ] [B](./${B})`]);
+    const order = workflowChecklistOrder(readme, [A, B, C, 'README.labnote.md']);
+    expect(order).toEqual([C, A, B]);
+    expect(planWorkflowRenumber([A, B, C], order)).toEqual([
+      { from: C, to: '001_WT020_C.labnote.md' },
+      { from: A, to: '002_WD010_A.labnote.md' },
+      { from: B, to: '003_WB030_B.labnote.md' },
+    ]);
+  });
+
+  it('plans nothing when the numbers already follow the checklist', () => {
+    expect(planWorkflowRenumber([A, B, C], [A, B, C])).toEqual([]);
+  });
+
+  it('lists a file once and skips entries without a file', () => {
+    const readme = readmeWith([`- [ ] [A](./${A})`, `- [ ] [A again](./${A})`, '- [ ] [Gone](./004_WD010_Gone.labnote.md)']);
+    expect(workflowChecklistOrder(readme, [A, B])).toEqual([A]);
+  });
+
+  it('puts an unlisted file before the first listed one that sorts after it', () => {
+    const moved = '002_WT100_Moved.labnote.md';
+    expect(planWorkflowRenumber([A, moved, C], [A, C])).toEqual([]);
+    // C (003) is the first listed file after it, even though A comes later.
+    expect(planWorkflowRenumber([A, moved, C], [C, A])).toEqual([
+      { from: moved, to: '001_WT100_Moved.labnote.md' },
+      { from: C, to: '002_WT020_C.labnote.md' },
+      { from: A, to: '003_WD010_A.labnote.md' },
+    ]);
+  });
+
+  it('fixes a number with the wrong number of digits', () => {
+    const short = '01_WB030_B.labnote.md';
+    expect(isMisnumberedWorkflowFileName(short)).toBe(true);
+    expect(isMisnumberedWorkflowFileName(A)).toBe(false);
+    expect(isMisnumberedWorkflowFileName('01_notes.labnote.md')).toBe(false);
+    expect(planWorkflowRenumber([A, short], [A, short])).toEqual([{ from: short, to: '002_WB030_B.labnote.md' }]);
+  });
+
+  it('swaps two files, parking only on a name still taken', () => {
+    const renames = planWorkflowRenumber([A, B], [B, A]);
+    expect(renames).toEqual([
+      { from: B, to: '001_WB030_B.labnote.md' },
+      { from: A, to: '002_WD010_A.labnote.md' },
+    ]);
+    expect(planRenumberMoves(renames, [A, B])).toEqual([
+      { from: B, to: '001_WB030_B.labnote.md' },
+      { from: A, to: '002_WD010_A.labnote.md' },
+    ]);
+  });
+});
+
+describe('workflowNumberClashes (#288)', () => {
+  it('lists the files that share a number', () => {
+    const names = ['001_WD010_A.labnote.md', '002_WB030_B.labnote.md', '002_WT020_C.labnote.md', 'README.labnote.md'];
+    expect(workflowNumberClashes(names)).toEqual(['002_WB030_B.labnote.md', '002_WT020_C.labnote.md']);
+    expect(planWorkflowChecklistSync(readmeWith([]), names).numberClashes).toEqual([
+      '002_WB030_B.labnote.md',
+      '002_WT020_C.labnote.md',
+    ]);
+    expect(planWorkflowChecklistSync('# no section', names).numberClashes).toHaveLength(2);
   });
 });
 

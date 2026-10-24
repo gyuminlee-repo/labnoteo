@@ -63,6 +63,7 @@ import {
   createWorkflowCommand,
   renumberWorkflowsCommand,
   syncWorkflowChecklistCommand,
+  workflowNumberClashNotice,
   addWorkflowFileToChecklist,
   moveTableCsvs,
   retitleWorkflowAfterRename,
@@ -838,7 +839,7 @@ export default class LabnotePlugin extends Plugin {
           case 'broken':
             // Recorded synchronously so a follow-up rename finds the origin.
             this.strayWorkflows.set(newPath, effect.origin);
-            this.run(() => this.offerWorkflowNameFix(file, effect.suggestion));
+            this.run(() => this.offerWorkflowNameFix(file, effect.suggestion, effect.origin));
             return;
         }
       })
@@ -1151,15 +1152,18 @@ export default class LabnotePlugin extends Plugin {
 
   /**
    * Tell the user a workflow note fell out of the naming format and, when a
-   * fix is known and its name is free, offer to rename it. The prompt waits for
-   * open modals to close: a file-explorer rename opens Obsidian's "update
-   * links" prompt at the same time, and answering ours first would make that
-   * one rewrite links for the stale rename.
+   * fix is known and its name is free, offer to rename it; otherwise offer its
+   * original name `origin` back (#307), e.g. after the number lost a digit.
+   * The prompt waits for open modals to close: a file-explorer rename opens
+   * Obsidian's "update links" prompt at the same time, and answering ours
+   * first would make that one rewrite links for the stale rename.
    */
-  private async offerWorkflowNameFix(file: TFile, suggestion: string | undefined): Promise<void> {
+  private async offerWorkflowNameFix(file: TFile, suggestion: string | undefined, origin: string): Promise<void> {
     const brokenPath = file.path;
     const name = file.name;
-    const target = suggestion ? posix.join(posix.dirname(brokenPath), suggestion) : undefined;
+    const dir = posix.dirname(brokenPath);
+    const fixed = suggestion ? posix.join(dir, suggestion) : undefined;
+    const target = fixed && !this.app.vault.getAbstractFileByPath(fixed) ? fixed : posix.join(dir, origin);
     const warn = (): void =>
       this.host.notify(
         'warn',
@@ -1168,7 +1172,7 @@ export default class LabnotePlugin extends Plugin {
           name
         )
       );
-    if (!suggestion || !target || this.app.vault.getAbstractFileByPath(target)) {
+    if (this.app.vault.getAbstractFileByPath(target)) {
       warn();
       return;
     }
@@ -1181,15 +1185,28 @@ export default class LabnotePlugin extends Plugin {
       return;
     }
 
-    const ok = await this.host.confirm(
-      this.t(
-        '"{0}" is no longer a workflow note: its name must end in .labnote.md, so the README checklist stopped following it. Rename it to "{1}"?',
-        name,
-        suggestion
-      ),
-      { confirmLabel: this.t('Fix name') }
-    );
-    if (!ok || file.path !== brokenPath || this.app.vault.getAbstractFileByPath(target)) return;
+    const ok =
+      target === fixed
+        ? await this.host.confirm(
+            this.t(
+              '"{0}" is no longer a workflow note: its name must end in .labnote.md, so the README checklist stopped following it. Rename it to "{1}"?',
+              name,
+              suggestion!
+            ),
+            { confirmLabel: this.t('Fix name') }
+          )
+        : await this.host.confirm(
+            `${this.t(
+              '"{0}" is no longer a workflow note: its name must start with ###_ and end in .labnote.md, so the README checklist stopped following it.',
+              name
+            )} ${this.t('Rename it back to "{0}"?', origin)}`,
+            { confirmLabel: this.t('Rename back') }
+          );
+    if (file.path !== brokenPath || this.app.vault.getAbstractFileByPath(target)) return;
+    if (!ok) {
+      if (target !== fixed) warn();
+      return;
+    }
     await this.app.fileManager.renameFile(file, target);
   }
 
@@ -1590,6 +1607,10 @@ export default class LabnotePlugin extends Plugin {
             undefined,
             dir
           );
+          // Even a note the checklist already lists can take a number another note has (#288).
+          if (plan.numberClashes.length > 0) {
+            this.host.notify('warn', workflowNumberClashNotice(this.host, plan.numberClashes));
+          }
           if (plan.added.length === 0) return;
           this.host.notify(
             'warn',

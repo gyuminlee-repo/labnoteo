@@ -71,6 +71,8 @@ import {
   parseExperimenterFromReadme,
   reconcileWorkflowChecklist,
   planWorkflowRenumber,
+  workflowChecklistOrder,
+  isMisnumberedWorkflowFileName,
   planRenumberMoves,
   planTableCsvMoves,
   siblingTableCsvs,
@@ -1070,7 +1072,7 @@ export interface ReadmeSyncControl {
 
 /**
  * Renumber an experiment's workflow files to a gap-free `001, 002, ...`
- * sequence, in their current order.
+ * sequence, in the order of the README checklist (#289).
  *
  * Ordering and the target names come from `planWorkflowRenumber`, the rename
  * sequence from `planRenumberMoves` (straight to the target, parked under a
@@ -1093,15 +1095,23 @@ export async function renumberWorkflowsCommand(
   if (!labnoteDir) return;
 
   const existing = await host.fs.list(labnoteDir);
-  const renames = planWorkflowRenumber(existing);
   const readmePath = posix.join(labnoteDir, README);
+  const readmeBefore = (await host.fs.exists(readmePath)) ? await host.fs.read(readmePath) : undefined;
+  // The checklist is where the researcher orders the experiment (#289).
+  const order = readmeBefore === undefined ? [] : workflowChecklistOrder(readmeBefore, existing, labnoteDir);
+  const renames = planWorkflowRenumber(existing, order);
   // Files the checklist does not list are renumbered too, so register them in
   // the same run; otherwise one takes 001 and the overview starts at 002 (#56).
-  const unlisted = (await host.fs.exists(readmePath))
-    ? planWorkflowChecklistSync(await host.fs.read(readmePath), existing, undefined, undefined, labnoteDir).added.length
-    : 0;
+  const syncPlan =
+    readmeBefore === undefined
+      ? undefined
+      : planWorkflowChecklistSync(readmeBefore, existing, undefined, undefined, labnoteDir);
+  const unlisted = syncPlan?.added.length ?? 0;
+  // Without the section nothing can be listed or follow the new numbers (#298).
+  const noSection = host.t('README.labnote.md has no "Related Workflows" section.');
   if (renames.length === 0 && unlisted === 0) {
-    host.notify('info', host.t('Workflow numbering is already sequential.'));
+    if (syncPlan && !syncPlan.hasSection) host.notify('warn', noSection);
+    else host.notify('info', host.t('Workflow numbering already follows the README checklist.'));
     return;
   }
 
@@ -1117,7 +1127,23 @@ export async function renumberWorkflowsCommand(
             folder,
             String(unlisted)
           );
-  if (!(await host.confirm(question))) return;
+  const preview =
+    renames.length === 0
+      ? ''
+      : `\n\n${host.t(
+          order.length > 0
+            ? 'New numbers follow the order of the README checklist.'
+            : 'New numbers follow the current file numbers.'
+        )}\n${listFileNames(
+          host,
+          renames.map(r =>
+            isMisnumberedWorkflowFileName(r.from)
+              ? host.t('{0} → {1} (name format fixed)', r.from, r.to)
+              : `${r.from} → ${r.to}`
+          )
+        )}`;
+  const sectionNote = syncPlan && !syncPlan.hasSection ? `\n\n${noSection}` : '';
+  if (!(await host.confirm(`${question}${preview}${sectionNote}`))) return;
 
   await readmeSync.flushNow(labnoteDir);
   readmeSync.hold(labnoteDir);
@@ -1587,6 +1613,11 @@ export async function syncWorkflowChecklistCommand(
   const relinked = plan.unescaped.length + normalizeWorkflowChecklistLinks(readme, labnoteDir).count;
 
   const samplesBrought = adoptSamples ? await adoptSamples(labnoteDir, names) : 0;
+  // The checklist cannot order notes that share a number (#288).
+  const clashNotice = (): void => {
+    if (plan.numberClashes.length === 0) return;
+    host.notify('warn', workflowNumberClashNotice(host, plan.numberClashes));
+  };
 
   if (
     plan.added.length === 0 &&
@@ -1610,6 +1641,7 @@ export async function syncWorkflowChecklistCommand(
           : 'The workflow checklist already matches the folder.'
       )
     );
+    clashNotice();
     return;
   }
 
@@ -1644,6 +1676,12 @@ export async function syncWorkflowChecklistCommand(
     parts.push(host.t('Brought {0} local sample(s) into {1}.', String(samplesBrought), posix.basename(labnoteDir)));
   }
   host.notify('info', parts.join(' '));
+  clashNotice();
+}
+
+/** The warning that workflow notes `names` share a number, pointing at "Renumber workflows" (#288). */
+export function workflowNumberClashNotice(host: Pick<LabnoteHost, 't'>, names: readonly string[]): string {
+  return host.t('Workflow notes share a number: {0}. Run "{1}" to give each its own.', names.join(', '), host.t('Renumber workflows'));
 }
 
 // === README auto-sync on native rename / delete ==============================

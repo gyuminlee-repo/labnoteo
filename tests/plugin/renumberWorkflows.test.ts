@@ -156,6 +156,45 @@ describe('renumberWorkflowsCommand (#41)', () => {
   });
 });
 
+// #289: the checklist, not the file numbers, decides the order.
+describe('renumberWorkflowsCommand follows the checklist order (#289)', () => {
+  it('numbers by the checklist and shows each rename before asking', async () => {
+    const h = harness({ relink: false });
+    await h.fs.write(
+      README,
+      README_BEFORE.replace(
+        `- [ ] [WD070 A](./${A})\n- [ ] [WT020 C 형광 측정](./${C_OLD})`,
+        `- [ ] [WT020 C 형광 측정](./${C_OLD}) 메모\n- [ ] 할 일\n- [ ] [WD070 A](./${A})`
+      )
+    );
+    const asked: string[] = [];
+    h.host.confirm = async (message: string) => {
+      asked.push(message);
+      return true;
+    };
+
+    await renumberWorkflowsCommand(h.app, h.host, h.sync);
+
+    expect(asked[0]).toContain('New numbers follow the order of the README checklist.');
+    expect(asked[0]).toContain(`${C_OLD} → 001_WT020_C_형광_측정.labnote.md`);
+    expect(asked[0]).toContain(`${A} → 002_WD070_A.labnote.md`);
+    const md = await h.fs.read(README);
+    expect(md).toContain(
+      '- [ ] [WT020 C 형광 측정](./001_WT020_C_형광_측정.labnote.md) 메모\n- [ ] 할 일\n- [ ] [WD070 A](./002_WD070_A.labnote.md)'
+    );
+  });
+
+  it('says the README has no section instead of calling the numbers sequential (#298)', async () => {
+    const h = harness({ relink: false });
+    await h.fs.remove(`${DIR}/${C_OLD}`);
+    await h.fs.write(README, '# Test\n\n## Notes\n');
+
+    await renumberWorkflowsCommand(h.app, h.host, h.sync);
+
+    expect(h.calls.at(-1)).toBe('notify README.labnote.md has no "Related Workflows" section.');
+  });
+});
+
 // #56: a workflow file the checklist does not list (moved in from another
 // experiment) is renumbered too, so it must be registered in the same run.
 describe('renumberWorkflowsCommand with unlisted files (#56)', () => {
@@ -190,7 +229,7 @@ describe('renumberWorkflowsCommand with unlisted files (#56)', () => {
     await renumberWorkflowsCommand(h.app, h.host, h.sync);
 
     expect(links(await h.fs.read(README))).toEqual([A, '002_WT100_Moved.labnote.md']);
-    expect(h.calls).not.toContain('notify Workflow numbering is already sequential.');
+    expect(h.calls).not.toContain('notify Workflow numbering already follows the README checklist.');
     expect(h.calls.at(-1)).toBe('notify Added 1 workflow file(s) to the README checklist.');
   });
 });
