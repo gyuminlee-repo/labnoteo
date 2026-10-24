@@ -9,7 +9,7 @@ import { buildHwUnitOpMarkdown } from '../../packages/labnoteo-core/src/lib/unit
 import { readNoteId } from '../../packages/labnoteo-core/src/lib/noteId';
 import { findUnitOpInsertOffset, rebuildUnitOpToc } from '../../packages/labnoteo-core/src/sections/workflowSectionParser';
 import { listFiledScans } from '../../packages/labnoteo-core/src/sections/scanInsert';
-import type { PagePayload, ScanPayload } from '../../packages/labnoteo-core/src/lib/scanPayload';
+import { unitOpFingerprint, type PagePayload, type ScanPayload } from '../../packages/labnoteo-core/src/lib/scanPayload';
 import { NoteIdService } from '../../src/barcode/noteIdService';
 import {
   ScanPipeline,
@@ -209,6 +209,29 @@ describe('ScanPipeline.run', () => {
     expect(results.find(r => r.input === 'other.jpg')!.unmatchedPath).toContain('_LN-ZZZZZZZZ_');
     expect(s.writes).toEqual([]);
     expect(s.edits).toEqual([]);
+  });
+
+  it('names the block it filed into, and warns when found by fingerprint or printed without one (#304)', async () => {
+    const aliases = ['조건 A', '조건 B'];
+    const twice = buildNote(ID, ['UHW010', 'UHW010']).replace(/^### \[UHW010 Op UHW010\]$/gm, h => `${h} ${aliases.shift()}`);
+    const removedA = twice.replace(/^### \[UHW010 Op UHW010\] 조건 A$[\s\S]*?(?=^### \[UHW010)/m, '');
+    const fp = (alias: string) => unitOpFingerprint('Op UHW010', alias);
+    const s = setup(
+      { [NOTE]: removedA },
+      {
+        'moved.jpg': [page(pagePayload({ unitOpIndex: 2, opId: 'UHW010', fingerprint: fp('조건 B') }), 'aaaaaaaaaaaa')],
+        'gone.jpg': [page(pagePayload({ unitOpIndex: 1, opId: 'UHW010', fingerprint: fp('조건 A') }), 'bbbbbbbbbbbb')],
+        'old.jpg': [page(pagePayload({ unitOpIndex: 1, opId: 'UHW010', page: 2 }), 'cccccccccccc')],
+      }
+    );
+    const [moved, gone, old] = await s.pipeline.run(['moved.jpg', 'gone.jpg', 'old.jpg'].map(input));
+    expect(moved).toMatchObject({ status: 'filed', block: '[UHW010 Op UHW010] 조건 B', matchedBy: 'fingerprint', legacy: false });
+    expect(gone).toMatchObject({ status: 'unmatched', reason: 'renamed' });
+    expect(old).toMatchObject({ status: 'filed', matchedBy: 'index', legacy: true });
+    expect(listFiledScans(s.text.get(NOTE)!).map(f => [f.unitOpIndex, f.hash])).toEqual([
+      [1, 'aaaaaaaaaaaa'],
+      [1, 'cccccccccccc'],
+    ]);
   });
 
   it('passes over pages without a QR in a shared folder', async () => {

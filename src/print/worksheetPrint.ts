@@ -6,7 +6,7 @@
 import { App, Modal, Notice, Setting, TFile } from 'obsidian';
 import type { LabnoteHost, Translator } from '@labnoteo/core';
 import { getSeoulDateString } from '@labnoteo/core/lib/dateUtils';
-import { encodePagePayload, payloadLabel, type PagePayload } from '@labnoteo/core/lib/scanPayload';
+import { encodePagePayload, payloadLabel, unitOpFingerprint, type PagePayload } from '@labnoteo/core/lib/scanPayload';
 import {
   listWorksheetUnitOps,
   paginateWorksheet,
@@ -127,6 +127,7 @@ export function worksheetPrintPages(pages: readonly WorksheetPage[], ctx: Worksh
       noteId: ctx.noteId,
       unitOpIndex: p.unitOp.index,
       opId: p.unitOp.opId,
+      fingerprint: unitOpFingerprint(p.unitOp.opName, p.unitOp.alias),
       page: p.page,
       pageCount: p.pageCount,
       printedOn: ctx.printedOn,

@@ -14,6 +14,7 @@
  */
 import { stepFence, type OpenFence } from './sectionEdit';
 import { UNIT_OP_HEADING_PATTERN } from './workflowSectionParser';
+import { unitOpFingerprint } from '../lib/scanPayload';
 
 export const WORKSHEET_SCANS_HEADING = 'Worksheet scans';
 
@@ -106,26 +107,45 @@ export function listUnitOpBlocks(md: string): UnitOpBlock[] {
 }
 
 export type ScanTarget =
-  | { kind: 'block'; block: UnitOpBlock; by: 'index' | 'opId' }
+  | { kind: 'block'; block: UnitOpBlock; by: 'index' | 'opId' | 'fingerprint' }
   | { kind: 'note' }
   | { kind: 'ambiguous'; candidates: UnitOpBlock[] }
+  /** Blocks of the page's ID remain, but none has its name and alias any more. */
+  | { kind: 'renamed'; candidates: UnitOpBlock[] }
   | { kind: 'missing' };
 
 /**
  * Where a page printed from the `unitOpIndex`-th unit operation (`opId`)
- * belongs now that the note may have changed: the block at that position if it
- * still is that unit operation, else the note's only block of that `opId`.
- * Otherwise the page needs a person to choose.
+ * belongs now that the note may have changed.
+ *
+ * With the block `fingerprint` the page was printed with (#304): the block
+ * at that position if it still has that ID and fingerprint, else the note's
+ * only block that does. A position alone is not trusted: after a block above
+ * was removed, the next block of the same ID slides into it. A page whose
+ * fingerprint no block has (its alias was changed) is `renamed`, even when
+ * only one block of its ID is left.
+ *
+ * Without one (printed before 0.123.0): the block at that position if it is
+ * still that unit operation, else the note's only block of that `opId`.
  */
 export function resolveScanTarget(
   blocks: readonly UnitOpBlock[],
   unitOpIndex: number,
-  opId: string
+  opId: string,
+  fingerprint?: string
 ): ScanTarget {
   if (unitOpIndex === 0) return { kind: 'note' };
   const atIndex = blocks[unitOpIndex - 1];
-  if (atIndex && atIndex.opId === opId) return { kind: 'block', block: atIndex, by: 'index' };
   const same = blocks.filter(b => b.opId === opId);
+  if (fingerprint) {
+    const matches = (b: UnitOpBlock): boolean => unitOpFingerprint(b.opName, b.alias) === fingerprint;
+    if (atIndex && atIndex.opId === opId && matches(atIndex)) return { kind: 'block', block: atIndex, by: 'index' };
+    const exact = same.filter(matches);
+    if (exact.length === 1) return { kind: 'block', block: exact[0], by: 'fingerprint' };
+    if (exact.length > 1) return { kind: 'ambiguous', candidates: exact };
+    return same.length > 0 ? { kind: 'renamed', candidates: same } : { kind: 'missing' };
+  }
+  if (atIndex && atIndex.opId === opId) return { kind: 'block', block: atIndex, by: 'index' };
   if (same.length === 1) return { kind: 'block', block: same[0], by: 'opId' };
   return same.length > 1 ? { kind: 'ambiguous', candidates: same } : { kind: 'missing' };
 }

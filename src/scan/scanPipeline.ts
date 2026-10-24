@@ -41,7 +41,14 @@ export interface ScanInput {
 
 export type ScanStatus = 'filed' | 'duplicate' | 'unmatched' | 'blank' | 'skipped' | 'unsupported' | 'error';
 
-export type UnmatchedReason = 'no-qr' | 'note-not-found' | 'duplicate-id' | 'note-only' | 'no-unit-op' | 'ambiguous';
+export type UnmatchedReason =
+  | 'no-qr'
+  | 'note-not-found'
+  | 'duplicate-id'
+  | 'note-only'
+  | 'no-unit-op'
+  | 'ambiguous'
+  | 'renamed';
 export type UnsupportedReason = 'heic' | 'tiff' | 'unknown' | 'zip-limit' | 'pdf-limit';
 
 export interface ScanResult {
@@ -63,6 +70,15 @@ export interface ScanResult {
   unmatchedPath?: string;
   /** Scans of the same page filed before this one. */
   previous?: { hash: string; embed: string }[];
+  /** The unit operation it was filed under, as its heading reads (`[UHW290 Name] alias`). */
+  block?: string;
+  /**
+   * How that block was found (#304): `index` when it is still where the page
+   * was printed from; otherwise it moved, so the result asks to check it.
+   */
+  matchedBy?: 'index' | 'opId' | 'fingerprint';
+  /** The printout carries no block fingerprint (printed before 0.123.0). */
+  legacy?: boolean;
 }
 
 /** One page image, decoded. */
@@ -211,9 +227,10 @@ export class ScanPipeline {
     base.notePath = notePath;
 
     const text = await this.readNote(notePath, noteText);
-    const target = resolveScanTarget(listUnitOpBlocks(text), payload.unitOpIndex, payload.opId);
+    const target = resolveScanTarget(listUnitOpBlocks(text), payload.unitOpIndex, payload.opId, payload.fingerprint);
     if (target.kind === 'missing') return this.unmatched(page, base, 'no-unit-op');
     if (target.kind === 'ambiguous') return this.unmatched(page, base, 'ambiguous');
+    if (target.kind === 'renamed') return this.unmatched(page, base, 'renamed');
     if (batchHashes.has(page.hash) || listScanHashes(text).has(page.hash)) return { ...base, status: 'duplicate' };
     batchHashes.add(page.hash);
 
@@ -223,6 +240,12 @@ export class ScanPipeline {
       .map(s => ({ hash: s.hash, embed: s.embed }));
     const stored = await this.store(notePath, payload, unitOpIndex, await page.render());
     const result: ScanResult = { ...base, status: 'filed', imagePath: stored.file.path, previous };
+    if (target.kind === 'block') {
+      const { opId, opName, alias } = target.block;
+      result.block = `[${opId} ${opName}]${alias ? ` ${alias}` : ''}`;
+      result.matchedBy = target.by;
+      result.legacy = !payload.fingerprint;
+    }
     pending.push({
       notePath,
       payload,
@@ -290,7 +313,8 @@ export class ScanPipeline {
         missed.clear();
         let out = content;
         for (const item of items) {
-          const target = resolveScanTarget(listUnitOpBlocks(out), item.payload.unitOpIndex, item.payload.opId);
+          const { unitOpIndex, opId, fingerprint } = item.payload;
+          const target = resolveScanTarget(listUnitOpBlocks(out), unitOpIndex, opId, fingerprint);
           if (target.kind === 'block') out = insertScanEntries(out, target.block, [item.entry]);
           else if (target.kind === 'note') out = insertScanEntries(out, null, [item.entry]);
           else missed.add(item);

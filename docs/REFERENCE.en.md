@@ -366,6 +366,14 @@ Print the whole note split into pages, with a QR code on each. READMEs too.
 Drop photos, PDFs or zips to file them in their notes by QR code, then show the results (open note,
 undo, delete earlier scan). Also the scan icon in the left ribbon.
 
+Each result names the block it went to (`note › [UHW290 Name] alias`). From 0.123.0 the QR code
+also carries a fingerprint of the block's name and alias, so a page still finds its block after
+blocks above it were removed or reordered, instead of sliding into the next block of the same ID.
+The result asks you to check when the block was found somewhere else or the printout is older than
+0.123.0. A page whose block was renamed since printing is not guessed: it goes to unmatched scans.
+Plugins before 0.123.0 do not read the new QR codes, so everyone sharing a vault should update
+before scanning new printouts.
+
 ### Process scan folder now
 
 Process the PC scan folder set in settings right away (desktop only).

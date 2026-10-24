@@ -173,6 +173,12 @@ const obsidianKo: Record<string, string> = {
     '{0}에 같은 ID와 별칭이 이미 있어 README 체크리스트에서 둘이 똑같이 보입니다. 구분하려면 이 워크플로에 다른 별칭을 주세요.',
   'Workflow notes moved out of {0} are still in its README checklist. Run "{1}" in {0} to remove them.':
     '{0}에서 옮겨 간 워크플로 노트가 아직 그 README 체크리스트에 있습니다. {0}에서 "{1}"을(를) 실행하면 지울 수 있습니다.',
+  'The unit operation it was printed from was renamed since, so it is unclear which block it belongs to.':
+    '출력한 뒤 유닛 오퍼레이션 제목이나 별칭이 바뀌어 어느 블록인지 확인할 수 없습니다.',
+  'This printout is from before 0.123.0 and does not say which block it is, so check that it went to the right one.':
+    '0.123.0 이전 출력본이라 어느 블록인지 적혀 있지 않습니다. 맞는 블록에 붙었는지 확인하세요.',
+  'The block is no longer where it was printed from, so check that the scan went to the right one.':
+    '출력한 뒤 블록 위치가 바뀌었습니다. 맞는 블록에 붙었는지 확인하세요.',
   'Workflow numbering already follows the README checklist.': '워크플로 번호가 이미 README 체크리스트 순서와 같습니다.',
   'New numbers follow the order of the README checklist.': '새 번호는 README 체크리스트 순서를 따릅니다.',
   'New numbers follow the current file numbers.': '새 번호는 지금 파일 번호 순서를 따릅니다.',
