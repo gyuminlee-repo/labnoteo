@@ -14,7 +14,7 @@ import { isSameSampleFolder } from '@labnoteo/core/lib/sampleStorage';
 import type LabnotePlugin from '../main';
 import { confirmModal, pickModal } from '../modals';
 import { insertSampleReference } from '../sampleActions';
-import { noticeForRegistration, registerPartbankItem, resolveSampleType } from './partbankRegister';
+import { catalogSeedNote, noticeForRegistration, registerPartbankItem, resolveSampleType } from './partbankRegister';
 
 /** The protocol action this plugin answers. */
 export const IMPORT_ACTION = 'labnoteo-import';
@@ -96,7 +96,9 @@ export async function handleImportUri(
   });
   if (!result) return;
   noticeForRegistration(plugin, result, target.chosen ? target.folder : undefined);
-  await deliverReference(plugin, result.referenceText);
+  const insertedInto = await deliverReference(plugin, result.referenceText);
+  const seed = catalogSeedNote(plugin, result, insertedInto);
+  if (seed) new Notice(seed);
 }
 
 /**
@@ -131,8 +133,12 @@ async function pickImportFolder(
   return folder === undefined ? undefined : { folder, chosen: true };
 }
 
-/** Put the reference where the user can use it. */
-async function deliverReference(plugin: LabnotePlugin, referenceText: string): Promise<void> {
+/**
+ * Put the reference where the user can use it: into the open note if they
+ * agree, onto the clipboard only when there was no note to ask about. Declining
+ * leaves both alone (#284). Returns the note it went into, if any.
+ */
+export async function deliverReference(plugin: LabnotePlugin, referenceText: string): Promise<string | undefined> {
   const target = plugin.host.editTarget();
   if (target && plugin.sampleTrackingFor(target.path)) {
     const ok = await confirmModal(
@@ -140,11 +146,11 @@ async function deliverReference(plugin: LabnotePlugin, referenceText: string): P
       plugin.t('Insert {0} into the open note?', referenceText),
       plugin.t('Insert')
     );
-    if (ok) {
-      await insertSampleReference(plugin, target, referenceText);
-      return;
-    }
+    if (!ok) return undefined;
+    await insertSampleReference(plugin, target, referenceText);
+    return target.path;
   }
   await navigator.clipboard.writeText(referenceText);
   new Notice(plugin.t('Copied {0} to the clipboard.', referenceText));
+  return undefined;
 }

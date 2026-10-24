@@ -15,6 +15,8 @@ import {
   insertSampleReference,
   listSampleDefinitions,
   sampleUsages,
+  sampleUsageSpots,
+  usageSpotLabel,
   unregisteredReferences,
   validateAlias,
 } from '../../src/sampleActions';
@@ -500,6 +502,22 @@ describe('editSampleInteractive alias rewrite', () => {
       `${B}/001_WD010_C.labnote.md`,
     ]);
   });
+
+  // #291: the list gave only paths and opened each note at its top.
+  it('lists where in each note the sample is used, under the same filter', async () => {
+    await fs.write(`${A}/001_WD010_A.labnote.md`, '## [UHW1 PCR] 첫\n#### Input\n- RNA-1;si KIF\n#### Output\n- x RNA-1\n');
+    await fs.write(`${B}/resources/labsamples/RNA.json`, JSON.stringify({ 'RNA-1': RECORD }));
+    await fs.write(`${B}/001_WD010_C.labnote.md`, 'RNA-1;si KIF\n');
+    const { app, p } = editPlugin();
+
+    const spots = await sampleUsageSpots(app, p, GLOBAL, 'RNA', 'RNA-1');
+    expect(spots).toEqual([
+      { path: `${A}/001_WD010_A.labnote.md`, line: 2, ch: 2, heading: '[UHW1 PCR] 첫 › Input' },
+      { path: `${A}/001_WD010_A.labnote.md`, line: 4, ch: 4, heading: '[UHW1 PCR] 첫 › Output' },
+    ]);
+    expect(usageSpotLabel(p.t, spots[0])).toBe('[UHW1 PCR] 첫 › Input · line 3');
+    expect(usageSpotLabel(p.t, { path: 'x', line: 0, ch: 0, heading: '' })).toBe('Line 1');
+  });
 });
 
 // #116: a sample registered under the wrong type moves with the notes that use it.
@@ -638,12 +656,13 @@ describe('listSampleDefinitions', () => {
 
 describe('insertSampleReference', () => {
   /** A minimal EditTarget backed by a mutable string + cursor. */
-  function makeTarget(text: string, cursor: number) {
+  function makeTarget(text: string, cursor: number, selectionEnd?: number) {
     const state = { text, revealed: -1 };
     const target: EditTarget = {
       path: 'labnote/001_Test/001_WD010_Design.labnote.md',
       getText: async () => state.text,
       getCursorOffset: async () => cursor,
+      getSelectionRange: async () => (selectionEnd === undefined ? undefined : { start: cursor, end: selectionEnd }),
       insertAtCursor: async (t: string) => {
         state.text = state.text.slice(0, cursor) + t + state.text.slice(cursor);
       },
@@ -683,6 +702,18 @@ describe('insertSampleReference', () => {
     await insertSampleReference(refPlugin(), target, 'RNA-1;siKIF');
 
     expect(state.text).toBe('## Samples\nused RNA-2;siX here RNA-1;siKIF\n');
+  });
+
+  // #302: the selected template hint stayed, with the reference fused to it.
+  it('replaces the selected text', async () => {
+    const doc = '#### Input\n- (samples from the previous step)\n';
+    const start = doc.indexOf('(');
+    const { target, state } = makeTarget(doc, start, doc.indexOf(')') + 1);
+
+    await insertSampleReference(refPlugin(), target, 'Plasmid-1;pET-28a(+)');
+
+    expect(state.text).toBe('#### Input\n- Plasmid-1;pET-28a(+)\n');
+    expect(state.revealed).toBe(start + 'Plasmid-1;pET-28a(+)'.length);
   });
 });
 

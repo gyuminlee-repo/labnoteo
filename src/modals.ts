@@ -221,6 +221,15 @@ export function promptModal(app: App, opts: PromptOpts): Promise<string | undefi
 }
 
 /** Yes/No confirmation dialog. */
+/**
+ * How a confirm dialog draws its confirm button: red only for what cannot be
+ * undone, the accent colour otherwise, so a plain "Insert" does not read as a
+ * warning (#285).
+ */
+export function confirmButtonStyle(destructive: boolean): 'warning' | 'cta' {
+  return destructive ? 'warning' : 'cta';
+}
+
 class ConfirmModal extends Modal {
   private resolved = false;
 
@@ -238,16 +247,15 @@ class ConfirmModal extends Modal {
     const { contentEl } = this;
     contentEl.createEl('p', { text: this.message, cls: 'labnote-confirm-message' });
     new Setting(contentEl)
-      .addButton(b =>
-        b
-          .setButtonText(this.confirmLabel)
-          .setWarning()
-          .onClick(() => {
-            this.resolved = true;
-            this.resolve(true);
-            this.close();
-          })
-      )
+      .addButton(b => {
+        b.setButtonText(this.confirmLabel).onClick(() => {
+          this.resolved = true;
+          this.resolve(true);
+          this.close();
+        });
+        if (confirmButtonStyle(this.destructive) === 'warning') b.setWarning();
+        else b.setCta();
+      })
       .addButton(b => {
         b.setButtonText(t('Cancel')).onClick(() => {
           this.resolved = true;

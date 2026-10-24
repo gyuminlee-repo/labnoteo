@@ -22,7 +22,7 @@ import {
   type PartbankType,
   type SampleSource,
 } from '@labnoteo/core';
-import { generateSampleId } from '@labnoteo/core/lib/sampleUtils';
+import { generateSampleId, getSampleDisplayMeta } from '@labnoteo/core/lib/sampleUtils';
 import { loadSamplesByType, type SampleRecord } from '@labnoteo/core/lib/sampleStorage';
 import * as posix from '@labnoteo/core/posix';
 import type LabnotePlugin from '../main';
@@ -112,6 +112,28 @@ export async function knownCatalogIds(
   return out;
 }
 
+/**
+ * The partbank items a Global sample of a type other than `sampleType` already
+ * stands for. A sample whose type was changed keeps its link (#301); an entry
+ * in this type's catalog would give the item a second id.
+ */
+export function heldByOtherTypes(
+  globalRecords: ReadonlyMap<string, Record<string, SampleRecord>>,
+  sampleType: string
+): Set<string> {
+  const out = new Set<string>();
+  for (const [type, records] of globalRecords) {
+    if (type === sampleType) continue;
+    for (const record of Object.values(records)) if (record.source) out.add(sourceKey(record.source));
+  }
+  return out;
+}
+
+/** The {@link heldByOtherTypes} key of an item fetched over `client`. */
+export function itemSourceKey(item: PartbankItem, connection: 'desktop' | 'web', origin: string): string {
+  return sourceKey(sourceForItem(item, connection, origin));
+}
+
 /** What one download produced, per sample type. */
 export type CatalogCounts = Map<string, number>;
 
@@ -159,13 +181,20 @@ export async function downloadPartbankCatalog(plugin: LabnotePlugin): Promise<vo
     progress.hide();
   }
 
-  const globalRecords = await loadGlobalRecords(plugin, folder, [...byType.keys()]);
+  const types = getSampleDisplayMeta(plugin.settings.customSampleTypes).types;
+  const globalRecords = await loadGlobalRecords(plugin, folder, [...new Set([...types, ...byType.keys()])]);
   const counts: CatalogCounts = new Map();
   for (const [sampleType, items] of byType) {
     const knownIds = await knownCatalogIds(plugin, folder, sampleType, [
       globalRecords.get(sampleType) ?? {},
     ]);
-    const records = planCatalogFile(sampleType, items, client.kind, client.origin, knownIds);
+    const elsewhere = heldByOtherTypes(globalRecords, sampleType);
+    // An id this catalog already gave the item stays, so notes using it still resolve.
+    const kept = items.filter(item => {
+      const key = itemSourceKey(item, client.kind, client.origin);
+      return !elsewhere.has(key) || knownIds.has(key);
+    });
+    const records = planCatalogFile(sampleType, kept, client.kind, client.origin, knownIds);
     const path = posix.join(folder, catalogFileName(sampleType, client.kind));
     await plugin.fs.write(path, `${JSON.stringify(records, null, 2)}\n`);
     counts.set(sampleType, Object.keys(records).length);

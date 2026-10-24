@@ -17,6 +17,7 @@ import type { LabnoteFs } from '../fs/labnoteFs';
 import {
   loadSamplesByType,
   mergeSampleRecord,
+  samplesWithAliasIn,
   noteLabsamplesFolder,
   isSameSampleFolder,
   listExperimentSampleFolders,
@@ -198,6 +199,8 @@ export interface SampleCreatePreview {
   /** Samples folder the record goes to. */
   folder: string;
   scope: 'local' | 'global';
+  /** Other samples of the type in `folder` that already have `alias` (#310). */
+  aliasTwins?: string[];
 }
 
 /** `create_workflow` preview: the file it creates and the README it registers it in (#124). */
@@ -443,6 +446,17 @@ async function resolveSampleCreate(
   // same folder as the global samples; say so instead of calling it local.
   const scope = ctx.globalSampleFolder && isSameSampleFolder(folder, ctx.globalSampleFolder) ? 'global' : 'local';
   return { documentPath, type, id: id ?? undefined, alias, description, location: str(args, 'location'), folder, scope };
+}
+
+/**
+ * Other samples a `create_sample` call would share its alias with, in the
+ * folder it writes to (#310), as the app's "Add sample" asks about. A call
+ * that adds to an existing id keeps that record's own alias out.
+ */
+async function aliasTwins(ctx: ToolContext, resolved: ResolvedSampleCreate, id: string | undefined): Promise<string[]> {
+  if (!resolved.alias) return [];
+  const twins = await samplesWithAliasIn(ctx.fs, resolved.folder, resolved.type, resolved.alias);
+  return twins.filter(other => other.toLowerCase() !== id?.toLowerCase());
 }
 
 const README_NAME = 'README.labnote.md';
@@ -735,6 +749,7 @@ export function createLabnoteTools(): ToolDef[] {
         if ('error' in resolved) return { ok: false, error: resolved.error };
         const { documentPath, type, alias, description, location, folder, scope } = resolved;
         const id = resolved.id ?? generateSampleId(type);
+        const twins = await aliasTwins(ctx, resolved, id);
 
         // Atomic merge into an existing record (#73): calling again for a known
         // id adds this note as a source and the description in front, and an
@@ -757,6 +772,11 @@ export function createLabnoteTools(): ToolDef[] {
             `${id} was marked discarded on ${discarded} and stays discarded; tell the user, who can clear it with "Unmark discarded" in the samples view.`
           );
         }
+        if (twins.length > 0) {
+          warnings.push(
+            `The alias "${alias}" was already used by ${twins.join(', ')} in ${folder}; both now show the same text in autocomplete. If it is the same sample, reference ${twins[0]} instead of ${id}.`
+          );
+        }
         if (warnings.length) result.warnings = warnings;
         return result;
       },
@@ -765,7 +785,18 @@ export function createLabnoteTools(): ToolDef[] {
         if ('error' in resolved) return { error: resolved.error };
         const { type, id, alias, location, folder, scope } = resolved;
         const existing = id !== undefined && (await loadSamplesByType(ctx.fs, folder, type))[id] !== undefined;
-        return { kind: 'sampleCreate', type, id, existing, alias, location, folder, scope };
+        const twins = await aliasTwins(ctx, resolved, id);
+        return {
+          kind: 'sampleCreate',
+          type,
+          id,
+          existing,
+          alias,
+          location,
+          folder,
+          scope,
+          ...(twins.length > 0 ? { aliasTwins: twins } : {}),
+        };
       },
     },
 

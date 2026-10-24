@@ -76,7 +76,9 @@ function renderConnection(
       urlWarning.setText(t('This address is not encrypted, so the API key is sent in the clear.'));
     }
   };
+  let urlValue = (): string => feature.url(kind);
   urlSetting.addText(text => {
+    urlValue = () => text.getValue().trim();
     text
       .setPlaceholder(isDesktop ? 'http://127.0.0.1:47830' : 'https://partbank.kbiofoundry.kr')
       .setValue(feature.url(kind));
@@ -96,28 +98,37 @@ function renderConnection(
     .setName(t('{0} API key', label))
     .setDesc(t('Kept on this PC and this vault only, never written to the vault.'));
   const keyState = keySetting.descEl.createDiv();
+  let keyValue = (): string => feature.apiKey(kind);
   keySetting.addText(text => {
+    keyValue = () => text.getValue().trim();
     text.setPlaceholder('pbk_...').setValue(feature.apiKey(kind));
     text.inputEl.type = 'password';
     text.inputEl.style.width = '100%';
     text.inputEl.addEventListener('blur', () => feature.setApiKey(kind, text.getValue()));
   });
   keySetting.addButton(b =>
+    // What the fields hold now, saved or not (#278).
     b.setButtonText(t('Test connection')).onClick(async () => {
-      const url = feature.url(kind);
-      const apiKey = feature.apiKey(kind);
+      const url = urlValue();
+      const apiKey = keyValue();
       if (!url || !apiKey) {
         new Notice(t('Enter the address and the API key first.'));
+        return;
+      }
+      if (!isValidPartbankUrl(url)) {
+        showUrlState(url);
+        keyState.addClass('mod-warning');
+        keyState.setText(t('Enter a full address starting with http:// or https://.'));
         return;
       }
       keyState.removeClass('mod-warning');
       keyState.setText(t('Checking…'));
       try {
         const who = await feature.probeClient(kind, url, apiKey).whoAmI();
-        keyState.setText(who ? t('Connected as {0}.', who) : t('Connected.'));
+        keyState.setText(t('Connected as {0}.', who));
       } catch (err) {
         keyState.addClass('mod-warning');
-        keyState.setText(feature.describeError(err, kind));
+        keyState.setText(feature.describeProbeError(err, kind));
       }
     })
   );

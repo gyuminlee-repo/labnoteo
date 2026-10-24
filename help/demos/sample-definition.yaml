@@ -26,7 +26,7 @@ steps:
   - tool: labnoteo_sample_menu
     args: { sample: DNA-1001, item: $t(View usages) }
     hold: 1200
-  - caption: { ko: 쓰인 노트 목록에서 골라 엽니다, en: Pick a note from the list to open it }
+  - caption: { ko: 쓰인 줄을 절과 함께 보여 주고, 고르면 그 참조 위로 엽니다, en: "Each use is listed with its section; pick one to open the note at that reference" }
     tool: modal_pick
     args: { text: 001_WB030 }
     hold: 1500

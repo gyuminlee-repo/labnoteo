@@ -20,6 +20,7 @@ import {
   putSampleRecord,
   removeSourcesForDocument,
   findSampleUsages,
+  findSampleUsageSpots,
   resolveLocalSampleFolder,
   noteLabsamplesFolder,
   noteLocalSampleFolder,
@@ -1141,6 +1142,30 @@ describe('findSampleUsages', () => {
     const custom = [{ path: 'x.md', text: 'see Strain-3 in the freezer' }];
     expect(findSampleUsages(custom, 'Strain', 'Strain-3', ['Strain'])).toEqual(['x.md']);
     expect(findSampleUsages(custom, 'Strain', 'Strain-3')).toEqual([]);
+  });
+});
+
+// #291
+describe('findSampleUsageSpots', () => {
+  it('gives each line using the sample once, with its column and section', () => {
+    const text = [
+      '---',
+      'title: x',
+      '---',
+      'intro dna-1 top',
+      '## [UHW1 PCR] 첫',
+      '#### Input',
+      '- DNA-1;pUC19 and DNA-1 again',
+      '#### Output',
+      '- @DNA;DNA-1;p;def',
+      '- DNA-10 is not it',
+    ].join('\n');
+    expect(findSampleUsageSpots([{ path: 'a.md', text }], 'DNA', 'DNA-1')).toEqual([
+      { path: 'a.md', line: 3, ch: 6, heading: '' },
+      { path: 'a.md', line: 6, ch: 2, heading: '[UHW1 PCR] 첫 › Input' },
+      { path: 'a.md', line: 8, ch: 2, heading: '[UHW1 PCR] 첫 › Output' },
+    ]);
+    expect(findSampleUsageSpots([{ path: 'a.md', text }], 'DNA', 'DNA-9')).toEqual([]);
   });
 });
 

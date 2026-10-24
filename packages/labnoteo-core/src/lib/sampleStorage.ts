@@ -15,6 +15,7 @@ import {
   isCatalogSampleType,
 } from './sampleUtils';
 import { escapeRegExp } from './regexUtils';
+import { listHeadings } from '../sections/sectionEdit';
 import { getExperimentDir, getExperimentLabsamplesFolder } from './labnoteStructure';
 import { normalizeSampleSource, type SampleSource } from '../partbank/types';
 
@@ -813,6 +814,21 @@ export function noteLocalSampleFolder(documentPath: string, globalFolder?: strin
 }
 
 /**
+ * The IDs of the `type` samples in `folder` with `alias` (trimmed, case
+ * ignored). Shared by the app's prompts and the MCP `create_sample` (#310).
+ */
+export async function samplesWithAliasIn(
+  fs: LabnoteFs,
+  folder: string,
+  type: string,
+  alias: string
+): Promise<string[]> {
+  const wanted = alias.trim().toLowerCase();
+  const records = await loadSamplesByType(fs, folder, type);
+  return Object.keys(records).filter(id => records[id].alias?.trim().toLowerCase() === wanted);
+}
+
+/**
  * Load sample database from JSON files for a specific type
  */
 export async function loadSamplesByType(
@@ -1531,6 +1547,52 @@ export function findSampleUsages(
     }
   }
   return hits;
+}
+
+/** Where a note uses a sample: the line and column of the reference, and its section. */
+export interface SampleUsageSpot {
+  path: string;
+  /** 0-based. */
+  line: number;
+  ch: number;
+  /** The enclosing heading, after its own parent (`[UHW250 PCR] › Output`); '' above the first heading. */
+  heading: string;
+}
+
+/**
+ * Every line of `docs` that uses the sample `(type, id)`, first reference of
+ * the line, for "View usages" to say where and open there (#291). Matches as
+ * {@link findSampleUsages} does, ignoring id case.
+ */
+export function findSampleUsageSpots(
+  docs: ReadonlyArray<{ path: string; text: string }>,
+  type: string,
+  id: string
+): SampleUsageSpot[] {
+  const idLower = id.toLowerCase();
+  const out: SampleUsageSpot[] = [];
+  for (const doc of docs) {
+    const spans = findSampleReferenceSpans(doc.text, [type]).filter(s => s.id.toLowerCase() === idLower);
+    if (spans.length === 0) continue;
+    const lineStarts = [0];
+    for (let i = 0; i < doc.text.length; i++) if (doc.text[i] === '\n') lineStarts.push(i + 1);
+    const headings = listHeadings(doc.text);
+    let lastLine = -1;
+    for (const span of spans) {
+      let line = 0;
+      while (line + 1 < lineStarts.length && lineStarts[line + 1] <= span.start) line++;
+      if (line === lastLine) continue;
+      lastLine = line;
+      const h = [...headings].reverse().find(x => x.line <= line);
+      out.push({
+        path: doc.path,
+        line,
+        ch: span.start - lineStarts[line],
+        heading: h ? (h.parentHeading ? `${h.parentHeading} › ${h.text}` : h.text) : '',
+      });
+    }
+  }
+  return out;
 }
 
 /** One Local sample to bring along with a note moved to another experiment (#97). */

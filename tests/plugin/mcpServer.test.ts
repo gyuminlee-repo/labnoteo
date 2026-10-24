@@ -308,6 +308,16 @@ describe('buildApprovalMessage', () => {
         buildApprovalMessage(t, 'Allow?', null, { ...sample, id: 'Reagent-3', existing: true, scope: 'global', folder: 'g' })
       ).toBe('Allow?\n\nThis adds to Reagent sample Reagent-3.\nSaved in the global samples folder g.');
     });
+
+    // #310
+    it('says which samples already have the alias', () => {
+      expect(buildApprovalMessage(t, 'Allow?', null, { ...sample, alias: 'LB', aliasTwins: ['Reagent-1', 'Reagent-4'] })).toContain(
+        'Alias: LB\nThis experiment already has the alias LB (Reagent-1, Reagent-4).'
+      );
+      expect(
+        buildApprovalMessage(t, 'Allow?', null, { ...sample, alias: 'LB', aliasTwins: ['Reagent-1'], scope: 'global', folder: 'g' })
+      ).toContain('Global samples already have the alias LB (Reagent-1).');
+    });
   });
 
   // #124

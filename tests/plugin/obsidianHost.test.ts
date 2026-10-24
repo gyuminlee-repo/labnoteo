@@ -16,10 +16,11 @@ function fakeEditor(initial: string) {
   const editor = {
     text: initial,
     cursor: 0,
+    selectionEnd: undefined as number | undefined,
     getValue: () => editor.text,
     offsetToPos: (offset: number) => ({ line: 0, ch: offset }),
     posToOffset: (pos: { ch: number }) => pos.ch,
-    getCursor: () => ({ line: 0, ch: editor.cursor }),
+    getCursor: (which?: 'from' | 'to') => ({ line: 0, ch: which === 'to' ? editor.selectionEnd ?? editor.cursor : editor.cursor }),
     replaceRange: (text: string, from: { ch: number }, to: { ch: number }) => {
       editor.text = editor.text.slice(0, from.ch) + text + editor.text.slice(to.ch);
     },
@@ -108,5 +109,55 @@ describe('editTarget in reading view (#216)', () => {
     expect(editor.text).toBe('live! text');
     expect(setState).not.toHaveBeenCalled();
     expect(Notice.shown).toEqual([]);
+  });
+
+  // #302
+  it('gives the selection in editing view only', async () => {
+    const { host, editor } = setup({ mode: 'source', data: 'old', editorText: 'live text' });
+    const target = host.editTarget()!;
+    expect(await target.getSelectionRange!()).toBeUndefined();
+    editor.cursor = 5;
+    editor.selectionEnd = 9;
+    expect(await target.getSelectionRange!()).toEqual({ start: 5, end: 9 });
+
+    const reading = setup({ mode: 'preview', data: 'saved', editorText: 'live text' });
+    reading.editor.selectionEnd = 4;
+    expect(await reading.host.editTarget()!.getSelectionRange!()).toBeUndefined();
+  });
+});
+
+// #291: "View usages" opened each note at its top.
+describe('openFile', () => {
+  function openSetup(mode: 'source' | 'preview') {
+    const view = new MarkdownView();
+    view.mode = mode;
+    const editor = fakeEditor('text');
+    view.editor = editor;
+    const leaf = { view, openFile: vi.fn(async () => undefined) };
+    const app = {
+      vault: { getAbstractFileByPath: (p: string) => new TFile(p) },
+      workspace: { getLeaf: () => leaf },
+    } as unknown as App;
+    return { host: createObsidianHost(app, new MemFileSystem(), t), leaf, editor };
+  }
+
+  it('puts the cursor on the given line and column', async () => {
+    const { host, leaf, editor } = openSetup('source');
+    await host.openFile(NOTE, { line: 12, ch: 4 });
+    expect(leaf.openFile).toHaveBeenCalledWith(expect.any(TFile), { eState: { line: 12 } });
+    expect(editor.setCursor).toHaveBeenCalledWith({ line: 12, ch: 4 });
+    expect(editor.scrollIntoView).toHaveBeenCalled();
+  });
+
+  it('leaves the cursor alone without a position or in reading view', async () => {
+    const plain = openSetup('source');
+    await plain.host.openFile(NOTE);
+    expect(plain.leaf.openFile).toHaveBeenCalledWith(expect.any(TFile), undefined);
+    expect(plain.editor.setCursor).not.toHaveBeenCalled();
+
+    const reading = openSetup('preview');
+    await reading.host.openFile(NOTE, { line: 3 });
+    expect(reading.leaf.openFile).toHaveBeenCalledWith(expect.any(TFile), { eState: { line: 3 } });
+    expect(reading.editor.setCursor).not.toHaveBeenCalled();
   });
 });

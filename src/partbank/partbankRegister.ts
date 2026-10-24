@@ -31,9 +31,11 @@ import {
 import {
   isSameSampleFolder,
   loadSamplesByType,
+  noteLabsamplesFolder,
   upsertSampleRecord,
   type SampleRecord,
 } from '@labnoteo/core/lib/sampleStorage';
+import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
 import type LabnotePlugin from '../main';
 import { loadCatalogSamples } from '../sampleActions';
 import { confirmModal } from '../modals';
@@ -50,6 +52,10 @@ export interface RegisteredPartbankSample {
   folder: string;
   /** The sample already stood for this item, so nothing new was written. */
   reused: boolean;
+  /** For a reused sample: which registry or catalog it came from. */
+  foundIn?: LinkedSample['scope'];
+  /** For a reused sample of another type than the one asked for (#301): the type asked for. */
+  requestedType?: string;
 }
 
 /** The vault's strain type, when it has one: partbank strains need it. */
@@ -100,7 +106,9 @@ export async function addStrainType(plugin: LabnotePlugin): Promise<void> {
 
 /**
  * Every sample that could already stand for a partbank item: this note's
- * registry, the global one, and the catalogs both of those hold.
+ * registry, the global one, and the catalogs both of those hold. Every type
+ * is read, `type` first: a sample whose type was changed keeps its partbank
+ * link and still stands for the item (#301).
  */
 export async function collectLinkedCandidates(
   plugin: LabnotePlugin,
@@ -109,18 +117,18 @@ export async function collectLinkedCandidates(
 ): Promise<LinkedSample[]> {
   const globalFolder = plugin.settings.globalSampleFolder;
   const readGlobal = Boolean(globalFolder) && !isSameSampleFolder(localFolder, globalFolder);
+  const types = getSampleDisplayMeta(plugin.settings.customSampleTypes).types;
   const out: LinkedSample[] = [];
-  const add = (
-    records: Record<string, SampleRecord>,
-    scope: LinkedSample['scope']
-  ): void => {
-    for (const [id, record] of Object.entries(records)) out.push({ type, id, record, scope });
-  };
-  add(await loadSamplesByType(plugin.fs, localFolder, type), 'local');
-  add(await loadCatalogSamples(plugin, localFolder, type), 'catalog');
-  if (readGlobal) {
-    add(await loadSamplesByType(plugin.fs, globalFolder, type), 'global');
-    add(await loadCatalogSamples(plugin, globalFolder, type), 'catalog');
+  for (const t of [type, ...types.filter(other => other !== type)]) {
+    const add = (records: Record<string, SampleRecord>, scope: LinkedSample['scope'], folder: string): void => {
+      for (const [id, record] of Object.entries(records)) out.push({ type: t, id, record, scope, folder });
+    };
+    add(await loadSamplesByType(plugin.fs, localFolder, t), 'local', localFolder);
+    add(await loadCatalogSamples(plugin, localFolder, t), 'catalog', localFolder);
+    if (readGlobal) {
+      add(await loadSamplesByType(plugin.fs, globalFolder, t), 'global', globalFolder);
+      add(await loadCatalogSamples(plugin, globalFolder, t), 'catalog', globalFolder);
+    }
   }
   return out;
 }
@@ -149,15 +157,15 @@ export async function registerPartbankItem(
 
   const existing = findLinkedSample(source, await collectLinkedCandidates(plugin, type, lookIn));
   if (existing) {
-    const foundIn =
-      existing.scope === 'local' ? lookIn : existing.scope === 'global' ? plugin.settings.globalSampleFolder : folder;
     return {
-      type,
+      type: existing.type,
       id: existing.id,
       alias: existing.record.alias,
       referenceText: buildSampleReferenceText(existing.id, existing.record.alias),
-      folder: foundIn,
+      folder: existing.folder ?? folder,
       reused: true,
+      foundIn: existing.scope,
+      ...(existing.type !== type ? { requestedType: type } : {}),
     };
   }
 
@@ -236,7 +244,8 @@ export async function pickPartbankReference(
 
   const result = await registerPartbankItem(plugin, client, item, { folder, type });
   if (!result) return undefined;
-  noticeForRegistration(plugin, result);
+  // The autocomplete puts the returned reference into the note being edited.
+  noticeForRegistration(plugin, result, undefined, catalogSeedNote(plugin, result, plugin.host.editTarget()?.path));
   return result.referenceText;
 }
 
@@ -267,30 +276,63 @@ async function warnOnAliasClash(
 }
 
 /**
+ * The sentence for a sample reused from a catalog once its reference went into
+ * `notePath`: saving that note copies it into the experiment's registry (the
+ * sample sync seeds catalog references). Empty when no copy follows: not from
+ * a catalog, a note whose samples are not tracked, or one outside an
+ * experiment, whose registry is the global one.
+ */
+export function catalogSeedNote(
+  plugin: LabnotePlugin,
+  result: RegisteredPartbankSample,
+  notePath: string | undefined
+): string {
+  if (result.foundIn !== 'catalog' || !notePath || !plugin.sampleTrackingFor(notePath)) return '';
+  const globalFolder = plugin.settings.globalSampleFolder;
+  if (!getExperimentDir(notePath) || isSameSampleFolder(noteLabsamplesFolder(notePath, globalFolder), globalFolder)) {
+    return '';
+  }
+  return plugin.t("Saving the note adds it to this experiment's samples as well.");
+}
+
+/**
  * Say what happened, including when the sample landed in Global (#64).
  * `chosenFolder` is the folder the user picked, when they picked one: Global
  * chosen is then told apart from Global by default, and a sample reused from
- * elsewhere says where it is (#270).
+ * elsewhere says where it is (#270): a catalog (#295), another folder, or
+ * under another type than the one asked for (#301). `extra` is appended.
  */
 export function noticeForRegistration(
   plugin: LabnotePlugin,
   result: RegisteredPartbankSample,
-  chosenFolder?: string
+  chosenFolder?: string,
+  extra = ''
 ): void {
+  const show = (text: string): void => {
+    new Notice(extra ? `${text} ${extra}` : text);
+  };
   if (result.reused) {
-    new Notice(
-      chosenFolder !== undefined && !isSameSampleFolder(result.folder, chosenFolder)
-        ? plugin.t(
-            '{0} in {1} already stands for this partbank item, so it was used instead of registering a second one.',
-            result.id,
-            result.folder
-          )
-        : plugin.t('{0} already stands for this partbank item.', result.id)
+    const elsewhere =
+      result.foundIn === 'global' || (chosenFolder !== undefined && !isSameSampleFolder(result.folder, chosenFolder));
+    const main =
+      result.foundIn === 'catalog'
+        ? plugin.t('Used {0} from the partbank catalog ({1}).', result.id, result.folder)
+        : elsewhere
+          ? plugin.t(
+              '{0} in {1} already stands for this partbank item, so it was used instead of registering a second one.',
+              result.id,
+              result.folder
+            )
+          : plugin.t('{0} already stands for this partbank item.', result.id);
+    show(
+      result.requestedType
+        ? `${main} ${plugin.t('It is registered as {0}, not {1}.', result.type, result.requestedType)}`
+        : main
     );
     return;
   }
   const landedInGlobal = isSameSampleFolder(result.folder, plugin.settings.globalSampleFolder);
-  new Notice(
+  show(
     !landedInGlobal
       ? plugin.t('Sample added: {0}', result.id)
       : chosenFolder !== undefined

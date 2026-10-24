@@ -86,6 +86,15 @@ function describeSampleCreate(t: Translator, p: SampleCreatePreview): string {
         : t('This creates {0} sample {1}.', p.type, p.id),
   ];
   if (p.alias) lines.push(t('Alias: {0}', p.alias));
+  if (p.alias && p.aliasTwins?.length) {
+    lines.push(
+      t(
+        p.scope === 'global' ? 'Global samples already have the alias {0} ({1}).' : 'This experiment already has the alias {0} ({1}).',
+        p.alias,
+        p.aliasTwins.join(', ')
+      )
+    );
+  }
   if (p.location) lines.push(t('Storage location: {0}', p.location));
   lines.push(
     p.scope === 'global'

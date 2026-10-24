@@ -141,9 +141,22 @@ export class PartbankFeature {
         return t('This item is no longer in partbank, or it was never on this server.');
       case 'rateLimited':
         return t('partbank is refusing further requests for now. Try again in a minute.');
+      case 'notPartbank':
+        return t('The address answered, but not as partbank does. Check the partbank address in the settings.');
       default:
         return t('partbank returned an error ({0}).', String(err.status ?? '?'));
     }
+  }
+
+  /**
+   * {@link describeError} for Test connection, where the call is the account
+   * check: a 404 there means the address has no partbank API, not a missing item.
+   */
+  describeProbeError(err: unknown, kind: PartbankConnection): string {
+    if (err instanceof PartbankError && (err.kind === 'notFound' || err.kind === 'notPartbank')) {
+      return this.plugin.t('No partbank API was found at this address. Check the address.');
+    }
+    return this.describeError(err, kind);
   }
 
   /** Show {@link describeError}; returns false so callers can `return notify(...)`. */

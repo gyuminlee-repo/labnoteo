@@ -320,6 +320,25 @@ describe('create_sample / get_sample / list_samples', () => {
       expect(await fs.exists(`${NOTE_DIR}/resources/labsamples/Reagent.json`)).toBe(false);
     });
 
+    // #310: the app asks about a second sample with one alias; MCP wrote it without a word.
+    it('names the samples that already have the alias, in the preview and the warnings', async () => {
+      await tool('create_sample').handler(ctx, { type: 'DNA', id: 'DNA-1', alias: 'pUC19', documentPath: NOTE_PATH });
+      const describe = tool('create_sample').describe!;
+      expect(await describe(ctx, { type: 'DNA', alias: ' puc19 ', documentPath: NOTE_PATH })).toMatchObject({
+        aliasTwins: ['DNA-1'],
+      });
+      expect(await describe(ctx, { type: 'DNA', id: 'DNA-1', alias: 'pUC19', documentPath: NOTE_PATH })).not.toHaveProperty(
+        'aliasTwins'
+      );
+      expect(await describe(ctx, { type: 'RNA', alias: 'pUC19', documentPath: NOTE_PATH })).not.toHaveProperty('aliasTwins');
+
+      const res = await tool('create_sample').handler(ctx, { type: 'DNA', id: 'DNA-2', alias: 'pUC19', documentPath: NOTE_PATH });
+      expect(res.ok).toBe(true);
+      expect(res.warnings?.join('\n')).toContain('already used by DNA-1');
+      const again = await tool('create_sample').handler(ctx, { type: 'DNA', id: 'DNA-1', alias: 'pUC19', documentPath: NOTE_PATH });
+      expect(again.warnings?.join('\n')).toContain('already used by DNA-2');
+    });
+
     it('says when the id is already recorded', async () => {
       await tool('create_sample').handler(ctx, { type: 'DNA', id: 'DNA-1', documentPath: NOTE_PATH });
       const describe = tool('create_sample').describe!;

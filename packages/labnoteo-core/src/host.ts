@@ -88,6 +88,12 @@ export interface EditTarget {
    */
   getCursorOffset?(): Promise<number>;
   /**
+   * The selected text as `[start, end)` offsets, or undefined when nothing is
+   * selected. Optional: targets whose selection does not map onto the note
+   * (a table cell editor) omit it.
+   */
+  getSelectionRange?(): Promise<{ start: number; end: number } | undefined>;
+  /**
    * Move the cursor to `offset`, scroll it into view, and focus the editor.
    * Optional: hosts without cursor control may omit it.
    */
@@ -127,8 +133,8 @@ export interface LabnoteHost {
   /** The active lab note edit surface, if any. */
   editTarget(): EditTarget | undefined;
 
-  /** Open a file in the platform's editor. */
-  openFile(path: string): Promise<void>;
+  /** Open a file in the platform's editor, with the cursor at `at` (0-based) when given. */
+  openFile(path: string, at?: { line: number; ch?: number }): Promise<void>;
 
   /** Localise a message key with positional args. */
   t(key: string, ...args: Array<string | number | boolean>): string;

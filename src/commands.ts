@@ -1360,7 +1360,7 @@ export async function offerTableCsvCleanupOnDelete(
       'The table CSV files of the deleted note(s) are still in the folder. Move them to the trash?\n\n{0}',
       listFileNames(host, all)
     ),
-    { confirmLabel: host.t('Move to trash') }
+    { confirmLabel: host.t('Move to trash'), destructive: true }
   );
   if (!ok) return;
 
@@ -1555,7 +1555,7 @@ export async function syncWorkflowChecklistCommand(
       .join('\n');
     const ok = await host.confirm(
       `${host.t('These checklist entries do not point to a workflow file in this folder. Remove them from the checklist?')}\n\n${list}`,
-      { confirmLabel: host.t('Remove from checklist') }
+      { confirmLabel: host.t('Remove from checklist'), destructive: true }
     );
     if (ok) remove = removable.map(s => s.link);
   }
@@ -1648,7 +1648,7 @@ export async function syncWorkflowChecklistCommand(
     const list = [...new Set(plan.duplicates)].map(name => `- ${name}`).join('\n');
     const ok = await host.confirm(
       `${host.t('These workflow files are listed more than once in the checklist. Remove the extra entries?')}\n\n${list}`,
-      { confirmLabel: host.t('Remove duplicates') }
+      { confirmLabel: host.t('Remove duplicates'), destructive: true }
     );
     if (ok) duplicates = plan.duplicates;
   }

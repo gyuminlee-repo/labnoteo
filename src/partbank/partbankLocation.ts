@@ -78,12 +78,24 @@ export function locationChangesOf(
 }
 
 /**
- * Whether a change is ticked by default in the confirmation list. A location
- * that would be emptied is not: partbank showing no stock is often a sharing
- * boundary rather than a move, and the text may have been typed by hand.
+ * The changes to offer, and how many locations partbank would empty. Those are
+ * kept without asking, as {@link refreshOneLocation} keeps one (#294): partbank
+ * showing no stock is often a sharing boundary rather than a move, and the
+ * text may have been typed by hand.
  */
-export function checkedByDefault(change: LocationChange): boolean {
-  return Boolean(change.after);
+export function storableChanges(changes: readonly LocationChange[]): { offer: LocationChange[]; noStock: number } {
+  const offer = changes.filter(c => c.after);
+  return { offer, noStock: changes.length - offer.length };
+}
+
+/** `main`, then how many kept their location for lack of stock and how many could not be read. */
+export function locationRefreshNotice(plugin: LabnotePlugin, main: string, noStock: number, failed: number): string {
+  const parts = [main];
+  if (noStock > 0) {
+    parts.push(plugin.t('{0} sample(s) with no stock in partbank keep their current location.', String(noStock)));
+  }
+  if (failed > 0) parts.push(plugin.t('{0} sample(s) could not be read from partbank.', String(failed)));
+  return parts.join(' ');
 }
 
 /** Every sample in `folders` that carries a partbank link. */
@@ -131,8 +143,8 @@ export function describeChange(change: LocationChange, plugin: LabnotePlugin): s
 /**
  * Refresh one sample's location, asking before it is written. Returns whether
  * anything was stored. When partbank shows no stock the stored location is
- * kept without asking, by the same judgement as {@link checkedByDefault}: a
- * single Enter on that prompt used to erase a hand-typed location (#269).
+ * kept without asking: a single Enter on that prompt used to erase a
+ * hand-typed location (#269).
  */
 export async function refreshOneLocation(
   plugin: LabnotePlugin,
@@ -231,30 +243,31 @@ export async function refreshLocationsIn(
     notice.hide();
   }
 
-  const changes = locationChangesOf(results);
+  const { offer, noStock } = storableChanges(locationChangesOf(results));
   if (stopped) plugin.partbank.notifyError(stopped, plugin.settings.partbankDefaultConnection);
-  if (changes.length === 0) {
-    new Notice(
-      plugin.t('Checked {0} linked sample(s); no storage location changed.', String(results.length))
-    );
+  const finish = (main: string): void => {
+    new Notice(locationRefreshNotice(plugin, main, noStock, failed));
+  };
+  if (offer.length === 0) {
+    finish(plugin.t('Checked {0} linked sample(s); no storage location changed.', String(results.length)));
     return;
   }
   const picked = await pickManyModal(
     plugin.app,
-    changes.map(change => ({
+    offer.map(change => ({
       label: `${change.id}${change.alias ? `;${change.alias}` : ''}`,
       description: describeChange(change, plugin),
-      checked: checkedByDefault(change),
+      checked: true,
       value: change,
     })),
     {
-      title: plugin.t('Storage locations to store ({0} changed)', String(changes.length)),
+      title: plugin.t('Storage locations to store ({0} changed)', String(offer.length)),
     }
   );
-  if (picked.length === 0) return;
-  await applyLocationChanges(plugin, picked);
-  new Notice(plugin.t('Stored {0} storage location(s).', String(picked.length)));
-  if (failed > 0) {
-    new Notice(plugin.t('{0} sample(s) could not be read from partbank.', String(failed)));
+  if (picked.length === 0) {
+    finish(plugin.t('No storage location was stored.'));
+    return;
   }
+  await applyLocationChanges(plugin, picked);
+  finish(plugin.t('Stored {0} storage location(s).', String(picked.length)));
 }

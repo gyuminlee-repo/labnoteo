@@ -382,6 +382,8 @@ const obsidianKo: Record<string, string> = {
   'View usages': '사용처 보기',
   '{0} is not used in any note.': '{0}을(를) 쓰는 노트가 없습니다.',
   'Notes using {0} ({1})': '{0}을(를) 쓰는 노트({1}개)',
+  '{0} · line {1}': '{0} · {1}행',
+  'Line {0}': '{0}행',
   'Add sample': '샘플 추가',
   'Search samples': '샘플 검색',
   'Select sample type': '샘플 타입 선택',
@@ -476,6 +478,7 @@ const obsidianKo: Record<string, string> = {
   'Global samples already have the alias {0} ({1}). Autocomplete will show both, marked Local and Global.':
     '전역 샘플에 같은 별칭 {0}({1})이 이미 있습니다. 자동완성에는 로컬과 전역으로 구분되어 둘 다 보입니다.',
   'This experiment already has the alias {0} ({1}).': '이 실험에 같은 별칭 {0}({1})이 이미 있습니다.',
+  'Move {0} there anyway?': '그래도 {0}을(를) 옮길까요?',
   'Global samples already have the alias {0} ({1}).': '전역 샘플에 같은 별칭 {0}({1})이 이미 있습니다.',
   '{0} samples in this experiment already have the alias {1} ({2}).':
     '이 실험에 같은 별칭 {1}을(를) 쓰는 샘플이 {0}개 있습니다({2}).',
@@ -994,6 +997,10 @@ const obsidianKo: Record<string, string> = {
   'partbank is refusing further requests for now. Try again in a minute.':
     'partbank가 당분간 요청을 더 받지 않습니다. 잠시 후 다시 시도하세요.',
   'partbank returned an error ({0}).': 'partbank가 오류를 돌려줬습니다({0}).',
+  'The address answered, but not as partbank does. Check the partbank address in the settings.':
+    '주소가 응답했지만 partbank의 응답이 아닙니다. 설정에서 partbank 주소를 확인하세요.',
+  'No partbank API was found at this address. Check the address.':
+    '이 주소에서 partbank API를 찾지 못했습니다. 주소를 확인하세요.',
   'Search partbank': 'partbank에서 검색',
   'Find and register partbank {0}': 'partbank의 {0} 중에서 찾아 등록',
   'Nothing found among partbank {0}.': 'partbank {0} 중에서 찾지 못했습니다.',
@@ -1011,6 +1018,9 @@ const obsidianKo: Record<string, string> = {
   '{0} already stands for this partbank item.': '이 partbank 항목은 이미 {0}으로 등록돼 있습니다.',
   '{0} in {1} already stands for this partbank item, so it was used instead of registering a second one.':
     '이 partbank 항목은 이미 {1}에 {0}으로 등록돼 있어, 새로 등록하지 않고 그 시료를 썼습니다.',
+  'Used {0} from the partbank catalog ({1}).': 'partbank 카탈로그({1})의 {0}을(를) 썼습니다.',
+  'It is registered as {0}, not {1}.': '{1}이 아니라 {0} 타입으로 등록돼 있습니다.',
+  "Saving the note adds it to this experiment's samples as well.": '노트를 저장하면 이 실험 대장에도 들어갑니다.',
   'Sample added to Global samples: {0}': '전역 샘플에 추가했습니다: {0}',
   'partbank keeps strains, but this vault has no sample type for them. Add the custom sample type "{0}"?':
     'partbank에는 균주가 있지만 이 보관함에는 균주용 시료 타입이 없습니다. 사용자 정의 타입 "{0}"을(를) 추가할까요?',
@@ -1043,6 +1053,9 @@ const obsidianKo: Record<string, string> = {
   'Storage locations to store ({0} changed)': '저장할 보관 위치 ({0}개 변경)',
   'Stored {0} storage location(s).': '보관 위치 {0}개를 저장했습니다.',
   '{0} sample(s) could not be read from partbank.': '시료 {0}개는 partbank에서 읽지 못했습니다.',
+  '{0} sample(s) with no stock in partbank keep their current location.':
+    'partbank에 재고가 없는 시료 {0}개는 현재 위치를 유지합니다.',
+  'No storage location was stored.': '보관 위치를 저장하지 않았습니다.',
   'Download partbank catalog': 'partbank 카탈로그 내려받기',
   'Set the Global sample folder in the plugin settings before downloading a catalog.':
     '카탈로그를 내려받기 전에 플러그인 설정에서 전역 시료 폴더를 지정하세요.',

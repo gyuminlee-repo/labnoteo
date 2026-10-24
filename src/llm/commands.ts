@@ -318,7 +318,7 @@ export async function draftMethodCommand(plugin: LabnotePlugin): Promise<void> {
     }
     const ok = await plugin.host.confirm(
       plugin.t('This Method section already has content. Replace it with the AI draft?'),
-      { confirmLabel: plugin.t('Replace') }
+      { confirmLabel: plugin.t('Replace'), destructive: true }
     );
     if (!ok) return;
   }
