@@ -35,7 +35,8 @@ export interface NotePageSlice {
 
 /**
  * Cut measured blocks into pages of `pageHeight`: a page ends before the
- * block that would overflow it; a unit-operation heading never ends a page.
+ * block that would overflow it, and every unit operation starts a page, so
+ * the scan of a page files under the unit operation written on it (#359).
  */
 export function sliceIntoPages(blocks: readonly MeasuredBlock[], pageHeight: number): NotePageSlice[] {
   // The unit operation each block belongs to.
@@ -54,7 +55,13 @@ export function sliceIntoPages(blocks: readonly MeasuredBlock[], pageHeight: num
   const pages: NotePageSlice[] = [];
   let from = 0;
   for (let i = 0; i < blocks.length; i++) {
-    if (i === from || blocks[i].bottom - blocks[from].top <= pageHeight) continue;
+    if (i === from) continue;
+    if (blocks[i].opId) {
+      pages.push({ from, to: i, ...opAt[from] });
+      from = i;
+      continue;
+    }
+    if (blocks[i].bottom - blocks[from].top <= pageHeight) continue;
     // Keep a unit operation's heading with what follows it.
     const cut = i - 1 > from && blocks[i - 1].opId ? i - 1 : i;
     pages.push({ from, to: cut, ...opAt[from] });

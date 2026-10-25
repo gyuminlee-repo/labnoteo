@@ -98,6 +98,10 @@ function splitSections(lines: readonly string[]): { description: string; section
     .map(l => l.replace(/^\s*>\s?/, '').trim())
     .filter(Boolean)
     .join(' ');
+  // What the user wrote between the title and the first `####`, such as a
+  // caution for whoever runs the step, prints first without a heading (#383).
+  const written = intro.filter(l => !/^\s*>/.test(l) && !/^\s*-{3,}\s*$/.test(l));
+  if (written.some(l => l.trim() !== '')) sections.unshift({ title: '', lines: written });
   return { description, sections };
 }
 
@@ -266,7 +270,7 @@ const stepWeight = (step: WorksheetStep): number =>
 
 /** Estimated printed height of a section, in text lines (heading included). */
 export function sectionWeight(section: WorksheetSection): number {
-  const heading = 2;
+  const heading = section.title ? 2 : 0;
   switch (section.type) {
     case 'meta':
       return heading + section.fields.length;

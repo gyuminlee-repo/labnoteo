@@ -141,6 +141,23 @@ describe('listWorksheetUnitOps', () => {
     );
     expect(listWorksheetUnitOps(md)[0].sections.map(s => s.title)).not.toContain('Worksheet scans');
   });
+
+  // #383: a caution written under the title was dropped from the sheet.
+  it('prints what is written above the first section first, without a heading', () => {
+    const md = buildNote([hw('UHW010')]).replace(
+      '### [UHW010 Op UHW010]\n',
+      '### [UHW010 Op UHW010]\n\n- 주의: 피커 2번 핀이 휘어 있음. 1번 핀만 쓸 것\n'
+    );
+    const [op] = listWorksheetUnitOps(md);
+    expect(op.description).toBe('Lab step');
+    expect(op.sections[0]).toEqual({
+      type: 'text',
+      title: '',
+      blocks: [{ kind: 'item', level: 0, text: '주의: 피커 2번 핀이 휘어 있음. 1번 핀만 쓸 것' }],
+    });
+    expect(op.sections[1].title).toBe('Meta');
+    expect(listWorksheetUnitOps(buildNote([hw('UHW010')]))[0].sections[0].title).toBe('Meta');
+  });
 });
 
 describe('paginateWorksheet', () => {

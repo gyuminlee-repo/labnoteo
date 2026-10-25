@@ -160,6 +160,18 @@ describe('sliceIntoPages', () => {
     ]);
   });
 
+  // #359: the first page's scan filed at the note's end though it held the
+  // first unit operation's Meta and Input.
+  it('starts every unit operation on a new page, even with room left', () => {
+    const blocks = [block(0, 10), block(10, 10), block(20, 10, 'UHW010'), block(30, 10), block(40, 10, 'UHW020'), block(50, 10)];
+    expect(sliceIntoPages(blocks, 100).map(p => [p.from, p.to, p.opId])).toEqual([
+      [0, 2, ''],
+      [2, 4, 'UHW010'],
+      [4, 6, 'UHW020'],
+    ]);
+    expect(sliceIntoPages([block(0, 10, 'UHW010'), block(10, 10)], 100).map(p => [p.from, p.to])).toEqual([[0, 2]]);
+  });
+
   it('gives a block taller than a page a page of its own', () => {
     const blocks = [block(0, 30), block(30, 300), block(330, 30)];
     expect(sliceIntoPages(blocks, 100).map(p => [p.from, p.to])).toEqual([
