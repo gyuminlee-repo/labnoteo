@@ -11,6 +11,12 @@ export interface InstallRecord {
   pluginVersion: string;
   /** Vault path → {@link contentHash} of the template it was reconciled with. */
   files: Record<string, string>;
+  /**
+   * Vault path → {@link contentHash} of the template a managed block last
+   * held. Unlike `files`, an edited block left as it is keeps its entry, so
+   * setup can tell a block it would put back from one it would update (#351).
+   */
+  blocks?: Record<string, string>;
 }
 
 /** Hash of `text` ignoring CRLF vs LF, as Git may check a file out either way. */
@@ -45,13 +51,18 @@ export async function readInstallRecord(host: LabnoteHost): Promise<InstallRecor
   if (!(await host.fs.exists(INSTALL_RECORD_PATH))) return empty;
   try {
     const data = JSON.parse(await host.fs.read(INSTALL_RECORD_PATH)) as Partial<InstallRecord>;
-    const files: Record<string, string> = {};
-    if (data.files && typeof data.files === 'object') {
-      for (const [path, hash] of Object.entries(data.files)) {
-        if (typeof hash === 'string') files[path] = hash;
+    const hashes = (map: unknown): Record<string, string> => {
+      const out: Record<string, string> = {};
+      if (map && typeof map === 'object') {
+        for (const [path, hash] of Object.entries(map)) {
+          if (typeof hash === 'string') out[path] = hash;
+        }
       }
-    }
-    return { pluginVersion: typeof data.pluginVersion === 'string' ? data.pluginVersion : '', files };
+      return out;
+    };
+    const pluginVersion = typeof data.pluginVersion === 'string' ? data.pluginVersion : '';
+    const files = hashes(data.files);
+    return data.blocks ? { pluginVersion, files, blocks: hashes(data.blocks) } : { pluginVersion, files };
   } catch {
     return empty;
   }
@@ -61,8 +72,8 @@ export async function writeInstallRecord(host: LabnoteHost, record: InstallRecor
   await host.fs.write(INSTALL_RECORD_PATH, `${JSON.stringify(record, null, 2)}\n`);
 }
 
-/** Whether two `files` maps hold the same entries. */
-export function sameFiles(a: Record<string, string>, b: Record<string, string>): boolean {
+/** Whether two `files` (or `blocks`) maps hold the same entries. */
+export function sameFiles(a: Record<string, string> = {}, b: Record<string, string> = {}): boolean {
   const keys = Object.keys(a);
   return keys.length === Object.keys(b).length && keys.every(k => a[k] === b[k]);
 }

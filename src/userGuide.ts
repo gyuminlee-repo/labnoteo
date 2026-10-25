@@ -34,11 +34,14 @@ export async function openUserGuide(
 ): Promise<void> {
   const record = await readInstallRecord(host);
   const newer = record.pluginVersion !== undefined && compareVersions(record.pluginVersion, pluginVersion) > 0;
-  const remember = (): Promise<void> =>
-    writeInstallRecord(host, {
+  const remember = (): Promise<void> => {
+    const hash = contentHash(QUICKSTART_DOC_CONTENT);
+    return writeInstallRecord(host, {
       pluginVersion: newer ? record.pluginVersion : pluginVersion,
-      files: { ...record.files, [QUICKSTART_DOC_PATH]: contentHash(QUICKSTART_DOC_CONTENT) },
+      files: { ...record.files, [QUICKSTART_DOC_PATH]: hash },
+      blocks: { ...record.blocks, [QUICKSTART_DOC_PATH]: hash },
     });
+  };
 
   if (!(await host.fs.exists(QUICKSTART_DOC_PATH))) {
     await write(QUICKSTART_DOC_PATH, managedFileContent(QUICKSTART_ASSET));
