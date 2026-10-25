@@ -19,7 +19,7 @@ import {
 } from '@labnoteo/core';
 import { getSeoulDateString } from '@labnoteo/core/lib/dateUtils';
 import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
-import { isPagePayload, type PagePayload, type ScanPayload } from '@labnoteo/core/lib/scanPayload';
+import { isPagePayload, unitOpFingerprint, type PagePayload, type ScanPayload } from '@labnoteo/core/lib/scanPayload';
 import * as posix from '@labnoteo/core/posix';
 import { processNoteThroughVault } from '../commands';
 import type { NoteIdService } from '../barcode/noteIdService';
@@ -298,7 +298,8 @@ export class ScanPipeline {
   }
 
   private async unmatched(page: DecodedPage, base: ScanResult, reason: UnmatchedReason): Promise<ScanResult> {
-    const name = unmatchedFileName(timestamp(), page.source, base.payload?.noteId, page.sourcePage);
+    const payload = base.payload && isPagePayload(base.payload) ? base.payload : undefined;
+    const name = unmatchedFileName(timestamp(), page.source, base.payload?.noteId, page.sourcePage, { payload, reason });
     const file = await saveBinary(this.deps.app, UNMATCHED_FOLDER, name, await page.render());
     return { ...base, status: 'unmatched', reason, unmatchedPath: file.path };
   }
@@ -338,7 +339,10 @@ export class ScanPipeline {
    * File an image from the unmatched queue by hand into `note`'s
    * `unitOpIndex`-th unit operation (0: the note-level section). Without the
    * QR code the print date is known only if the user gave it (`printedOn`,
-   * `YYYY-MM-DD`); otherwise the caption leaves it out (#234).
+   * `YYYY-MM-DD`); otherwise the caption leaves it out (#234). The chosen
+   * block's fingerprint goes along, so the scan is not taken for an old
+   * printout (#341) and goes back to the queue if that block changed
+   * meanwhile rather than to its neighbour.
    */
   async fileManually(
     image: TFile,
@@ -362,12 +366,19 @@ export class ScanPipeline {
       ...page,
       // Never encoded into a QR code, so '' may stand for "not known".
       printedOn: printedOn ?? '',
+      ...(block ? { fingerprint: unitOpFingerprint(block.opName, block.alias) } : {}),
     };
     const decoded: DecodedPage = { source: image.name, hash, blank: false, payload, render: async () => bytes };
     const pending: Pending[] = [];
     const result = await this.filePage(decoded, {}, pending, new Set(), new Map());
     await this.flush(pending);
     if (result.status === 'filed' || result.status === 'duplicate') await app.fileManager.trashFile(image);
+    if (result.status === 'unmatched' && result.unmatchedPath) {
+      // The image is still in the queue; the copy filePage made there is not needed.
+      const copy = app.vault.getAbstractFileByPath(result.unmatchedPath);
+      if (copy instanceof TFile && copy !== image) await app.fileManager.trashFile(copy);
+      result.unmatchedPath = image.path;
+    }
     return result;
   }
 

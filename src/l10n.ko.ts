@@ -196,8 +196,8 @@ const obsidianKo: Record<string, string> = {
     '{0}에 같은 ID와 별칭이 이미 있어 README 체크리스트에서 둘이 똑같이 보입니다. 구분하려면 이 워크플로에 다른 별칭을 주세요.',
   'Workflow notes moved out of {0} are still in its README checklist. Run "{1}" in {0} to remove them.':
     '{0}에서 옮겨 간 워크플로 노트가 아직 그 README 체크리스트에 있습니다. {0}에서 "{1}"을(를) 실행하면 지울 수 있습니다.',
-  'The unit operation it was printed from was renamed since, so it is unclear which block it belongs to.':
-    '출력한 뒤 유닛 오퍼레이션 제목이나 별칭이 바뀌어 어느 블록인지 확인할 수 없습니다.',
+  'The unit operation it was printed from was deleted, or its title or alias changed since, so it is unclear which block it belongs to.':
+    '출력한 뒤 유닛 오퍼레이션이 지워졌거나 제목·별칭이 바뀌어 어느 블록인지 확인할 수 없습니다.',
   'This printout is from before 0.123.0 and does not say which block it is, so check that it went to the right one.':
     '0.123.0 이전 출력본이라 어느 블록인지 적혀 있지 않습니다. 맞는 블록에 붙었는지 확인하세요.',
   'The block is no longer where it was printed from, so check that the scan went to the right one.':
@@ -894,8 +894,10 @@ const obsidianKo: Record<string, string> = {
   'Removed the scan from {0}.': '{0}에서 스캔을 뺐습니다.',
   'The scan was no longer in the note.': '스캔이 이미 노트에 없었습니다.',
   'No unmatched scans.': '미인식 스캔이 없습니다.',
-  'These pages could not be matched to a note. Choose the note and unit operation for each, or delete it.':
-    '노트를 찾지 못한 페이지입니다. 페이지마다 노트와 유닛 오퍼레이션을 고르거나 삭제하세요.',
+  'These pages could not be filed on their own. Choose the note and unit operation for each, or delete it.':
+    '자동으로 붙이지 못한 페이지입니다. 페이지마다 노트와 유닛 오퍼레이션을 고르거나 삭제하세요.',
+  'The QR code says unit operation {0} ({1}).': 'QR 코드의 유닛 오퍼레이션은 {0}번({1})입니다.',
+  'QR code: unit operation {0}': 'QR 코드: {0}번 유닛 오퍼레이션',
   Assign: '할당',
   'from the QR code': 'QR 코드에서 읽음',
   'Assign to which note?': '어느 노트에 할당할까요?',

@@ -7,9 +7,9 @@ import type { LabnoteHost, PickItem, Translator } from '@labnoteo/core';
 import { listUnitOpBlocks } from '@labnoteo/core';
 import { isValidWorkflowPath } from '@labnoteo/core/lib/workflowStructure';
 import type { NoteIdService } from '../barcode/noteIdService';
-import { noteIdFromUnmatchedName, UNMATCHED_FOLDER } from './imageStore';
+import { unmatchedInfoFromName, UNMATCHED_FOLDER } from './imageStore';
 import type { ScanPipeline } from './scanPipeline';
-import { describeResult } from './resultModal';
+import { describeResult, unmatchedReasonText } from './resultModal';
 
 const IMAGE_RE = /\.(jpe?g|png|webp)$/i;
 
@@ -64,10 +64,12 @@ export class UnmatchedModal extends Modal {
       return;
     }
     contentEl.createEl('p', {
-      text: t('These pages could not be matched to a note. Choose the note and unit operation for each, or delete it.'),
+      text: t('These pages could not be filed on their own. Choose the note and unit operation for each, or delete it.'),
     });
     for (const file of files) {
       const row = new Setting(contentEl).setName(file.name);
+      const info = unmatchedInfoFromName(file.name);
+      if (info.reason) row.descEl.createDiv({ text: unmatchedReasonText(t, info.reason, info.noteId) });
       const img = row.descEl.createEl('img', { attr: { src: this.app.vault.getResourcePath(file), alt: file.name } });
       Object.assign(img.style, { display: 'block', maxWidth: '220px', maxHeight: '220px', marginTop: '4px', cursor: 'zoom-in' });
       img.addEventListener('click', () => window.open(this.app.vault.getResourcePath(file)));
@@ -87,8 +89,8 @@ export class UnmatchedModal extends Modal {
 
   private async assign(file: TFile): Promise<void> {
     const { t, host } = this;
-    const hinted = noteIdFromUnmatchedName(file.name);
-    const hintedFile = hinted ? this.noteIds.filesWithId(hinted)[0] : undefined;
+    const info = unmatchedInfoFromName(file.name);
+    const hintedFile = info.noteId ? this.noteIds.filesWithId(info.noteId)[0] : undefined;
     const notes = this.app.vault
       .getMarkdownFiles()
       .filter(f => isValidWorkflowPath(f.path))
@@ -108,12 +110,27 @@ export class UnmatchedModal extends Modal {
       ...blocks.map(b => ({ label: `${b.index}. [${b.opId} ${b.opName}]${b.alias ? ` ${b.alias}` : ''}`, value: b.index })),
       { label: t('The whole note (no unit operation)'), value: 0 },
     ];
-    const unitOp = await host.pick(items, { title: t('Assign to which unit operation?') });
+    // What the QR code said only holds for the note it named (#349).
+    const qr = note === hintedFile ? info.page : undefined;
+    const title = t('Assign to which unit operation?');
+    let pickTitle = title;
+    if (qr && qr.unitOpIndex > 0) {
+      // Offered first only while that position still holds the same ID: a
+      // block deleted since puts the next one there (#304).
+      const at = items.findIndex(i => i.value === qr.unitOpIndex);
+      if (at >= 0 && blocks[at]?.opId === qr.opId) {
+        const [same] = items.splice(at, 1);
+        items.unshift({ ...same, description: t('QR code: unit operation {0}', String(qr.unitOpIndex)) });
+      } else {
+        pickTitle = `${title} ${t('The QR code says unit operation {0} ({1}).', String(qr.unitOpIndex), qr.opId)}`;
+      }
+    }
+    const unitOp = await host.pick(items, { title: pickTitle });
     if (unitOp === undefined) return;
     const pageText = await host.prompt({
       title: t('Page'),
       prompt: t('Page number on the printout, e.g. 2/3'),
-      value: '1/1',
+      value: qr ? `${qr.page}/${qr.pageCount}` : '1/1',
       validate: v => (parsePageInput(v) ? null : t('Enter a page like 2/3.')),
     });
     const page = pageText ? parsePageInput(pageText) : undefined;
@@ -121,7 +138,7 @@ export class UnmatchedModal extends Modal {
     const printedText = await host.prompt({
       title: t('Print date'),
       prompt: t('When was this page printed (YYYY-MM-DD)? Leave it empty if you do not know or it was never printed.'),
-      value: '',
+      value: qr?.printedOn ?? '',
       placeholder: 'YYYY-MM-DD',
       validate: v => (v.trim() === '' || isDateInput(v) ? null : t('Enter a date like 2026-10-15, or leave it empty.')),
     });
