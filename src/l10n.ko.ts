@@ -49,6 +49,8 @@ const obsidianKo: Record<string, string> = {
   'Only years 1900–2100 are written; the date in the note was kept.':
     '1900~2100년만 기록합니다. 노트의 날짜는 그대로 두었습니다.',
   'End_date {0} is earlier than Start_date {1}.': 'End_date({0})가 Start_date({1})보다 이릅니다.',
+  '"{0}" is not a date the picker can read, so it starts at another time. Pick a date to replace it.':
+    "'{0}'은(는) 날짜 선택기가 읽을 수 없는 값이라 다른 시각에서 시작합니다. 날짜를 고르면 그 값으로 바뀝니다.",
   'Pick date and time': '날짜 및 시간 선택',
   'Export tables to CSV': '표를 CSV로 내보내기',
   'Export all tables of this experiment to CSV': '이 실험의 표를 모두 CSV로 내보내기',
@@ -462,6 +464,8 @@ const obsidianKo: Record<string, string> = {
   'Open a note of an experiment to list its samples.': '시료 목록을 넣으려면 실험 안의 노트를 여세요.',
   'This experiment has no samples yet.': '이 실험에는 아직 시료가 없습니다.',
   'Inserted {0} sample(s).': '시료 {0}개를 표로 넣었습니다.',
+  'The cursor was in the properties or above the title, so the table is at the end of the note.':
+    '커서가 머리말 안이나 제목 위에 있어 표를 노트 끝에 넣었습니다.',
   "{0} sample reference(s) in this experiment's notes are not in the sample registry, so they are not in the table: {1}":
     '이 실험의 노트에 있는 참조 중 {0}개는 시료 대장에 없어 표에 넣지 않았습니다: {1}',
   'Local': '로컬',

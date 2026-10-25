@@ -61,4 +61,17 @@ describe('LastUpdatedTracker', () => {
     t.record(other, typed);
     expect(t.consume(other)).toBe('stamp');
   });
+
+  // #363: a workflow note's edit stamps its README too, unless set by hand today.
+  it('says a note set by hand today keeps its date, until the next day', () => {
+    let day = '2026-10-25';
+    const t = new LastUpdatedTracker(() => day);
+    const readme = 'labnote/001_Exp/README.labnote.md';
+    expect(t.keepsHandSet(readme)).toBe(false);
+    t.record(readme, dateTyped);
+    expect(t.keepsHandSet(readme)).toBe(true);
+    expect(t.keepsHandSet(P)).toBe(false);
+    day = '2026-10-26';
+    expect(t.keepsHandSet(readme)).toBe(false);
+  });
 });

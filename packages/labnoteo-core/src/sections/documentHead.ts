@@ -63,6 +63,19 @@ export function isInFrontMatter(doc: string, offset: number): boolean {
   return fmEndLine !== -1 && doc.slice(0, offset).split('\n').length - 1 <= fmEndLine;
 }
 
+/** {@link isBeforeBody} for an offset into `doc`. */
+export function isOffsetBeforeBody(doc: string, offset: number): boolean {
+  const lines = doc.split('\n');
+  const lineStarts: number[] = [];
+  let acc = 0;
+  for (const line of lines) {
+    lineStarts.push(acc);
+    acc += line.length + 1;
+  }
+  const cursorLine = doc.slice(0, offset).split('\n').length - 1;
+  return isBeforeBody(scanDocumentHead(lines), lineStarts, cursorLine, offset);
+}
+
 /**
  * Whether an insert at `pos` would land in the front matter or above the title:
  * the cursor is inside the front matter, or at/before the start of the first

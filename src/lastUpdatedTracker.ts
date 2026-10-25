@@ -62,6 +62,14 @@ export class LastUpdatedTracker {
     return 'handSet';
   }
 
+  /**
+   * Whether `path`'s date was set by hand today, so a stamp coming from
+   * another note (a workflow note stamping its README) leaves it too (#363).
+   */
+  keepsHandSet(path: string): boolean {
+    return this.manual.get(path)?.day === this.today();
+  }
+
   clear(): void {
     this.pending.clear();
     this.manual.clear();

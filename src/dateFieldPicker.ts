@@ -45,6 +45,8 @@ export interface MetaDatePickerLabels {
   endBeforeStart: (end: string, start: string) => string;
   /** Notice for a picked year outside 1900–2100, which was not written (#308). */
   implausibleYear: string;
+  /** Notice for a stored value the picker cannot read, so it starts elsewhere (#364). */
+  unreadable: (value: string) => string;
 }
 
 const VALUE_CLASS = 'labnote-date-value';
@@ -199,6 +201,7 @@ function openPickerOnLine(
   const initial =
     toDateTimeLocalValue(match.value) ||
     clampDateTimeLocal(toDateTimeLocalValue(getSeoulDateTimeString()), range.min, range.max);
+  if (match.value.trim() && !toDateTimeLocalValue(match.value)) new Notice(labels.unreadable(match.value.trim()), 8000);
 
   // The document may have changed while the picker was open, so the target
   // line is resolved again on every write instead of trusting captured offsets.

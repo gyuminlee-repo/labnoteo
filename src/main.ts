@@ -249,6 +249,8 @@ export default class LabnotePlugin extends Plugin {
         pick: this.t('Pick date and time'),
         endBeforeStart: (end, start) => this.t('End_date {0} is earlier than Start_date {1}.', end, start),
         implausibleYear: this.t('Only years 1900–2100 are written; the date in the note was kept.'),
+        unreadable: value =>
+          this.t('"{0}" is not a date the picker can read, so it starts at another time. Pick a date to replace it.', value),
       })
     );
     this.registerViews();
@@ -2074,7 +2076,9 @@ export default class LabnotePlugin extends Plugin {
         return;
       }
       if (decision !== 'stamp') return;
-      stampNoteAndReadme(this.app, this.host, path, this.stampLastUpdated).catch(err =>
+      stampNoteAndReadme(this.app, this.host, path, this.stampLastUpdated, readme =>
+        this.lastUpdatedTracker.keepsHandSet(readme)
+      ).catch(err =>
         console.warn('[labnoteo] last_updated_date update failed:', err)
       );
     }, 2000);

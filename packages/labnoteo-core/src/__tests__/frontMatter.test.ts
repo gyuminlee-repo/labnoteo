@@ -11,7 +11,7 @@
 // throws against current behaviour, and Phase 1-2 (yaml.dump for scalars +
 // line-anchored closing fence) will flip them to normal `it(...)`.
 import { parseFrontMatterYaml, planDateInsertion, serializeFrontMatterEntry } from '../sections/frontMatter';
-import { isInFrontMatter } from '../sections/documentHead';
+import { isInFrontMatter, isOffsetBeforeBody } from '../sections/documentHead';
 
 // #106: the date commands typed straight into the YAML.
 describe('date insertion and the front matter', () => {
@@ -165,5 +165,19 @@ describe('serializeFrontMatterEntry', () => {
     const line = serializeFrontMatterEntry('title', 'Exp: run 1');
     const { frontMatter } = parseFrontMatterYaml(`---\n${line}\n---\nbody`);
     expect(frontMatter.title).toBe('Exp: run 1');
+  });
+});
+
+// #360: a table inserted before the body would break the properties.
+describe('isOffsetBeforeBody', () => {
+  const doc = '---\ntitle: x\n---\n\n# Title\n\nbody\n';
+  it('is true in the front matter and up to the title', () => {
+    expect(isOffsetBeforeBody(doc, 0)).toBe(true);
+    expect(isOffsetBeforeBody(doc, doc.indexOf('title'))).toBe(true);
+    expect(isOffsetBeforeBody(doc, doc.indexOf('# Title'))).toBe(true);
+  });
+  it('is false in the body', () => {
+    expect(isOffsetBeforeBody(doc, doc.indexOf('body'))).toBe(false);
+    expect(isOffsetBeforeBody(doc, doc.length)).toBe(false);
   });
 });
