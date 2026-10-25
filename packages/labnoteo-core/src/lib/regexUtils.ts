@@ -113,6 +113,12 @@ export const FS_NAME_MAX = 255;
 export const WINDOWS_PATH_MAX = 260;
 
 /**
+ * The longest path, drive, folders and extension included, Excel opens (#348):
+ * a CSV past it does not open even with Windows' long paths turned on.
+ */
+export const EXCEL_PATH_MAX = 218;
+
+/**
  * Cut a sanitized name part to `max` code points (never splitting a surrogate
  * pair) and drop the separators the cut leaves at its end. Shorter input is
  * returned unchanged.

@@ -134,7 +134,12 @@ import { isLabNotePath, stampNoteAndReadme, writeNoteStamped } from './lastUpdat
 import { createOutlineDropTidy, type OutlineDropSnapshot } from './outlineDropTidy';
 import { WorkflowTreeView, WORKFLOW_VIEW_TYPE } from './views/workflowView';
 import { SampleTreeView, SAMPLE_VIEW_TYPE } from './views/sampleView';
-import { exportTablesToCsv, exportActiveNoteTablesToCsv } from './exportCsv';
+import {
+  exportActiveExperimentTablesToCsv,
+  exportActiveNoteTablesToCsv,
+  exportExperimentTablesToCsv,
+  exportTablesToCsv,
+} from './exportCsv';
 import { openUserGuide } from './userGuide';
 import { catalogUpdateNotice, updateCatalogsCommand } from './catalogUpdate';
 import { LabnoteSettingTab } from './settingsTab';
@@ -532,6 +537,12 @@ export default class LabnotePlugin extends Plugin {
       callback: () => this.run(() => exportActiveNoteTablesToCsv(this)),
     });
 
+    this.addCommand({
+      id: 'export-experiment-tables-csv',
+      name: this.paletteName('Export all tables of this experiment to CSV'),
+      callback: () => this.run(() => exportActiveExperimentTablesToCsv(this)),
+    });
+
     // --- AI commands ---
     this.addCommand({
       id: 'ai-draft-method',
@@ -627,13 +638,19 @@ export default class LabnotePlugin extends Plugin {
               .setIcon('list-checks')
               .onClick(() => this.run(() => this.syncWorkflowChecklist(experimentDir)))
           );
+          menu.addItem(item =>
+            item
+              .setTitle(this.t('Export all tables of this experiment to CSV'))
+              .setIcon('table')
+              .onClick(() => this.run(() => exportExperimentTablesToCsv(this, experimentDir)))
+          );
         }
         if (!(file instanceof TFile) || file.extension !== 'md') return;
         menu.addItem(item =>
           item
             .setTitle(this.t('Export tables to CSV'))
             .setIcon('table')
-            .onClick(() => void exportTablesToCsv(this, file))
+            .onClick(() => this.run(() => exportTablesToCsv(this, file)))
         );
       })
     );

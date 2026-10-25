@@ -165,11 +165,9 @@ async function experimentFolderNames(host: LabnoteHost): Promise<string[]> {
  * deep in the disk can still push the whole path over.
  */
 function warnIfWindowsPathTooLong(app: App, host: LabnoteHost, vaultPath: string): void {
-  if (!Platform.isWin) return;
-  const basePath = (app.vault.adapter as { getBasePath?: () => string }).getBasePath?.();
-  if (!basePath) return;
-  const length = fullPathLength(basePath, vaultPath);
-  if (length < WINDOWS_PATH_MAX) return;
+  const [over] = windowsPathsOver(app, [vaultPath], WINDOWS_PATH_MAX - 1);
+  if (!over) return;
+  const { length } = over;
   host.notify(
     'warn',
     host.t(
@@ -179,6 +177,25 @@ function warnIfWindowsPathTooLong(app: App, host: LabnoteHost, vaultPath: string
       String(WINDOWS_PATH_MAX - 1)
     )
   );
+}
+
+/**
+ * The vault paths longer than `max` on disk once the vault's own folder is
+ * put in front, longest first (#148, #348). Only on Windows, where the limits
+ * apply; empty elsewhere.
+ */
+export function windowsPathsOver(
+  app: App,
+  vaultPaths: readonly string[],
+  max: number
+): Array<{ path: string; length: number }> {
+  if (!Platform.isWin) return [];
+  const basePath = (app.vault.adapter as { getBasePath?: () => string }).getBasePath?.();
+  if (!basePath) return [];
+  return vaultPaths
+    .map(path => ({ path, length: fullPathLength(basePath, path) }))
+    .filter(p => p.length > max)
+    .sort((a, b) => b.length - a.length);
 }
 
 /**

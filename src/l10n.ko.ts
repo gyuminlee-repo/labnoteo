@@ -48,6 +48,7 @@ const obsidianKo: Record<string, string> = {
   'End_date {0} is earlier than Start_date {1}.': 'End_date({0})가 Start_date({1})보다 이릅니다.',
   'Pick date and time': '날짜 및 시간 선택',
   'Export tables to CSV': '표를 CSV로 내보내기',
+  'Export all tables of this experiment to CSV': '이 실험의 표를 모두 CSV로 내보내기',
   'Open workflow view': '워크플로 뷰 열기',
   'Open sample view': '샘플 뷰 열기',
   'Open sample definition': '샘플 정의 열기 (편집·이동·삭제)',
@@ -350,8 +351,18 @@ const obsidianKo: Record<string, string> = {
     '표 {0}개는 내보내지 않았습니다. 바로 위에 빈 줄이 없어 읽기 화면에서 표가 아닌 글로 보입니다. 내보내려면 표 위에 빈 줄을 넣으세요.',
   '{0} table(s) were not exported: they are inside a comment, so the reading view does not show them at all.':
     '표 {0}개는 내보내지 않았습니다. 주석(<!-- -->, %% %%) 안에 있어 읽기 화면에 아예 보이지 않습니다.',
-  'Excel would read cells like {0} as dates or times, or drop their leading zeros. Open the CSV with Data → From Text/CSV and set those columns to Text.':
-    '{0} 같은 칸은 엑셀에서 날짜·시각으로 바뀌거나 앞자리 0이 사라집니다. 엑셀에서는 데이터 → 텍스트/CSV에서로 열고 그 열의 형식을 텍스트로 지정하세요.',
+  'Excel would change cells when it opens the CSV: {0}. Open the CSV with Data → From Text/CSV and set those columns to Text.':
+    '엑셀로 열면 바뀌는 칸이 있습니다: {0}. 엑셀에서는 데이터 → 텍스트/CSV에서로 열고 그 열의 형식을 텍스트로 지정하세요.',
+  '{0} become dates or times': '{0}은(는) 날짜·시각으로 바뀜',
+  '{0} become negative numbers': '{0}은(는) 음수로 바뀜',
+  '{0} lose the digits past the 15th': '{0}은(는) 15자리 뒤가 0으로 바뀜',
+  '{0} lose their leading zeros': '{0}은(는) 앞자리 0이 사라짐',
+  'Excel cannot open a file whose path is longer than {0} characters, and {1} is {2} characters long including the vault folder. Shorten the note name or move the vault to a shorter folder path.':
+    '엑셀은 경로가 {0}자를 넘는 파일을 열지 못하는데, {1}은(는) 보관함 폴더를 포함해 {2}자입니다. 노트 이름을 줄이거나 보관함을 더 짧은 경로로 옮기세요.',
+  'No tables found in the notes of {0}.': '{0}의 노트에서 표를 찾을 수 없습니다.',
+  'Tables per note: {0}.': '노트별 표: {0}.',
+  '{0} note(s) without tables were skipped.': '표가 없는 노트 {0}개는 건너뛰었습니다.',
+  'Open a note of an experiment first.': '실험의 노트를 먼저 여세요.',
   'These table CSV files no longer match a table in the note. Move them to the trash?\n\n{0}':
     '다음 표 CSV 파일은 이 노트에 더 이상 해당하는 표가 없습니다. 휴지통으로 옮길까요?\n\n{0}',
   'The table CSV files of the deleted note(s) are still in the folder. Move them to the trash?\n\n{0}':

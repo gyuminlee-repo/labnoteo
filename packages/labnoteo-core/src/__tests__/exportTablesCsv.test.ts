@@ -304,11 +304,21 @@ describe('extractMarkdownTables', () => {
       ['SEPT9', 'MARCH1', '0031', '정상'],
       ['3-1', '0', '0.5', '-80'],
     ];
-    expect(excelRiskCells(rows)).toEqual(['3-1', '1/2', '007', 'SEPT9', 'MARCH1', '0031']);
+    expect(excelRiskCells(rows)).toEqual([
+      { text: '3-1', kind: 'dateTime' },
+      { text: '1/2', kind: 'dateTime' },
+      { text: '007', kind: 'leadingZero' },
+      { text: 'SEPT9', kind: 'dateTime' },
+      { text: 'MARCH1', kind: 'dateTime' },
+      { text: '0031', kind: 'leadingZero' },
+    ]);
     expect(excelRiskCells([['3-1'], ['정상']])).toEqual([]);
   });
 
+  const texts = (rows: string[][]) => excelRiskCells(rows).map(c => c.text);
+
   // #272: Excel opens `2:1` as the time 2:01 and `10:30` as a time of day.
+  // #343: minutes past 59 carry over, so `1:80` becomes 2:20 (0.097222).
   it('finds ratio and clock-time cells, which Excel turns into times', () => {
     const rows = [
       ['조건', '비율', '시각', '경과'],
@@ -316,8 +326,43 @@ describe('extractMarkdownTables', () => {
       ['B', '1:10', '9:5', '100:1'],
       ['C', '2:75', 'a:b', '1:2:3:4'],
       ['D', 'ratio 2:1', '12:30 pm', '3:'],
+      ['E', '1:80', '1:60', '1:200'],
     ];
-    expect(excelRiskCells(rows)).toEqual(['2:1', '10:30', '14:05:30', '1:10', '9:5', '100:1']);
+    expect(texts(rows)).toEqual(['2:1', '10:30', '14:05:30', '1:10', '9:5', '100:1', '2:75', '1:80', '1:60', '1:200']);
+    expect(excelRiskCells([['비율'], ['1:80']])).toEqual([{ text: '1:80', kind: 'dateTime' }]);
+  });
+
+  // #345: Excel keeps 15 significant digits, so longer barcodes all become the same number.
+  it('finds numbers longer than 15 digits', () => {
+    const rows = [
+      ['라인', '바코드'],
+      ['A', '880123456789012345'],
+      ['B', '2026102500000101'],
+      ['C', '880123456789012'],
+      ['D', '8801234567890'],
+    ];
+    expect(excelRiskCells(rows)).toEqual([
+      { text: '880123456789012345', kind: 'precision' },
+      { text: '2026102500000101', kind: 'precision' },
+    ]);
+  });
+
+  // #346: Excel reads `(1)` as the accounting-style negative -1.
+  it('finds numbers in parentheses, which Excel turns negative', () => {
+    const rows = [
+      ['계열', '회차', '감소'],
+      ['L1', '(1)', '(0.03)'],
+      ['L2', '(.5)', '(1,234)'],
+      ['L3', '(5%)', '(n=3)'],
+      ['L4', '(-1)', '(1'],
+    ];
+    expect(excelRiskCells(rows)).toEqual([
+      { text: '(1)', kind: 'negative' },
+      { text: '(0.03)', kind: 'negative' },
+      { text: '(.5)', kind: 'negative' },
+      { text: '(1,234)', kind: 'negative' },
+      { text: '(5%)', kind: 'negative' },
+    ]);
   });
 
   it('ends a quoted table where the quote depth changes', () => {
