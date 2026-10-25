@@ -16,18 +16,19 @@ const t = createObsidianTranslator();
 
 /**
  * How well `item` matches the lowercased query `q`, lower first, or undefined
- * when it does not (#324): the label, a word of it or a keyword (such as a
- * Korean name) equal to the query; the label containing it; a keyword
- * containing it; then only the description, then only the detail.
+ * when it does not (#324): the label, a word of it or a short keyword (such
+ * as a Korean name) equal to the query; the label containing it; a short
+ * keyword or the description containing it; then only the detail or a long
+ * keyword (an English description kept searchable).
  */
 function pickRank<T>(item: PickItem<T>, q: string): number | undefined {
   const label = item.label.toLowerCase();
-  const words = item.keywords?.map(k => k.toLowerCase()) ?? [];
-  if (label === q || words.includes(q) || label.split(/[\s:·|]+/).includes(q)) return 0;
+  const keywords = item.keywords?.map(k => k.toLowerCase()) ?? [];
+  const short = keywords.filter(k => k.split(/\s+/).length <= 3);
+  if (label === q || short.includes(q) || label.split(/[\s:·|]+/).includes(q)) return 0;
   if (label.includes(q)) return 1;
-  if (words.some(w => w.includes(q))) return 2;
-  if (item.description?.toLowerCase().includes(q)) return 3;
-  if (item.detail?.toLowerCase().includes(q)) return 4;
+  if (short.some(k => k.includes(q)) || item.description?.toLowerCase().includes(q)) return 2;
+  if (item.detail?.toLowerCase().includes(q) || keywords.some(k => k.includes(q))) return 3;
   return undefined;
 }
 

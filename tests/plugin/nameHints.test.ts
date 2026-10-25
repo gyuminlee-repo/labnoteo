@@ -60,13 +60,14 @@ describe('name prompt hints', () => {
         '### [UHW240 SDS-PAGE]',
       ].join('\n')
     );
-    const hint = unitOpAliasHint(host, 'UHW265', blocks);
-    expect(hint(' 무작위 클론 ')).toEqual({
+    const hint = unitOpAliasHint(host, { id: 'UHW265', name: 'Sanger Sequencing' }, blocks);
+    expect(hint(' 무작위  클론 ')).toEqual({
       text: '[UHW265 Sanger Sequencing] 무작위 클론 is already in this note, so the two would read the same in the headings and the table of contents. Give this one its own alias to tell them apart.',
       warn: true,
     });
     expect(hint('2차 클론').warn).toBeUndefined();
-    expect(unitOpAliasHint(host, 'UHW240', blocks)('').text).toContain('[UHW240 SDS-PAGE] is already');
-    expect(unitOpAliasHint(host, 'UHW240', blocks)('순도').warn).toBeUndefined();
+    const sds = unitOpAliasHint(host, { id: 'UHW240', name: 'SDS-PAGE' }, blocks);
+    expect(sds('').text).toContain('[UHW240 SDS-PAGE] is already');
+    expect(sds('순도').warn).toBeUndefined();
   });
 });

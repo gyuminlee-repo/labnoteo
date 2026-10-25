@@ -31,6 +31,14 @@ describe('rankPickItems', () => {
     expect(rankPickItems(ITEMS, 'uhw1').map(i => i.value)).toEqual(['UHW130', 'UHW180', 'UHW190']);
   });
 
+  it('ranks an English description kept as a keyword with the detail', () => {
+    const items: PickItem<string>[] = [
+      { label: 'A: Plating', keywords: ['플레이팅', 'Spread cells on agar for culture'], value: 'A' },
+      { label: 'B: Incubation', keywords: ['culture'], value: 'B' },
+    ];
+    expect(rankPickItems(items, 'culture').map(i => i.value)).toEqual(['B', 'A']);
+  });
+
   it('keeps the given order for an empty query and drops what does not match', () => {
     expect(rankPickItems(ITEMS, '  ').map(i => i.value)).toEqual(['UHW060', 'UHW130', 'UHW180', 'UHW190']);
     expect(rankPickItems(ITEMS, '원심')).toEqual([]);

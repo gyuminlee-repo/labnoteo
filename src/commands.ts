@@ -266,12 +266,12 @@ export function workflowAliasHint(
 /** A unit-operation alias goes into no file name, so it has no limit (#213). */
 export function unitOpAliasHint(
   host: Pick<LabnoteHost, 't'>,
-  opId = '',
+  op: { id: string; name: string } = { id: '', name: '' },
   /** The note's unit operations: one of this ID with the same alias is flagged (#339). */
   blocks: readonly UnitOpBlock[] = []
 ): (value: string) => PromptHint {
   return value => {
-    const twin = findSameAliasUnitOp(blocks, opId, value);
+    const twin = findSameAliasUnitOp(blocks, op.id, op.name, value);
     if (twin) {
       return {
         text: host.t(
@@ -1134,7 +1134,7 @@ export function unitOpAliasPrompt(
         'A unit operation is a single task within a workflow (one step using a piece of equipment or software). The alias tells repeats of the same task apart by run or condition and appears in its heading and the table of contents. You can leave it empty.'
       ),
       description: input.opDescription ? catalogDescription(input.opId, input.opDescription) : undefined,
-      hint: unitOpAliasHint(host, input.opId, blocks),
+      hint: unitOpAliasHint(host, { id: input.opId, name: input.opName }, blocks),
     });
   };
 }
