@@ -156,7 +156,13 @@ describe('the status-change notice', () => {
   });
 
   it('changes the experiment it is handed, whatever note is active (#128)', async () => {
-    expect(await shownFrom('labnote/002_Other/README.labnote.md', DIR)).toContain("Changed 001_Test's README");
+    expect(await shownFrom('labnote/002_Other/README.labnote.md', DIR)).toContain('(001_Test): planned → discontinued');
+  });
+
+  // #356: picked in the view, so the open note was never "this note".
+  it('does not call the open note "this note" when handed another experiment', async () => {
+    expect(await shownFrom('labnote/002_Other/README.labnote.md', DIR)).not.toContain('not this note');
+    expect(await shownFrom(WORKFLOW, DIR)).toContain("Changed 001_Test's README, not this note.");
   });
 
   // #141: the palette command would change the open experiment, not this one.

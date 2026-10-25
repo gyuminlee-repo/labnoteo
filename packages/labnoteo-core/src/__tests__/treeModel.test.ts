@@ -343,6 +343,31 @@ describe('experiments by project', () => {
   });
 });
 
+// #365
+describe('experiments by author', () => {
+  const entries: ExperimentEntry[] = [
+    { folder: 'labnote/076_A', title: 'MIC 1차', status: 'needs-review', author: '이서연' },
+    { folder: 'labnote/012_B', title: 'GFP', status: 'completed', author: '김민준' },
+    { folder: 'labnote/080_C', title: 'MIC 2차', status: 'planned', author: ' 이서연 ' },
+    { folder: 'labnote/003_D', title: 'Misc', status: 'planned' },
+  ];
+
+  it('finds an author by part of the name', () => {
+    expect(filterExperiments(entries, '서연').map(e => e.folder)).toEqual(['labnote/076_A', 'labnote/080_C']);
+  });
+
+  it('groups one author together, without an author last', () => {
+    const t = buildExperimentTree(entries, { noAuthor: '(담당자 없음)' }, 'author');
+    expect(t.children!.map(g => g.label)).toEqual(['김민준 [1]', '이서연 [2]', '(담당자 없음) [1]']);
+    expect(t.children![1]).toMatchObject({ id: 'experimentAuthor:이서연', kind: 'experimentAuthor', payload: { author: '이서연' } });
+  });
+
+  it('names the author in the tooltip', () => {
+    const t = buildExperimentTree(entries.slice(0, 1), { author: '담당자' });
+    expect(t.children![0].children![0].tooltip).toBe('MIC 1차\nlabnote/076_A\nStatus: needs-review\n담당자: 이서연');
+  });
+});
+
 // #220
 describe('experiments flagged for discussion', () => {
   const entries: ExperimentEntry[] = [

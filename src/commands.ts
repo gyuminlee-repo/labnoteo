@@ -349,10 +349,24 @@ export async function createExperimentCommand(
   warnIfWindowsPathTooLong(app, host, structure.readmePath);
 }
 
-/** The title a retry of `title` starts from: `… 1차` becomes `… 2차`, anything else gets the run suffix. */
-export function retryTitle(host: Pick<LabnoteHost, 't'>, title: string): string {
-  const run = /^(.*\S)\s*(\d+)차$/.exec(title.trim());
-  return run ? `${run[1]} ${Number(run[2]) + 1}차` : host.t('{0} (retry)', title.trim());
+/**
+ * The title a retry of `title` starts from: `… 1차` becomes `… 2차`, anything
+ * else gets the run suffix. Skips runs whose folder name is in `taken`
+ * (experiment folder names), so retrying the first run again after a second
+ * does not offer `2차` twice (#366).
+ */
+export function retryTitle(host: Pick<LabnoteHost, 't'>, title: string, taken: readonly string[] = []): string {
+  const used = new Set(taken.map(n => n.replace(/^\d{3}_/, '')));
+  const free = (t: string): boolean => !used.has(sanitizeTitle(t));
+  const runOf = (t: string): RegExpExecArray | null => /^(.*\S)\s*(\d+)차$/.exec(t);
+  const given = runOf(title.trim());
+  const first = given ? `${given[1]} ${Number(given[2]) + 1}차` : host.t('{0} (retry)', title.trim());
+  if (free(first)) return first;
+  const run = runOf(first);
+  let n = run ? Number(run[2]) + 1 : 2;
+  const nth = (k: number): string => (run ? `${run[1]} ${k}차` : `${first} ${k}`);
+  while (!free(nth(n))) n++;
+  return nth(n);
 }
 
 /**
@@ -366,7 +380,10 @@ export async function retryExperimentCommand(app: App, host: LabnoteHost, folder
   const text = (await host.fs.exists(readmePath)) ? await host.fs.read(readmePath) : '';
   const { frontMatter } = parseFrontMatterYaml(text.replace(/\r\n/g, '\n'));
   const original = typeof frontMatter.title === 'string' && frontMatter.title.trim() ? frontMatter.title : posix.basename(folder).replace(/^\d{3}_/, '');
-  await createExperimentCommand(app, host, { title: retryTitle(host, original), retryOf: folder });
+  await createExperimentCommand(app, host, {
+    title: retryTitle(host, original, await experimentFolderNames(host)),
+    retryOf: folder,
+  });
 }
 
 /**
@@ -495,13 +512,16 @@ export async function changeExperimentStatusCommand(
   // Ctrl+Z only reaches the README when it is the open note (#126).
   const active = app.workspace.getActiveFile()?.path;
   if (active !== readmePath) {
-    message += ` ${host.t("Changed {0}'s README, not this note.", folderName)}`;
+    // From the workflow view with another experiment open, the palette
+    // command would change the open experiment instead (#141); and the open
+    // note was never "this note" to the user, who picked the experiment in
+    // the view (#356).
+    const sameExperiment = active !== undefined && getExperimentDir(active) === labnoteDir;
+    const fromView = experimentDir !== undefined && !sameExperiment;
+    if (!fromView) message += ` ${host.t("Changed {0}'s README, not this note.", folderName)}`;
     if (current) {
-      // From the workflow view with another experiment open, the palette
-      // command would change the open experiment instead (#141).
-      const sameExperiment = active !== undefined && getExperimentDir(active) === labnoteDir;
       message += ` ${
-        experimentDir !== undefined && !sameExperiment
+        fromView
           ? host.t('To undo, right-click this experiment in the workflow view again and pick {0}.', current)
           : host.t('To undo, run "{0}" again and pick {1}.', host.t('Change experiment status'), current)
       }`;

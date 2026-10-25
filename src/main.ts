@@ -101,8 +101,11 @@ import {
   isSampleTrackingOn,
   nextExperimentId,
   resetCopiedExperimentReadme,
+  retryOfLink,
+  retryOfLinkpath,
   sanitizeTitle,
   setExperimentReadmeId,
+  setRetryOf,
   suggestExperimentFolderName,
 } from '@labnoteo/core/lib/labnoteStructure';
 import { SampleEditorSuggest } from './sampleSuggest';
@@ -1560,11 +1563,14 @@ export default class LabnotePlugin extends Plugin {
     let discussed = false;
     let status: string | undefined;
     let id: string | undefined;
+    let retryOf: string | undefined;
     try {
       const { frontMatter } = parseFrontMatterYaml((await this.app.vault.read(readme)).replace(/\r\n/g, '\n'));
       title = frontMatter.title;
       discussed = isDiscussFlagged(frontMatter);
       if (typeof frontMatter.status === 'string') status = frontMatter.status.trim();
+      const linkpath = retryOfLinkpath(frontMatter.retry_of);
+      if (linkpath) retryOf = posix.dirname(linkpath);
       if (typeof frontMatter.id === 'string' || typeof frontMatter.id === 'number') id = String(frontMatter.id).trim() || undefined;
     } catch {
       title = undefined;
@@ -1619,7 +1625,24 @@ export default class LabnotePlugin extends Plugin {
       return;
     }
 
-    await this.app.vault.process(readme, data => resetCopiedExperimentReadme(data, newTitle, getSeoulDateString()));
+    // A copy of a retry, or of a run that failed, is often the next run: ask
+    // rather than keep or drop `retry_of` silently (#366, #368).
+    const retryTarget =
+      retryOf ?? (status === 'failed' || status === 'needs-repeat' ? posix.join(labnoteDir, origin) : undefined);
+    const markRetry =
+      retryTarget !== undefined &&
+      (await this.host.confirm(
+        this.t(
+          'Mark the copy as a retry of {0}? The workflow view then shows the two together.',
+          posix.basename(retryTarget)
+        ),
+        { confirmLabel: this.t('Mark as retry') }
+      ));
+    if (this.unloaded || folder.path !== copyPath) return;
+    await this.app.vault.process(readme, data => {
+      const reset = resetCopiedExperimentReadme(data, newTitle, getSeoulDateString());
+      return markRetry ? setRetryOf(reset, retryOfLink(retryTarget)) : reset;
+    });
     await this.app.fileManager.renameFile(folder, target);
     const done = [
       this.t('Made the copy the experiment {0}, created today.', posix.basename(target)),
@@ -1627,6 +1650,11 @@ export default class LabnotePlugin extends Plugin {
       ...(discussed
         ? [this.t('The discussion flag was turned off; run "{0}" if the copy needs its own discussion.', this.t('Toggle discussion flag'))]
         : []),
+      ...(markRetry
+        ? [this.t('It is marked as a retry of {0}.', posix.basename(retryTarget))]
+        : retryOf
+          ? [this.t('It is no longer marked as a retry of {0}.', posix.basename(retryOf))]
+          : []),
     ];
     this.host.notify('info', done.join(' '));
     await this.relinkCopiedChecklist(target);

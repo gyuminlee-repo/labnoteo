@@ -140,10 +140,13 @@ const obsidianKo: Record<string, string> = {
   'Last updated': '마지막 수정',
   'Project': '과제',
   '(no project)': '(과제 없음)',
+  'Author': '담당자',
+  '(no author)': '(담당자 없음)',
   'Search experiments': '실험 검색',
   'Group experiments by': '실험 묶는 기준',
   'By status': '상태별',
   'By project': '과제별',
+  'By author': '담당자별',
   'By discussion': '논의 여부별',
   'Something to discuss': '논의할 것 있음',
   'Nothing to discuss': '논의할 것 없음',
@@ -757,6 +760,11 @@ const obsidianKo: Record<string, string> = {
     '"{0}"은(는) 실험 {1}의 복사본입니다. 복사본의 제목을 정하세요. 다음 번호의 실험이 되고, 날짜는 오늘로, 상태는 planned로 바뀌고, 논의 표시는 꺼집니다.',
   'Made the copy the experiment {0}, created today.': '복사본을 실험 {0}(으)로 만들었습니다. 생성일은 오늘입니다.',
   'Its status went from {0} back to planned.': '상태는 {0}에서 planned로 되돌렸습니다.',
+  'Mark the copy as a retry of {0}? The workflow view then shows the two together.':
+    '복사본을 {0}의 재실험으로 표시할까요? 워크플로 뷰에서 두 실험이 함께 보입니다.',
+  'Mark as retry': '재실험으로 표시',
+  'It is marked as a retry of {0}.': '{0}의 재실험으로 표시했습니다.',
+  'It is no longer marked as a retry of {0}.': '{0}의 재실험 표시는 지웠습니다.',
   "Changed the copy's id from {0} to {1}, so the automation does not take it for the original.":
     '복사본의 id를 {0}에서 {1}(으)로 바꿨습니다. 자동화가 원본과 같은 실험으로 보지 않게 하기 위해서입니다.',
   "Removed the copy's id {0}, so the automation does not take it for the original; its folder name serves as its ID.":

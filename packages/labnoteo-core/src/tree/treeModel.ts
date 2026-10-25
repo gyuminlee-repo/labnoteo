@@ -22,6 +22,7 @@ export type TreeNodeKind =
   | 'experimentRoot'
   | 'experimentStatus'
   | 'experimentProject'
+  | 'experimentAuthor'
   | 'experimentDiscuss'
   | 'experiment'
   | 'sampleRoot'
@@ -67,6 +68,8 @@ export interface ExperimentEntry {
   progress?: { done: number; total: number };
   /** The README's `project`: the larger project the experiment belongs to (#204). */
   project?: string;
+  /** The README's `author`: who runs the experiment (#365). */
+  author?: string;
   /** `@issue` markers in the experiment's notes (#337). */
   markers?: number;
   /** The folder of the experiment this one runs again, from the README's `retry_of` (#327). */
@@ -76,7 +79,7 @@ export interface ExperimentEntry {
 }
 
 /** What {@link buildExperimentTree} groups experiments by (#204, #220). */
-export type ExperimentGrouping = 'status' | 'project' | 'discuss';
+export type ExperimentGrouping = 'status' | 'project' | 'author' | 'discuss';
 
 /** Labels {@link buildExperimentTree} puts into the tree; English defaults. */
 export interface ExperimentTreeLabels {
@@ -104,6 +107,10 @@ export interface ExperimentTreeLabels {
   project?: string;
   /** Group of experiments without a `project`. */
   noProject?: string;
+  /** Tooltip line name for the README's `author` (#365). */
+  author?: string;
+  /** Group of experiments without an `author`. */
+  noAuthor?: string;
 }
 
 /** `001` of `001_GFP`, or the whole name when it has no number. */
@@ -149,7 +156,8 @@ function experimentNumbers(folders: readonly string[]): string {
  *
  * Grouped by `project` instead, the experiments of one project sit together
  * whatever their status, projects in name order and those without one last
- * (#204). Grouped by `discuss`, the experiments with something to discuss
+ * (#204); grouped by `author`, likewise by the README's `author` (#365).
+ * Grouped by `discuss`, the experiments with something to discuss
  * (flagged, or with `@issue` markers) come first and the rest after them
  * (#220, #337).
  */
@@ -165,24 +173,26 @@ export function buildExperimentTree(
     kind: 'experimentRoot' as const,
     icon: 'beaker',
   };
-  if (groupBy === 'project') {
-    const byProject = new Map<string, ExperimentEntry[]>();
+  if (groupBy === 'project' || groupBy === 'author') {
+    const byKey = new Map<string, ExperimentEntry[]>();
     for (const e of experiments) {
-      const project = e.project?.trim() ?? '';
-      byProject.set(project, [...(byProject.get(project) ?? []), e]);
+      const key = e[groupBy]?.trim() ?? '';
+      byKey.set(key, [...(byKey.get(key) ?? []), e]);
     }
-    const projects = [...byProject.keys()].filter(Boolean).sort((a, b) => a.localeCompare(b));
-    if (byProject.has('')) projects.push('');
+    const keys = [...byKey.keys()].filter(Boolean).sort((a, b) => a.localeCompare(b));
+    if (byKey.has('')) keys.push('');
+    const none = groupBy === 'project' ? (labels.noProject ?? '(no project)') : (labels.noAuthor ?? '(no author)');
+    const kind = groupBy === 'project' ? ('experimentProject' as const) : ('experimentAuthor' as const);
     return {
       ...root,
-      children: projects.map(project => {
-        const members = sortByFolder(byProject.get(project)!);
+      children: keys.map(key => {
+        const members = sortByFolder(byKey.get(key)!);
         return {
-          id: `experimentProject:${project}`,
-          label: `${project || (labels.noProject ?? '(no project)')} [${members.length}]`,
-          kind: 'experimentProject' as const,
+          id: `${kind}:${key}`,
+          label: `${key || none} [${members.length}]`,
+          kind,
           icon: 'folder',
-          payload: { project: project || undefined },
+          payload: { [groupBy]: key || undefined },
           children: members.map(e => experimentNode(e, labels)),
         };
       }),
@@ -255,6 +265,7 @@ function experimentNode(e: ExperimentEntry, labels: ExperimentTreeLabels): TreeN
   const noStatus = labels.noStatus ?? '(none)';
   const status = e.status?.trim() ?? '';
   const project = e.project?.trim();
+  const author = e.author?.trim();
   const name = path.basename(e.folder);
   const title = e.title?.trim();
   const named = title && title !== name ? `${experimentNumber(name)} · ${title}` : name;
@@ -264,6 +275,7 @@ function experimentNode(e: ExperimentEntry, labels: ExperimentTreeLabels): TreeN
     e.folder,
     `${labels.status ?? 'Status'}: ${status || noStatus}`,
     ...(project ? [`${labels.project ?? 'Project'}: ${project}`] : []),
+    ...(author ? [`${labels.author ?? 'Author'}: ${author}`] : []),
     ...(e.progress && e.progress.total > 0
       ? [`${labels.workflows ?? 'Workflows done'}: ${e.progress.done}/${e.progress.total}`]
       : []),
@@ -284,8 +296,8 @@ function experimentNode(e: ExperimentEntry, labels: ExperimentTreeLabels): TreeN
 }
 
 /**
- * The experiments whose folder name, title, project or status contains every
- * word of `query`, ignoring case (#204). A blank query returns the input.
+ * The experiments whose folder name, title, project, author or status
+ * contains every word of `query`, ignoring case (#204, #365). A blank query returns the input.
  * One with something to discuss also matches `discuss` and the words of
  * `discussLabel`, e.g. the UI's group name (#220, #337); a status also
  * matches its name in `statusWords`, e.g. 검토 필요 for `needs-review`
@@ -306,6 +318,7 @@ export function filterExperiments(
       path.basename(e.folder),
       e.title ?? '',
       e.project ?? '',
+      e.author ?? '',
       status,
       ...(Object.prototype.hasOwnProperty.call(statusWords, status) ? [statusWords[status]] : []),
       ...(hasDiscussion(e) ? ['discuss', discussLabel ?? ''] : []),
