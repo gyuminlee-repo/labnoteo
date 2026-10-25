@@ -191,6 +191,11 @@ describe('copied experiment folders (#223)', () => {
     expect(resetCopiedExperimentReadme('본문만', 'x', '2026-10-21')).toBe('본문만');
   });
 
+  it('does not carry over what the original was a retry of (#327)', () => {
+    const readme = setRetryOf(generateReadmeContent('GFP 2차'), retryOfLink('labnote/061_GFP'));
+    expect(resetCopiedExperimentReadme(readme, 'GFP 3차', '2026-10-25')).not.toContain('retry_of');
+  });
+
   it('gives the copy its own id or drops it (#353)', () => {
     const readme = ['---', 'title: A', 'id: EXP-106', 'status: needs-review', '---', 'id: 본문'].join('\n');
     expect(setExperimentReadmeId(readme, 'EXP-107')).toBe(
