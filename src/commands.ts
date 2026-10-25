@@ -40,6 +40,7 @@ import {
   planIssueMarkerInsertion,
   planDateInsertion,
   issueSentenceRange,
+  lineHasSampleReference,
   serializeFrontMatterEntry,
   setDiscussFlag,
 } from '@labnoteo/core';
@@ -92,6 +93,7 @@ import {
   normalizeChecklistLink,
   rebuildExperimentReadme,
   relinkWorkflowChecklistEntries,
+  matchMissingChecklistEntries,
   unlinkableNameChars,
   collapseWorkflowRenames,
   defaultWorkflowTitle,
@@ -99,6 +101,7 @@ import {
   parseWorkflowFileName,
   planWorkflowRetitle,
   planWorkflowExperimenterSync,
+  unitOpsAllEnded,
   workflowLabelFor,
   type WorkflowRename,
   type WorkflowRelabel,
@@ -109,6 +112,7 @@ import { removeWorkflowFromReadme } from '@labnoteo/core/lib/workflowDelete';
 // place; the implementation lives under src/scaffold with its asset registry.
 export { setupResearchAutomationCommand } from './scaffold/scaffold';
 import { tableCellHostView } from './tableCellTarget';
+import { experimentMarkerSpots, formatMarkerSpots } from './issueMarkerIndex';
 import { isVaultGitRepository } from './scaffold/scaffold';
 import { removeSourcesForDocument } from '@labnoteo/core/lib/sampleStorage';
 
@@ -345,10 +349,24 @@ export async function createExperimentCommand(
   warnIfWindowsPathTooLong(app, host, structure.readmePath);
 }
 
-/** The title a retry of `title` starts from: `… 1차` becomes `… 2차`, anything else gets the run suffix. */
-export function retryTitle(host: Pick<LabnoteHost, 't'>, title: string): string {
-  const run = /^(.*\S)\s*(\d+)차$/.exec(title.trim());
-  return run ? `${run[1]} ${Number(run[2]) + 1}차` : host.t('{0} (retry)', title.trim());
+/**
+ * The title a retry of `title` starts from: `… 1차` becomes `… 2차`, anything
+ * else gets the run suffix. Skips runs whose folder name is in `taken`
+ * (experiment folder names), so retrying the first run again after a second
+ * does not offer `2차` twice (#366).
+ */
+export function retryTitle(host: Pick<LabnoteHost, 't'>, title: string, taken: readonly string[] = []): string {
+  const used = new Set(taken.map(n => n.replace(/^\d{3}_/, '')));
+  const free = (t: string): boolean => !used.has(sanitizeTitle(t));
+  const runOf = (t: string): RegExpExecArray | null => /^(.*\S)\s*(\d+)차$/.exec(t);
+  const given = runOf(title.trim());
+  const first = given ? `${given[1]} ${Number(given[2]) + 1}차` : host.t('{0} (retry)', title.trim());
+  if (free(first)) return first;
+  const run = runOf(first);
+  let n = run ? Number(run[2]) + 1 : 2;
+  const nth = (k: number): string => (run ? `${run[1]} ${k}차` : `${first} ${k}`);
+  while (!free(nth(n))) n++;
+  return nth(n);
 }
 
 /**
@@ -362,7 +380,10 @@ export async function retryExperimentCommand(app: App, host: LabnoteHost, folder
   const text = (await host.fs.exists(readmePath)) ? await host.fs.read(readmePath) : '';
   const { frontMatter } = parseFrontMatterYaml(text.replace(/\r\n/g, '\n'));
   const original = typeof frontMatter.title === 'string' && frontMatter.title.trim() ? frontMatter.title : posix.basename(folder).replace(/^\d{3}_/, '');
-  await createExperimentCommand(app, host, { title: retryTitle(host, original), retryOf: folder });
+  await createExperimentCommand(app, host, {
+    title: retryTitle(host, original, await experimentFolderNames(host)),
+    retryOf: folder,
+  });
 }
 
 /**
@@ -471,24 +492,36 @@ export async function changeExperimentStatusCommand(
   );
   if (!chosen || chosen === current) return;
 
-  if (chosen === 'completed' && !(await confirmCompleted(host, labnoteDir, body))) return;
-
   // Set (or insert, when absent) `status`. Spreading keeps the order of the
   // existing keys and appends `status` for notes that predate the field.
-  const updated = renderNote({ ...frontMatter, status: chosen }, body);
+  let next: Record<string, unknown> = { ...frontMatter, status: chosen };
+  let cleared = false;
+  if (chosen === 'completed') {
+    const choice = await confirmCompleted(host, labnoteDir, body, isDiscussFlagged(frontMatter));
+    if (!choice) return;
+    if (choice === 'clear') {
+      next = setDiscussFlag(next, false);
+      cleared = true;
+    }
+  }
+  const updated = renderNote(next, body);
 
   await writeNoteThroughVault(app, host, readmePath, stamp(updated));
   let message = host.t('Experiment status changed ({0}): {1} → {2}.', folderName, current ?? host.t('(none)'), chosen);
+  if (cleared) message += ` ${host.t('Discussion flag cleared.')}`;
   // Ctrl+Z only reaches the README when it is the open note (#126).
   const active = app.workspace.getActiveFile()?.path;
   if (active !== readmePath) {
-    message += ` ${host.t("Changed {0}'s README, not this note.", folderName)}`;
+    // From the workflow view with another experiment open, the palette
+    // command would change the open experiment instead (#141); and the open
+    // note was never "this note" to the user, who picked the experiment in
+    // the view (#356).
+    const sameExperiment = active !== undefined && getExperimentDir(active) === labnoteDir;
+    const fromView = experimentDir !== undefined && !sameExperiment;
+    if (!fromView) message += ` ${host.t("Changed {0}'s README, not this note.", folderName)}`;
     if (current) {
-      // From the workflow view with another experiment open, the palette
-      // command would change the open experiment instead (#141).
-      const sameExperiment = active !== undefined && getExperimentDir(active) === labnoteDir;
       message += ` ${
-        experimentDir !== undefined && !sameExperiment
+        fromView
           ? host.t('To undo, right-click this experiment in the workflow view again and pick {0}.', current)
           : host.t('To undo, run "{0}" again and pick {1}.', host.t('Change experiment status'), current)
       }`;
@@ -510,15 +543,30 @@ export async function changeExperimentStatusCommand(
 }
 
 /**
+ * What to do with the `discuss` flag once marking completed is confirmed:
+ * leave it, or turn it off with the status (#380).
+ */
+export type CompletedChoice = 'keep' | 'clear';
+
+/**
  * Before an experiment is marked completed — the state the automation drafts
  * papers from — ask when its checklist still has unchecked workflows or
- * workflow notes without an `end_date` (#174). True to go ahead. Only what was
- * found is named, so a count of zero does not send the user looking (#275).
+ * workflow notes without an `end_date` (#174), or when it is still up for
+ * discussion: the `discuss` flag on, or `@issue` markers left in its notes
+ * (#380). Undefined to cancel. Only what was found is named, so a count of
+ * zero does not send the user looking (#275). With the flag on the answer
+ * also says whether to turn it off, since a completed experiment left flagged
+ * stays under "Something to discuss" and opens its issue again on a push.
  */
-export async function confirmCompleted(host: LabnoteHost, labnoteDir: string, readmeBody: string): Promise<boolean> {
+export async function confirmCompleted(
+  host: LabnoteHost,
+  labnoteDir: string,
+  readmeBody: string,
+  discuss = false
+): Promise<CompletedChoice | undefined> {
   const items = parseWorkflowChecklistFromReadme(readmeBody);
   const unchecked = items.filter(i => !i.done).length;
-  let noEndDate = 0;
+  const noEndDate: string[] = [];
   for (const item of items) {
     let name = normalizeChecklistLink(item.fileName, labnoteDir);
     try {
@@ -529,22 +577,40 @@ export async function confirmCompleted(host: LabnoteHost, labnoteDir: string, re
     if (name.includes('/')) continue;
     const path = posix.join(labnoteDir, name);
     if (!(await host.fs.exists(path))) continue;
-    const { frontMatter } = parseFrontMatterYaml((await host.fs.read(path)).replace(/\r\n/g, '\n'));
+    const content = (await host.fs.read(path)).replace(/\r\n/g, '\n');
+    const { frontMatter } = parseFrontMatterYaml(content);
     const end = frontMatter.end_date;
-    if ('end_date' in frontMatter && (end === null || end === undefined || String(end).trim() === '')) noEndDate++;
+    const empty = 'end_date' in frontMatter && (end === null || end === undefined || String(end).trim() === '');
+    // Every unit operation's End_date filled is finished work (#355).
+    if (empty && !unitOpsAllEnded(content)) noEndDate.push(name);
   }
-  if (unchecked === 0 && noEndDate === 0) return true;
-  const message =
-    noEndDate === 0
-      ? host.t('{0} workflow(s) in the checklist are not checked. Mark the experiment completed anyway?', String(unchecked))
-      : unchecked === 0
-        ? host.t('{0} workflow note(s) have no end_date. Mark the experiment completed anyway?', String(noEndDate))
-        : host.t(
-            '{0} workflow(s) in the checklist are not checked and {1} workflow note(s) have no end_date. Mark the experiment completed anyway?',
-            String(unchecked),
-            String(noEndDate)
-          );
-  return host.confirm(message, { confirmLabel: host.t('Mark completed') });
+  const spots = await experimentMarkerSpots(host.fs, labnoteDir);
+
+  const found: string[] = [];
+  if (unchecked > 0) found.push(host.t('{0} workflow(s) in the checklist are not checked.', String(unchecked)));
+  if (noEndDate.length > 0) {
+    const names =
+      noEndDate.length > 3
+        ? host.t('{0} (+{1} more)', noEndDate.slice(0, 3).join(', '), String(noEndDate.length - 3))
+        : noEndDate.join(', ');
+    found.push(host.t('{0} workflow note(s) have no end_date in their properties: {1}.', String(noEndDate.length), names));
+  }
+  if (discuss) found.push(host.t('The discussion flag is on.'));
+  if (spots.length > 0) {
+    found.push(host.t('{0} @issue marker(s) remain: {1}.', String(spots.length), formatMarkerSpots(spots, host.t)));
+  }
+  if (found.length === 0) return 'keep';
+  const message = `${found.join(' ')} ${host.t('Mark the experiment completed anyway?')}`;
+  if (!discuss) return (await host.confirm(message, { confirmLabel: host.t('Mark completed') })) ? 'keep' : undefined;
+  const choice = await host.pick<CompletedChoice | 'cancel'>(
+    [
+      { label: host.t('Clear the discussion flag and mark completed'), value: 'clear' },
+      { label: host.t('Keep the discussion flag and mark completed'), value: 'keep' },
+      { label: host.t('Cancel'), value: 'cancel' },
+    ],
+    { title: message }
+  );
+  return choice === 'cancel' ? undefined : choice;
 }
 
 /**
@@ -658,7 +724,10 @@ export async function insertIssueMarkerCommand(editor: Editor, host: LabnoteHost
       await host.prompt({
         title: host.t('Issue topic sentence'),
         prompt: host.t('This sentence becomes the issue title. Keep the sentence from this line or type another.'),
-        value: workflowChecklistEntryLabel(lineAt(doc, from)) ?? issueSentenceRange(doc, from)?.text ?? '',
+        // A sample reference is data, not a topic (#373).
+        value:
+          workflowChecklistEntryLabel(lineAt(doc, from)) ??
+          (lineHasSampleReference(lineAt(doc, from)) ? '' : issueSentenceRange(doc, from)?.text ?? ''),
         validate: v => (v.trim() ? null : host.t('Enter the topic sentence of the issue.')),
       })
     )?.trim();
@@ -798,6 +867,16 @@ export async function toggleDiscussionFlagCommand(
       state === 'ready'
         ? host.t('Discussion flag cleared. Any issue already opened stays open.')
         : host.t('Discussion flag cleared.');
+    // Markers keep the experiment under "Something to discuss" (#379).
+    const spots = await experimentMarkerSpots(host.fs, labnoteDir);
+    if (spots.length > 0) {
+      message += ` ${host.t(
+        '{0} @issue marker(s) remain, so the experiment stays under "{1}": {2}.',
+        String(spots.length),
+        host.t('Something to discuss'),
+        formatMarkerSpots(spots, host.t)
+      )}`;
+    }
   }
   // The flag belongs to the experiment, so say so when run from another note (#108).
   if (app.workspace.getActiveFile()?.path !== readmePath) {
@@ -1228,36 +1307,71 @@ export async function renumberWorkflowsCommand(
   const existing = await host.fs.list(labnoteDir);
   const readmePath = posix.join(labnoteDir, README);
   const readmeBefore = (await host.fs.exists(readmePath)) ? await host.fs.read(readmePath) : undefined;
+  // An entry left on a file's old name goes back to that file, rather than
+  // the file being listed a second time (#381).
+  const matched =
+    readmeBefore === undefined
+      ? { relink: [], missing: [] }
+      : matchMissingChecklistEntries(readmeBefore, existing, labnoteDir);
+  const relinkMissing = (content: string): string => relinkWorkflowChecklistEntries(content, matched.relink);
+  const readmePlanned = readmeBefore === undefined ? undefined : relinkMissing(readmeBefore);
   // The checklist is where the researcher orders the experiment (#289).
-  const order = readmeBefore === undefined ? [] : workflowChecklistOrder(readmeBefore, existing, labnoteDir);
+  const order = readmePlanned === undefined ? [] : workflowChecklistOrder(readmePlanned, existing, labnoteDir);
   const renames = planWorkflowRenumber(existing, order);
   // Files the checklist does not list are renumbered too, so register them in
   // the same run; otherwise one takes 001 and the overview starts at 002 (#56).
   const syncPlan =
-    readmeBefore === undefined
+    readmePlanned === undefined
       ? undefined
-      : planWorkflowChecklistSync(readmeBefore, existing, undefined, undefined, labnoteDir);
+      : planWorkflowChecklistSync(readmePlanned, existing, undefined, undefined, labnoteDir);
   const unlisted = syncPlan?.added.length ?? 0;
+  const relinked = matched.relink.length;
   // Without the section nothing can be listed or follow the new numbers (#298).
   const noSection = host.t('README.labnote.md has no "Related Workflows" section.');
-  if (renames.length === 0 && unlisted === 0) {
+  const missingNote =
+    matched.missing.length === 0
+      ? ''
+      : host.t(
+          'The README checklist lists {0} file(s) that are not in the folder: {1}. Run "{2}" to remove them.',
+          String(matched.missing.length),
+          matched.missing.join(', '),
+          host.t('Sync workflow checklist with folder')
+        );
+  if (renames.length === 0 && unlisted === 0 && relinked === 0) {
     if (syncPlan && !syncPlan.hasSection) host.notify('warn', noSection);
+    else if (missingNote) host.notify('warn', missingNote);
     else host.notify('info', host.t('Workflow numbering already follows the README checklist.'));
     return;
   }
 
   const folder = posix.basename(labnoteDir);
   const question =
+    renames.length === 0 && unlisted === 0
+      ? host.t('Point {0} README checklist entry(ies) of {1} back at their file?', String(relinked), folder)
+      : unlisted === 0
+        ? host.t('Renumber {0} workflow file(s) in {1}?', String(renames.length), folder)
+        : renames.length === 0
+          ? host.t('Add {0} workflow file(s) missing from the README checklist of {1}?', String(unlisted), folder)
+          : host.t(
+              'Renumber {0} workflow file(s) in {1} and add {2} file(s) missing from the README checklist?',
+              String(renames.length),
+              folder,
+              String(unlisted)
+            );
+  const relinkNote =
+    relinked === 0
+      ? ''
+      : `\n\n${host.t('These README checklist entries point to a file that is gone and will point to the file of the same workflow:')}\n${listFileNames(
+          host,
+          matched.relink.map(r => `${r.from} → ${r.to}`)
+        )}`;
+  const addNote =
     unlisted === 0
-      ? host.t('Renumber {0} workflow file(s) in {1}?', String(renames.length), folder)
-      : renames.length === 0
-        ? host.t('Add {0} workflow file(s) missing from the README checklist of {1}?', String(unlisted), folder)
-        : host.t(
-            'Renumber {0} workflow file(s) in {1} and add {2} file(s) missing from the README checklist?',
-            String(renames.length),
-            folder,
-            String(unlisted)
-          );
+      ? ''
+      : `\n\n${host.t('Added to the README checklist:')}\n${listFileNames(
+          host,
+          syncPlan!.added.map(a => a.fileName)
+        )}`;
   const preview =
     renames.length === 0
       ? ''
@@ -1274,7 +1388,8 @@ export async function renumberWorkflowsCommand(
           )
         )}`;
   const sectionNote = syncPlan && !syncPlan.hasSection ? `\n\n${noSection}` : '';
-  if (!(await host.confirm(`${question}${preview}${sectionNote}`))) return;
+  const missingPart = missingNote ? `\n\n${missingNote}` : '';
+  if (!(await host.confirm(`${question}${relinkNote}${preview}${addNote}${sectionNote}${missingPart}`))) return;
 
   await readmeSync.flushNow(labnoteDir);
   readmeSync.hold(labnoteDir);
@@ -1299,8 +1414,12 @@ export async function renumberWorkflowsCommand(
     try {
       await readmeSync.settle();
       if (baseline !== undefined) {
+        const fixedBaseline = relinkMissing(baseline);
         const relink = (content: string): string =>
-          moved.length > 0 ? reconcileWorkflowChecklist(content, moved, { baseline, dir: labnoteDir }).content : content;
+          moved.length > 0
+            ? reconcileWorkflowChecklist(relinkMissing(content), moved, { baseline: fixedBaseline, dir: labnoteDir })
+                .content
+            : relinkMissing(content);
         const { names, notes } = await readWorkflowFolder(host, labnoteDir);
         const titles = workflowLabels(notes);
         await processNoteThroughVault(app, host, readmePath, content => {
@@ -1329,6 +1448,9 @@ export async function renumberWorkflowsCommand(
   }
   if (added > 0) {
     host.notify('info', host.t('Added {0} workflow file(s) to the README checklist.', String(added)));
+  }
+  if (relinked > 0 && renames.length === 0) {
+    host.notify('info', host.t('Pointed {0} README checklist entry(ies) back at their file.', String(relinked)));
   }
   if (csvSkipped > 0) {
     host.notify(
@@ -1363,14 +1485,14 @@ export async function moveTableCsvs(
   note: WorkflowRename,
   names: Set<string>,
   toNames: Set<string> = names
-): Promise<{ moved: number; skipped: number }> {
+): Promise<{ moved: number; skipped: number; kept: string[] }> {
   let moved = 0;
-  let skipped = 0;
-  if (dirs.from === dirs.to && note.from === note.to) return { moved, skipped };
+  const kept: string[] = [];
+  if (dirs.from === dirs.to && note.from === note.to) return { moved, skipped: 0, kept };
   for (const csv of planTableCsvMoves(note.from, note.to, [...names])) {
     const file = app.vault.getFileByPath(posix.join(dirs.from, csv.from));
     if (!(file instanceof TFile) || toNames.has(csv.to)) {
-      skipped++;
+      kept.push(csv.from);
       continue;
     }
     try {
@@ -1380,10 +1502,10 @@ export async function moveTableCsvs(
       moved++;
     } catch (err) {
       console.warn('[labnoteo] could not move table CSV:', err);
-      skipped++;
+      kept.push(csv.from);
     }
   }
-  return { moved, skipped };
+  return { moved, skipped: kept.length, kept };
 }
 
 /**

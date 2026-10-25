@@ -414,16 +414,16 @@ async function writeSummary(
   const text = await target.getText();
   const place = locateSummary(text, heading, titles);
   const earlier = findAiCalloutInSection(text, heading, titles);
+  // The cursor is left alone: the user kept writing while the model ran, and
+  // moving it put their next words into the callout (#357).
   if (earlier) {
     await target.replaceRange(earlier.start, earlier.end, block);
-    await target.revealOffset?.(earlier.start);
   } else {
     const plan = planSectionAppend(text, heading, block, titles) ?? {
       offset: text.length,
       text: `${text.endsWith('\n') ? '\n' : '\n\n'}${block}\n`,
     };
     await target.replaceRange(plan.offset, plan.offset, plan.text);
-    await target.revealOffset?.(plan.offset + plan.text.length);
   }
   plugin.markUserEdit(target.path);
   // The heading was renamed or removed (#319): say where the summary went.

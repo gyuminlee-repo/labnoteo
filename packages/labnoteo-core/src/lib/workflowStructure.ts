@@ -659,9 +659,23 @@ function parseMisnumberedWorkflowFileName(fileName: string): ParsedWorkflowFileN
   return match ? { sequence: match[1], id: match[2], safeName: match[3] } : undefined;
 }
 
-/** Whether {@link planWorkflowRenumber} renames `fileName` only to fix the digits of its number. */
+/**
+ * A workflow file name that lost its number (`WT110_X.labnote.md`, #382): a
+ * note the checklist lists under it gets the number of its place there.
+ */
+function parseUnnumberedWorkflowFileName(fileName: string): ParsedWorkflowFileName | undefined {
+  const match = fileName.match(/^([A-Z]{2}\d{3})_(.+)\.labnote\.md$/);
+  return match ? { sequence: '000', id: match[1], safeName: match[2] } : undefined;
+}
+
+/**
+ * Whether {@link planWorkflowRenumber} renames `fileName` only to fix the
+ * format of its number: wrong digits, or none at all.
+ */
 export function isMisnumberedWorkflowFileName(fileName: string): boolean {
-  return parseMisnumberedWorkflowFileName(fileName) !== undefined;
+  return (
+    parseMisnumberedWorkflowFileName(fileName) !== undefined || parseUnnumberedWorkflowFileName(fileName) !== undefined
+  );
 }
 
 /**
@@ -695,8 +709,9 @@ export function workflowChecklistOrder(
  * re-sanitizing could alter a name this operation is supposed to leave alone.
  *
  * Besides standard names, a name whose number has the wrong number of digits
- * is renumbered too ({@link isMisnumberedWorkflowFileName}). Other entries
- * (README, notes, manually named files) are ignored, and files that already
+ * is renumbered too ({@link isMisnumberedWorkflowFileName}), and so is one
+ * with no number that the checklist lists (#382). Other entries (README,
+ * notes, manually named files) are ignored, and files that already
  * carry their target number are omitted, so a folder whose numbers follow the
  * checklist plans to no renames.
  */
@@ -705,8 +720,12 @@ export function planWorkflowRenumber(
   checklistOrder: readonly string[] = []
 ): WorkflowRename[] {
   const parts = new Map<string, ParsedWorkflowFileName>();
+  const inChecklist = new Set(checklistOrder);
   for (const fileName of fileNames) {
-    const parsed = parseWorkflowFileName(fileName) ?? parseMisnumberedWorkflowFileName(fileName);
+    const parsed =
+      parseWorkflowFileName(fileName) ??
+      parseMisnumberedWorkflowFileName(fileName) ??
+      (inChecklist.has(fileName) ? parseUnnumberedWorkflowFileName(fileName) : undefined);
     if (parsed) parts.set(fileName, parsed);
   }
   const before = (a: string, b: string): boolean => {
@@ -847,6 +866,20 @@ export function planTableCsvNames(noteName: string, files: readonly string[], ta
  */
 export function staleTableCsvs(noteName: string, files: readonly string[], tableCount: number): string[] {
   return planTableCsvNames(noteName, files, tableCount).stale;
+}
+
+/**
+ * The `<note>.labnote_tableN.csv` exports among `files` (base names in one
+ * folder) whose note is not there: left behind by a note deleted, or by a
+ * rename that found the new CSV name taken (#374). Only lab notes' CSVs, so
+ * a CSV of another source that happens to end in `_table1` is left alone.
+ */
+export function orphanTableCsvs(files: readonly string[]): string[] {
+  const present = new Set(files);
+  return files.filter(f => {
+    const stem = /^(.+\.labnote)_table\d+\.csv$/.exec(f)?.[1];
+    return stem !== undefined && !present.has(`${stem}.md`);
+  });
 }
 
 /**
@@ -1486,6 +1519,42 @@ function subfolderMatches(link: string, subfolders: WorkflowSubfolderNotes | und
 }
 
 /**
+ * Checklist entries whose file is gone, each paired with the one workflow file
+ * the checklist does not list that has the same ID and name whatever its
+ * number (#381): an undo in the README after "Renumber workflows", or a
+ * rename the README missed, leaves an entry on the old number. `relink` is
+ * for {@link relinkWorkflowChecklistEntries}; `missing` are the links that
+ * match no file, or more than one.
+ */
+export function matchMissingChecklistEntries(
+  readmeContent: string,
+  existingNames: readonly string[],
+  dir?: string
+): { relink: { from: string; to: string }[]; missing: string[] } {
+  const present = new Set(existingNames);
+  const entries = checklistEntries(readmeContent, dir);
+  const listed = new Set(entries.flatMap(e => (e.target !== null && present.has(e.target) ? [e.target] : [])));
+  const unnumbered = (name: string): string => name.replace(/^\d{1,4}_/, '');
+  const unlisted = existingNames.filter(
+    name => !listed.has(name) && /^(?:\d{1,4}_)?[A-Z]{2}\d{3}_.+\.labnote\.md$/.test(name)
+  );
+  const relink: { from: string; to: string }[] = [];
+  const missing: string[] = [];
+  const taken = new Set<string>();
+  for (const { link, target } of entries) {
+    if (target === null || present.has(target) || !/\.labnote\.md$/.test(target)) continue;
+    const found = unlisted.filter(name => unnumbered(name) === unnumbered(target) && !taken.has(name));
+    if (found.length === 1) {
+      relink.push({ from: link, to: found[0] });
+      taken.add(found[0]);
+    } else {
+      missing.push(target);
+    }
+  }
+  return { relink, missing };
+}
+
+/**
  * Point the checklist entries linking exactly to `from` at `./to` instead,
  * keeping checkbox and label: a note moved back from a subfolder whose link
  * Obsidian did not update (#94).
@@ -1687,6 +1756,31 @@ export interface WorkflowExperimenterSync {
  * label is the same in every locale. Undefined when `author` is empty, the
  * note has no `experimenter` key, or it already matches.
  */
+/**
+ * Whether the workflow note `content` has unit operations and each has its
+ * Meta `End_date` filled: the work is done even if the front matter
+ * `end_date`, which nothing fills, is still empty (#355).
+ */
+export function unitOpsAllEnded(content: string): boolean {
+  const lines = content.split(/\r?\n/);
+  const ended: boolean[] = [];
+  let fence: OpenFence | null = null;
+  for (const line of lines) {
+    const next = stepFence(line, fence);
+    if (next !== fence || fence) {
+      fence = next;
+      continue;
+    }
+    if (/^###\s+\[/.test(line)) {
+      ended.push(false);
+      continue;
+    }
+    const date = findMetaDateFieldInLine(line);
+    if (ended.length > 0 && date?.field === 'End_date' && date.value.trim() !== '') ended[ended.length - 1] = true;
+  }
+  return ended.length > 0 && ended.every(Boolean);
+}
+
 export function planWorkflowExperimenterSync(
   content: string,
   author: string

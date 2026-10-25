@@ -10,6 +10,9 @@ const obsidianKo: Record<string, string> = {
   'Create experiment': '실험 생성',
   'Change experiment status': '실험 상태 변경',
   'Toggle discussion flag': '논의 표시 전환',
+  'Show @issue markers': '@issue 마커 보기',
+  'This experiment has no @issue markers.': '이 실험에는 @issue 마커가 없습니다.',
+  '@issue markers of {0} ({1})': '{0}의 @issue 마커({1}개)',
   'Insert issue marker': '논의 이슈 마커 삽입',
   'Setup research automation': '연구노트 자동화 설정',
   'Create workflow': '워크플로 생성',
@@ -46,6 +49,8 @@ const obsidianKo: Record<string, string> = {
   'Only years 1900–2100 are written; the date in the note was kept.':
     '1900~2100년만 기록합니다. 노트의 날짜는 그대로 두었습니다.',
   'End_date {0} is earlier than Start_date {1}.': 'End_date({0})가 Start_date({1})보다 이릅니다.',
+  '"{0}" is not a date the picker can read, so it starts at another time. Pick a date to replace it.':
+    "'{0}'은(는) 날짜 선택기가 읽을 수 없는 값이라 다른 시각에서 시작합니다. 날짜를 고르면 그 값으로 바뀝니다.",
   'Pick date and time': '날짜 및 시간 선택',
   'Export tables to CSV': '표를 CSV로 내보내기',
   'Export all tables of this experiment to CSV': '이 실험의 표를 모두 CSV로 내보내기',
@@ -135,10 +140,13 @@ const obsidianKo: Record<string, string> = {
   'Last updated': '마지막 수정',
   'Project': '과제',
   '(no project)': '(과제 없음)',
+  'Author': '담당자',
+  '(no author)': '(담당자 없음)',
   'Search experiments': '실험 검색',
   'Group experiments by': '실험 묶는 기준',
   'By status': '상태별',
   'By project': '과제별',
+  'By author': '담당자별',
   'By discussion': '논의 여부별',
   'Something to discuss': '논의할 것 있음',
   'Nothing to discuss': '논의할 것 없음',
@@ -215,6 +223,14 @@ const obsidianKo: Record<string, string> = {
   'The block is no longer where it was printed from, so check that the scan went to the right one.':
     '출력한 뒤 블록 위치가 바뀌었습니다. 맞는 블록에 붙었는지 확인하세요.',
   'Workflow numbering already follows the README checklist.': '워크플로 번호가 이미 README 체크리스트 순서와 같습니다.',
+  'The README checklist lists {0} file(s) that are not in the folder: {1}. Run "{2}" to remove them.':
+    'README 체크리스트에 폴더에 없는 파일 {0}개가 있습니다: {1}. "{2}"을(를) 실행하면 지울 수 있습니다.',
+  'Point {0} README checklist entry(ies) of {1} back at their file?':
+    '{1}의 README 체크리스트 항목 {0}개를 원래 파일에 다시 연결할까요?',
+  'These README checklist entries point to a file that is gone and will point to the file of the same workflow:':
+    '아래 README 체크리스트 항목은 없는 파일을 가리키고 있어, 같은 워크플로의 파일에 다시 연결합니다:',
+  'Added to the README checklist:': 'README 체크리스트에 등록할 파일:',
+  'Pointed {0} README checklist entry(ies) back at their file.': 'README 체크리스트 항목 {0}개를 원래 파일에 다시 연결했습니다.',
   'New numbers follow the order of the README checklist.': '새 번호는 README 체크리스트 순서를 따릅니다.',
   'New numbers follow the current file numbers.': '새 번호는 지금 파일 번호 순서를 따릅니다.',
   '{0} → {1} (name format fixed)': '{0} → {1} (이름 형식 고침)',
@@ -275,12 +291,16 @@ const obsidianKo: Record<string, string> = {
   'To undo, run "{0}" again and pick {1}.': '되돌리려면 "{0}"을(를) 다시 실행해 {1}을(를) 고르세요.',
   'To undo, right-click this experiment in the workflow view again and pick {0}.':
     '되돌리려면 워크플로 뷰에서 이 실험을 다시 우클릭해 {0}을(를) 고르세요.',
-  '{0} workflow(s) in the checklist are not checked and {1} workflow note(s) have no end_date. Mark the experiment completed anyway?':
-    '체크리스트에서 체크하지 않은 워크플로가 {0}개, 종료일(end_date)이 빈 워크플로 노트가 {1}개 있습니다. 그래도 completed로 바꿀까요?',
-  '{0} workflow(s) in the checklist are not checked. Mark the experiment completed anyway?':
-    '체크리스트에서 체크하지 않은 워크플로가 {0}개 있습니다. 그래도 completed로 바꿀까요?',
-  '{0} workflow note(s) have no end_date. Mark the experiment completed anyway?':
-    '종료일(end_date)이 빈 워크플로 노트가 {0}개 있습니다. 그래도 completed로 바꿀까요?',
+  '{0} workflow(s) in the checklist are not checked.': '체크리스트에서 체크하지 않은 워크플로가 {0}개 있습니다.',
+  '{0} workflow note(s) have no end_date in their properties: {1}.':
+    '머리말 종료일(end_date)이 빈 워크플로 노트가 {0}개 있습니다: {1}.',
+  'The discussion flag is on.': '논의 표시가 켜져 있습니다.',
+  '{0} @issue marker(s) remain: {1}.': '@issue 마커 {0}개가 남아 있습니다: {1}.',
+  'Mark the experiment completed anyway?': '그래도 completed로 바꿀까요?',
+  'Clear the discussion flag and mark completed': '논의 표시를 끄고 completed로 바꾸기',
+  'Keep the discussion flag and mark completed': '논의 표시를 둔 채 completed로 바꾸기',
+  '{0} @issue marker(s) remain, so the experiment stays under "{1}": {2}.':
+    "@issue 마커 {0}개가 남아 있어 '{1}'에 계속 보입니다: {2}.",
   'Mark completed': 'completed로 바꾸기',
   'This vault is not a git repository yet, so no review issue will open. Finish the repository setup in {0} first.':
     '이 보관함은 아직 git 저장소가 아니라 검토 이슈가 생성되지 않습니다. 먼저 {0}의 저장소 연결을 마치세요.',
@@ -371,6 +391,11 @@ const obsidianKo: Record<string, string> = {
   '{0} become negative numbers': '{0}은(는) 음수로 바뀜',
   '{0} lose the digits past the 15th': '{0}은(는) 15자리 뒤가 0으로 바뀜',
   '{0} lose their leading zeros': '{0}은(는) 앞자리 0이 사라짐',
+  '{0} become numbers in E notation (2E4 → 20000)': '{0}은(는) 지수 표기 숫자로 바뀜(2E4 → 20000)',
+  '{0}, column(s) {1}: {2}': '{0}의 {1} 열: {2}',
+  'column {0}': '{0}번째',
+  '(+{0} more CSV file(s))': '(CSV {0}개 더)',
+  'In: {0}.': '해당 노트: {0}.',
   'Excel cannot open a file whose path is longer than {0} characters, and {1} is {2} characters long including the vault folder. Shorten the note name or move the vault to a shorter folder path.':
     '엑셀은 경로가 {0}자를 넘는 파일을 열지 못하는데, {1}은(는) 보관함 폴더를 포함해 {2}자입니다. 노트 이름을 줄이거나 보관함을 더 짧은 경로로 옮기세요.',
   'No tables found in the notes of {0}.': '{0}의 노트에서 표를 찾을 수 없습니다.',
@@ -379,6 +404,10 @@ const obsidianKo: Record<string, string> = {
   'Open a note of an experiment first.': '실험의 노트를 먼저 여세요.',
   'These table CSV files no longer match a table in the note. Move them to the trash?\n\n{0}':
     '다음 표 CSV 파일은 이 노트에 더 이상 해당하는 표가 없습니다. 휴지통으로 옮길까요?\n\n{0}',
+  'These table CSV files no longer match a table in their notes. Move them to the trash?\n\n{0}':
+    '다음 표 CSV 파일은 각자 이름의 노트에 더 이상 해당하는 표가 없습니다. 휴지통으로 옮길까요?\n\n{0}',
+  'These table CSV files have no note of their name in the folder: the note was deleted, or renamed while a CSV of its new name was there. Move them to the trash?\n\n{0}':
+    '다음 표 CSV 파일은 폴더에 같은 이름의 노트가 없습니다. 노트를 지웠거나, 새 이름의 CSV가 이미 있을 때 노트 이름을 바꿨기 때문입니다. 휴지통으로 옮길까요?\n\n{0}',
   'The table CSV files of the deleted note(s) are still in the folder. Move them to the trash?\n\n{0}':
     '삭제한 노트의 표 CSV 파일이 폴더에 남아 있습니다. 휴지통으로 옮길까요?\n\n{0}',
   'Move to trash': '휴지통으로 옮기기',
@@ -455,6 +484,8 @@ const obsidianKo: Record<string, string> = {
   'Open a note of an experiment to list its samples.': '시료 목록을 넣으려면 실험 안의 노트를 여세요.',
   'This experiment has no samples yet.': '이 실험에는 아직 시료가 없습니다.',
   'Inserted {0} sample(s).': '시료 {0}개를 표로 넣었습니다.',
+  'The cursor was in the properties or above the title, so the table is at the end of the note.':
+    '커서가 머리말 안이나 제목 위에 있어 표를 노트 끝에 넣었습니다.',
   "{0} sample reference(s) in this experiment's notes are not in the sample registry, so they are not in the table: {1}":
     '이 실험의 노트에 있는 참조 중 {0}개는 시료 대장에 없어 표에 넣지 않았습니다: {1}',
   'Local': '로컬',
@@ -738,6 +769,11 @@ const obsidianKo: Record<string, string> = {
     '"{0}"은(는) 실험 {1}의 복사본입니다. 복사본의 제목을 정하세요. 다음 번호의 실험이 되고, 날짜는 오늘로, 상태는 planned로 바뀌고, 논의 표시는 꺼집니다.',
   'Made the copy the experiment {0}, created today.': '복사본을 실험 {0}(으)로 만들었습니다. 생성일은 오늘입니다.',
   'Its status went from {0} back to planned.': '상태는 {0}에서 planned로 되돌렸습니다.',
+  'Mark the copy as a retry of {0}? The workflow view then shows the two together.':
+    '복사본을 {0}의 재실험으로 표시할까요? 워크플로 뷰에서 두 실험이 함께 보입니다.',
+  'Mark as retry': '재실험으로 표시',
+  'It is marked as a retry of {0}.': '{0}의 재실험으로 표시했습니다.',
+  'It is no longer marked as a retry of {0}.': '{0}의 재실험 표시는 지웠습니다.',
   "Changed the copy's id from {0} to {1}, so the automation does not take it for the original.":
     '복사본의 id를 {0}에서 {1}(으)로 바꿨습니다. 자동화가 원본과 같은 실험으로 보지 않게 하기 위해서입니다.',
   "Removed the copy's id {0}, so the automation does not take it for the original; its folder name serves as its ID.":
@@ -791,6 +827,8 @@ const obsidianKo: Record<string, string> = {
     '복제본의 이슈 마커 {0}개에 새 ID를 붙였습니다(원본의 이슈와 섞이지 않게).',
   '{0} table CSV file(s) kept their old name: the new name was taken or the rename failed.':
     '표 CSV 파일 {0}개는 옛 이름 그대로 두었습니다. 새 이름의 파일이 이미 있거나 이름 변경에 실패했습니다.',
+  'Kept {0} table CSV file(s) under the old name: {1}. A CSV of the new name was already there, holding another note\'s table, or the rename failed. Run "{2}" on this note to rewrite its CSVs and move the leftovers to the trash.':
+    '표 CSV 파일 {0}개는 옛 이름 그대로 두었습니다: {1}. 새 이름의 CSV가 이미 있었거나(다른 노트의 표가 담긴 파일) 이름 변경에 실패했습니다. 이 노트에서 "{2}"를 실행하면 이 노트의 CSV를 다시 쓰고 남은 파일을 휴지통으로 옮길지 묻습니다.',
   'Moved {0} table CSV file(s) to {1} with the note.': '노트와 함께 표 CSV 파일 {0}개를 {1}(으)로 옮겼습니다.',
   '{0} table CSV file(s) stayed in {1}: a file with the same name is already in {2}, or the move failed.':
     '표 CSV 파일 {0}개는 {1}에 남았습니다. {2}에 같은 이름의 파일이 이미 있거나 옮기지 못했습니다.',

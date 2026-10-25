@@ -19,7 +19,12 @@ import {
 } from '@labnoteo/core/lib/exportTablesCsv';
 import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
 import { EXCEL_PATH_MAX } from '@labnoteo/core/lib/regexUtils';
-import { planTableCsvNames, siblingTableCsvs, staleTableCsvs } from '@labnoteo/core/lib/workflowStructure';
+import {
+  orphanTableCsvs,
+  planTableCsvNames,
+  siblingTableCsvs,
+  staleTableCsvs,
+} from '@labnoteo/core/lib/workflowStructure';
 import { confirmModal } from './modals';
 import { listFileNames, trashTableCsvs, windowsPathsOver } from './commands';
 import type LabnotePlugin from './main';
@@ -30,6 +35,9 @@ interface CsvOutput {
   csv: string;
   fresh: string;
   old?: string;
+  /** The table's header row, and the cells Excel would change (#375). */
+  header: string[];
+  risky: ExcelRiskCell[];
 }
 
 /** A note's tables as CSVs, worked out before anything is written. */
@@ -39,7 +47,6 @@ interface NoteCsvPlan {
   /** Tables left out: no blank line above them, or inside a comment. */
   notRendered: number;
   hidden: number;
-  risky: ExcelRiskCell[];
   outputs: CsvOutput[];
   renames: ReadonlyArray<{ from: string; to: string }>;
   /** Overwrite prompt lines: CSVs that would hold another table, and CSVs whose header changed. */
@@ -56,7 +63,6 @@ async function planNoteCsvExport(plugin: LabnotePlugin, file: TFile): Promise<No
     dir,
     notRendered,
     hidden,
-    risky: tables.flatMap(t => excelRiskCells(t.rows)),
     outputs: [],
     renames: [],
     moved: [],
@@ -75,7 +81,7 @@ async function planNoteCsvExport(plugin: LabnotePlugin, file: TFile): Promise<No
       const current = posix.join(dir, renamedFrom.get(name) ?? name);
       const csv = tableToCsv(table.rows, { bom: true });
       const old = (await plugin.fs.exists(current)) ? normalizeCsv(await plugin.fs.read(current)) : undefined;
-      return { path, csv, fresh: normalizeCsv(csv), old };
+      return { path, csv, fresh: normalizeCsv(csv), old, header: table.rows[0] ?? [], risky: excelRiskCells(table.rows) };
     })
   );
   // `a → a` says nothing when two tables share a header: show what differs (#110).
@@ -163,41 +169,83 @@ async function staleCsvsOf(plugin: LabnotePlugin, file: TFile, tableCount: numbe
   return staleTableCsvs(file.name, await plugin.fs.list(posix.dirname(file.path)), tableCount);
 }
 
+/** The lab note CSVs in `dir` whose note is gone (#374). */
+async function orphanCsvsIn(plugin: LabnotePlugin, dir: string): Promise<string[]> {
+  return orphanTableCsvs(await plugin.fs.list(dir));
+}
+
 /**
- * Offer to trash the CSVs in `dir` of tables the notes no longer have (#74).
- * Returns the feedback to append to the export notice, or '' when there were none.
+ * Offer to trash the CSVs in `dir` of tables the notes no longer have (#74),
+ * and those whose note is gone (#374). `notes` says whether more than one
+ * note was exported, for the wording (#370). Returns the feedback to append
+ * to the export notice, or '' when there were none.
  */
-async function offerStaleCsvCleanup(plugin: LabnotePlugin, dir: string, stale: readonly string[]): Promise<string> {
-  if (stale.length === 0) return '';
-  const ok = await confirmModal(
-    plugin.app,
-    plugin.t(
-      'These table CSV files no longer match a table in the note. Move them to the trash?\n\n{0}',
-      listFileNames(plugin, stale)
-    ),
-    plugin.t('Move to trash'),
-    { destructive: true }
-  );
-  if (!ok) return plugin.t('{0} old CSV file(s) kept.', String(stale.length));
-  const kept = await trashTableCsvs(plugin.app, dir, stale);
-  const moved = plugin.t('{0} CSV file(s) moved to the trash.', String(stale.length - kept));
+async function offerStaleCsvCleanup(
+  plugin: LabnotePlugin,
+  dir: string,
+  stale: readonly string[],
+  orphans: readonly string[] = [],
+  notes: 'one' | 'many' = 'one'
+): Promise<string> {
+  const total = stale.length + orphans.length;
+  if (total === 0) return '';
+  const sections = [
+    stale.length > 0
+      ? plugin.t(
+          notes === 'one'
+            ? 'These table CSV files no longer match a table in the note. Move them to the trash?\n\n{0}'
+            : 'These table CSV files no longer match a table in their notes. Move them to the trash?\n\n{0}',
+          listFileNames(plugin, stale)
+        )
+      : '',
+    orphans.length > 0
+      ? plugin.t(
+          'These table CSV files have no note of their name in the folder: the note was deleted, or renamed while a CSV of its new name was there. Move them to the trash?\n\n{0}',
+          listFileNames(plugin, orphans)
+        )
+      : '',
+  ].filter(Boolean);
+  const ok = await confirmModal(plugin.app, sections.join('\n\n'), plugin.t('Move to trash'), { destructive: true });
+  if (!ok) return plugin.t('{0} old CSV file(s) kept.', String(total));
+  const kept = await trashTableCsvs(plugin.app, dir, [...stale, ...orphans]);
+  const moved = plugin.t('{0} CSV file(s) moved to the trash.', String(total - kept));
   return kept > 0 ? `${moved} ${plugin.t('{0} old CSV file(s) kept.', String(kept))}` : moved;
 }
 
-/** Why some tables were left out, or ''. */
-function skippedText(plugin: LabnotePlugin, notRendered: number, hidden: number): string {
+/** The name a note goes by in the notices: `001_WT020_A` for `001_WT020_A.labnote.md`. */
+function noteLabel(file: TFile): string {
+  return file.name.replace(/(?:\.labnote)?\.md$/i, '');
+}
+
+/**
+ * Why some tables were left out, or ''. With `plans` of several notes, each
+ * reason names the notes it applies to (#370).
+ */
+function skippedText(plugin: LabnotePlugin, plans: readonly NoteCsvPlan[]): string {
+  const notRendered = plans.reduce((n, p) => n + p.notRendered, 0);
+  const hidden = plans.reduce((n, p) => n + p.hidden, 0);
+  const where = (count: (p: NoteCsvPlan) => number): string =>
+    plans.length > 1
+      ? ` ${plugin.t(
+          'In: {0}.',
+          plans
+            .filter(p => count(p) > 0)
+            .map(p => `${noteLabel(p.file)} ${count(p)}`)
+            .join(', ')
+        )}`
+      : '';
   return [
     notRendered > 0
       ? plugin.t(
           '{0} table(s) were not exported: with no blank line above, the reading view shows them as text. Add a blank line above a table to export it.',
           String(notRendered)
-        )
+        ) + where(p => p.notRendered)
       : '',
     hidden > 0
       ? plugin.t(
           '{0} table(s) were not exported: they are inside a comment, so the reading view does not show them at all.',
           String(hidden)
-        )
+        ) + where(p => p.hidden)
       : '',
   ]
     .filter(Boolean)
@@ -234,9 +282,14 @@ function renameText(plugin: LabnotePlugin, result: CsvWriteResult): string {
 
 export async function exportTablesToCsv(plugin: LabnotePlugin, file: TFile): Promise<void> {
   const plan = await planNoteCsvExport(plugin, file);
-  const skipped = skippedText(plugin, plan.notRendered, plan.hidden);
+  const skipped = skippedText(plugin, [plan]);
   if (plan.outputs.length === 0) {
-    const cleanup = await offerStaleCsvCleanup(plugin, plan.dir, await staleCsvsOf(plugin, file, 0));
+    const cleanup = await offerStaleCsvCleanup(
+      plugin,
+      plan.dir,
+      await staleCsvsOf(plugin, file, 0),
+      await orphanCsvsIn(plugin, plan.dir)
+    );
     new Notice([plugin.t('No tables found in this note.'), skipped, cleanup].filter(Boolean).join(' '));
     return;
   }
@@ -245,7 +298,12 @@ export async function exportTablesToCsv(plugin: LabnotePlugin, file: TFile): Pro
     return;
   }
   const result = await writeNoteCsvExport(plugin, plan);
-  const cleanup = await offerStaleCsvCleanup(plugin, plan.dir, await staleCsvsOf(plugin, file, plan.outputs.length));
+  const cleanup = await offerStaleCsvCleanup(
+    plugin,
+    plan.dir,
+    await staleCsvsOf(plugin, file, plan.outputs.length),
+    await orphanCsvsIn(plugin, plan.dir)
+  );
   const paths = plan.outputs.map(o => o.path);
   new Notice(
     [
@@ -253,7 +311,7 @@ export async function exportTablesToCsv(plugin: LabnotePlugin, file: TFile): Pro
       renameText(plugin, result),
       savedIn(plugin, plan.dir, paths),
       skipped,
-      excelHint(plugin, plan.risky),
+      excelHint(plugin, plan.outputs),
       excelPathHint(plugin, paths),
       cleanup,
       explorerHint(plugin),
@@ -265,11 +323,12 @@ export async function exportTablesToCsv(plugin: LabnotePlugin, file: TFile): Pro
 
 /**
  * Export the tables of every note in an experiment folder (#347): the README
- * first, then the workflow notes by name. The overwrite and cleanup prompts
- * are asked once for all of them.
+ * first, then the other notes by name — workflow notes and plain `.md` notes
+ * alike, as exporting one of them does (#369). The overwrite and cleanup
+ * prompts are asked once for all of them.
  */
 export async function exportExperimentTablesToCsv(plugin: LabnotePlugin, dir: string): Promise<void> {
-  const names = (await plugin.fs.list(dir)).filter(n => n.endsWith('.labnote.md'));
+  const names = (await plugin.fs.list(dir)).filter(n => /\.md$/i.test(n));
   const ordered = [
     ...names.filter(n => n === 'README.labnote.md'),
     ...names.filter(n => n !== 'README.labnote.md').sort((a, b) => a.localeCompare(b)),
@@ -279,16 +338,14 @@ export async function exportExperimentTablesToCsv(plugin: LabnotePlugin, dir: st
     const file = plugin.app.vault.getFileByPath(posix.join(dir, name));
     if (file instanceof TFile) plans.push(await planNoteCsvExport(plugin, file));
   }
-  const skipped = skippedText(
-    plugin,
-    plans.reduce((n, p) => n + p.notRendered, 0),
-    plans.reduce((n, p) => n + p.hidden, 0)
-  );
+  const skipped = skippedText(plugin, plans);
   const staleOf = async () =>
     (await Promise.all(plans.map(p => staleCsvsOf(plugin, p.file, p.outputs.length)))).flat();
+  const cleanupAll = async () =>
+    offerStaleCsvCleanup(plugin, dir, await staleOf(), await orphanCsvsIn(plugin, dir), 'many');
   const withTables = plans.filter(p => p.outputs.length > 0);
   if (withTables.length === 0) {
-    const cleanup = await offerStaleCsvCleanup(plugin, dir, await staleOf());
+    const cleanup = await cleanupAll();
     new Notice(
       [plugin.t('No tables found in the notes of {0}.', posix.basename(dir)), skipped, cleanup].filter(Boolean).join(' ')
     );
@@ -305,9 +362,9 @@ export async function exportExperimentTablesToCsv(plugin: LabnotePlugin, dir: st
     result.renamed.push(...r.renamed);
     result.notRenamed += r.notRenamed;
   }
-  const cleanup = await offerStaleCsvCleanup(plugin, dir, await staleOf());
+  const cleanup = await cleanupAll();
   const paths = withTables.flatMap(p => p.outputs.map(o => o.path));
-  const perNote = withTables.map(p => `${p.file.name.replace(/\.labnote\.md$/, '')} ${p.outputs.length}`);
+  const perNote = withTables.map(p => `${noteLabel(p.file)} ${p.outputs.length}`);
   const withoutTables = plans.length - withTables.length;
   new Notice(
     [
@@ -317,7 +374,7 @@ export async function exportExperimentTablesToCsv(plugin: LabnotePlugin, dir: st
       renameText(plugin, result),
       savedIn(plugin, dir, paths),
       skipped,
-      excelHint(plugin, withTables.flatMap(p => p.risky)),
+      excelHint(plugin, withTables.flatMap(p => p.outputs)),
       excelPathHint(plugin, paths),
       cleanup,
       explorerHint(plugin),
@@ -338,27 +395,41 @@ function excelRiskText(plugin: LabnotePlugin, kind: ExcelRiskKind, examples: str
       return plugin.t('{0} lose the digits past the 15th', examples);
     case 'leadingZero':
       return plugin.t('{0} lose their leading zeros', examples);
+    case 'eNotation':
+      return plugin.t('{0} become numbers in E notation (2E4 → 20000)', examples);
   }
 }
 
+/** CSVs the Excel warning names before counting the rest. */
+const EXCEL_HINT_FILES = 5;
+
 /**
  * How to open the CSV in Excel without it rewriting cells like `3-1`, `2:1`,
- * `007`, `(1)` or a 16-digit barcode (#256, #272, #343, #345, #346), with up
- * to two examples of each kind. The file keeps the text as typed; Excel is
- * what changes it.
+ * `007`, `(1)`, `2E4` or a 16-digit barcode (#256, #272, #343, #345, #346,
+ * #376). Each CSV is named with the columns to set to Text, and each kind of
+ * change with up to three examples and a count of the rest (#375). The file
+ * keeps the text as typed; Excel is what changes it.
  */
-function excelHint(plugin: LabnotePlugin, risky: readonly ExcelRiskCell[]): string {
-  const byKind = new Map<ExcelRiskKind, string[]>();
-  for (const { text, kind } of risky) {
-    const examples = byKind.get(kind) ?? [];
-    if (examples.length < 2 && !examples.includes(text)) examples.push(text);
-    byKind.set(kind, examples);
-  }
-  if (byKind.size === 0) return '';
-  const changes = [...byKind].map(([kind, examples]) => excelRiskText(plugin, kind, examples.join(', '))).join('; ');
+function excelHint(plugin: LabnotePlugin, outputs: readonly CsvOutput[]): string {
+  const parts = outputs
+    .filter(o => o.risky.length > 0)
+    .map(o => {
+      const byKind = new Map<ExcelRiskKind, string[]>();
+      for (const { text, kind } of o.risky) byKind.set(kind, [...(byKind.get(kind) ?? []), text]);
+      const changes = [...byKind]
+        .map(([kind, texts]) => excelRiskText(plugin, kind, listInline(plugin, texts, 3)))
+        .join('; ');
+      const columns = [...new Set(o.risky.flatMap(c => c.columns))]
+        .sort((a, b) => a - b)
+        .map(c => o.header[c]?.trim() || plugin.t('column {0}', String(c + 1)));
+      return plugin.t('{0}, column(s) {1}: {2}', posix.basename(o.path), columns.join(', '), changes);
+    });
+  if (parts.length === 0) return '';
+  const more = parts.length - EXCEL_HINT_FILES;
+  const listed = parts.slice(0, EXCEL_HINT_FILES).join(' / ');
   return plugin.t(
     'Excel would change cells when it opens the CSV: {0}. Open the CSV with Data → From Text/CSV and set those columns to Text.',
-    changes
+    more > 0 ? `${listed} ${plugin.t('(+{0} more CSV file(s))', String(more))}` : listed
   );
 }
 

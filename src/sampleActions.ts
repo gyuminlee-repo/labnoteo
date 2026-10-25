@@ -8,7 +8,7 @@
  * the modals, persists JSON via the vault fs, and surfaces notices.
  */
 import { App, MarkdownView, Notice, type Editor } from 'obsidian';
-import { planReferenceInsert, type EditTarget, type PickItem } from '@labnoteo/core';
+import { isOffsetBeforeBody, planReferenceInsert, type EditTarget, type PickItem } from '@labnoteo/core';
 import {
   generateSampleId,
   normalizeSampleId,
@@ -214,7 +214,11 @@ export async function insertExperimentSamplesTable(app: App, plugin: LabnotePlug
 
   const table = buildMarkdownTable(sampleListHeaders(plugin)[0], rows, new Set([0]));
   const text = await target.getText();
-  const at = target.getCursorOffset ? await target.getCursorOffset() : text.length;
+  const cursor = target.getCursorOffset ? await target.getCursorOffset() : text.length;
+  // In the front matter or above the title the table would break the
+  // properties, so it goes at the end like a sample reference does (#360).
+  const atEnd = cursor !== text.length && isOffsetBeforeBody(text, cursor);
+  const at = atEnd ? text.length : cursor;
   const before = at === 0 || text[at - 1] === '\n' ? (at > 1 && text[at - 2] !== '\n' ? '\n' : '') : '\n\n';
   const after = at >= text.length || text[at] === '\n' ? '\n' : '\n\n';
   await target.replaceRange(at, at, `${before}${table}${after}`);
@@ -222,7 +226,8 @@ export async function insertExperimentSamplesTable(app: App, plugin: LabnotePlug
   // not land inside this table (#196).
   await target.revealOffset?.(at + before.length + table.length + after.length);
   plugin.markUserEdit(target.path);
-  new Notice(`${plugin.t('Inserted {0} sample(s).', String(rows.length))}${leftOut}`);
+  const where = atEnd ? ` ${plugin.t('The cursor was in the properties or above the title, so the table is at the end of the note.')}` : '';
+  new Notice(`${plugin.t('Inserted {0} sample(s).', String(rows.length))}${where}${leftOut}`);
   return true;
 }
 

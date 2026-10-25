@@ -79,7 +79,8 @@ function growShares(section: WorksheetSection): number {
 }
 
 function sectionHtml(section: WorksheetSection): string {
-  const title = `<h3>${escapeHtml(section.title)}</h3>`;
+  // The text written above the first `####` has no heading of its own (#383).
+  const title = section.title ? `<h3>${escapeHtml(section.title)}</h3>` : '';
   const grow = growShares(section);
   const growClass = grow > 0 ? ` g${grow}` : '';
   const fill = grow > 0 ? '<div class="fill"></div>' : '';

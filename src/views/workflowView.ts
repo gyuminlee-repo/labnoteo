@@ -39,10 +39,19 @@ import {
   catalogDescription,
   statusNames,
 } from '../commands';
-import { noteMarkerIds } from '../issueMarkerIndex';
+import { experimentMarkerSpots, noteMarkerIds } from '../issueMarkerIndex';
 import { focusTree, renderTree } from './treeRender';
 
 const README = 'README.labnote.md';
+
+/** A front-matter value as text: a list (`author: [이서연, 김민준]`) joined, blank as undefined. */
+function frontMatterText(value: unknown): string | undefined {
+  const parts = (Array.isArray(value) ? value : [value])
+    .filter((v): v is string | number => typeof v === 'string' || typeof v === 'number')
+    .map(v => String(v).trim())
+    .filter(Boolean);
+  return parts.length > 0 ? parts.join(', ') : undefined;
+}
 
 export const WORKFLOW_VIEW_TYPE = 'labnote-workflow-view';
 
@@ -56,6 +65,12 @@ export class WorkflowTreeView extends ItemView {
   private renderTimer: number | undefined;
   /** Experiment search; its box sits outside {@link treeEl} so a redraw keeps focus and text (#204). */
   private query = '';
+  /**
+   * Experiments changed from this view since the search last changed: they
+   * stay listed though they no longer match, so the change can be undone
+   * by right-clicking them again (#356).
+   */
+  private readonly kept = new Set<string>();
   private searchTimer: number | undefined;
   /** README checklist progress by path, valid while the file's mtime is unchanged. */
   private readonly progress = new Map<string, { mtime: number; items: { done: boolean; fileName: string }[] }>();
@@ -144,6 +159,7 @@ export class WorkflowTreeView extends ItemView {
     search.value = this.query;
     this.registerDomEvent(search, 'input', () => {
       this.query = search.value;
+      this.kept.clear();
       if (this.searchTimer !== undefined) window.clearTimeout(this.searchTimer);
       this.searchTimer = window.setTimeout(() => {
         this.searchTimer = undefined;
@@ -156,11 +172,14 @@ export class WorkflowTreeView extends ItemView {
     });
     groupBy.createEl('option', { value: 'status', text: this.plugin.t('By status') });
     groupBy.createEl('option', { value: 'project', text: this.plugin.t('By project') });
+    groupBy.createEl('option', { value: 'author', text: this.plugin.t('By author') });
     groupBy.createEl('option', { value: 'discuss', text: this.plugin.t('By discussion') });
     groupBy.value = this.plugin.settings.workflowViewGroupBy;
     this.registerDomEvent(groupBy, 'change', () => {
       this.plugin.settings.workflowViewGroupBy =
-        groupBy.value === 'project' || groupBy.value === 'discuss' ? groupBy.value : 'status';
+        groupBy.value === 'project' || groupBy.value === 'author' || groupBy.value === 'discuss'
+          ? groupBy.value
+          : 'status';
       void this.plugin.saveSettings();
       this.render();
     });
@@ -197,6 +216,7 @@ export class WorkflowTreeView extends ItemView {
           progress: this.checklistProgress(f),
           project:
             typeof fm?.project === 'string' || typeof fm?.project === 'number' ? String(fm.project) : undefined,
+          author: frontMatterText(fm?.author),
           markers: this.markerCount(folder),
           retryOf: this.retryOf(f, fm?.retry_of),
         };
@@ -314,13 +334,10 @@ export class WorkflowTreeView extends ItemView {
   private render(): void {
     const discuss = this.plugin.t('Flagged for discussion');
     const discussGroup = this.plugin.t('Something to discuss');
+    const all = this.experiments();
+    const found = filterExperiments(all, this.query, `${discuss} ${discussGroup}`, statusNames(this.plugin.host));
     const experiments = buildExperimentTree(
-      filterExperiments(
-        this.experiments(),
-        this.query,
-        `${discuss} ${discussGroup}`,
-        statusNames(this.plugin.host)
-      ),
+      found.length === all.length ? found : all.filter(e => found.includes(e) || this.kept.has(e.folder)),
       {
         root: this.plugin.t('Experiments'),
         noStatus: this.plugin.t('(none)'),
@@ -337,6 +354,8 @@ export class WorkflowTreeView extends ItemView {
         lastUpdated: this.plugin.t('Last updated'),
         project: this.plugin.t('Project'),
         noProject: this.plugin.t('(no project)'),
+        author: this.plugin.t('Author'),
+        noAuthor: this.plugin.t('(no author)'),
       },
       this.plugin.settings.workflowViewGroupBy
     );
@@ -368,6 +387,21 @@ export class WorkflowTreeView extends ItemView {
     void this.plugin.host.openFile(readmePath);
   }
 
+  /** Pick one of the experiment's `@issue` markers and open its note at that line (#379). */
+  private async showMarkers(folder: string): Promise<void> {
+    const { host } = this.plugin;
+    const spots = await experimentMarkerSpots(host.fs, folder);
+    if (spots.length === 0) {
+      host.notify('info', this.plugin.t('This experiment has no @issue markers.'));
+      return;
+    }
+    const spot = await host.pick(
+      spots.map(s => ({ label: s.title, description: `${posix.basename(s.path)}:${s.line}`, value: s })),
+      { title: this.plugin.t('@issue markers of {0} ({1})', posix.basename(folder), String(spots.length)) }
+    );
+    if (spot) await host.openFile(spot.path, { line: spot.line - 1 });
+  }
+
   private onContext(node: TreeNode, evt: MouseEvent): void {
     if (node.kind === 'experiment') {
       const { folder, status } = node.payload as { folder: string; status?: string };
@@ -378,6 +412,7 @@ export class WorkflowTreeView extends ItemView {
           .setIcon('list-checks')
           .onClick(() => {
             const { app, host, stampLastUpdated } = this.plugin;
+            this.kept.add(folder);
             void changeExperimentStatusCommand(app, host, stampLastUpdated, folder);
           })
       );
@@ -387,9 +422,18 @@ export class WorkflowTreeView extends ItemView {
           .setIcon('message-circle')
           .onClick(() => {
             const { app, host, stampLastUpdated } = this.plugin;
+            this.kept.add(folder);
             void toggleDiscussionFlagCommand(app, host, stampLastUpdated, folder);
           })
       );
+      if (this.markerCount(folder) > 0) {
+        menu.addItem(item =>
+          item
+            .setTitle(this.plugin.t('Show @issue markers'))
+            .setIcon('message-square-quote')
+            .onClick(() => void this.showMarkers(folder))
+        );
+      }
       if (status === 'failed' || status === 'needs-repeat') {
         menu.addItem(item =>
           item

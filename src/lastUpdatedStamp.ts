@@ -54,16 +54,20 @@ export async function stampNote(
   await processNoteThroughVault(app, host, path, stamp);
 }
 
-/** Stamp a note and, for a workflow note, its experiment README. */
+/**
+ * Stamp a note and, for a workflow note, its experiment README unless
+ * `keepReadme` says its date was set by hand.
+ */
 export async function stampNoteAndReadme(
   app: App,
   host: LabnoteHost,
   path: string,
-  stamp: StampNote
+  stamp: StampNote,
+  keepReadme: (readme: string) => boolean = () => false
 ): Promise<void> {
   await stampNote(app, host, path, stamp);
   const readme = experimentReadmeOf(path);
-  if (readme) await stampNote(app, host, readme, stamp);
+  if (readme && !keepReadme(readme)) await stampNote(app, host, readme, stamp);
 }
 
 /**

@@ -305,12 +305,12 @@ describe('extractMarkdownTables', () => {
       ['3-1', '0', '0.5', '-80'],
     ];
     expect(excelRiskCells(rows)).toEqual([
-      { text: '3-1', kind: 'dateTime' },
-      { text: '1/2', kind: 'dateTime' },
-      { text: '007', kind: 'leadingZero' },
-      { text: 'SEPT9', kind: 'dateTime' },
-      { text: 'MARCH1', kind: 'dateTime' },
-      { text: '0031', kind: 'leadingZero' },
+      { text: '3-1', kind: 'dateTime', columns: [0] },
+      { text: '1/2', kind: 'dateTime', columns: [1] },
+      { text: '007', kind: 'leadingZero', columns: [2] },
+      { text: 'SEPT9', kind: 'dateTime', columns: [0] },
+      { text: 'MARCH1', kind: 'dateTime', columns: [1] },
+      { text: '0031', kind: 'leadingZero', columns: [2] },
     ]);
     expect(excelRiskCells([['3-1'], ['정상']])).toEqual([]);
   });
@@ -329,7 +329,7 @@ describe('extractMarkdownTables', () => {
       ['E', '1:80', '1:60', '1:200'],
     ];
     expect(texts(rows)).toEqual(['2:1', '10:30', '14:05:30', '1:10', '9:5', '100:1', '2:75', '1:80', '1:60', '1:200']);
-    expect(excelRiskCells([['비율'], ['1:80']])).toEqual([{ text: '1:80', kind: 'dateTime' }]);
+    expect(excelRiskCells([['비율'], ['1:80']])).toEqual([{ text: '1:80', kind: 'dateTime', columns: [0] }]);
   });
 
   // #345: Excel keeps 15 significant digits, so longer barcodes all become the same number.
@@ -342,8 +342,8 @@ describe('extractMarkdownTables', () => {
       ['D', '8801234567890'],
     ];
     expect(excelRiskCells(rows)).toEqual([
-      { text: '880123456789012345', kind: 'precision' },
-      { text: '2026102500000101', kind: 'precision' },
+      { text: '880123456789012345', kind: 'precision', columns: [1] },
+      { text: '2026102500000101', kind: 'precision', columns: [1] },
     ]);
   });
 
@@ -357,11 +357,46 @@ describe('extractMarkdownTables', () => {
       ['L4', '(-1)', '(1'],
     ];
     expect(excelRiskCells(rows)).toEqual([
-      { text: '(1)', kind: 'negative' },
-      { text: '(0.03)', kind: 'negative' },
-      { text: '(.5)', kind: 'negative' },
-      { text: '(1,234)', kind: 'negative' },
-      { text: '(5%)', kind: 'negative' },
+      { text: '(1)', kind: 'negative', columns: [1] },
+      { text: '(0.03)', kind: 'negative', columns: [2] },
+      { text: '(.5)', kind: 'negative', columns: [1] },
+      { text: '(1,234)', kind: 'negative', columns: [2] },
+      { text: '(5%)', kind: 'negative', columns: [1] },
+    ]);
+  });
+
+  // #377: Excel leaves `12/48` alone, since 48 is no day or month.
+  it('takes a pair for a date only when it can be a month and a day', () => {
+    const rows = [
+      ['집락', '통과 비율', '희석'],
+      ['A', '12/48', '1/2'],
+      ['B', '3/48', '13/1'],
+      ['C', '7/40', '0/5'],
+      ['D', '31-12', '32/1'],
+    ];
+    expect(texts(rows)).toEqual(['1/2', '13/1', '31-12']);
+  });
+
+  // #376: Excel opens `2E4` as 20000.
+  it('finds plate-well names and dilutions Excel reads in E notation', () => {
+    const rows = [
+      ['시료', '판-웰', '희석'],
+      ['A', '2E4', '1E-3'],
+      ['B', '3e10', '1.2E3'],
+      ['C', 'E4', '2E'],
+    ];
+    expect(excelRiskCells(rows)).toEqual([
+      { text: '2E4', kind: 'eNotation', columns: [1] },
+      { text: '1E-3', kind: 'eNotation', columns: [2] },
+      { text: '3e10', kind: 'eNotation', columns: [1] },
+      { text: '1.2E3', kind: 'eNotation', columns: [2] },
+    ]);
+  });
+
+  // #375: each column a value is in, so the notice can name them.
+  it('lists every column a value is in', () => {
+    expect(excelRiskCells([['a', 'b'], ['1/2', 'x'], ['y', '1/2']])).toEqual([
+      { text: '1/2', kind: 'dateTime', columns: [0, 1] },
     ]);
   });
 

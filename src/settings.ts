@@ -292,6 +292,7 @@ export function migrateSettings(raw: unknown): LabnoteSettings {
   if (
     data.workflowViewGroupBy === 'status' ||
     data.workflowViewGroupBy === 'project' ||
+    data.workflowViewGroupBy === 'author' ||
     data.workflowViewGroupBy === 'discuss'
   ) {
     out.workflowViewGroupBy = data.workflowViewGroupBy;

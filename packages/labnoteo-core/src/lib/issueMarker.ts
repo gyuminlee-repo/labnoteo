@@ -155,7 +155,27 @@ function closingBackticks(line: string, from: number, n: number): number {
  * reads them, and in an inline code span.
  */
 export function commentRanges(md: string): IssueMarkerRange[] {
+  return scanCommentsAndSpans(md).comments;
+}
+
+/**
+ * Character ranges of the inline code spans in `md` outside code blocks and
+ * comments, backticks included. The reading view shows them as code, so a
+ * marker starting in one is an example, not a marker (#378).
+ */
+export function codeSpanRanges(md: string): IssueMarkerRange[] {
+  return scanCommentsAndSpans(md).spans;
+}
+
+/** What switches a marker off: a comment or an inline code span. */
+export function markerHiddenRanges(md: string): IssueMarkerRange[] {
+  const { comments, spans } = scanCommentsAndSpans(md);
+  return [...comments, ...spans];
+}
+
+function scanCommentsAndSpans(md: string): { comments: IssueMarkerRange[]; spans: IssueMarkerRange[] } {
   const ranges: IssueMarkerRange[] = [];
+  const spans: IssueMarkerRange[] = [];
   const raws = md.split('\n');
   const code = codeLines(raws.map(raw => raw.replace(/\r$/, '')));
   let open: { close: string; start: number } | undefined;
@@ -174,6 +194,7 @@ export function commentRanges(md: string): IssueMarkerRange[] {
         let n = 1;
         while (line[i + n] === '`') n++;
         const close = closingBackticks(line, i + n, n);
+        if (close >= 0) spans.push({ start: offset + i, end: offset + close + n });
         i = close < 0 ? i + n : close + n;
       } else if (line.startsWith(HTML_COMMENT_OPEN, i)) {
         open = { close: HTML_COMMENT_CLOSE, start: offset + i };
@@ -188,7 +209,7 @@ export function commentRanges(md: string): IssueMarkerRange[] {
     offset += line.length + 1;
   }
   if (open) ranges.push({ start: open.start, end: md.length });
-  return ranges;
+  return { comments: ranges, spans };
 }
 
 const inRanges = (ranges: readonly IssueMarkerRange[], at: number): boolean =>
@@ -213,7 +234,8 @@ function markerStart(line: string, hidden?: (at: number) => boolean): number {
  * Code blocks, fenced or indented, are skipped: a note that documents the
  * marker syntax by example must not open issues for its own examples (#224).
  * So are markers in a comment (see {@link commentRanges}), which the reading
- * view hides (#266).
+ * view hides (#266), and markers starting in an inline code span, which it
+ * shows as code (#378).
  *
  * Expects LF-normalised text, like the other parsers here.
  */
@@ -223,7 +245,7 @@ export function parseIssueMarkers(md: string): IssueMarkerScan {
 
   const lines = md.split('\n');
   const code = codeLines(lines);
-  const comments = commentRanges(md);
+  const comments = markerHiddenRanges(md);
   let offset = 0;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -422,7 +444,7 @@ export function reassignIssueMarkerIds(
   let count = 0;
   const raws = md.split('\n');
   const code = codeLines(raws.map(raw => raw.replace(/\r$/, '')));
-  const comments = commentRanges(md);
+  const comments = markerHiddenRanges(md);
   let offset = 0;
   const lines = raws.map((raw, i) => {
     const lineStart = offset;
@@ -450,7 +472,7 @@ export function reassignIssueMarkerIds(
 export function stripIssueMarkers(md: string): string {
   const raws = md.split('\n');
   const code = codeLines(raws.map(raw => raw.replace(/\r$/, '')));
-  const comments = commentRanges(md);
+  const comments = markerHiddenRanges(md);
   let offset = 0;
   return raws
     .map((raw, i) => {
@@ -498,6 +520,21 @@ export type IssueMarkerInsertion =
 
 const isHeadingLine = (line: string): boolean => /^ {0,3}#{1,6}(?:\s|$)/.test(line);
 const isTableRow = (line: string): boolean => /^\s*\|/.test(line);
+
+/**
+ * Whether `line` holds a sample reference the marker would damage (#373): an
+ * `ID;alias` (or `ID|alias`) anywhere, whose alias runs to the next `;` and
+ * so would take in a marker appended to the line, or a sentence that is an
+ * ID alone, which the prefilled topic would replace. Any type's IDs count,
+ * since the types in use are not known here.
+ */
+export function lineHasSampleReference(line: string): boolean {
+  const sentence = issueSentenceRange(line, 0)?.text ?? '';
+  return (
+    /(?:^|[^\w-])[A-Za-z][A-Za-z0-9_]*-\d+(?:-\d+)*[;|]/.test(line) ||
+    /^(?:@[A-Za-z][\w-]*[;:])?[A-Za-z][A-Za-z0-9_]*-\d+(?:-\d+)*$/.test(sentence)
+  );
+}
 
 /**
  * Plan inserting a marker for the selection `[from, to)` of `doc` (`from ===
@@ -578,6 +615,12 @@ export function planIssueMarkerInsertion(
   let edit: { from: number; to: number; insert: string };
   if (isHeadingLine(line)) {
     edit = { from: lineEnd, to: lineEnd, insert: '\n' + marker };
+  } else if (lineHasSampleReference(line)) {
+    // Under the line, indented to continue its list item rather than start
+    // a new one, which the section's sample list would read.
+    const prefix = line.slice(0, (issueSentenceRange(line, 0)?.from ?? 0));
+    const indent = prefix.replace(/[-*+]|\d+[.)]|\[[^\]\n]\]/g, m => ' '.repeat(m.length));
+    edit = { from: lineEnd, to: lineEnd, insert: '\n' + indent + marker };
   } else if (appendAtEnd) {
     edit = { from: lineEnd, to: lineEnd, insert: pad(lineEnd, lineStart) + marker };
   } else {
@@ -598,9 +641,10 @@ export function planIssueMarkerInsertion(
   const resultStart = after.lastIndexOf('\n', markerAt - 1) + 1;
   const resultEnd = after.indexOf('\n', markerAt);
   const resultLine = after.slice(resultStart, resultEnd === -1 ? after.length : resultEnd);
+  const hidden = markerHiddenRanges(after);
   let live = 0;
   for (const m of resultLine.matchAll(new RegExp(MARKER_START_RE.source, 'gi'))) {
-    if (!inRanges(comments, resultStart + m.index!)) live++;
+    if (!inRanges(hidden, resultStart + m.index!)) live++;
   }
   if (live > 1) return { reason: 'conflict' };
   return { edit, cursor: edit.from + edit.insert.length };

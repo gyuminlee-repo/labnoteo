@@ -92,15 +92,18 @@ export function findMetaDateFieldInLine(line: string): MetaDateFieldMatch | null
 /**
  * Convert a stored `YYYY-MM-DD HH:mm` (or bare `YYYY-MM-DD`) value into the
  * `YYYY-MM-DDTHH:mm` form an `<input type="datetime-local">` expects. The
- * dotted `YYYY.MM.DD HH:mm` people type by hand reads too (#309). Returns an
- * empty string when the value is missing or not a recognised date.
+ * dotted `YYYY.MM.DD HH:mm` and slashed `YYYY/MM/DD HH:mm` people type by
+ * hand read too, with one-digit parts (#309, #364). Returns an empty string
+ * when the value is missing or not a recognised date.
  */
 export function toDateTimeLocalValue(value: string): string {
-  const m =
-    /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}:\d{2}))?/.exec(value.trim()) ??
-    /^(\d{4})\.(\d{2})\.(\d{2})\.?(?:\s+(\d{2}:\d{2}))?/.exec(value.trim());
+  const m = /^(\d{4})([-./])(\d{1,2})\2(\d{1,2})\.?(?:(?:[ \t]+|T)(\d{1,2}):(\d{2}))?(?!\d)/.exec(value.trim());
   if (!m) return '';
-  return `${m[1]}-${m[2]}-${m[3]}T${m[4] ?? '00:00'}`;
+  const [, year, , month, day, hour, minute] = m;
+  if (Number(month) < 1 || Number(month) > 12 || Number(day) < 1 || Number(day) > 31) return '';
+  if (hour !== undefined && (Number(hour) > 23 || Number(minute) > 59)) return '';
+  const pad = (s: string): string => s.padStart(2, '0');
+  return `${year}-${pad(month)}-${pad(day)}T${hour === undefined ? '00:00' : `${pad(hour)}:${minute}`}`;
 }
 
 /**

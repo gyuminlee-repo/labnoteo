@@ -20,6 +20,13 @@ describe('retryTitle', () => {
     expect(retryTitle({ t: ko }, 'GFP 발현')).toBe('GFP 발현 2차');
     expect(retryTitle({ t }, 'GFP')).toBe('GFP (retry)');
   });
+
+  it('skips runs that already have a folder (#366)', () => {
+    const taken = ['061_오가노이드_1차', '062_오가노이드_2차', '063_오가노이드_3차', '070_GFP_발현_2차', '071_GFP_retry'];
+    expect(retryTitle({ t: ko }, '오가노이드 1차', taken)).toBe('오가노이드 4차');
+    expect(retryTitle({ t: ko }, 'GFP 발현', taken)).toBe('GFP 발현 3차');
+    expect(retryTitle({ t }, 'GFP', taken)).toBe('GFP (retry) 2');
+  });
 });
 
 describe('retryExperimentCommand', () => {

@@ -156,7 +156,13 @@ describe('the status-change notice', () => {
   });
 
   it('changes the experiment it is handed, whatever note is active (#128)', async () => {
-    expect(await shownFrom('labnote/002_Other/README.labnote.md', DIR)).toContain("Changed 001_Test's README");
+    expect(await shownFrom('labnote/002_Other/README.labnote.md', DIR)).toContain('(001_Test): planned → discontinued');
+  });
+
+  // #356: picked in the view, so the open note was never "this note".
+  it('does not call the open note "this note" when handed another experiment', async () => {
+    expect(await shownFrom('labnote/002_Other/README.labnote.md', DIR)).not.toContain('not this note');
+    expect(await shownFrom(WORKFLOW, DIR)).toContain("Changed 001_Test's README, not this note.");
   });
 
   // #141: the palette command would change the open experiment, not this one.
@@ -239,9 +245,27 @@ describe('changing the status to completed', () => {
       false
     );
     expect(asked).toEqual([
-      '1 workflow(s) in the checklist are not checked and 1 workflow note(s) have no end_date. Mark the experiment completed anyway?',
+      '1 workflow(s) in the checklist are not checked. 1 workflow note(s) have no end_date in their properties: 001_WD010_A.labnote.md. Mark the experiment completed anyway?',
     ]);
     expect(out).toContain('status: planned');
+  });
+
+  // #380: completed with the discussion flag on can turn the flag off too.
+  it('clears the discussion flag when that is picked', async () => {
+    const fs = new MemFileSystem({ [README]: note('\ndiscuss: true') });
+    const picks = ['completed', 'clear'];
+    const shown: string[] = [];
+    const host = {
+      fs,
+      t: (s: string, ...args: string[]) => args.reduce((acc, a, i) => acc.replace(`{${i}}`, a), s),
+      notify: (_k: string, m: string) => shown.push(m),
+      pick: async () => picks.shift(),
+    } as unknown as LabnoteHost;
+    await changeExperimentStatusCommand(makeApp(), host);
+    const out = await fs.read(README);
+    expect(out).toContain('status: completed');
+    expect(out).not.toContain('discuss');
+    expect(shown[0]).toContain('Discussion flag cleared.');
   });
 
   it('goes ahead without asking when everything is done', async () => {
@@ -275,6 +299,25 @@ describe('changing the status to completed', () => {
     expect(out).toContain('discuss: true');
     expect(out).toContain(`last_updated_date: ${TODAY}`);
     expect(shown.at(-1)).toContain("Changed 001_Test's README");
+  });
+
+  // #379: markers keep the experiment under "Something to discuss".
+  it('names the markers left when the flag is turned off', async () => {
+    const fs = new MemFileSystem({
+      [README]: note('\ndiscuss: true'),
+      [`${DIR}/001_WB090_A.labnote.md`]: '---\ntitle: A\n---\n\n## Method\n- 37도 @issue;ISS-a;온도 확인\n',
+    });
+    const shown: string[] = [];
+    const host = {
+      fs,
+      t: (s: string, ...args: string[]) => args.reduce((acc, a, i) => acc.replace(`{${i}}`, a), s),
+      notify: (_kind: string, message: string) => shown.push(message),
+    } as unknown as LabnoteHost;
+    await toggleDiscussionFlagCommand(makeApp(), host, stamp, DIR);
+    expect(await fs.read(README)).not.toContain('discuss');
+    expect(shown.at(-1)).toContain(
+      '1 @issue marker(s) remain, so the experiment stays under "Something to discuss": 001_WB090_A.labnote.md:6.'
+    );
   });
 });
 

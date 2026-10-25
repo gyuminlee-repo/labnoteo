@@ -35,6 +35,7 @@ import {
   parseWorkflowFileName,
   parseWorkflowHeading,
   planWorkflowChecklistSync,
+  workflowNumberClashes,
   planWorkflowRetitle,
   relinkCopiedExperimentChecklist,
   resetCopiedWorkflowDates,
@@ -100,8 +101,11 @@ import {
   isSampleTrackingOn,
   nextExperimentId,
   resetCopiedExperimentReadme,
+  retryOfLink,
+  retryOfLinkpath,
   sanitizeTitle,
   setExperimentReadmeId,
+  setRetryOf,
   suggestExperimentFolderName,
 } from '@labnoteo/core/lib/labnoteStructure';
 import { SampleEditorSuggest } from './sampleSuggest';
@@ -249,6 +253,8 @@ export default class LabnotePlugin extends Plugin {
         pick: this.t('Pick date and time'),
         endBeforeStart: (end, start) => this.t('End_date {0} is earlier than Start_date {1}.', end, start),
         implausibleYear: this.t('Only years 1900–2100 are written; the date in the note was kept.'),
+        unreadable: value =>
+          this.t('"{0}" is not a date the picker can read, so it starts at another time. Pick a date to replace it.', value),
       })
     );
     this.registerViews();
@@ -898,6 +904,7 @@ export default class LabnotePlugin extends Plugin {
               this.run(() => this.moveTableCsvsAfterRename(dir, from, to));
               if (unlinkableNameChars(to).length > 0) this.run(() => this.offerLinkableNameFix(file, dir, from, to));
               else this.run(() => this.retitleAfterRename(file, dir, from, to));
+              this.run(() => this.noticeRenamedNumberClash(dir, to));
             }
             return;
           case 'strayMoved':
@@ -1199,16 +1206,23 @@ export default class LabnotePlugin extends Plugin {
 
   /** A workflow note was renamed by hand: its table CSVs follow it (#60). */
   private async moveTableCsvsAfterRename(dir: string, from: string, to: string): Promise<void> {
-    const { skipped } = await moveTableCsvs(
+    const { kept } = await moveTableCsvs(
       this.app,
       { from: dir, to: dir },
       { from, to },
       new Set(await this.fs.list(dir))
     );
-    if (skipped > 0) {
+    // Name them and the way out: the CSV of the new name is not this note's
+    // table, and the one left on the old name has no note any more (#374).
+    if (kept.length > 0) {
       this.host.notify(
         'warn',
-        this.t('{0} table CSV file(s) kept their old name: the new name was taken or the rename failed.', String(skipped))
+        this.t(
+          'Kept {0} table CSV file(s) under the old name: {1}. A CSV of the new name was already there, holding another note\'s table, or the rename failed. Run "{2}" on this note to rewrite its CSVs and move the leftovers to the trash.',
+          String(kept.length),
+          kept.length > 3 ? this.t('{0} (+{1} more)', kept.slice(0, 3).join(', '), String(kept.length - 3)) : kept.join(', '),
+          this.t('Export tables to CSV')
+        )
       );
     }
   }
@@ -1556,11 +1570,14 @@ export default class LabnotePlugin extends Plugin {
     let discussed = false;
     let status: string | undefined;
     let id: string | undefined;
+    let retryOf: string | undefined;
     try {
       const { frontMatter } = parseFrontMatterYaml((await this.app.vault.read(readme)).replace(/\r\n/g, '\n'));
       title = frontMatter.title;
       discussed = isDiscussFlagged(frontMatter);
       if (typeof frontMatter.status === 'string') status = frontMatter.status.trim();
+      const linkpath = retryOfLinkpath(frontMatter.retry_of);
+      if (linkpath) retryOf = posix.dirname(linkpath);
       if (typeof frontMatter.id === 'string' || typeof frontMatter.id === 'number') id = String(frontMatter.id).trim() || undefined;
     } catch {
       title = undefined;
@@ -1615,7 +1632,24 @@ export default class LabnotePlugin extends Plugin {
       return;
     }
 
-    await this.app.vault.process(readme, data => resetCopiedExperimentReadme(data, newTitle, getSeoulDateString()));
+    // A copy of a retry, or of a run that failed, is often the next run: ask
+    // rather than keep or drop `retry_of` silently (#366, #368).
+    const retryTarget =
+      retryOf ?? (status === 'failed' || status === 'needs-repeat' ? posix.join(labnoteDir, origin) : undefined);
+    const markRetry =
+      retryTarget !== undefined &&
+      (await this.host.confirm(
+        this.t(
+          'Mark the copy as a retry of {0}? The workflow view then shows the two together.',
+          posix.basename(retryTarget)
+        ),
+        { confirmLabel: this.t('Mark as retry') }
+      ));
+    if (this.unloaded || folder.path !== copyPath) return;
+    await this.app.vault.process(readme, data => {
+      const reset = resetCopiedExperimentReadme(data, newTitle, getSeoulDateString());
+      return markRetry ? setRetryOf(reset, retryOfLink(retryTarget)) : reset;
+    });
     await this.app.fileManager.renameFile(folder, target);
     const done = [
       this.t('Made the copy the experiment {0}, created today.', posix.basename(target)),
@@ -1623,6 +1657,11 @@ export default class LabnotePlugin extends Plugin {
       ...(discussed
         ? [this.t('The discussion flag was turned off; run "{0}" if the copy needs its own discussion.', this.t('Toggle discussion flag'))]
         : []),
+      ...(markRetry
+        ? [this.t('It is marked as a retry of {0}.', posix.basename(retryTarget))]
+        : retryOf
+          ? [this.t('It is no longer marked as a retry of {0}.', posix.basename(retryOf))]
+          : []),
     ];
     this.host.notify('info', done.join(' '));
     await this.relinkCopiedChecklist(target);
@@ -1879,6 +1918,12 @@ export default class LabnotePlugin extends Plugin {
    * listed in that folder's README. Point the user at the sync command, once
    * per folder for a batch of moves, and only if something is unlisted.
    */
+  /** A note renamed to a number another note has, said when it happens (#382). */
+  private async noticeRenamedNumberClash(dir: string, name: string): Promise<void> {
+    const clashes = workflowNumberClashes(await this.fs.list(dir));
+    if (clashes.includes(name)) this.host.notify('warn', workflowNumberClashNotice(this.host, clashes));
+  }
+
   private noticeWorkflowMovedIn(oldPath: string, newPath: string): void {
     if (!isValidWorkflowPath(newPath)) return;
     const dir = posix.dirname(newPath);
@@ -2074,7 +2119,9 @@ export default class LabnotePlugin extends Plugin {
         return;
       }
       if (decision !== 'stamp') return;
-      stampNoteAndReadme(this.app, this.host, path, this.stampLastUpdated).catch(err =>
+      stampNoteAndReadme(this.app, this.host, path, this.stampLastUpdated, readme =>
+        this.lastUpdatedTracker.keepsHandSet(readme)
+      ).catch(err =>
         console.warn('[labnoteo] last_updated_date update failed:', err)
       );
     }, 2000);

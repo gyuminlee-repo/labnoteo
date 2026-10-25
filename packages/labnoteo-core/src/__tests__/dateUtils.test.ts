@@ -127,6 +127,19 @@ describe('datetime-local conversions', () => {
     expect(toDateTimeLocalValue('2026.10.23')).toBe('2026-10-23T00:00');
     expect(isEndBeforeStart('2026.10.23 14:00', '2026-10-23 13:00')).toBe(true);
   });
+
+  it('reads a slashed date and one-digit parts (#364)', () => {
+    expect(toDateTimeLocalValue('2026/10/24 09:00')).toBe('2026-10-24T09:00');
+    expect(toDateTimeLocalValue('2026/10/24')).toBe('2026-10-24T00:00');
+    expect(toDateTimeLocalValue('2026-1-5 9:05')).toBe('2026-01-05T09:05');
+    expect(toDateTimeLocalValue('2026-10-24T09:00')).toBe('2026-10-24T09:00');
+  });
+
+  it('does not read mixed separators or impossible parts', () => {
+    expect(toDateTimeLocalValue('2026/10-24')).toBe('');
+    expect(toDateTimeLocalValue('2026-13-01')).toBe('');
+    expect(toDateTimeLocalValue('2026-10-24 25:00')).toBe('');
+  });
 });
 
 // #309: Enter wrote the current time over a value the picker could not read.

@@ -326,3 +326,55 @@ describe('sample sources after renumbering (#149)', () => {
     ]);
   });
 });
+
+// #381: an entry left on a file's old name, and a file the checklist then misses.
+describe('renumberWorkflowsCommand and entries whose file is gone', () => {
+  const OLD = '003_WB030_DNA_Assembly.labnote.md';
+  const NOW = '002_WB030_DNA_Assembly.labnote.md';
+  const readme = (entries: string[]): string =>
+    ['# Test', '', '## 🗂️ Related Workflows', '', ...entries, '', '## Summary and Discussion', ''].join('\n');
+
+  it('points the entry back at the file instead of listing the file again', async () => {
+    const h = harness({ relink: false });
+    await h.fs.remove(`${DIR}/${C_OLD}`);
+    await h.fs.write(`${DIR}/${NOW}`, 'b');
+    await h.fs.write(README, readme([`- [x] [WD070 A](./${A})`, `- [ ] [WB030 DNA Assembly](${OLD})`]));
+    const asked: string[] = [];
+    h.host.confirm = async (m: string) => (asked.push(m), true);
+
+    await renumberWorkflowsCommand(h.app, h.host, h.sync);
+
+    expect(links(await h.fs.read(README))).toEqual([A, NOW]);
+    expect(asked[0]).toContain(`${OLD} → ${NOW}`);
+    expect(h.calls).toContain('notify Pointed 1 README checklist entry(ies) back at their file.');
+  });
+
+  it('names an entry no file matches instead of saying the numbers already follow', async () => {
+    const h = harness({ relink: false });
+    await h.fs.remove(`${DIR}/${C_OLD}`);
+    await h.fs.write(README, readme([`- [ ] [WD070 A](./${A})`, `- [ ] [WB030 DNA Assembly](${OLD})`]));
+
+    await renumberWorkflowsCommand(h.app, h.host, h.sync);
+
+    expect(h.calls.at(-1)).toContain(`notify The README checklist lists 1 file(s) that are not in the folder: ${OLD}.`);
+  });
+});
+
+// #382: a listed note whose number was deleted from its name.
+describe('renumberWorkflowsCommand and a note without a number', () => {
+  it('gives it the number of its place in the checklist', async () => {
+    const h = harness({ relink: false });
+    const bare = C_OLD.replace(/^003_/, '');
+    await h.fs.remove(`${DIR}/${C_OLD}`);
+    await h.fs.write(`${DIR}/${bare}`, 'c');
+    await h.fs.write(README, README_BEFORE.replace(`./${C_OLD}`, bare));
+    const asked: string[] = [];
+    h.host.confirm = async (m: string) => (asked.push(m), true);
+
+    await renumberWorkflowsCommand(h.app, h.host, h.sync);
+
+    expect(asked[0]).toContain(`${bare} → ${C_NEW} (name format fixed)`);
+    expect(await h.fs.exists(`${DIR}/${C_NEW}`)).toBe(true);
+    expect(links(await h.fs.read(README))).toEqual([A, C_NEW]);
+  });
+});

@@ -41,7 +41,8 @@ export function buildUnitOpTocLine(
   alias?: string,
   anchor?: string
 ): string {
-  const label = `${opId} ${opName}${alias ? ' | ' + alias : ''}`;
+  // Escaped like a checklist label, or a lone bracket breaks the link (#367).
+  const label = `${opId} ${opName}${alias ? ' | ' + alias : ''}`.replace(/[\\[\]]/g, '\\$&');
   const headingText = `[${opId} ${opName}]${alias ? ' ' + alias : ''}`;
   return `- [${label}](#${anchor ?? githubHeadingAnchor(headingText)})`;
 }
@@ -286,8 +287,43 @@ function headingAnchors(lines: MdLine[]): Map<number, string> {
   return anchors;
 }
 
+/**
+ * A TOC line split after its `[label](#anchor)` link: `tail` is what the user
+ * wrote after it, such as an `@issue` marker or a memo, which a rebuild keeps
+ * (#372).
+ */
+function splitTocEntry(text: string): { link: string; tail: string } {
+  const m = /^\s*- \[(?:\\.|[^\\])*?\]\(#[^)\s]*\)/.exec(text);
+  return m ? { link: m[0], tail: text.slice(m[0].length) } : { link: text, tail: '' };
+}
+
 /** A TOC line without its `(#anchor)`, so a stale anchor doesn't hide a reorder. */
-const tocLabel = (line: string): string => line.trim().replace(/\]\(#[^)]*\)$/, ']');
+const tocLabel = (line: string): string =>
+  splitTocEntry(line)
+    .link.trim()
+    .replace(/\]\(#[^)]*\)$/, ']');
+
+/**
+ * The rebuilt entries, each with the tail of the current entry for the same
+ * unit operation (the nth entry of an opId goes with its nth heading).
+ */
+function entriesWithTails(scan: UnitOpTocScan): string[] {
+  const tails = new Map<string, string[]>();
+  for (const idx of scan.entryIdxs) {
+    const opId = tocEntryOpId(scan.lines[idx].text);
+    if (!opId) continue;
+    const list = tails.get(opId) ?? [];
+    list.push(splitTocEntry(scan.lines[idx].text).tail);
+    tails.set(opId, list);
+  }
+  const used = new Map<string, number>();
+  return scan.entries.map((line, k) => {
+    const opId = scan.entryOpIds[k];
+    const nth = used.get(opId) ?? 0;
+    used.set(opId, nth + 1);
+    return line + (tails.get(opId)?.[nth] ?? '');
+  });
+}
 
 /** Everything the TOC and separator edits need, from one pass over the document. */
 interface UnitOpTocScan {
@@ -347,7 +383,8 @@ function scanUnitOpToc(md: string): UnitOpTocScan | null {
  * interleaved lines follow them, untouched.
  */
 function tocEdit(md: string, scan: UnitOpTocScan): TextEdit | null {
-  const { lines, newline, headingIdx, entryIdxs, entries } = scan;
+  const { lines, newline, headingIdx, entryIdxs } = scan;
+  const entries = entriesWithTails(scan);
 
   if (entryIdxs.length > 0) {
     const first = entryIdxs[0];
@@ -549,8 +586,10 @@ export function refreshUnitOpTocEntries(md: string): string {
     if (!opId) continue;
     const nth = used.get(opId) ?? 0;
     used.set(opId, nth + 1);
-    const line = fresh.get(opId)?.[nth];
-    if (line === undefined || line === lines[idx].text) continue;
+    const entry = fresh.get(opId)?.[nth];
+    if (entry === undefined) continue;
+    const line = entry + splitTocEntry(lines[idx].text).tail;
+    if (line === lines[idx].text) continue;
     edits.push({ from: lines[idx].start, to: lines[idx].end, insert: line });
   }
   return applyTextEdits(md, edits);

@@ -13,6 +13,8 @@ import {
   generateWorkflowChecklist,
   sanitizeWorkflowName,
   planWorkflowRenumber,
+  matchMissingChecklistEntries,
+  unitOpsAllEnded,
   planRenumberMoves,
   buildRenumberStagingName,
   collapseWorkflowRenames,
@@ -30,6 +32,7 @@ import {
   createWorkflowFileName,
   siblingTableCsvs,
   staleTableCsvs,
+  orphanTableCsvs,
   planTableCsvMoves,
   planTableCsvNames,
   tableCsvName,
@@ -737,6 +740,20 @@ describe('table CSVs of a workflow note', () => {
     ]);
     expect(staleTableCsvs('002_WT020_C.labnote.md', more, 12)).toEqual([]);
     expect(staleTableCsvs('002_WT020_C.labnote.md', more, 0)).toHaveLength(4);
+  });
+
+  // #374: a rename that found the new CSV name taken leaves the old one behind.
+  it('lists the lab note CSVs whose note is gone', () => {
+    expect(
+      orphanTableCsvs([
+        '001_WT110_A.labnote.md',
+        '001_WT110_A.labnote_table1.csv',
+        '004_WT110_A.labnote_table1.csv',
+        '원자료_table1.csv',
+        'README.labnote.md',
+        'README.labnote_table2.csv',
+      ])
+    ).toEqual(['004_WT110_A.labnote_table1.csv']);
   });
 
   it('plans renames that keep the table number', () => {
@@ -1720,5 +1737,51 @@ describe('createWorkflowFileName', () => {
   it('drops an alias that sanitizes to nothing', () => {
     expect(createWorkflowFileName('002', wf, '🧫')).toBe('002_WD010_Design.labnote.md');
     expect(createWorkflowFileName('002', wf, '  ')).toBe('002_WD010_Design.labnote.md');
+  });
+});
+
+// #382: a note whose number was deleted from its name.
+describe('planWorkflowRenumber and names without a number', () => {
+  it('numbers a listed one by its place, and leaves an unlisted one alone', () => {
+    const names = ['001_WD010_A.labnote.md', 'WT110_B.labnote.md', '002_WB030_C.labnote.md', 'WT120_D.labnote.md'];
+    expect(planWorkflowRenumber(names, ['001_WD010_A.labnote.md', 'WT110_B.labnote.md', '002_WB030_C.labnote.md'])).toEqual([
+      { from: 'WT110_B.labnote.md', to: '002_WT110_B.labnote.md' },
+      { from: '002_WB030_C.labnote.md', to: '003_WB030_C.labnote.md' },
+    ]);
+  });
+});
+
+// #381
+describe('matchMissingChecklistEntries', () => {
+  const readme = (links: string[]): string =>
+    ['## 🗂️ Related Workflows', '', ...links.map(l => `- [ ] [x](${l})`), ''].join('\n');
+
+  it('pairs an entry whose file is gone with the one unlisted file of the same workflow', () => {
+    const names = ['001_WD010_A.labnote.md', '004_WB030_C.labnote.md'];
+    expect(matchMissingChecklistEntries(readme(['./001_WD010_A.labnote.md', '003_WB030_C.labnote.md']), names)).toEqual({
+      relink: [{ from: '003_WB030_C.labnote.md', to: '004_WB030_C.labnote.md' }],
+      missing: [],
+    });
+  });
+
+  it('leaves it missing when no file, or more than one, matches', () => {
+    expect(matchMissingChecklistEntries(readme(['003_WB030_C.labnote.md']), ['001_WD010_A.labnote.md']).missing).toEqual([
+      '003_WB030_C.labnote.md',
+    ]);
+    const two = ['001_WB030_C.labnote.md', '002_WB030_C.labnote.md'];
+    expect(matchMissingChecklistEntries(readme(['003_WB030_C.labnote.md']), two)).toEqual({
+      relink: [],
+      missing: ['003_WB030_C.labnote.md'],
+    });
+  });
+});
+
+// #355
+describe('unitOpsAllEnded', () => {
+  const op = (end: string): string => `### [UHW010 A]\n#### Meta\n- Start_date: '2026-10-25 08:00'\n- End_date: '${end}'\n`;
+  it('is true only when every unit operation has an End_date', () => {
+    expect(unitOpsAllEnded(`---\nend_date: ''\n---\n${op('2026-10-25 09:00')}${op('2026-10-25 10:00')}`)).toBe(true);
+    expect(unitOpsAllEnded(`${op('2026-10-25 09:00')}${op('')}`)).toBe(false);
+    expect(unitOpsAllEnded('# no unit operations\n')).toBe(false);
   });
 });
