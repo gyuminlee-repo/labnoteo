@@ -1138,6 +1138,15 @@ describe('findSampleUsages', () => {
     expect(findSampleUsages(docs, 'DNA', 'DNA-9')).toEqual([]);
   });
 
+  it('does not count a reference an AI summary copied, unless asked to (#318)', () => {
+    const readme = [{ path: 'labnote/001_Exp/README.labnote.md', text: '> [!note] AI 실험 결과 요약 (m, d)\n> - DNA-1;pUC19 사용' }];
+    expect(findSampleUsages(readme, 'DNA', 'DNA-1')).toEqual([]);
+    expect(findSampleUsageSpots(readme, 'DNA', 'DNA-1')).toEqual([]);
+    expect(findSampleUsages(readme, 'DNA', 'DNA-1', undefined, { includeAiCallouts: true })).toEqual([
+      'labnote/001_Exp/README.labnote.md',
+    ]);
+  });
+
   it('matches a custom type passed via additionalTypes', () => {
     const custom = [{ path: 'x.md', text: 'see Strain-3 in the freezer' }];
     expect(findSampleUsages(custom, 'Strain', 'Strain-3', ['Strain'])).toEqual(['x.md']);

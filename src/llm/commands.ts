@@ -21,11 +21,15 @@ import {
   extractResultSections,
   shareBudget,
   findAiCalloutInSection,
+  locateSummary,
   planSectionAppend,
   sectionText,
   stripFrontMatter,
   stripAiCallouts,
   stripTemplatePlaceholders,
+  stripIssueMarkers,
+  neutralizeIssueMarkers,
+  dropEchoedLines,
   replaceSectionBodyAt,
   minimalReplacement,
   type ToolContext,
@@ -94,6 +98,14 @@ export function replyLanguageInstruction(lang: string = getObsidianLanguage()): 
   }
   return `Write the answer in ${name}. Keep sample IDs, units, numbers and quoted text exactly as they appear in the note.`;
 }
+
+/**
+ * For the summaries (#318, #354): a sample reference or an `@issue` marker
+ * copied into the summary would count as a usage of the sample or open an
+ * issue, so the model names samples in words.
+ */
+const SUMMARY_REFERENCE_INSTRUCTION =
+  'Name a sample by its alias or ID in plain words; never copy a sample reference written as "ID;alias" or "@Type;ID;alias", and never write "@issue".';
 
 /** The notice for an empty reply (#195), naming a thinking-only one as such. */
 function noAnswerMessage(plugin: LabnotePlugin, thinkingOnly: boolean | undefined): string {
@@ -183,7 +195,9 @@ async function complete(
  * `last_updated_date` refreshes. Reads text and cursor now, after the reply
  * arrived, since the user may have kept typing meanwhile.
  */
-async function insertBlock(plugin: LabnotePlugin, target: EditTarget, block: string): Promise<void> {
+async function insertBlock(plugin: LabnotePlugin, target: EditTarget, answer: string): Promise<void> {
+  // Whatever the model wrote, nothing it inserts opens an issue (#354).
+  const block = neutralizeIssueMarkers(answer);
   if (!target.getCursorOffset) {
     await target.insertAtCursor(`\n${block}\n`);
   } else {
@@ -369,7 +383,7 @@ function withDraftHeader(plugin: LabnotePlugin, draft: string): string {
     plugin.settings.llmModel || plugin.settings.llmProvider,
     getSeoulDateString()
   );
-  return `> [!note] ${header}\n\n${draft}`;
+  return `> [!note] ${header}\n\n${neutralizeIssueMarkers(draft)}`;
 }
 
 /** Where a workflow note's result summary goes (#279). */
@@ -398,12 +412,13 @@ async function writeSummary(
   block: string
 ): Promise<void> {
   const text = await target.getText();
+  const place = locateSummary(text, heading, titles);
   const earlier = findAiCalloutInSection(text, heading, titles);
   if (earlier) {
     await target.replaceRange(earlier.start, earlier.end, block);
     await target.revealOffset?.(earlier.start);
   } else {
-    const plan = planSectionAppend(text, heading, block) ?? {
+    const plan = planSectionAppend(text, heading, block, titles) ?? {
       offset: text.length,
       text: `${text.endsWith('\n') ? '\n' : '\n\n'}${block}\n`,
     };
@@ -411,12 +426,27 @@ async function writeSummary(
     await target.revealOffset?.(plan.offset + plan.text.length);
   }
   plugin.markUserEdit(target.path);
+  // The heading was renamed or removed (#319): say where the summary went.
+  if (place.kind === 'callout') {
+    new Notice(
+      plugin.t(
+        'There is no "{0}" section, so the summary replaced the earlier one under "{1}".',
+        heading,
+        place.heading || plugin.t('(top of the note)')
+      ),
+      8000
+    );
+  } else if (place.kind === 'end') {
+    new Notice(plugin.t('There is no "{0}" section, so the summary went at the end of the note.', heading), 8000);
+  }
 }
 
-/** Ask before a summary replaces the one an earlier run wrote in `heading`. */
+/** Ask before a summary replaces the one an earlier run wrote in `heading` (or where it was found instead, #319). */
 async function confirmReplaceSummary(plugin: LabnotePlugin, text: string, heading: string, titles: readonly string[]): Promise<boolean> {
   if (!findAiCalloutInSection(text, heading, titles)) return true;
-  return plugin.host.confirm(plugin.t('"{0}" already has an AI summary. Replace it with a new one?', heading), {
+  const place = locateSummary(text, heading, titles);
+  const where = place.kind === 'callout' ? place.heading || plugin.t('(top of the note)') : heading;
+  return plugin.host.confirm(plugin.t('"{0}" already has an AI summary. Replace it with a new one?', where), {
     confirmLabel: plugin.t('Replace'),
     destructive: true,
   });
@@ -457,7 +487,9 @@ export async function summarizeResultsCommand(plugin: LabnotePlugin): Promise<vo
   // measurements (#257), so stop while the result sections are still empty.
   if (!hasRecordedResults(text)) {
     new Notice(
-      plugin.t('No results to summarize yet. Write them in "Results & Discussions" and run this again.'),
+      plugin.t(
+        'No results to summarize yet. Write them under a unit operation\'s "Results & Discussions", "QC Metrics" or "Discussion", a software unit operation\'s "Output", or "Conclusions and Discussion", and run this again.'
+      ),
       8000
     );
     return;
@@ -467,13 +499,14 @@ export async function summarizeResultsCommand(plugin: LabnotePlugin): Promise<vo
   if (workflow && !(await confirmReplaceSummary(plugin, text, CONCLUSIONS_HEADING, titles))) return;
   const results = workflow
     ? extractResultSections(text)
-    : stripTemplatePlaceholders(stripAiCallouts(stripFrontMatter(text)));
+    : stripIssueMarkers(stripTemplatePlaceholders(stripAiCallouts(stripFrontMatter(text))));
   const out = await complete(plugin, [
     {
       role: 'system',
       content:
         'You summarize experimental Results for a lab notebook as 3–6 concise Markdown bullet points. No preamble, no code fences. ' +
         'Use only measurements and observations written in the note; never invent a number, a result or a conclusion that is not there. ' +
+        `${SUMMARY_REFERENCE_INSTRUCTION} ` +
         replyLanguageInstruction(),
     },
     {
@@ -552,27 +585,32 @@ export async function summarizeExperimentCommand(plugin: LabnotePlugin): Promise
   }
   const titles = summaryTitles(plugin, 'AI experiment results summary ({0}, {1})');
   if (!(await confirmReplaceSummary(plugin, readme, README_SUMMARY_HEADING, titles))) return;
-  const memo = stripAiCallouts(sectionText(readme, README_SUMMARY_HEADING) ?? '').trim();
+  const memo = stripIssueMarkers(stripAiCallouts(sectionText(readme, README_SUMMARY_HEADING, titles) ?? ''))
+    .trim()
+    .slice(0, 2000);
   const shares = shareBudget(
     collected.map(c => c.results.length),
     EXPERIMENT_RESULTS_BUDGET
   );
   const body = collected.map((c, i) => `## ${c.label}\n${c.results.slice(0, shares[i])}`).join('\n\n');
-  const out = await complete(plugin, [
+  const reply = await complete(plugin, [
     {
       role: 'system',
       content:
         'You summarize a whole experiment for its lab notebook overview from the results of its workflows, given in order: ' +
         '3–8 concise Markdown bullet points on what was found and how the workflows connect, then one line on what is still open. ' +
         'No preamble, no code fences. Use only what is written; never invent a number, a result or a conclusion. ' +
+        'The researcher\'s own notes, inside <researcher-notes>, are context only: they stay in the note as they are, so do not copy, restate or rephrase them in the answer. ' +
+        `${SUMMARY_REFERENCE_INSTRUCTION} ` +
         replyLanguageInstruction(),
     },
     {
       role: 'user',
-      content: `${memo ? `The researcher's own notes on the experiment:\n${memo.slice(0, 2000)}\n\n` : ''}Results of each workflow:\n\n${body}`,
+      content: `${memo ? `<researcher-notes>\n${memo}\n</researcher-notes>\n\n` : ''}Results of each workflow:\n\n${body}`,
     },
   ]);
-  if (!out) return;
+  if (!reply) return;
+  const out = memo ? dropEchoedLines(reply, memo) : reply;
   const header = plugin.t(
     'AI experiment results summary ({0}, {1})',
     plugin.settings.llmModel || plugin.settings.llmProvider,
@@ -593,7 +631,9 @@ export async function summarizeExperimentCommand(plugin: LabnotePlugin): Promise
  * one block that is clearly the model's and not the researcher's.
  */
 export function toNoteCallout(body: string, header: string): string {
-  const lines = body.trim().split(/\r?\n/).map(l => (l.trim() === '' ? '>' : `> ${l}`));
+  const lines = neutralizeIssueMarkers(body.trim())
+    .split(/\r?\n/)
+    .map(l => (l.trim() === '' ? '>' : `> ${l}`));
   return [`> [!note] ${header}`, ...lines].join('\n');
 }
 

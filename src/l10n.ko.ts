@@ -658,8 +658,12 @@ const obsidianKo: Record<string, string> = {
     'AI가 쓰는 동안 유닛 오퍼레이션이 바뀌어, 초안을 커서가 있는 줄 다음에 넣었습니다.',
   'Open a note first.': '먼저 노트를 여세요.',
   'Open a markdown note first.': '먼저 마크다운 노트를 여세요.',
-  'No results to summarize yet. Write them in "Results & Discussions" and run this again.':
-    '아직 요약할 결과가 없습니다. "Results & Discussions"에 결과를 적은 뒤 다시 실행하세요.',
+  'There is no "{0}" section, so the summary replaced the earlier one under "{1}".':
+    '"{0}" 절이 없어 "{1}" 아래에 있던 이전 요약을 바꿨습니다.',
+  '(top of the note)': '(노트 맨 위)',
+  'There is no "{0}" section, so the summary went at the end of the note.': '"{0}" 절이 없어 요약을 노트 끝에 넣었습니다.',
+  'No results to summarize yet. Write them under a unit operation\'s "Results & Discussions", "QC Metrics" or "Discussion", a software unit operation\'s "Output", or "Conclusions and Discussion", and run this again.':
+    '아직 요약할 결과가 없습니다. 유닛 오퍼레이션의 "Results & Discussions"·"QC Metrics"·"Discussion", 소프트웨어 유닛 오퍼레이션의 "Output", 또는 "Conclusions and Discussion"에 결과를 적은 뒤 다시 실행하세요.',
   'Nothing to summarize.': '요약할 내용이 없습니다.',
   'Nothing to extract.': '추출할 내용이 없습니다.',
   'Created {0} sample(s).': '샘플 {0}개를 생성했습니다.',

@@ -21,6 +21,7 @@ import {
   noteLabsamplesFolder,
   isSameSampleFolder,
   listExperimentSampleFolders,
+  findRecordIgnoringCase,
   type SampleRecord,
 } from '../lib/sampleStorage';
 import {
@@ -364,7 +365,71 @@ async function resolveSectionTarget(
   if (body.trim() === '') {
     return { error: 'content only repeats the section heading; nothing was written. Send the body without the heading.' };
   }
+  // A heading as high as the target's would end the section there and start a new one (#334).
+  const sibling = listHeadings(body).find(h => h.level <= target.level);
+  if (sibling) {
+    return {
+      error:
+        `content has the heading "${'#'.repeat(sibling.level)} ${sibling.text}", which would start a new section after "${heading}"; nothing was written. ` +
+        `Send only the body, or use deeper headings (${'#'.repeat(Math.min(target.level + 1, 6))} or more) inside it.`,
+    };
+  }
   return { documentPath, heading, content: body, md, target, index, total: candidates.length };
+}
+
+/** Levenshtein distance of `a` and `b`, giving up past `max` (returns `max + 1`). */
+function editDistance(a: string, b: string, max: number): number {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+/**
+ * The item whose `id` is `raw` (#335): trimmed, exactly when one matches,
+ * else ignoring case. Models write `uhw010` for `UHW010`.
+ */
+function findIdIgnoringCase<T extends { id: string }>(items: readonly T[], raw: string): T | undefined {
+  const id = raw.trim();
+  const lower = id.toLowerCase();
+  return items.find(i => i.id === id) ?? items.find(i => i.id.toLowerCase() === lower);
+}
+
+/** Most IDs {@link similarIds} suggests. */
+const SIMILAR_ID_LIMIT = 5;
+
+/**
+ * IDs among `ids` close to `raw`, for a "not found" error (#335): within two
+ * edits, case aside, or with `byPrefix`, sharing its letters and first digit
+ * (`UHW25` → `UHW250`). Sample IDs all share their type, so they skip that.
+ */
+function similarIds(ids: readonly string[], raw: string, byPrefix: boolean): string[] {
+  const wanted = raw.trim().toLowerCase();
+  const prefix = byPrefix ? /^[a-z]+\d/.exec(wanted)?.[0] : undefined;
+  return ids
+    .map(id => {
+      const lower = id.toLowerCase();
+      const distance = editDistance(lower, wanted, 2);
+      // Prefix matches first, the closest of them first; then the near misses.
+      const rank = prefix !== undefined && lower.startsWith(prefix) ? distance - 10 : distance;
+      return { id, rank, near: rank < 0 || distance <= 2 };
+    })
+    .filter(c => c.near)
+    .sort((a, b) => a.rank - b.rank)
+    .slice(0, SIMILAR_ID_LIMIT)
+    .map(c => c.id);
+}
+
+/** `message`, with the IDs close to `raw` when there are any. */
+function notFoundWithSuggestions(message: string, ids: readonly string[], raw: string, byPrefix = true): string {
+  const similar = similarIds(ids, raw, byPrefix);
+  return similar.length > 0 ? `${message}. Did you mean: ${similar.join(', ')}?` : message;
 }
 
 /** Most headings {@link sectionNotFound} lists. */
@@ -503,8 +568,16 @@ async function resolveWorkflowCreate(
 
   const seeded = ctx.workspaceRoot && !(await ctx.fs.exists(getWorkflowFilePath(ctx.workspaceRoot, 'workflows')));
   const workflows = seeded ? WORKFLOWS_CATALOG.workflows : (await loadWorkflows(ctx.fs, ctx.workspaceRoot)).workflows;
-  const wf = workflows.find(w => w.id === workflowId);
-  if (!wf) return { error: `Workflow not found: ${workflowId}` };
+  const wf = findIdIgnoringCase(workflows, workflowId);
+  if (!wf) {
+    return {
+      error: notFoundWithSuggestions(
+        `Workflow not found: ${workflowId}`,
+        workflows.map(w => w.id),
+        workflowId
+      ),
+    };
+  }
 
   const info = { id: wf.id, name: wf.name, description: wf.description };
   const sequence = getNextWorkflowNumber(await ctx.fs.list(labnoteDir));
@@ -514,15 +587,15 @@ async function resolveWorkflowCreate(
 async function findUnitOp(
   ctx: ToolContext,
   opId: string
-): Promise<{ op: UnitOperationItem; opType: 'hw' | 'sw' } | undefined> {
+): Promise<{ op: UnitOperationItem; opType: 'hw' | 'sw' } | { similar: string[] }> {
   await ensureWorkflowResources(ctx.fs, ctx.workspaceRoot);
   const hw = await loadUnitOperations(ctx.fs, ctx.workspaceRoot, 'hw');
-  const found = hw.unitOperations.find(o => o.id === opId);
+  const found = findIdIgnoringCase(hw.unitOperations, opId);
   if (found) return { op: found, opType: 'hw' };
   const sw = await loadUnitOperations(ctx.fs, ctx.workspaceRoot, 'sw');
-  const foundSw = sw.unitOperations.find(o => o.id === opId);
+  const foundSw = findIdIgnoringCase(sw.unitOperations, opId);
   if (foundSw) return { op: foundSw, opType: 'sw' };
-  return undefined;
+  return { similar: [...hw.unitOperations, ...sw.unitOperations].map(o => o.id) };
 }
 
 /** Most matches `search_samples` returns; the rest are reported as `truncated`. */
@@ -582,7 +655,7 @@ export function createLabnoteTools(): ToolDef[] {
         type: 'object',
         properties: {
           type: { type: 'string', description: 'Sample type, e.g. DNA, RNA, Plasmid.' },
-          id: { type: 'string', description: 'Sample id, e.g. DNA-12.' },
+          id: { type: 'string', description: 'Sample id, e.g. DNA-12 (case-insensitive).' },
           documentPath: { type: 'string', description: 'Vault-relative path of the note for local scope.' },
         },
         required: ['type', 'id'],
@@ -602,15 +675,26 @@ export function createLabnoteTools(): ToolDef[] {
               ...(await experimentSampleScopes(ctx)),
             ];
 
+        // `dna-1` and ` DNA-1` name DNA-1 too (#335); the stored key is what is reported.
+        const key = normalizeSampleId(type.type, id) ?? id.trim();
+        const seen: string[] = [];
         for (const { folder, scope, experiment } of folders) {
           const records = await loadSamplesByType(ctx.fs, folder, type.type);
-          if (!records[id]) continue;
-          const data = { ...records[id], id, scope, experiment };
+          const hit = findRecordIgnoringCase(records, key);
+          if (!hit) {
+            seen.push(...Object.keys(records));
+            continue;
+          }
+          const [storedId, record] = hit;
+          const data = { ...record, id: storedId, scope, experiment };
           if (!ctx.findSampleUsages) return { ok: true, data };
-          const usages = await ctx.findSampleUsages(folder, type.type, id);
+          const usages = await ctx.findSampleUsages(folder, type.type, storedId);
           return { ok: true, data: { ...data, usages } };
         }
-        return { ok: false, error: `Sample not found: ${type.type}/${id}` };
+        return {
+          ok: false,
+          error: notFoundWithSuggestions(`Sample not found: ${type.type}/${id}`, [...new Set(seen)], key, false),
+        };
       },
     },
 
@@ -807,14 +891,16 @@ export function createLabnoteTools(): ToolDef[] {
       description: 'Return catalog metadata (name, description, equipment/software) for a unit-operation id.',
       inputSchema: {
         type: 'object',
-        properties: { opId: { type: 'string', description: 'e.g. UHW010 or USW020.' } },
+        properties: { opId: { type: 'string', description: 'e.g. UHW010 or USW020 (case-insensitive).' } },
         required: ['opId'],
       },
       async handler(ctx, args) {
         const opId = str(args, 'opId');
         if (!opId) return { ok: false, error: 'opId is required' };
         const found = await findUnitOp(ctx, opId);
-        if (!found) return { ok: false, error: `Unit operation not found: ${opId}` };
+        if ('similar' in found) {
+          return { ok: false, error: notFoundWithSuggestions(`Unit operation not found: ${opId}`, found.similar, opId) };
+        }
         return { ok: true, data: { ...found.op, opType: found.opType } };
       },
     },
@@ -825,7 +911,7 @@ export function createLabnoteTools(): ToolDef[] {
       description:
         'Replace the body of a section (matched by heading text at any level) in a note, without re-serializing the rest of the document. ' +
         'README headings may carry emoji (e.g. "## 🧪 Related Workflows"); when no heading matches exactly, emoji, square brackets, case and extra spaces are ignored. ' +
-        'Send only the body: a first line repeating the section heading is dropped. ' +
+        'Send only the body: a first or last line repeating the section heading is dropped, and a heading as high as the section\'s own is refused, since it would start a new section (use deeper headings inside the body). ' +
         'Workflow notes repeat headings such as "Method" under every unit operation: when the heading occurs more than once, pass parentHeading and/or occurrence, ' +
         'otherwise nothing is written and the error lists the candidates. ' +
         'The whole body is replaced, nested headings included; the result reports what was removed (removedLines, removedSubheadings, previousBody).',
@@ -916,7 +1002,7 @@ export function createLabnoteTools(): ToolDef[] {
         type: 'object',
         properties: {
           documentPath: { type: 'string', description: 'Any path inside the target labnote/### experiment folder.' },
-          workflowId: { type: 'string', description: 'Catalog workflow id, e.g. WD010.' },
+          workflowId: { type: 'string', description: 'Catalog workflow id, e.g. WD010 (case-insensitive).' },
           alias: {
             type: 'string',
             description: 'Optional name for this workflow instance, added after the catalog name.',

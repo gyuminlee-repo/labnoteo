@@ -441,6 +441,42 @@ export function reassignIssueMarkerIds(
   return { content: lines.join('\n'), count };
 }
 
+/**
+ * `md` with every marker {@link parseIssueMarkers} would read replaced by its
+ * topic sentence (#354), for text sent to a model: a marker copied into the
+ * reply would open a second issue, or fail `validate` once reworded. A
+ * marker without a topic is dropped. Code and comments are left as they are.
+ */
+export function stripIssueMarkers(md: string): string {
+  const raws = md.split('\n');
+  const code = codeLines(raws.map(raw => raw.replace(/\r$/, '')));
+  const comments = commentRanges(md);
+  let offset = 0;
+  return raws
+    .map((raw, i) => {
+      const lineStart = offset;
+      offset += raw.length + 1;
+      if (code[i]) return raw;
+      const cr = raw.endsWith('\r') ? '\r' : '';
+      const line = cr ? raw.slice(0, -1) : raw;
+      const at = markerStart(line, a => inRanges(comments, lineStart + a));
+      if (at === -1) return raw;
+      const topic = (line.slice(at).match(MARKER_RE)?.[2] ?? '').trim();
+      const before = line.slice(0, at).trimEnd();
+      return (topic ? (before ? `${before} ${topic}` : topic) : before) + cr;
+    })
+    .join('\n');
+}
+
+/**
+ * `text` with the `@` taken off every `@issue;`/`@issue:` in it (#354), for a
+ * model's reply going into a note: whatever the model wrote, nothing in it
+ * opens an issue or reads as a broken marker.
+ */
+export function neutralizeIssueMarkers(text: string): string {
+  return text.replace(new RegExp(`@(issue)(?=[;:])`, 'gi'), '$1');
+}
+
 /** Reset the ID counter (tests only). */
 export function resetIssueMarkerIdCounter(): void {
   idCounter = 0;

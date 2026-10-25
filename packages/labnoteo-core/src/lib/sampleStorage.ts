@@ -15,6 +15,7 @@ import {
   isCatalogSampleType,
 } from './sampleUtils';
 import { escapeRegExp } from './regexUtils';
+import { maskAiCallouts } from './aiCallout';
 import { listHeadings } from '../sections/sectionEdit';
 import { getExperimentDir, getExperimentLabsamplesFolder } from './labnoteStructure';
 import { normalizeSampleSource, type SampleSource } from '../partbank/types';
@@ -1337,8 +1338,8 @@ export async function saveSamplesFromDocument(
   const labsamplesFolder = noteLabsamplesFolder(documentPath, globalLabsamplesFolder);
   const sourceFile = path.basename(documentPath);
 
-  // Extract samples from document
-  const samples = extractSampleInfoFromText(documentText, additionalTypes);
+  // Extract samples from document; a reference an AI answer copied is not a use (#318).
+  const samples = extractSampleInfoFromText(maskAiCallouts(documentText), additionalTypes);
 
   if (samples.length === 0) {
     return;
@@ -1462,7 +1463,7 @@ export async function removeSourcesForDocument(
   // in this set is a candidate for source removal in scopes whose existing
   // record has this document listed as a source.
   const liveDefs = new Set<string>();
-  for (const sample of extractSampleInfoFromText(documentText, additionalTypes)) {
+  for (const sample of extractSampleInfoFromText(maskAiCallouts(documentText), additionalTypes)) {
     liveDefs.add(`${sample.type}|${sample.id}`);
   }
 
@@ -1528,20 +1529,23 @@ export async function removeSourcesForDocument(
 /**
  * Return the paths of the documents that reference `(type, id)` — either an
  * `@type;` definition or a plain `id;alias` reference, matched ignoring id case.
- * Used by the sidebar delete action to refuse deleting a sample that the body
- * still uses (otherwise the next edit resurrects a bare record, #54, and the
- * registry would silently drift from the notes).
+ * A reference inside an AI answer callout is not a use (#318), unless
+ * `includeAiCallouts`: the sidebar delete action counts it too, to refuse
+ * deleting a sample the body still names (otherwise the next edit resurrects
+ * a bare record, #54, and the registry would silently drift from the notes).
  */
 export function findSampleUsages(
   docs: ReadonlyArray<{ path: string; text: string }>,
   type: string,
   id: string,
-  additionalTypes?: string[]
+  additionalTypes?: string[],
+  opts: { includeAiCallouts?: boolean } = {}
 ): string[] {
   const idLower = id.toLowerCase();
   const hits: string[] = [];
   for (const doc of docs) {
-    const samples = extractSampleInfoFromText(doc.text, additionalTypes);
+    const text = opts.includeAiCallouts ? doc.text : maskAiCallouts(doc.text);
+    const samples = extractSampleInfoFromText(text, additionalTypes);
     if (samples.some((s) => s.type === type && s.id.toLowerCase() === idLower)) {
       hits.push(doc.path);
     }
@@ -1572,7 +1576,7 @@ export function findSampleUsageSpots(
   const idLower = id.toLowerCase();
   const out: SampleUsageSpot[] = [];
   for (const doc of docs) {
-    const spans = findSampleReferenceSpans(doc.text, [type]).filter(s => s.id.toLowerCase() === idLower);
+    const spans = findSampleReferenceSpans(maskAiCallouts(doc.text), [type]).filter(s => s.id.toLowerCase() === idLower);
     if (spans.length === 0) continue;
     const lineStarts = [0];
     for (let i = 0; i < doc.text.length; i++) if (doc.text[i] === '\n') lineStarts.push(i + 1);
@@ -1614,7 +1618,8 @@ export function sampleTypesInText(text: string, additionalTypes?: string[]): str
   return [...new Set(extractSampleInfoFromText(text, additionalTypes).map((s) => s.type))];
 }
 
-const findRecordIgnoringCase = (
+/** The record keyed `id` in `records`, else one whose key matches ignoring case, as `[key, record]`. */
+export const findRecordIgnoringCase = (
   records: Record<string, SampleRecord> | undefined,
   id: string
 ): [string, SampleRecord] | undefined => {

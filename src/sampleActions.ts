@@ -781,7 +781,7 @@ async function notesReferencingSample(
   id: string
 ): Promise<string[]> {
   const docs = await notesInSampleScope(app, folder);
-  return findSampleUsages(docs, type, id, plugin.settings.customSampleTypes);
+  return findSampleUsages(docs, type, id, plugin.settings.customSampleTypes, { includeAiCallouts: true });
 }
 
 /**

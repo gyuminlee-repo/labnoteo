@@ -143,19 +143,30 @@ export function findSectionMatches(md: string, heading: string): SectionMatch[] 
 }
 
 /**
- * `content` without a first line that repeats the target section's heading
- * (#162): models often send the heading along with the body, which then
- * appeared twice. `heading` is the target's text; the comparison is the same
- * as {@link findSectionMatches}'s fallback. Blank lines it leaves at the top go too.
+ * `content` without a first or last line that repeats the target section's
+ * heading (#162, #334): models often send the heading along with the body,
+ * which then appeared twice, or close the body with it, which then opened a
+ * second section of that name. `heading` is the target's text; the comparison
+ * is the same as {@link findSectionMatches}'s fallback. Blank lines it leaves
+ * at either end go too.
  */
 export function stripRepeatedHeading(content: string, heading: string): string {
   const lines = content.split(/\r?\n/);
+  const wanted = normalizeHeadingText(heading);
+  const repeats = (line: string | undefined): boolean => {
+    const h = line?.trim().match(ANY_HEADING_RE);
+    return Boolean(h) && normalizeHeadingText(h![2]) === wanted;
+  };
   const first = lines.findIndex(l => l.trim() !== '');
   if (first === -1) return content;
-  const h = lines[first].trim().match(ANY_HEADING_RE);
-  if (!h || normalizeHeadingText(h[2]) !== normalizeHeadingText(heading)) return content;
-  const rest = lines.slice(first + 1);
+  let last = lines.length - 1;
+  while (last > first && lines[last].trim() === '') last--;
+  const dropFirst = repeats(lines[first]);
+  const dropLast = last > first && repeats(lines[last]);
+  if (!dropFirst && !dropLast) return content;
+  const rest = lines.slice(dropFirst ? first + 1 : first, dropLast ? last : lines.length);
   while (rest.length > 0 && rest[0].trim() === '') rest.shift();
+  if (dropLast) while (rest.length > 0 && rest[rest.length - 1].trim() === '') rest.pop();
   return rest.join('\n');
 }
 
@@ -269,10 +280,16 @@ function summarizeBody(body: readonly string[]): SectionBody {
   };
 }
 
+const THEMATIC_BREAK_RE = /^ {0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/;
+
 /**
  * Index of the line that ends the body of the level-`level` section whose
  * heading is on `headingIdx`: the next heading of the same or higher level
- * (#count <= level), or `lines.length`.
+ * (#count <= level), or `lines.length`. A `---` (or `***`, `___`) line set
+ * off by a blank line right before that heading belongs to what follows —
+ * the template puts one between unit operations — so the body ends before
+ * it (#332). One right under a line of text is that line's setext underline
+ * and stays in the body, as does a rule at the end of the note.
  */
 export function sectionBodyEnd(lines: readonly string[], headingIdx: number, level: number): number {
   // The heading was matched outside any fence, so restart fence tracking here;
@@ -286,7 +303,11 @@ export function sectionBodyEnd(lines: readonly string[], headingIdx: number, lev
       continue;
     }
     if (bodyFence) continue;
-    if (boundaryRe.test(lines[i])) return i;
+    if (!boundaryRe.test(lines[i])) continue;
+    let j = i - 1;
+    while (j > headingIdx && lines[j].trim() === '') j--;
+    if (j > headingIdx && THEMATIC_BREAK_RE.test(lines[j]) && (j - 1 === headingIdx || lines[j - 1].trim() === '')) return j;
+    return i;
   }
   return lines.length;
 }
