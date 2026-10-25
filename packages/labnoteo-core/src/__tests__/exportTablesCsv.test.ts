@@ -351,9 +351,9 @@ describe('extractMarkdownTables', () => {
     expect(extractMarkdownTables(md)[0].rows.slice(1)).toEqual([['0.12'], ['0.10 0.12'], ['']]);
   });
 
-  it('keeps marks inside a word, escaped marks and code contents', () => {
-    const md = '| a | b | c | d |\n|---|---|---|---|\n| 2*3 | sample_id_1 | \\*x\\* | `~~x~~ **y**` |\n';
-    expect(extractMarkdownTables(md)[0].rows[1]).toEqual(['2*3', 'sample_id_1', '\\*x\\*', '~~x~~ **y**']);
+  it('keeps marks inside a word, escaped marks without the backslash, and code contents', () => {
+    const md = '| a | b | c | d | e |\n|---|---|---|---|---|\n| 2*3 | sample_id_1 | \\*x\\* | `~~x~~ **y** \\#` | 냉장고 \\#R2 \\[A\\] C:\\data |\n';
+    expect(extractMarkdownTables(md)[0].rows[1]).toEqual(['2*3', 'sample_id_1', '*x*', '~~x~~ **y** \\#', '냉장고 #R2 [A] C:\\data']);
   });
 
   it('checks for a formula after stripping the marks', () => {

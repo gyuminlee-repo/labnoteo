@@ -18,6 +18,8 @@ import {
   parseIssueMarkers,
   planIssueMarkerInsertion,
   markerSpanAcrossRuns,
+  neutralizeIssueMarkers,
+  stripIssueMarkers,
   reassignIssueMarkerIds,
   renderIssueMarker,
   resetIssueMarkerIdCounter,
@@ -688,5 +690,36 @@ describe('markerSpanAcrossRuns', () => {
     expect(markerSpanAcrossRuns([text('그냥 글 '), el('굵게')])).toBeUndefined();
     expect(markerSpanAcrossRuns([text('@issue;ISS-a;')])).toBeUndefined();
     expect(markerSpanAcrossRuns([el('@issue;ISS-a;'), text('x')])).toBeUndefined();
+  });
+});
+
+describe('stripIssueMarkers / neutralizeIssueMarkers (#354)', () => {
+  it('turns each marker the automation reads into its topic, leaving code and comments', () => {
+    const md = [
+      '수율 40%. @issue;ISS-a;시드 배양 시간 차이',
+      '@issue:ISS-b:줄 전체가 마커',
+      '빈 주제 @issue;ISS-c;',
+      '<!-- @issue;ISS-e;주석 -->',
+      '```',
+      '@issue;ISS-f;예시',
+      '```',
+      '자세한 건 @issue 마커 문법을 참고',
+    ].join('\r\n');
+    expect(stripIssueMarkers(md).split('\r\n')).toEqual([
+      '수율 40%. 시드 배양 시간 차이',
+      '줄 전체가 마커',
+      '빈 주제',
+      '<!-- @issue;ISS-e;주석 -->',
+      '```',
+      '@issue;ISS-f;예시',
+      '```',
+      '자세한 건 @issue 마커 문법을 참고',
+    ]);
+  });
+
+  it('takes the @ off every marker candidate in a reply', () => {
+    expect(neutralizeIssueMarkers('- 논의 @issue;ISS-a;주제\n- @ISSUE:x 와 @issue 언급')).toBe(
+      '- 논의 issue;ISS-a;주제\n- ISSUE:x 와 @issue 언급'
+    );
   });
 });

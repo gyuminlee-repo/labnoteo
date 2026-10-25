@@ -95,13 +95,120 @@ export function escapeSamplePipes(text: string): string {
 }
 
 /**
+ * `text` with a backslash before what Markdown would read as a tag, link,
+ * emphasis, code, HTML, math, strike, highlight or comment (#331): `#`, `[`,
+ * `]`, `*`, `_`, a backtick, `<`, `$`, and doubled `~`, `=` and `%`. The
+ * reading view then shows the text as written, e.g. `#B3` of a freezer slot.
+ */
+export function escapeMarkdownInline(text: string): string {
+  return text.replace(/[#[\]*_`<$]/g, '\\$&').replace(/~~|==|%%/g, m => `\\${m[0]}\\${m[1]}`);
+}
+
+/** One row of a {@link buildMarkdownTable} table. */
+export function markdownTableRow(cells: readonly string[], verbatim: ReadonlySet<number> = new Set()): string {
+  const cell = (text: string, i: number): string => {
+    const flat = text.replace(/\r?\n/g, ' ').trim();
+    return escapeSamplePipes(verbatim.has(i) ? flat : escapeMarkdownInline(flat));
+  };
+  return `| ${cells.map(cell).join(' | ')} |`;
+}
+
+/**
  * A Markdown table of `rows` under `headers` (#152). A `|` in a cell is
  * escaped and a line break becomes a space, so a cell cannot split the row.
+ * Other Markdown is escaped too (#331), except in the `verbatim` columns,
+ * such as sample IDs, which are matched as written.
  */
-export function buildMarkdownTable(headers: readonly string[], rows: ReadonlyArray<readonly string[]>): string {
-  const cell = (text: string): string => escapeSamplePipes(text.replace(/\r?\n/g, ' ').trim());
-  const line = (cells: readonly string[]): string => `| ${cells.map(cell).join(' | ')} |`;
-  return [line(headers), `|${headers.map(() => ' --- ').join('|')}|`, ...rows.map(line)].join('\n');
+export function buildMarkdownTable(
+  headers: readonly string[],
+  rows: ReadonlyArray<readonly string[]>,
+  verbatim: ReadonlySet<number> = new Set()
+): string {
+  return [
+    markdownTableRow(headers),
+    `|${headers.map(() => ' --- ').join('|')}|`,
+    ...rows.map(r => markdownTableRow(r, verbatim)),
+  ].join('\n');
+}
+
+/** The cells of a Markdown table line, trimmed; `\|` stays inside its cell. */
+function tableCells(line: string): string[] {
+  let body = line.trim();
+  if (body.startsWith('|')) body = body.slice(1);
+  if (body.endsWith('|') && !body.endsWith('\\|')) body = body.slice(0, -1);
+  return body.split(/(?<!\\)\|/).map(c => c.trim());
+}
+
+/** A data row of a sample list table, in the note's offsets (line break excluded). */
+export interface SampleListRow {
+  start: number;
+  end: number;
+  /** The ID cell as written. */
+  id: string;
+}
+
+/**
+ * The rows of every sample list table in `text` (#336): a table whose header
+ * is one of `headerSets` (the headers "Insert sample list of this experiment"
+ * writes, in each UI language), outside fenced code. The table carries no
+ * marker, so the ones inserted before this was added are found too.
+ */
+export function findSampleListTables(text: string, headerSets: ReadonlyArray<readonly string[]>): SampleListRow[][] {
+  const sets = headerSets.map(h => h.map(c => c.toLowerCase()).join('\u0000'));
+  const lines: Array<{ start: number; text: string }> = [];
+  for (let at = 0; at <= text.length; ) {
+    const nl = text.indexOf('\n', at);
+    const end = nl < 0 ? text.length : nl;
+    lines.push({ start: at, text: text.slice(at, end).replace(/\r$/, '') });
+    if (nl < 0) break;
+    at = nl + 1;
+  }
+  const tables: SampleListRow[][] = [];
+  let fence: string | undefined;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].text;
+    const mark = /^\s{0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+    if (mark && (!fence || (mark[0] === fence[0] && mark.length >= fence.length))) {
+      fence = fence ? undefined : mark;
+      continue;
+    }
+    if (fence || !line.trimStart().startsWith('|')) continue;
+    const header = tableCells(line);
+    if (!sets.includes(header.map(c => c.toLowerCase()).join('\u0000'))) continue;
+    const rule = lines[i + 1]?.text;
+    if (!rule || !tableCells(rule).every(c => /^:?-+:?$/.test(c))) continue;
+    const rows: SampleListRow[] = [];
+    let j = i + 2;
+    for (; j < lines.length && lines[j].text.trimStart().startsWith('|'); j++) {
+      const id = tableCells(lines[j].text)[0];
+      if (id) rows.push({ start: lines[j].start, end: lines[j].start + lines[j].text.length, id });
+    }
+    tables.push(rows);
+    i = j - 1;
+  }
+  return tables;
+}
+
+/**
+ * The edits that bring the rows of sample `id` in the sample list tables of
+ * `text` up to `cells` (#336), one per row that differs. `cells` are the
+ * row's values in header order, the ID first; the ID is kept as written.
+ */
+export function planSampleListRowUpdate(
+  text: string,
+  headerSets: ReadonlyArray<readonly string[]>,
+  id: string,
+  cells: readonly string[]
+): Array<{ start: number; end: number; text: string }> {
+  const edits: Array<{ start: number; end: number; text: string }> = [];
+  for (const rows of findSampleListTables(text, headerSets)) {
+    for (const row of rows) {
+      if (row.id !== id) continue;
+      const line = markdownTableRow([row.id, ...cells.slice(1)], new Set([0]));
+      if (text.slice(row.start, row.end) !== line) edits.push({ start: row.start, end: row.end, text: line });
+    }
+  }
+  return edits;
 }
 
 /**
@@ -115,16 +222,17 @@ export function hasSampleAliasSeparator(alias: string): boolean {
 /**
  * Why `alias` cannot be a sample alias, or undefined when it can:
  * - `'separator'`: `;` or `:` ends the alias in a note (#98);
- * - `'markdown'`: `#`, `[[`, `]]`, `*`, `_` or a backtick makes Markdown read
- *   the reference as a tag, link, emphasis or code, so it is not highlighted
- *   or read back (#168; `_` next to Korean turns italic, #225).
+ * - `'markdown'`: `#`, `[[`, `]]`, `](`, `*`, `_` or a backtick makes Markdown
+ *   read the reference as a tag, link, emphasis or code, so it is not
+ *   highlighted or read back (#168; `_` next to Korean turns italic, #225;
+ *   `[text](target)` is a link, #329). A lone `[x]` stays plain text.
  * Aliases registered before these rules are left as they are; only new ones
  * are checked. {@link hasSampleAliasSeparator} stays narrow on purpose: it
  * parses older definitions.
  */
 export function sampleAliasProblem(alias: string): 'separator' | 'markdown' | undefined {
   if (hasSampleAliasSeparator(alias)) return 'separator';
-  if (/#|\[\[|\]\]|\*|_|`/.test(alias)) return 'markdown';
+  if (/#|\[\[|\]\]|\]\(|\*|_|`/.test(alias)) return 'markdown';
   return undefined;
 }
 
@@ -139,6 +247,7 @@ export function toSampleAlias(name: string): string | undefined {
     name
       .replace(/[;:_]/g, '-')
       .replace(/\[\[|\]\]/g, '')
+      .replace(/\]\(/g, '] (')
       .replace(/[#*`]/g, '')
       .trim() || undefined
   );

@@ -5,7 +5,15 @@
 import { describe, it, expect } from 'vitest';
 import { createWorkflowContent } from '../lib/workflowStructure';
 import { buildHwUnitOpMarkdown, buildSwUnitOpMarkdown } from '../lib/unitOpTemplate';
-import { extractResultSections, shareBudget, hasRecordedResults, stripAiCallouts, stripTemplatePlaceholders } from '../lib/noteResults';
+import {
+  dropEchoedLines,
+  extractResultSections,
+  shareBudget,
+  hasRecordedResults,
+  maskAiCallouts,
+  stripAiCallouts,
+  stripTemplatePlaceholders,
+} from '../lib/noteResults';
 
 const META = { experimenter: 'Dr. Kim', dateTime: '2026-10-15 10:00' };
 
@@ -109,6 +117,65 @@ describe('extractResultSections', () => {
       '### [UHW010 Spin] 조건 A › Results & Discussions\n수율 82%\n\n### Conclusions and Discussion\n결론 메모'
     );
     expect(extractResultSections('## [WD010 A]\n### [UHW010 Spin]\n#### Method\n1. 원심분리')).toBe('');
+  });
+
+  it("reads a software unit operation's Output, not a lab one's (#317)", () => {
+    const md = [
+      '## [WD010 A]',
+      '### [UHW010 Spin]',
+      '#### Output',
+      '- DNA-1 정제물',
+      '### [USW020 Align]',
+      '#### Output',
+      'F1 0.92, 정렬률 97%',
+      '### [UXX030 Custom]',
+      '#### Meta',
+      '- Software: bowtie2',
+      '#### Output',
+      'BAM 3개',
+    ].join('\n');
+    expect(extractResultSections(md)).toBe(
+      '### [USW020 Align] › Output\nF1 0.92, 정렬률 97%\n\n### [UXX030 Custom] › Output\nBAM 3개'
+    );
+    expect(hasRecordedResults(md.split('### [USW020')[0])).toBe(false);
+    expect(hasRecordedResults(md)).toBe(true);
+  });
+
+  it('sends an issue marker as its topic sentence (#354)', () => {
+    const md = '## [WD010 A]\n### [UHW010 Spin]\n#### Results & Discussions\n수율 40%. @issue;ISS-abc;시드 배양 시간 차이\n```\n@issue;ISS-x;예시\n```';
+    expect(extractResultSections(md)).toBe(
+      '### [UHW010 Spin] › Results & Discussions\n수율 40%. 시드 배양 시간 차이\n```\n@issue;ISS-x;예시\n```'
+    );
+  });
+});
+
+describe('maskAiCallouts (#318)', () => {
+  it('blanks the callout but keeps every offset and line', () => {
+    const md = ['DNA-1;원본', '> [!note] AI 요약 (m)', '> - DNA-1;원본 사용', '', 'after'].join('\n');
+    const masked = maskAiCallouts(md);
+    expect(masked.length).toBe(md.length);
+    const lines = md.split('\n');
+    expect(masked.split('\n')).toEqual(['DNA-1;원본', ' '.repeat(lines[1].length), ' '.repeat(lines[2].length), '', 'after']);
+    expect(maskAiCallouts('> [!warning] 주의')).toBe('> [!warning] 주의');
+  });
+});
+
+describe('dropEchoedLines (#316)', () => {
+  const memo = '검토 의견(시료 담당): 절편 SEC-N의 두께와 프로브 패널 버전(PNL-300)이 노트에 없음. 음성대조 배경 단위가 적혀 있지 않음.';
+
+  it('drops a line that only repeats the memo, label or spacing aside', () => {
+    const reply = [
+      '* 확장 거리 3, 5, 8 um 에서 할당 수율이 각각 49%, 58%, 63% 로 나타남.',
+      '절편 SEC-N 의 두께와 프로브 패널 버전(PNL-300) 이 노트에 없음. 음성대조 배경 단위가 적혀 있지 않음.',
+      '검토 의견 (시료 담당): 절편 SEC-N 의 두께와 프로브 패널 버전(PNL-300) 이 노트에 없음. 음성대조 배경 단위가 적혀 있지 않음.',
+    ].join('\n');
+    expect(dropEchoedLines(reply, memo)).toBe(reply.split('\n')[0]);
+  });
+
+  it('keeps short lines, unrelated lines, and the whole reply when nothing else is left', () => {
+    expect(dropEchoedLines('- 없음', '없음')).toBe('- 없음');
+    expect(dropEchoedLines('- 수율 63%', memo)).toBe('- 수율 63%');
+    expect(dropEchoedLines(memo, memo)).toBe(memo);
   });
 });
 

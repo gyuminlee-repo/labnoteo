@@ -274,7 +274,9 @@ reference, view usages, edit, delete, move between Local and Global, or change i
 - **View usages** lists each line that refers to or defines the sample, with the note path and its
   section (`[UHW250 …] › Output · line 12`), and opens the note with the cursor on that reference.
   A Local sample is looked up in its experiment, a Global one in the whole vault, leaving out
-  experiments whose own Local sample has the same ID.
+  experiments whose own Local sample has the same ID. A reference copied into an AI summary callout
+  (`> [!note] AI …`) is not a usage (deleting still counts it). A README that went into the
+  registry's usage record (`sources`) before this rule is not taken out by itself.
 - **Move to Global / Move to Local** asks first when notes outside the experiment use a Global
   sample being made Local, and when the destination already has another sample of the same type
   and alias; moving then shows two samples with the same text in autocomplete (they are not
@@ -288,6 +290,43 @@ discarded columns, leaving the cursor below the table. With a Live Preview table
 goes below that table. Use `Export tables to CSV` for a CSV.
 
 References the note makes that no registry has are left out of the table, and the notice names them.
+
+Outside the ID column, `#`, `[`, `]`, `*`, `_`, a backtick, `<`, `$`, `~~`, `==` and `%%` get a
+backslash (`freezer \#B3`), so a location such as `#B3` shows as written instead of turning into a
+tag, link or emphasis. `Export tables to CSV` drops those backslashes.
+
+Once the table is in, `Edit sample`, `Mark as discarded`, `Unmark discarded` and moving between Local
+and Global rewrite that sample's row in the sample list tables of the notes that list it, and the
+notice counts the notes changed. Tables are found by their header (`ID | Alias | Description |
+Location | Scope | Discarded`, or the Korean one), so tables inserted earlier are kept up to date
+too; a table whose header you changed, and every other row, are left alone. When a sample gets its
+first alias, the ID cell of these tables does not get `;alias` added, since the alias has its own
+column.
+
+### Sample aliases
+
+An alias cannot contain `;` or `:`, which end it in a note, nor `#`, `[[`, `]]`, `](`, `*`, `_` or a
+backtick, which Markdown reads as a tag, link, emphasis or code (`_` next to Korean turns italic).
+The alias box says why and suggests `-` or `/`. A link shape such as `standard [Trolox](1mM)` is
+refused; lone brackets such as `[uninoculated]` show as written and are accepted. Aliases
+registered before a rule are left as they are. For one already holding `[text](target)`, reading
+view sees the alias only up to the link, and that alone no longer marks the reference with the
+"registry calls this sample" warning.
+
+### Discarded samples
+
+`Mark as discarded` keeps a used-up sample, so the notes that used it still resolve it, and shows
+it faded as `(discarded)` in the sample view.
+
+- Autocomplete lists discarded samples last, below `Generate new … ID` and `Enter info`, tagged
+  `· Discarded`; Enter on a lone discarded match therefore makes a new ID.
+- Inserting one from autocomplete or the sample view, or typing its ID again, shows
+  "… was marked discarded on 2026-10-25."
+- References to it are faded and struck through in editing and reading view, with
+  `Marked discarded on <date>` on hover. A Local record in use hides a discarded Global one of
+  the same ID.
+- Editing its alias, description or location keeps the mark, the definition window shows the date,
+  and `Unmark discarded` clears it.
 
 ## partbank
 
@@ -421,7 +460,8 @@ Each result names the block it went to (`note › [UHW290 Name] alias`). From 0.
 also carries a fingerprint of the block's name and alias, so a page still finds its block after
 blocks above it were removed or reordered, instead of sliding into the next block of the same ID.
 The result asks you to check when the block was found somewhere else or the printout is older than
-0.123.0. A page whose block was renamed since printing is not guessed: it goes to unmatched scans.
+0.123.0. A page whose block was deleted or renamed since printing (the QR code cannot tell which) is
+not guessed: it goes to unmatched scans.
 Plugins before 0.123.0 do not read the new QR codes, so everyone sharing a vault should update
 before scanning new printouts.
 
@@ -431,8 +471,17 @@ Process the PC scan folder set in settings right away (desktop only).
 
 ### Assign unmatched scans
 
-Look at the pages whose QR code could not be read (`_labnote-scans/unmatched/`) as thumbnails and
-file each by choosing the note, unit operation, and page, or delete it.
+Look at the pages that could not be filed on their own (`_labnote-scans/unmatched/`) as thumbnails,
+with the reason for each, and file each by choosing the note, unit operation, and page, or delete it.
+
+- For a page whose QR code was read, its note comes first, marked `from the QR code`; choosing it
+  fills in the page and print date from the QR code.
+- When the position the QR code names still holds a block of the same ID, that block comes first;
+  otherwise (the block was deleted or moved) the window title only says which unit operation the
+  QR code names.
+- A page filed into a block you chose is not reported as an old printout, and if that block's
+  heading changes before it is filed, the page stays unmatched instead of going to its neighbour.
+- Pages sent to unmatched scans before 0.126.0 kept only the note ID, so only the note is offered.
 
 ## AI
 
@@ -457,11 +506,15 @@ Summarize the results of a workflow note with the configured LLM. Not listed in 
 README, which has the next command.
 
 - Only the result sections go to the model (`Results & Discussions`, `QC Metrics`, `Discussion`,
-  `Conclusions and Discussion` and sections of your own), each headed by its unit operation;
-  front matter, reagent and equipment lists stay out.
+  `Conclusions and Discussion` and sections of your own, plus `Output` of a software unit operation
+  — `USW…` or one with a `- Software:` line in its Meta), each headed by its unit operation;
+  front matter, reagent and equipment lists, and a lab unit operation's `Output` (the samples handed
+  to the next step) stay out.
 - The summary goes at the end of `Conclusions and Discussion` as a
-  `> [!note] AI workflow results summary (model, date)` callout (at the end of the note without
-  that section). Running it again asks before replacing the summary already there.
+  `> [!note] AI workflow results summary (model, date)` callout. Without that section (its heading
+  was renamed, say) it goes to the section holding the summary inserted earlier, or else to the end
+  of the note, and the notice says which. Running it again asks before replacing the summary
+  already there.
 - In a note outside the template the whole note is sent and the summary goes after the cursor's
   line as `> [!note] AI summary (model, date)`.
 - In a workflow note with no results written yet — its `Results & Discussions`, `QC Metrics`,
@@ -473,6 +526,9 @@ README, which has the next command.
   reads, and it is told not to invent a measurement that is not in the note.
 - Moving to another note while waiting opens the answer dialog, as for the Method draft.
 - The summary and the Method draft ask the model to write in Obsidian's interface language.
+- Both summaries ask the model to call samples by their alias rather than copy `ID;alias`
+  references. `@issue` markers are sent as their topic sentences, and any `@issue;` or `@issue:`
+  left in the reply loses its `@`, so a summary opens no issue and does not fail `validate`.
 
 ### AI: Summarize experiment results
 
@@ -480,12 +536,15 @@ From an experiment README, summarize the whole experiment. Listed only in a READ
 
 - Reads the result sections of every workflow note in the folder, in README checklist order (notes
   the checklist misses come after, by number), plus your own notes in the README's
-  `Summary and Discussion`. Open notes are read as they are in the editor.
+  `Summary and Discussion`. Open notes are read as they are in the editor. The model is told to use
+  your notes as context only, and lines of the reply that repeat one of them (20 characters or
+  more) are dropped.
 - About 10,000 characters of results are sent, shared among the notes; what a short note leaves
   goes to the others.
 - The summary goes at the end of `Summary and Discussion` as a
-  `> [!note] AI experiment results summary (model, date)` callout. Running it again asks before
-  replacing it.
+  `> [!note] AI experiment results summary (model, date)` callout. With that heading renamed, it goes
+  where the earlier summary is, or at the end, as for the workflow summary. Running it again asks
+  before replacing it.
 - When no workflow note has results written yet it stops without asking the model.
 
 ### AI: Extract sample definitions
@@ -568,6 +627,9 @@ its view is left as it is.
   follows the file again.
 - Changing only the catalog ID in a workflow file name, so that it no longer matches the note's
   `## [ID name]`, warns and offers the old name back.
+- A name with `#`, `^`, `|`, `[` or `]` cannot be reached by any link, so its checklist entry does
+  not open. You are warned and offered the name without them, or the old name back when there is
+  none; `Sync workflow checklist with folder` reports such notes too.
 - Renaming or moving an experiment's `README.labnote.md` warns and offers the old name back.
 - `Sync workflow checklist with folder` finds note titles, headings and labels that no longer match
   their file names and fixes them after asking.
@@ -576,6 +638,10 @@ its view is left as it is.
 
 Deleting one removes its checklist entry. Samples are kept — only that note's usage record is
 dropped — and its leftover `.labnote_tableN.csv` files are moved to the trash after asking.
+
+Deleting only an experiment's `README.labnote.md` (the folder stays) says to restore it from the
+trash and offers a new README listing the folder's workflow notes, with status `planned`, an empty
+objective and summary, and every entry unchecked. Nothing is asked when the whole folder was deleted.
 
 ### Moving to another folder
 
@@ -610,8 +676,14 @@ dropped — and its leftover `.labnote_tableN.csv` files are moved to the trash 
 - The copy's `@issue` markers get new IDs before that box opens, so they do not merge with the
   original's issues.
 - An experiment folder duplicated with "Make a copy" (`001_… 1`) asks for a title and becomes the
-  next experiment: its README gets the new `title` and today's dates, its discussion flag is turned
-  off, and its notes get new `@issue` marker IDs and note IDs.
+  next experiment: its README gets the new `title`, today's dates and status `planned`, its
+  discussion flag is turned off, and its notes get new `@issue` marker IDs and note IDs.
+- The copied README's `id` (`EXP-###`) becomes the number after the highest one with that prefix;
+  an `id` not ending in a number is removed, so the folder name is the experiment ID. Either way the
+  automation does not take the copy for the original.
+- Checklist links that reach the original's notes are pointed at the copy's own notes, and the
+  original's worksheet scans (`#### Worksheet scans` entries) are taken out of the copy's notes; the
+  scan images stay for the original. The workflow notes keep their dates.
 
 ### Aliases with brackets
 
@@ -623,5 +695,8 @@ Aliases may contain brackets such as `[re]`; the checklist link writes them as `
   you are warned and offered the name with the old number back.
 - Running a workflow command from a note in an unnumbered folder says the folder is not an
   experiment folder.
+- Do not rename or move an experiment's `resources/labsamples/`: it is the Local sample registry, so
+  every Local sample would read as unregistered and new ones would go to an empty registry. Renaming
+  or moving `resources` or `labsamples` warns and offers to put it back.
 - Experiment folders must sit directly under `labnote/`; moving one into a subfolder such as
   `labnote/group/020_GFP` warns and offers to move it back under `labnote/`.

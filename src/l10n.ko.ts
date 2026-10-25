@@ -196,8 +196,8 @@ const obsidianKo: Record<string, string> = {
     '{0}에 같은 ID와 별칭이 이미 있어 README 체크리스트에서 둘이 똑같이 보입니다. 구분하려면 이 워크플로에 다른 별칭을 주세요.',
   'Workflow notes moved out of {0} are still in its README checklist. Run "{1}" in {0} to remove them.':
     '{0}에서 옮겨 간 워크플로 노트가 아직 그 README 체크리스트에 있습니다. {0}에서 "{1}"을(를) 실행하면 지울 수 있습니다.',
-  'The unit operation it was printed from was renamed since, so it is unclear which block it belongs to.':
-    '출력한 뒤 유닛 오퍼레이션 제목이나 별칭이 바뀌어 어느 블록인지 확인할 수 없습니다.',
+  'The unit operation it was printed from was deleted, or its title or alias changed since, so it is unclear which block it belongs to.':
+    '출력한 뒤 유닛 오퍼레이션이 지워졌거나 제목·별칭이 바뀌어 어느 블록인지 확인할 수 없습니다.',
   'This printout is from before 0.123.0 and does not say which block it is, so check that it went to the right one.':
     '0.123.0 이전 출력본이라 어느 블록인지 적혀 있지 않습니다. 맞는 블록에 붙었는지 확인하세요.',
   'The block is no longer where it was printed from, so check that the scan went to the right one.':
@@ -245,7 +245,20 @@ const obsidianKo: Record<string, string> = {
     '복사본 {0}의 날짜를 초기화했습니다: 생성일은 오늘로, 종료일과 유닛 오퍼레이션의 Start_date/End_date는 비웠습니다.',
   'Workflow notes moved into {0} are not in its README checklist yet. Run "{1}" to add them.':
     '{0}(으)로 옮겨 온 워크플로 노트가 README 체크리스트에 없습니다. "{1}"을(를) 실행해 등록하세요.',
-  'Experiment status changed ({0}): {1} → {2}': '실험 상태가 변경되었습니다({0}): {1} → {2}',
+  'Experiment status changed ({0}): {1} → {2}.': '실험 상태가 변경되었습니다({0}): {1} → {2}.',
+  'No link can open these workflow notes, so their checklist entries do not work: {0}. Rename them without {1}.':
+    '링크로 열 수 없는 이름의 워크플로 노트가 있어 체크리스트 항목이 동작하지 않습니다: {0}. 이름에서 {1}을(를) 빼 주세요.',
+  '"{0}" has {1} in its name, which no link can reach: its README checklist entry will not open.':
+    '"{0}"의 이름에 링크로 닿을 수 없는 문자 {1}이(가) 있어 README 체크리스트 항목이 열리지 않습니다.',
+  'Rename it to "{0}"?': '"{0}"(으)로 이름을 바꿀까요?',
+  '"{0}" no longer has resources/labsamples: its Local samples will show as unregistered, and new ones go to a new, empty registry.':
+    '"{0}"에 resources/labsamples 폴더가 없어졌습니다. 이 실험의 Local 시료가 모두 등록되지 않은 것으로 보이고, 새 시료는 비어 있는 새 대장에 저장됩니다.',
+  "The README.labnote.md of \"{0}\" was deleted: the experiment list and the workflow checklist no longer find this experiment. If you can, restore it from the trash (Obsidian's .trash folder or the system trash).":
+    '"{0}"의 README.labnote.md가 삭제되었습니다. 실험 목록과 워크플로 체크리스트가 이 실험을 찾지 못합니다. 가능하면 휴지통(Obsidian의 .trash 폴더 또는 시스템 휴지통)에서 복원하세요.',
+  'Or create a new README now, listing the workflow notes in the folder? Its status starts at planned, and the objective and summary start empty.':
+    '아니면 폴더의 워크플로 노트를 나열한 새 README를 지금 만들까요? 상태는 planned에서 시작하고, 목적과 요약은 비어 있습니다.',
+  'Create README': 'README 만들기',
+  'Created a new README for {0}, listing {1} workflow note(s).': '{0}의 새 README를 만들었습니다. 워크플로 노트 {1}개를 나열했습니다.',
   '(none)': '(없음)',
   'To undo, run "{0}" again and pick {1}.': '되돌리려면 "{0}"을(를) 다시 실행해 {1}을(를) 고르세요.',
   'To undo, right-click this experiment in the workflow view again and pick {0}.':
@@ -454,6 +467,9 @@ const obsidianKo: Record<string, string> = {
     '{0}의 정의를 찾을 수 없습니다. 시료 대장에 없는 시료입니다. 대장에서 지웠거나 다른 실험으로 옮겼거나, 전역 샘플 폴더 설정을 바꿨을 수 있습니다.',
   'Not in the sample registry': '시료 대장에 없는 시료',
   'The registry calls this sample {0}': '대장의 별칭: {0}',
+  'Marked discarded on {0}': '폐기: {0}',
+  'Updated the sample list table in {0} note(s).': '노트 {0}개의 시료 목록 표를 대장에 맞춰 고쳤습니다.',
+  '{0} was marked discarded on {1}.': '{0}은(는) {1}에 폐기로 표시된 시료입니다.',
   'Close': '닫기',
   'Enter the {0} sample ID': '{0} 샘플 ID를 입력하세요',
   'e.g. {0}-12345': '예: {0}-12345',
@@ -518,8 +534,8 @@ const obsidianKo: Record<string, string> = {
   'Sample moved: {0}': '샘플을 이동했습니다: {0}',
   'An alias cannot contain ";" or ":", which separate the ID, alias and description in a note. Use "-" or "/" instead (e.g. 1-10).':
     '별칭에는 ";"나 ":"를 쓸 수 없습니다. 노트에서 ID·별칭·설명을 가르는 글자입니다. 대신 "-"나 "/"를 쓰세요(예: 1-10).',
-  'An alias cannot contain #, [[, ]], *, _ or `, which Markdown reads as a tag, link, emphasis or code. Use "-" or "/" instead.':
-    '별칭에는 #, [[, ]], *, _, `를 쓸 수 없습니다. 마크다운이 태그·링크·강조(기울임)·코드로 읽는 글자입니다. 대신 "-"나 "/"를 쓰세요.',
+  'An alias cannot contain #, [[, ]], ](, *, _ or `, which Markdown reads as a tag, link, emphasis or code. Use "-" or "/" instead.':
+    '별칭에는 #, [[, ]], ](, *, _, `를 쓸 수 없습니다. 마크다운이 태그·링크·강조(기울임)·코드로 읽는 글자입니다. 대신 "-"나 "/"를 쓰세요.',
   'A description cannot contain ";", which ends the description in a note. Use "," instead.':
     '설명에는 ";"를 쓸 수 없습니다. 노트에서 설명을 끝내는 글자입니다. 대신 ","를 쓰세요.',
   "Notes in {0} use {1} local sample(s) that are still in another experiment's registry, so the notes cannot find them. Bring them into {0}?":
@@ -645,8 +661,12 @@ const obsidianKo: Record<string, string> = {
     'AI가 쓰는 동안 유닛 오퍼레이션이 바뀌어, 초안을 커서가 있는 줄 다음에 넣었습니다.',
   'Open a note first.': '먼저 노트를 여세요.',
   'Open a markdown note first.': '먼저 마크다운 노트를 여세요.',
-  'No results to summarize yet. Write them in "Results & Discussions" and run this again.':
-    '아직 요약할 결과가 없습니다. "Results & Discussions"에 결과를 적은 뒤 다시 실행하세요.',
+  'There is no "{0}" section, so the summary replaced the earlier one under "{1}".':
+    '"{0}" 절이 없어 "{1}" 아래에 있던 이전 요약을 바꿨습니다.',
+  '(top of the note)': '(노트 맨 위)',
+  'There is no "{0}" section, so the summary went at the end of the note.': '"{0}" 절이 없어 요약을 노트 끝에 넣었습니다.',
+  'No results to summarize yet. Write them under a unit operation\'s "Results & Discussions", "QC Metrics" or "Discussion", a software unit operation\'s "Output", or "Conclusions and Discussion", and run this again.':
+    '아직 요약할 결과가 없습니다. 유닛 오퍼레이션의 "Results & Discussions"·"QC Metrics"·"Discussion", 소프트웨어 유닛 오퍼레이션의 "Output", 또는 "Conclusions and Discussion"에 결과를 적은 뒤 다시 실행하세요.',
   'Nothing to summarize.': '요약할 내용이 없습니다.',
   'Nothing to extract.': '추출할 내용이 없습니다.',
   'Created {0} sample(s).': '샘플 {0}개를 생성했습니다.',
@@ -674,9 +694,20 @@ const obsidianKo: Record<string, string> = {
   '"{0}" is a copy of the experiment {1} with its number, title and discussion flag, so the workflow view lists the two alike. Rename the folder to a new number and change its README title to tell them apart.':
     '"{0}"은(는) 실험 {1}의 복사본이라 번호·제목·논의 표시가 같아 워크플로 뷰에 똑같이 보입니다. 구분하려면 폴더 이름을 새 번호로 바꾸고 README 제목을 고치세요.',
   'Name this copy of the experiment': '복제한 실험의 제목',
-  '"{0}" is a copy of the experiment {1}. Give the copy its own title: it becomes the next experiment, dated today, without the discussion flag.':
-    '"{0}"은(는) 실험 {1}의 복사본입니다. 복사본의 제목을 정하세요. 다음 번호의 실험이 되고, 날짜는 오늘로, 논의 표시는 꺼집니다.',
+  '"{0}" is a copy of the experiment {1}. Give the copy its own title: it becomes the next experiment, dated today, planned, without the discussion flag.':
+    '"{0}"은(는) 실험 {1}의 복사본입니다. 복사본의 제목을 정하세요. 다음 번호의 실험이 되고, 날짜는 오늘로, 상태는 planned로 바뀌고, 논의 표시는 꺼집니다.',
   'Made the copy the experiment {0}, created today.': '복사본을 실험 {0}(으)로 만들었습니다. 생성일은 오늘입니다.',
+  'Its status went from {0} back to planned.': '상태는 {0}에서 planned로 되돌렸습니다.',
+  "Changed the copy's id from {0} to {1}, so the automation does not take it for the original.":
+    '복사본의 id를 {0}에서 {1}(으)로 바꿨습니다. 자동화가 원본과 같은 실험으로 보지 않게 하기 위해서입니다.',
+  "Removed the copy's id {0}, so the automation does not take it for the original; its folder name serves as its ID.":
+    '복사본의 id {0}을(를) 지웠습니다. 자동화가 원본과 같은 실험으로 보지 않게 하기 위해서이며, 이제 폴더 이름이 실험 ID가 됩니다.',
+  "Check that the checklist of {0} links to its own notes, not the original's; run \"{1}\" to fix it.":
+    '{0}의 체크리스트가 원본이 아니라 자기 노트를 가리키는지 확인하세요. 고치려면 "{1}"을 실행하세요.',
+  "Pointed {0} checklist link(s) of {1} back at its own notes instead of the original's.":
+    '{1}의 체크리스트 링크 {0}개가 원본 노트를 가리켜 자기 노트로 바꿨습니다.',
+  "Removed the {0} worksheet scan(s) of the original from the copy {1}; the scan images stay for the original.":
+    '복사본 {1}에서 원본의 기록지 스캔 {0}개를 뺐습니다. 스캔 이미지는 원본용으로 남겨 두었습니다.',
   'The discussion flag was turned off; run "{0}" if the copy needs its own discussion.':
     '논의 표시를 껐습니다. 복사본에도 논의가 필요하면 "{0}"을 실행하세요.',
   '"{0}" no longer has README.labnote.md: the experiment list and the workflow checklist will not find this experiment.':
@@ -863,8 +894,10 @@ const obsidianKo: Record<string, string> = {
   'Removed the scan from {0}.': '{0}에서 스캔을 뺐습니다.',
   'The scan was no longer in the note.': '스캔이 이미 노트에 없었습니다.',
   'No unmatched scans.': '미인식 스캔이 없습니다.',
-  'These pages could not be matched to a note. Choose the note and unit operation for each, or delete it.':
-    '노트를 찾지 못한 페이지입니다. 페이지마다 노트와 유닛 오퍼레이션을 고르거나 삭제하세요.',
+  'These pages could not be filed on their own. Choose the note and unit operation for each, or delete it.':
+    '자동으로 붙이지 못한 페이지입니다. 페이지마다 노트와 유닛 오퍼레이션을 고르거나 삭제하세요.',
+  'The QR code says unit operation {0} ({1}).': 'QR 코드의 유닛 오퍼레이션은 {0}번({1})입니다.',
+  'QR code: unit operation {0}': 'QR 코드: {0}번 유닛 오퍼레이션',
   Assign: '할당',
   'from the QR code': 'QR 코드에서 읽음',
   'Assign to which note?': '어느 노트에 할당할까요?',

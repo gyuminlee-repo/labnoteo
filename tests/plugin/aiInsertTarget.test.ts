@@ -148,7 +148,7 @@ describe('summarizeResultsCommand (#112)', () => {
 
     expect(chat).not.toHaveBeenCalled();
     expect(Notice.shown).toContain(
-      'No results to summarize yet. Write them in "Results & Discussions" and run this again.'
+      'No results to summarize yet. Write them under a unit operation\'s "Results & Discussions", "QC Metrics" or "Discussion", a software unit operation\'s "Output", or "Conclusions and Discussion", and run this again.'
     );
   });
 

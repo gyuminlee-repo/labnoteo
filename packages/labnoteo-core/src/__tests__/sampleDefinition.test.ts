@@ -14,6 +14,11 @@ import {
   hasSampleAliasSeparator,
   hasSampleDescriptionSeparator,
   buildMarkdownTable,
+  escapeMarkdownInline,
+  findSampleListTables,
+  planSampleListRowUpdate,
+  sampleAliasProblem,
+  toSampleAlias,
 } from '../lib/sampleUtils';
 import { buildSampleInsertText, parseSampleTrigger } from '../sample/sampleSuggest';
 
@@ -197,5 +202,68 @@ describe('buildMarkdownTable (#152)', () => {
     expect(buildMarkdownTable(['ID', 'Alias'], [['DNA-1', 'a|b'], ['DNA-2', 'two\nlines']])).toBe(
       ['| ID | Alias |', '| --- | --- |', '| DNA-1 | a\\|b |', '| DNA-2 | two lines |'].join('\n')
     );
+  });
+});
+
+describe('sampleAliasProblem / toSampleAlias (#329)', () => {
+  it('refuses a Markdown link and keeps a lone bracket', () => {
+    expect(sampleAliasProblem('표준 [트롤록스](1mM)')).toBe('markdown');
+    expect(sampleAliasProblem('상등액 [비접종] 대조 50%')).toBeUndefined();
+    expect(toSampleAlias('표준 [트롤록스](1mM)')).toBe('표준 [트롤록스] (1mM)');
+    expect(sampleAliasProblem(toSampleAlias('표준 [트롤록스](1mM)')!)).toBeUndefined();
+  });
+});
+
+describe('escapeMarkdownInline / buildMarkdownTable (#331)', () => {
+  it('escapes what Markdown would read, and leaves the rest', () => {
+    expect(escapeMarkdownInline('-80℃ 냉동고 #B3 / 칸 A1~A4')).toBe('-80℃ 냉동고 \\#B3 / 칸 A1~A4');
+    expect(escapeMarkdownInline('[[x]] *a* _b_ `c` <i> $5 ~~d~~ ==e== %%f%%')).toBe(
+      '\\[\\[x\\]\\] \\*a\\* \\_b\\_ \\`c\\` \\<i> \\$5 \\~\\~d\\~\\~ \\=\\=e\\=\\= \\%\\%f\\%\\%'
+    );
+  });
+
+  it('keeps the verbatim columns as written', () => {
+    expect(buildMarkdownTable(['ID', 'Location'], [['My_Type-1', '냉장고 #R2 | 문쪽']], new Set([0]))).toBe(
+      ['| ID | Location |', '| --- | --- |', '| My_Type-1 | 냉장고 \\#R2 \\| 문쪽 |'].join('\n')
+    );
+  });
+});
+
+describe('findSampleListTables / planSampleListRowUpdate (#336)', () => {
+  const headers = [
+    ['ID', '별칭', '설명', '보관 위치', '범위', '폐기'],
+    ['ID', 'Alias', 'Description', 'Location', 'Scope', 'Discarded'],
+  ];
+  const md = [
+    '# 실험',
+    '| ID | 별칭 | 설명 | 보관 위치 | 범위 | 폐기 |',
+    '| --- | --- | --- | --- | --- | --- |',
+    '| DNA-1 | frag17 | PCR 산물 | -20C 냉동고 A | 로컬 |  |',
+    '| DNA-2 |  |  |  | 로컬 |  |',
+    '',
+    '```',
+    '| ID | Alias | Description | Location | Scope | Discarded |',
+    '| --- | --- | --- | --- | --- | --- |',
+    '| DNA-1 | old |  |  | Local |  |',
+    '```',
+    '| ID | 수량 |',
+    '| --- | --- |',
+    '| DNA-1 | 3 |',
+    '',
+  ].join('\n');
+
+  it('finds the tables under a known header, outside code', () => {
+    const tables = findSampleListTables(md, headers);
+    expect(tables.map(rows => rows.map(r => r.id))).toEqual([['DNA-1', 'DNA-2']]);
+  });
+
+  it("rewrites only the sample's row, escaped like a new table", () => {
+    const cells = ['DNA-1', 'frag17v2', 'PCR 산물', '-80C 냉동고 B #A5', '로컬', '2026-10-25'];
+    const edits = planSampleListRowUpdate(md, headers, 'DNA-1', cells);
+    expect(edits).toHaveLength(1);
+    const out = md.slice(0, edits[0].start) + edits[0].text + md.slice(edits[0].end);
+    expect(out.split('\n')[3]).toBe('| DNA-1 | frag17v2 | PCR 산물 | -80C 냉동고 B \\#A5 | 로컬 | 2026-10-25 |');
+    expect(out.split('\n').slice(4)).toEqual(md.split('\n').slice(4));
+    expect(planSampleListRowUpdate(out, headers, 'DNA-1', cells)).toEqual([]);
   });
 });

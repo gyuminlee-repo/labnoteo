@@ -14,8 +14,9 @@ import type { LabnoteFs } from '@labnoteo/core';
 import {
   isSameSampleFolder,
   loadReferenceIdsByFolder,
-  loadSampleAliases,
+  loadSampleMarks,
   noteLabsamplesFolder,
+  type SampleMark,
 } from '@labnoteo/core/lib/sampleStorage';
 import * as posix from '@labnoteo/core/posix';
 
@@ -29,13 +30,18 @@ export interface KnownSampleIds {
    * first (#239). Catalog products are not in it.
    */
   aliases: ReadonlyMap<string, string>;
+  /**
+   * Discard dates by lower-cased ID, from the same registry as the alias: a
+   * Local record in use hides a discarded Global one (#330).
+   */
+  discarded: ReadonlyMap<string, string>;
   /** Changes whenever `ids` may have. */
   version: number;
 }
 
-/** A folder's registry IDs with their aliases, and its catalog IDs. */
+/** A folder's registry IDs with their aliases and discard dates, and its catalog IDs. */
 interface FolderSamples {
-  aliases: ReadonlyMap<string, string>;
+  marks: ReadonlyMap<string, SampleMark>;
   catalog: ReadonlySet<string>;
 }
 
@@ -86,16 +92,19 @@ export class SampleIdIndex {
     if (cached?.version === this.version) return cached;
     const ids = new Set<string>();
     const aliases = new Map<string, string>();
+    const discarded = new Map<string, string>();
     for (const folder of folders) {
       const samples = this.folders.get(folder);
       if (!samples) continue;
-      for (const [id, alias] of samples.aliases) {
+      for (const [id, mark] of samples.marks) {
         ids.add(id);
-        if (!aliases.has(id)) aliases.set(id, alias);
+        if (aliases.has(id)) continue;
+        aliases.set(id, mark.alias);
+        if (mark.discarded) discarded.set(id, mark.discarded);
       }
       for (const id of samples.catalog) ids.add(id);
     }
-    const entry = { ids, aliases, version: this.version };
+    const entry = { ids, aliases, discarded, version: this.version };
     this.cache.set(key, entry);
     return entry;
   }
@@ -147,17 +156,17 @@ export class SampleIdIndex {
   private async read(folder: string): Promise<void> {
     this.loading.add(folder);
     try {
-      const aliases = new Map<string, string>();
+      const marks = new Map<string, SampleMark>();
       const catalog = new Set<string>();
       const types = this.opts.types();
       let readable = true;
       for (const type of types) {
-        const own = await loadSampleAliases(this.fs, folder, type);
+        const own = await loadSampleMarks(this.fs, folder, type);
         if (!own) {
           readable = false;
           break;
         }
-        for (const [id, alias] of own) aliases.set(id, alias);
+        for (const [id, mark] of own) marks.set(id, mark);
       }
       if (readable) {
         // One directory listing for every type: any type may have a catalog
@@ -166,7 +175,7 @@ export class SampleIdIndex {
           for (const id of ids) catalog.add(id.toLowerCase());
         }
       }
-      this.folders.set(folder, readable ? { aliases, catalog } : null);
+      this.folders.set(folder, readable ? { marks, catalog } : null);
     } catch (err) {
       console.warn('[labnoteo] reading sample IDs failed:', err);
       // Not retried on every keystroke; the next sample write reads it again.

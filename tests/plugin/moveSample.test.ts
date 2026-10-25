@@ -42,7 +42,7 @@ function makePlugin(fs: MemFileSystem) {
     fs,
     t: (key: string, ...args: string[]) =>
       args.reduce<string>((s, a, i) => s.replace(`{${i}}`, a), key),
-    settings: { customSampleTypes: [] },
+    settings: { customSampleTypes: [], globalSampleFolder: GLOBAL },
     localSampleFolder: () => WRONG_LOCAL,
     refreshSampleViews: () => {
       refreshed += 1;
@@ -204,6 +204,40 @@ describe('moveSampleInteractive — Global -> Local warns about other experiment
 
     expect(moved).toBe(true);
     expect(confirmModal).not.toHaveBeenCalled();
+  });
+});
+
+// #336: the README's sample list kept the old scope.
+describe('moveSampleInteractive — sample list tables', () => {
+  it("rewrites the sample's row in the experiment's notes", async () => {
+    const fs = new MemFileSystem();
+    await putSampleRecord(fs, RENDERED_LOCAL, TYPE, 'Reagent-2', record('buffer'));
+    const readme = 'labnote/111_Shown/README.labnote.md';
+    await fs.write(
+      readme,
+      '| ID | Alias | Description | Location | Scope | Discarded |\n| --- | --- | --- | --- | --- | --- |\n| Reagent-2 | buffer |  |  | Local |  |\n'
+    );
+    const { plugin } = makePlugin(fs);
+    (plugin as unknown as { host: object }).host = { fs };
+    const app = {
+      workspace: { getLeavesOfType: () => [] },
+      vault: {
+        getMarkdownFiles: () => [new TFile(readme)],
+        cachedRead: () => fs.read(readme),
+        getFileByPath: () => null,
+      },
+    } as unknown as App;
+
+    expect(
+      await moveSampleInteractive(app, plugin, {
+        fromScope: 'local',
+        fromFolder: RENDERED_LOCAL,
+        toFolder: GLOBAL,
+        type: TYPE,
+        id: 'Reagent-2',
+      })
+    ).toBe(true);
+    expect(await fs.read(readme)).toContain('| Reagent-2 | buffer |  |  | Global |  |');
   });
 });
 

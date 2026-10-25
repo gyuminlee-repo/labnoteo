@@ -44,6 +44,7 @@ import {
   findDefinedSampleIds,
   loadSampleIds,
   loadSampleAliases,
+  loadSampleMarks,
   type SampleDatabase,
   type SampleRecord,
 } from '../lib/sampleStorage';
@@ -105,6 +106,17 @@ describe('loadSampleAliases (#239)', () => {
     const fs = new MemFileSystem({ [`${FOLDER}/RNA.json`]: '[]' });
     expect(await loadSampleAliases(fs, FOLDER, 'DNA')).toEqual(new Map());
     expect(await loadSampleAliases(fs, FOLDER, 'RNA')).toBeUndefined();
+  });
+
+  it('reads the discard date with the alias (#330)', async () => {
+    const raw = JSON.stringify({ 'DNA-1': { alias: 'a', discarded: '2026-10-25' }, 'DNA-2': { alias: null, discarded: '' } });
+    const fs = new MemFileSystem({ [`${FOLDER}/DNA.json`]: raw });
+    expect(await loadSampleMarks(fs, FOLDER, 'DNA')).toEqual(
+      new Map([
+        ['dna-1', { alias: 'a', discarded: '2026-10-25' }],
+        ['dna-2', { alias: '' }],
+      ])
+    );
   });
 });
 
@@ -643,6 +655,16 @@ describe('planAliasRewrite', () => {
     expect(planAliasRewrite(text, 'DNA', 'DNA-1', '', '')).toEqual([]);
   });
 
+  // #336: the ID cell of the sample list table took the alias its next column already has.
+  it('leaves the ID cell of a sample list table alone when adding an alias', () => {
+    const headers = [['ID', 'Alias', 'Scope']];
+    const text = '| ID | Alias | Scope |\n| --- | --- | --- |\n| DNA-1 |  | Local |\n\nDNA-1 을 썼다.\n';
+    const edits = planAliasRewrite(text, 'DNA', 'DNA-1', '', 'pUC19', headers);
+    expect(applyAliasRewrite(text, edits)).toBe(
+      '| ID | Alias | Scope |\n| --- | --- | --- |\n| DNA-1 |  | Local |\n\nDNA-1;pUC19 을 썼다.\n'
+    );
+  });
+
   it('rewrites every definition of the id in the note', () => {
     expect(rewrite('@dna;DNA-1;old\n본문\n@DNA;DNA-1;old\n', 'DNA-1', 'old', 'new')).toBe(
       '@dna;DNA-1;new\n본문\n@dna;DNA-1;new\n'
@@ -1136,6 +1158,15 @@ describe('findSampleUsages', () => {
 
   it('returns empty when no note references the sample', () => {
     expect(findSampleUsages(docs, 'DNA', 'DNA-9')).toEqual([]);
+  });
+
+  it('does not count a reference an AI summary copied, unless asked to (#318)', () => {
+    const readme = [{ path: 'labnote/001_Exp/README.labnote.md', text: '> [!note] AI 실험 결과 요약 (m, d)\n> - DNA-1;pUC19 사용' }];
+    expect(findSampleUsages(readme, 'DNA', 'DNA-1')).toEqual([]);
+    expect(findSampleUsageSpots(readme, 'DNA', 'DNA-1')).toEqual([]);
+    expect(findSampleUsages(readme, 'DNA', 'DNA-1', undefined, { includeAiCallouts: true })).toEqual([
+      'labnote/001_Exp/README.labnote.md',
+    ]);
   });
 
   it('matches a custom type passed via additionalTypes', () => {

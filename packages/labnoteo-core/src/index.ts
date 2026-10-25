@@ -64,9 +64,17 @@ export {
   hasRecordedResults,
   shareBudget,
   stripAiCallouts,
+  maskAiCallouts,
   stripTemplatePlaceholders,
+  dropEchoedLines,
 } from './lib/noteResults';
-export { findAiCalloutInSection, planSectionAppend, sectionText } from './sections/summaryInsert';
+export {
+  findAiCalloutInSection,
+  locateSummary,
+  planSectionAppend,
+  sectionText,
+  type SummaryPlace,
+} from './sections/summaryInsert';
 
 // Scanned worksheet pages filed under each unit operation.
 export {
@@ -75,6 +83,7 @@ export {
   resolveScanTarget,
   insertScanEntries,
   removeScanEntry,
+  removeAllScanEntries,
   listScanHashes,
   listFiledScans,
   renderScanEntry,
@@ -129,6 +138,8 @@ export {
   planIssueMarkerInsertion,
   issueSentenceRange,
   reassignIssueMarkerIds,
+  stripIssueMarkers,
+  neutralizeIssueMarkers,
   findEnclosingHeading,
   type IssueMarkerInsertion,
   type IssueMarker,

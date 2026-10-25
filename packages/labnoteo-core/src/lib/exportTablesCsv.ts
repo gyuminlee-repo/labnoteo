@@ -55,18 +55,19 @@ const EM_UNDERSCORE_RE = new RegExp(`(^|[^\\p{L}\\p{N}_\\\\])_(?=[^\\s_])([^_]*?
 /**
  * A cell's text without the inline Markdown the reading view hides (#139):
  * bold and italic marks and code backticks go, struck-through text goes with
- * its marks (`~~0.10~~ 0.12` → `0.12`). Code contents, marks inside a word
- * (`2*3`, `sample_id_1`) and escaped marks (`\*`) are left as they are.
+ * its marks (`~~0.10~~ 0.12` → `0.12`). Code contents and marks inside a
+ * word (`2*3`, `sample_id_1`) are left as they are; an escaped mark loses its
+ * backslash (`\*` → `*`, `\#B3` → `#B3`), as the reading view shows it (#331).
  * Links are not rewritten.
  */
 function stripInlineFormatting(cell: string): string {
-  if (!/[*_`~]/.test(cell)) return cell;
+  if (!/[*_`~\\]/.test(cell)) return cell;
   const codes: string[] = [];
   const hold = (text: string) => `\u0000${codes.push(text) - 1}\u0000`;
   let s = cell.replace(CODE_SPAN_RE, (_m, _ticks: string, body: string) =>
     hold(/^ [\s\S]*[^ ][\s\S]* $/.test(body) ? body.slice(1, -1) : body)
   );
-  s = s.replace(/\\[*_`~]/g, hold);
+  s = s.replace(/\\([!-/:-@[-`{-~])/g, (_m, mark: string) => hold(mark));
   const struck = s.replace(STRIKE_RE, (_m, before: string, after: string) => (before || after ? ' ' : ''));
   if (struck !== s) s = struck.trim();
   s = s

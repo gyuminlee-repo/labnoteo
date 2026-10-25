@@ -53,11 +53,16 @@ export interface HighlightState {
   knownAliases?: ReadonlyMap<string, string>;
   /** Tooltip of a reference whose alias differs from the registry's `alias`. */
   staleAliasTitle?: (alias: string) => string;
+  /** Discard dates by lower-cased ID, read with `knownIds` (#330). */
+  discardedIds?: ReadonlyMap<string, string>;
+  /** Tooltip of a reference to a discarded sample. */
+  discardedTitle?: (date: string) => string;
 }
 
 const SAMPLE_ID_CLASS = 'labnote-sample-id';
 const MISSING_SAMPLE_CLASS = 'labnote-sample-id-missing';
 const STALE_ALIAS_CLASS = 'labnote-sample-alias-stale';
+const DISCARDED_SAMPLE_CLASS = 'labnote-sample-discarded';
 const ISSUE_MARKER_CLASS = 'labnote-issue-marker';
 const DUPLICATE_MARKER_CLASS = 'labnote-issue-marker-duplicate';
 const MARKER_ID_RE = /^@issue[;:]([A-Za-z0-9-]+)/i;
@@ -83,6 +88,10 @@ interface MarkerOptions {
   missing?: (id: string) => string | undefined;
   /** The registry alias of a sample ID to hold its references to, with the tooltip for one that differs (#239). */
   staleAlias?: (id: string) => { alias: string; title: string } | undefined;
+  /** Tooltip for a discarded sample's ID, undefined otherwise (#330). */
+  discarded?: (id: string) => string | undefined;
+  /** The text stops where reading view split it, e.g. before a link (#329). */
+  cut?: boolean;
 }
 
 /**
@@ -115,6 +124,16 @@ export function staleAliasCheck(state: HighlightState, definedIds: ReadonlySet<s
     const alias = aliases.get(key);
     if (!alias || definedIds.has(key)) return undefined;
     return { alias, title: state.staleAliasTitle?.(alias) ?? '' };
+  };
+}
+
+/** Tooltip for the references of a note to a discarded sample (#330). */
+export function discardedSampleCheck(state: HighlightState): MarkerOptions['discarded'] {
+  const dates = state.discardedIds;
+  if (!dates) return undefined;
+  return id => {
+    const date = dates.get(id.toLowerCase());
+    return date === undefined ? undefined : state.discardedTitle?.(date) ?? '';
   };
 }
 
@@ -151,12 +170,17 @@ export function collectTokenRanges(
       continue;
     }
     const stale = opts.staleAlias?.(id);
-    const end = stale ? staleSampleAliasEnd(text, r.end, stale.alias) : undefined;
-    ranges.push(
+    const end = stale ? staleSampleAliasEnd(text, r.end, stale.alias, opts.cut) : undefined;
+    const range: TokenRange =
       stale && end !== undefined
         ? { start: r.start, end, cls: `${SAMPLE_ID_CLASS} ${STALE_ALIAS_CLASS}`, color, title: stale.title }
-        : { start: r.start, end: r.end, cls: SAMPLE_ID_CLASS, color }
-    );
+        : { start: r.start, end: r.end, cls: SAMPLE_ID_CLASS, color };
+    const discarded = opts.discarded?.(id);
+    if (discarded !== undefined) {
+      range.cls = `${range.cls} ${DISCARDED_SAMPLE_CLASS}`;
+      range.title = range.title ? `${discarded}\n${range.title}` : discarded;
+    }
+    ranges.push(range);
   }
 
   // A stale alias's mark reaches past its ID and may cover the next one.
@@ -257,6 +281,7 @@ export function createSampleHighlightPlugin(getState: (path: string | undefined)
         }
         const missing = missingSampleCheck(state, this.definedIds);
         const staleAlias = staleAliasCheck(state, this.definedIds);
+        const discarded = discardedSampleCheck(state);
         const { fenced, comments, ownIds } = this;
         // The open note counts as typed, the others as last saved.
         const duplicate = (id: string): string | undefined => {
@@ -278,6 +303,7 @@ export function createSampleHighlightPlugin(getState: (path: string | undefined)
             duplicate,
             missing,
             staleAlias,
+            discarded,
           })) {
             const styleVar = sampleColorVar(r.color ?? '');
             const attributes: Record<string, string> = {};
@@ -313,6 +339,7 @@ export function createSampleReadingHighlighter(
     const { types, colors } = state;
     let missing: MarkerOptions['missing'];
     let staleAlias: MarkerOptions['staleAlias'];
+    let discarded: MarkerOptions['discarded'];
     if (state.knownIds) {
       const text = ctx.getSectionInfo?.(el)?.text ?? '';
       if (text !== definedText) {
@@ -321,8 +348,9 @@ export function createSampleReadingHighlighter(
       }
       missing = missingSampleCheck(state, definedIds);
       staleAlias = staleAliasCheck(state, definedIds);
+      discarded = discardedSampleCheck(state);
     }
-    highlightTextNodes(el, types, colors, { missing, staleAlias });
+    highlightTextNodes(el, types, colors, { missing, staleAlias, discarded });
   };
 }
 
@@ -387,7 +415,9 @@ function highlightTextNodes(
 
   for (const textNode of targets) {
     const text = textNode.data;
-    const ranges = collectTokenRanges(text, types, colors, opts);
+    const next = textNode.nextSibling;
+    const cut = next?.nodeType === Node.ELEMENT_NODE && INLINE_TAGS.has(next.nodeName);
+    const ranges = collectTokenRanges(text, types, colors, { ...opts, cut });
     const frag = document.createDocumentFragment();
     let last = 0;
     for (const r of ranges) {

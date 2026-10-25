@@ -77,7 +77,8 @@ export function upsertManagedBlock(
 ): string {
   const wrapped = `${markers.begin}\n${inner.trim()}\n${markers.end}`;
   const span = new RegExp(`${escapeRegExp(markers.begin)}[\\s\\S]*?${escapeRegExp(markers.end)}`);
-  if (span.test(existing)) return existing.replace(span, wrapped);
+  // A function keeps `$&`, `` $` `` and the like in the template literal.
+  if (span.test(existing)) return existing.replace(span, () => wrapped);
   const separator = existing === '' ? '' : existing.endsWith('\n') ? '\n' : '\n\n';
   return `${existing}${separator}${wrapped}\n`;
 }

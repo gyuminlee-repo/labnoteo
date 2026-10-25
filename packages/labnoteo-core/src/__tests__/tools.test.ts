@@ -81,6 +81,17 @@ describe('create_sample / get_sample / list_samples', () => {
     expect(got.data).toMatchObject({ id: 'DNA-1', alias: 'plasmidA' });
   });
 
+  // #335: models write ids in another case.
+  it('finds a sample by id ignoring case and spaces, and suggests close ids', async () => {
+    await tool('create_sample').handler(ctx, { type: 'DNA', id: 'DNA-12', alias: 'p', documentPath: NOTE_PATH });
+    const got = await tool('get_sample').handler(ctx, { type: 'dna', id: ' dna-12 ', documentPath: NOTE_PATH });
+    expect(got.data).toMatchObject({ id: 'DNA-12', alias: 'p' });
+    const miss = await tool('get_sample').handler(ctx, { type: 'DNA', id: 'DNA-13', documentPath: NOTE_PATH });
+    expect(miss.error).toBe('Sample not found: DNA/DNA-13. Did you mean: DNA-12?');
+    const far = await tool('get_sample').handler(ctx, { type: 'DNA', id: 'DNA-9999', documentPath: NOTE_PATH });
+    expect(far.error).toBe('Sample not found: DNA/DNA-9999');
+  });
+
   // #188
   it('keeps a discarded sample discarded and warns about it', async () => {
     await fs.write(
@@ -385,6 +396,35 @@ describe('create_sample / get_sample / list_samples', () => {
       expect(
         await tool('update_section').describe!(ctx, { documentPath: NOTE_PATH, heading: 'Results', content: '## Results' })
       ).toHaveProperty('error');
+    });
+
+    // #334: a heading at the end of the content opened a second section.
+    it('drops a last line repeating the heading, and refuses a heading that would start a new section', async () => {
+      await fs.write(NOTE_PATH, '## [WD010 Design]\n\n#### Results\n\nr1\n\n#### Notes\n\nn\n');
+      const res = await tool('update_section').handler(ctx, {
+        documentPath: NOTE_PATH,
+        heading: 'Results',
+        content: 'new result\n\n#### Results\n',
+      });
+      expect(res.ok).toBe(true);
+      expect(await fs.read(NOTE_PATH)).toContain('#### Results\n\nnew result\n\n#### Notes');
+      const preview = await tool('update_section').describe!(ctx, {
+        documentPath: NOTE_PATH,
+        heading: 'Results',
+        content: 'a\n\n#### Extra\n\nb',
+      });
+      expect((preview as { error: string }).error).toContain('would start a new section');
+      expect(
+        await tool('update_section').describe!(ctx, { documentPath: NOTE_PATH, heading: 'Results', content: 'a\n\n##### Detail\n\nb' })
+      ).not.toHaveProperty('error');
+    });
+
+    // #332: the body took the --- before the next unit operation with it.
+    it('keeps the separator before the next unit operation', async () => {
+      await fs.write(NOTE_PATH, '## [WD010 Design]\n\n### [UHW010 A]\n\n#### Results\n\nr1\n\n---\n\n### [UHW020 B]\n');
+      const res = await tool('update_section').handler(ctx, { documentPath: NOTE_PATH, heading: 'Results', content: 'new' });
+      expect(res.ok).toBe(true);
+      expect(await fs.read(NOTE_PATH)).toContain('#### Results\n\nnew\n\n---\n\n### [UHW020 B]');
     });
 
     it('returns the error the call would fail with', async () => {
@@ -845,6 +885,14 @@ describe('create_workflow', () => {
         workflowId: 'WT110',
       });
       expect((res.data as { fileName: string }).fileName).toBe((preview as { fileName: string }).fileName);
+    });
+
+    it('takes a workflow id in another case, and suggests close ones (#335)', async () => {
+      expect(await describe(ctx, { documentPath: `${NOTE_DIR}/README.labnote.md`, workflowId: 'wt110' })).toMatchObject({
+        workflowId: 'WT110',
+      });
+      const miss = (await describe(ctx, { documentPath: `${NOTE_DIR}/README.labnote.md`, workflowId: 'WT11' })) as { error: string };
+      expect(miss.error).toMatch(/^Workflow not found: WT11\. Did you mean: WT1\d\d/);
     });
 
     it('rejects the calls the handler would reject', async () => {

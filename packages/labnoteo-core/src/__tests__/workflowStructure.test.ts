@@ -17,6 +17,9 @@ import {
   buildRenumberStagingName,
   collapseWorkflowRenames,
   suggestWorkflowFileName,
+  suggestLinkableFileName,
+  rebuildExperimentReadme,
+  unlinkableNameChars,
   classifyWorkflowRename,
   createWorkflowContent,
   planWorkflowChecklistSync,
@@ -40,6 +43,7 @@ import {
   normalizeWorkflowChecklistLinks,
   normalizeChecklistLink,
   relinkWorkflowChecklistEntries,
+  relinkCopiedExperimentChecklist,
   classifyWorkflowMoveOut,
   workflowAliasFromFileName,
   planWorkflowRetitle,
@@ -1219,6 +1223,44 @@ describe('suggestWorkflowFileName', () => {
     expect(suggestWorkflowFileName('WB030_Gibson.labnote v3.md')).toBeUndefined();
     expect(suggestWorkflowFileName('001_WB030_Gibson.labnote.md')).toBeUndefined();
   });
+
+  it('leaves out characters no link can reach (#326)', () => {
+    expect(suggestWorkflowFileName('001_WB030_Gibson.labnote #2.md')).toBe('001_WB030_Gibson 2.labnote.md');
+  });
+});
+
+describe('rebuildExperimentReadme (#340)', () => {
+  it('titles the README from the folder and lists the workflow notes by number', () => {
+    const md = rebuildExperimentReadme(
+      '003_효모_삽입',
+      ['002_WB030_B.labnote.md', 'README.md', '001_WD010_A.labnote.md', 'images'],
+      new Map([['001_WD010_A.labnote.md', 'WD010 A 설계']]),
+      '김연구'
+    );
+    expect(md).toMatch(/^---\ntitle: 효모 삽입\nauthor: 김연구\n/);
+    expect(md).toContain('status: planned');
+    const entries = md.split('\n').filter(l => l.startsWith('- ['));
+    expect(entries).toEqual(['- [ ] [WD010 A 설계](./001_WD010_A.labnote.md)', '- [ ] [WB030 B](./002_WB030_B.labnote.md)']);
+  });
+});
+
+describe('unlinkableNameChars / suggestLinkableFileName (#326)', () => {
+  it('finds the link-syntax characters of a name', () => {
+    expect(unlinkableNameChars('002_WB030_A#1_[재]|x^.labnote.md')).toEqual(['#', '[', ']', '|', '^']);
+    expect(unlinkableNameChars('002_WB030_재조립 (2).labnote.md')).toEqual([]);
+  });
+
+  it('suggests the name without them, tidying underscores', () => {
+    expect(suggestLinkableFileName('002_WB030_A_#1.labnote.md')).toBe('002_WB030_A_1.labnote.md');
+    expect(suggestLinkableFileName('002_WB030_A_#.labnote.md')).toBe('002_WB030_A.labnote.md');
+    expect(suggestLinkableFileName('002_WB030_[재]_조립.labnote.md')).toBe('002_WB030_재_조립.labnote.md');
+    expect(suggestLinkableFileName('002_WB030_A.labnote.md')).toBeUndefined();
+  });
+
+  it('flags such workflow files in the checklist sync plan', () => {
+    const plan = planWorkflowChecklistSync(readmeWith([]), ['001_WD010_A.labnote.md', '002_WB030_A#1.labnote.md']);
+    expect(plan.unlinkable).toEqual(['002_WB030_A#1.labnote.md']);
+  });
 });
 
 // #56/#52/#44: workflow files already in the folder must be registrable.
@@ -1311,6 +1353,24 @@ describe('planWorkflowChecklistSync', () => {
     expect(
       relinkWorkflowChecklistEntries(md, [{ from: 'images/004_WD050_Scan.labnote.md', to: '004_WD050_Scan.labnote.md' }])
     ).toContain('- [x] [WD050 \\[Scan\\]](./004_WD050_Scan.labnote.md)');
+  });
+
+  it('points a copied experiment back at its own notes (#320)', () => {
+    const md = readme([
+      '- [x] [WD010 A](labnote/002_X/001_WD010_A.labnote.md) @issue;ISS-1;확인',
+      '  - [ ] [WD020 B](../002_X/002_WD020_B.labnote.md)',
+      '- [ ] [WD030 C](./003_WD030_C.labnote.md)',
+      '- [ ] [WD040 D](labnote/002_X/004_WD040_D.labnote.md)',
+      '- [ ] [Old](archive/005_WD050_E.labnote.md)',
+    ]);
+    const names = ['001_WD010_A.labnote.md', '002_WD020_B.labnote.md', '003_WD030_C.labnote.md', 'README.labnote.md'];
+    const out = relinkCopiedExperimentChecklist(md, 'labnote/005_Y', names);
+    expect(out.count).toBe(2);
+    expect(out.content).toContain('- [x] [WD010 A](./001_WD010_A.labnote.md) @issue;ISS-1;확인');
+    expect(out.content).toContain('  - [ ] [WD020 B](./002_WD020_B.labnote.md)');
+    expect(out.content).toContain('- [ ] [WD040 D](labnote/002_X/004_WD040_D.labnote.md)');
+    expect(out.content).toContain('- [ ] [Old](archive/005_WD050_E.labnote.md)');
+    expect(relinkCopiedExperimentChecklist(out.content, 'labnote/005_Y', names)).toEqual({ content: out.content, count: 0 });
   });
 
   it('decodes escaped links before comparing', () => {

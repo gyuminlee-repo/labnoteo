@@ -340,3 +340,22 @@ export function removeScanEntry(md: string, hash: string): { md: string; removed
   }
   return { md, removed: false };
 }
+
+/**
+ * Remove every filed scan from `md` (#350): a copied note made the next run
+ * of a workflow keeps the original's handwritten pages otherwise. Sections
+ * left empty go too; a section with its own preface text stays. The image
+ * files are the original's and are not touched here.
+ */
+export function removeAllScanEntries(md: string): { md: string; count: number } {
+  const before = listFiledScans(md).length;
+  let out = md;
+  for (const hash of listScanHashes(md)) {
+    for (;;) {
+      const r = removeScanEntry(out, hash);
+      if (!r.removed) break;
+      out = r.md;
+    }
+  }
+  return { md: out, count: before - listFiledScans(out).length };
+}

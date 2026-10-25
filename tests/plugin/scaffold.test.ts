@@ -62,6 +62,13 @@ describe('upsertManagedBlock', () => {
     expect(updated).toContain('v2');
     expect(updated).not.toContain('v1');
   });
+
+  it('keeps `$` sequences in the new content literal', () => {
+    const seeded = upsertManagedBlock('intro\n', 'v1', MARKERS);
+    const inner = "escape `<`·`$`와 `~~`, $& and $'";
+    const updated = upsertManagedBlock(seeded, inner, MARKERS);
+    expect(updated).toBe(seeded.replace('\nv1\n', () => `\n${inner}\n`));
+  });
 });
 
 describe('appendMissingLines', () => {

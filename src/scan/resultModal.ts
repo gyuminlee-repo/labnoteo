@@ -54,19 +54,26 @@ export function describeResult(t: Translator, r: ScanResult): string {
         default:
           return t('Not an image, PDF or zip file.');
       }
-    case 'unmatched': {
-      const why: Record<string, string> = {
-        'no-qr': t('No worksheet QR code was found.'),
-        'note-not-found': t('No note has the ID {0}.', r.payload?.noteId ?? ''),
-        'duplicate-id': t('Several notes share the ID {0}.', r.payload?.noteId ?? ''),
-        'note-only': t('The QR code names the note but no unit operation.'),
-        'no-unit-op': t('The unit operation it was printed from is no longer in the note.'),
-        ambiguous: t('The note has several unit operations it could belong to.'),
-        renamed: t('The unit operation it was printed from was renamed since, so it is unclear which block it belongs to.'),
-      };
-      return `${why[r.reason ?? 'no-qr'] ?? ''} ${t('Assign it with "{0}".', t('Assign unmatched scans'))}`;
-    }
+    case 'unmatched':
+      return `${unmatchedReasonText(t, r.reason ?? 'no-qr', r.payload?.noteId)} ${t('Assign it with "{0}".', t('Assign unmatched scans'))}`;
   }
+}
+
+/** Why a page was not filed, for the result and the assignment window (#342). */
+export function unmatchedReasonText(t: Translator, reason: string, noteId = ''): string {
+  const why: Record<string, string> = {
+    'no-qr': t('No worksheet QR code was found.'),
+    'note-not-found': t('No note has the ID {0}.', noteId),
+    'duplicate-id': t('Several notes share the ID {0}.', noteId),
+    'note-only': t('The QR code names the note but no unit operation.'),
+    'no-unit-op': t('The unit operation it was printed from is no longer in the note.'),
+    ambiguous: t('The note has several unit operations it could belong to.'),
+    // A fingerprint no block has: deleted and renamed look the same.
+    renamed: t(
+      'The unit operation it was printed from was deleted, or its title or alias changed since, so it is unclear which block it belongs to.'
+    ),
+  };
+  return why[reason] ?? '';
 }
 
 export class ScanResultModal extends Modal {

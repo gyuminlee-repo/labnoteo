@@ -9,7 +9,13 @@ import { qrMatrix, qrSvg, QR_QUIET_ZONE } from '../../src/barcode/qr';
 import { NoteIdService, previousNoteIdFromScans } from '../../src/barcode/noteIdService';
 import { planScanMoves } from '../../src/barcode/barcodeFeature';
 import { createPcStore } from '../../src/scan/pcStore';
-import { isScanOfNote, scanFileName, unmatchedFileName, noteIdFromUnmatchedName } from '../../src/scan/imageStore';
+import {
+  isScanOfNote,
+  scanFileName,
+  unmatchedFileName,
+  noteIdFromUnmatchedName,
+  unmatchedInfoFromName,
+} from '../../src/scan/imageStore';
 
 class MemStorage {
   readonly data = new Map<string, string>();
@@ -116,6 +122,17 @@ describe('scan file names', () => {
     expect(name).toBe('20261016-093012_LN-7K3M9QX2_IMG_1234_p2.jpg');
     expect(noteIdFromUnmatchedName(name)).toBe('LN-7K3M9QX2');
     expect(noteIdFromUnmatchedName(unmatchedFileName('20261016-093012', 'a.jpg', undefined))).toBeUndefined();
+  });
+
+  it('keeps what the QR code said and why the page was not filed (#349)', () => {
+    const payload = { noteId: 'LN-7K3M9QX2', unitOpIndex: 2, opId: 'UHW290', page: 1, pageCount: 3, printedOn: '2026-10-25', fingerprint: 'K7QD' };
+    const name = unmatchedFileName('20261025-073505', 'IMG_9.jpg', payload.noteId, undefined, { payload, reason: 'renamed' });
+    expect(name).toBe('20261025-073505_LN-7K3M9QX2_q2-UHW290-1o3-261025-K7QD_renamed_IMG_9.jpg');
+    const { noteId, ...page } = payload;
+    expect(unmatchedInfoFromName(name)).toEqual({ noteId, page, reason: 'renamed' });
+    expect(unmatchedInfoFromName('20261016-093012_LN-7K3M9QX2_renamed_x.jpg')).toEqual({ noteId: 'LN-7K3M9QX2', reason: 'renamed' });
+    expect(unmatchedInfoFromName('20261016-093012_unknown_no-qr_a.jpg')).toEqual({ reason: 'no-qr' });
+    expect(unmatchedInfoFromName('20261016-093012_LN-7K3M9QX2_IMG_1234_p2.jpg')).toEqual({ noteId: 'LN-7K3M9QX2' });
   });
 });
 

@@ -207,6 +207,8 @@ describe('ScanPipeline.run', () => {
       expect(s.binary.has(r.unmatchedPath!)).toBe(true);
     }
     expect(results.find(r => r.input === 'other.jpg')!.unmatchedPath).toContain('_LN-ZZZZZZZZ_');
+    // #349: the rest of the QR code and the reason stay with the page.
+    expect(results.find(r => r.input === 'gone.jpg')!.unmatchedPath).toContain(`_${ID}_q5-UHW999-1o2-261015_no-unit-op_gone.jpg`);
     expect(s.writes).toEqual([]);
     expect(s.edits).toEqual([]);
   });
@@ -300,6 +302,27 @@ describe('ScanPipeline.fileManually', () => {
     const text = s.text.get(NOTE)!;
     expect(text).toMatch(/\*Printout 1\/1 · imported \d{4}-\d{2}-\d{2} · 20261021-021738_unknown_photo1\.jpg\*/);
     expect(text).not.toContain('printed');
+  });
+
+  // #341: a page filed by hand was always taken for a printout from before 0.123.0.
+  it('carries the chosen block, so it is neither an old printout nor moved', async () => {
+    const s = manualSetup();
+    const result = await s.pipeline.fileManually(file(QUEUED), file(NOTE), 2, { page: 1, pageCount: 1 });
+    expect(result).toMatchObject({ status: 'filed', block: '[UHW020 Op UHW020]', matchedBy: 'index', legacy: false });
+  });
+
+  it('leaves the image in the queue, with no second copy, when the block is gone', async () => {
+    const s = manualSetup();
+    // The block was renamed between choosing and filing.
+    const pipeline = s.pipeline as unknown as { filePage: (...args: unknown[]) => Promise<unknown> };
+    const filePage = pipeline.filePage.bind(s.pipeline);
+    pipeline.filePage = async (...args: unknown[]) => {
+      s.text.set(NOTE, s.text.get(NOTE)!.replace('### [UHW020 Op UHW020]', '### [UHW020 Op UHW020] 바뀜'));
+      return filePage(...args);
+    };
+    const result = await s.pipeline.fileManually(file(QUEUED), file(NOTE), 2, { page: 1, pageCount: 1 });
+    expect(result).toMatchObject({ status: 'unmatched', reason: 'renamed', unmatchedPath: QUEUED });
+    expect([...s.binary.keys()].filter(k => k.startsWith('_labnote-scans/'))).toEqual([QUEUED]);
   });
 
   it('writes the print date the user gave', async () => {

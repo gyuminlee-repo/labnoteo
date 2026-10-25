@@ -2,6 +2,7 @@ import {
   insertScanEntries,
   listScanHashes,
   listUnitOpBlocks,
+  removeAllScanEntries,
   removeScanEntry,
   resolveScanTarget,
   type ScanEntry,
@@ -171,6 +172,19 @@ describe('insertScanEntries / removeScanEntry', () => {
     expect(out.trimEnd().endsWith('*Printout 1/3*')).toBe(true);
     expect(out).not.toMatch(/[^\r]\n/);
     expect(removeScanEntry(out, 'aaaa').md).toBe(md);
+  });
+
+  it('removes every filed scan from a copied note, keeping a hand-written preface (#350)', () => {
+    const md = buildNote(['UHW010', 'UHW020']);
+    let out = insertScanEntries(md, listUnitOpBlocks(md)[0], [entry(1, 'aaaa'), entry(1, 'aaaa')]);
+    out = insertScanEntries(out, null, [entry(2, 'bbbb')]);
+    expect(removeAllScanEntries(out)).toEqual({ md, count: 3 });
+    const kept = out.replace('#### Worksheet scans\n', '#### Worksheet scans\n\n손으로 적은 설명\n');
+    const stripped = removeAllScanEntries(kept);
+    expect(stripped.count).toBe(3);
+    expect(stripped.md).toContain('#### Worksheet scans\n\n손으로 적은 설명');
+    expect(listScanHashes(stripped.md).size).toBe(0);
+    expect(removeAllScanEntries(md)).toEqual({ md, count: 0 });
   });
 
   it('does not read entries inside code blocks', () => {
