@@ -24,8 +24,8 @@ import { RangeSetBuilder, type Text as DocText } from '@codemirror/state';
 import { editorInfoField } from 'obsidian';
 import {
   codeBlockRanges,
-  commentRanges,
   findIssueMarkerRanges,
+  markerHiddenRanges,
   findSampleIdRanges,
   markerSpanAcrossRuns,
   staleSampleAliasEnd,
@@ -268,7 +268,7 @@ export function createSampleHighlightPlugin(getState: (path: string | undefined)
         if (this.fencedDoc !== doc) {
           const whole = doc.toString();
           this.fenced = codeBlockRanges(whole);
-          this.comments = commentRanges(whole);
+          this.comments = markerHiddenRanges(whole);
           this.ownIds = new Map();
           for (const id of noteMarkerIds(whole)) this.ownIds.set(id, (this.ownIds.get(id) ?? 0) + 1);
           this.fencedDoc = doc;

@@ -39,7 +39,7 @@ import {
   catalogDescription,
   statusNames,
 } from '../commands';
-import { noteMarkerIds } from '../issueMarkerIndex';
+import { experimentMarkerSpots, noteMarkerIds } from '../issueMarkerIndex';
 import { focusTree, renderTree } from './treeRender';
 
 const README = 'README.labnote.md';
@@ -368,6 +368,21 @@ export class WorkflowTreeView extends ItemView {
     void this.plugin.host.openFile(readmePath);
   }
 
+  /** Pick one of the experiment's `@issue` markers and open its note at that line (#379). */
+  private async showMarkers(folder: string): Promise<void> {
+    const { host } = this.plugin;
+    const spots = await experimentMarkerSpots(host.fs, folder);
+    if (spots.length === 0) {
+      host.notify('info', this.plugin.t('This experiment has no @issue markers.'));
+      return;
+    }
+    const spot = await host.pick(
+      spots.map(s => ({ label: s.title, description: `${posix.basename(s.path)}:${s.line}`, value: s })),
+      { title: this.plugin.t('@issue markers of {0} ({1})', posix.basename(folder), String(spots.length)) }
+    );
+    if (spot) await host.openFile(spot.path, { line: spot.line - 1 });
+  }
+
   private onContext(node: TreeNode, evt: MouseEvent): void {
     if (node.kind === 'experiment') {
       const { folder, status } = node.payload as { folder: string; status?: string };
@@ -390,6 +405,14 @@ export class WorkflowTreeView extends ItemView {
             void toggleDiscussionFlagCommand(app, host, stampLastUpdated, folder);
           })
       );
+      if (this.markerCount(folder) > 0) {
+        menu.addItem(item =>
+          item
+            .setTitle(this.plugin.t('Show @issue markers'))
+            .setIcon('message-square-quote')
+            .onClick(() => void this.showMarkers(folder))
+        );
+      }
       if (status === 'failed' || status === 'needs-repeat') {
         menu.addItem(item =>
           item

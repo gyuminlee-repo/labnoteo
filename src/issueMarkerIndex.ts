@@ -19,6 +19,48 @@ export function noteMarkerIds(md: string): string[] {
   return parseIssueMarkers(body).markers.map(m => m.id);
 }
 
+/** Where an `@issue` marker is: its note, 1-based line in the file, and topic. */
+export interface MarkerSpot {
+  path: string;
+  line: number;
+  title: string;
+}
+
+/** The markers of `md` as `validate` reads them, by line of the whole file. */
+export function noteMarkerSpots(path: string, md: string): MarkerSpot[] {
+  const text = md.replace(/\r\n/g, '\n');
+  const { body } = parseFrontMatterYaml(text);
+  const skipped = text.slice(0, text.length - body.length).split('\n').length - 1;
+  return parseIssueMarkers(body).markers.map(m => ({ path, line: m.line + skipped, title: m.title }));
+}
+
+/**
+ * The markers of the notes directly in experiment `dir`, the ones the workflow
+ * view counts (#379, #380), in file name order.
+ */
+export async function experimentMarkerSpots(fs: LabnoteFs, dir: string): Promise<MarkerSpot[]> {
+  const spots: MarkerSpot[] = [];
+  for (const name of [...(await fs.list(dir))].sort()) {
+    if (!name.toLowerCase().endsWith(LABNOTE_SUFFIX)) continue;
+    const path = posix.join(dir, name);
+    try {
+      spots.push(...noteMarkerSpots(path, await fs.read(path)));
+    } catch {
+      // a folder named like a note, or a file gone mid-scan
+    }
+  }
+  return spots;
+}
+
+/** `001_WB090_x.labnote.md:48, …` for a message, naming at most `max` spots. */
+export function formatMarkerSpots(spots: readonly MarkerSpot[], t: (key: string, ...args: string[]) => string, max = 3): string {
+  const named = spots
+    .slice(0, max)
+    .map(s => `${posix.basename(s.path)}:${s.line}`)
+    .join(', ');
+  return spots.length > max ? t('{0} (+{1} more)', named, String(spots.length - max)) : named;
+}
+
 /** The experiment whose markers `path` shares IDs with, or undefined. */
 export function markerExperimentDir(path: string | undefined): string | undefined {
   if (!path?.endsWith(LABNOTE_SUFFIX)) return undefined;

@@ -1687,6 +1687,31 @@ export interface WorkflowExperimenterSync {
  * label is the same in every locale. Undefined when `author` is empty, the
  * note has no `experimenter` key, or it already matches.
  */
+/**
+ * Whether the workflow note `content` has unit operations and each has its
+ * Meta `End_date` filled: the work is done even if the front matter
+ * `end_date`, which nothing fills, is still empty (#355).
+ */
+export function unitOpsAllEnded(content: string): boolean {
+  const lines = content.split(/\r?\n/);
+  const ended: boolean[] = [];
+  let fence: OpenFence | null = null;
+  for (const line of lines) {
+    const next = stepFence(line, fence);
+    if (next !== fence || fence) {
+      fence = next;
+      continue;
+    }
+    if (/^###\s+\[/.test(line)) {
+      ended.push(false);
+      continue;
+    }
+    const date = findMetaDateFieldInLine(line);
+    if (ended.length > 0 && date?.field === 'End_date' && date.value.trim() !== '') ended[ended.length - 1] = true;
+  }
+  return ended.length > 0 && ended.every(Boolean);
+}
+
 export function planWorkflowExperimenterSync(
   content: string,
   author: string

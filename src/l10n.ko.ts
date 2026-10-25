@@ -10,6 +10,9 @@ const obsidianKo: Record<string, string> = {
   'Create experiment': '실험 생성',
   'Change experiment status': '실험 상태 변경',
   'Toggle discussion flag': '논의 표시 전환',
+  'Show @issue markers': '@issue 마커 보기',
+  'This experiment has no @issue markers.': '이 실험에는 @issue 마커가 없습니다.',
+  '@issue markers of {0} ({1})': '{0}의 @issue 마커({1}개)',
   'Insert issue marker': '논의 이슈 마커 삽입',
   'Setup research automation': '연구노트 자동화 설정',
   'Create workflow': '워크플로 생성',
@@ -275,12 +278,16 @@ const obsidianKo: Record<string, string> = {
   'To undo, run "{0}" again and pick {1}.': '되돌리려면 "{0}"을(를) 다시 실행해 {1}을(를) 고르세요.',
   'To undo, right-click this experiment in the workflow view again and pick {0}.':
     '되돌리려면 워크플로 뷰에서 이 실험을 다시 우클릭해 {0}을(를) 고르세요.',
-  '{0} workflow(s) in the checklist are not checked and {1} workflow note(s) have no end_date. Mark the experiment completed anyway?':
-    '체크리스트에서 체크하지 않은 워크플로가 {0}개, 종료일(end_date)이 빈 워크플로 노트가 {1}개 있습니다. 그래도 completed로 바꿀까요?',
-  '{0} workflow(s) in the checklist are not checked. Mark the experiment completed anyway?':
-    '체크리스트에서 체크하지 않은 워크플로가 {0}개 있습니다. 그래도 completed로 바꿀까요?',
-  '{0} workflow note(s) have no end_date. Mark the experiment completed anyway?':
-    '종료일(end_date)이 빈 워크플로 노트가 {0}개 있습니다. 그래도 completed로 바꿀까요?',
+  '{0} workflow(s) in the checklist are not checked.': '체크리스트에서 체크하지 않은 워크플로가 {0}개 있습니다.',
+  '{0} workflow note(s) have no end_date in their properties: {1}.':
+    '머리말 종료일(end_date)이 빈 워크플로 노트가 {0}개 있습니다: {1}.',
+  'The discussion flag is on.': '논의 표시가 켜져 있습니다.',
+  '{0} @issue marker(s) remain: {1}.': '@issue 마커 {0}개가 남아 있습니다: {1}.',
+  'Mark the experiment completed anyway?': '그래도 completed로 바꿀까요?',
+  'Clear the discussion flag and mark completed': '논의 표시를 끄고 completed로 바꾸기',
+  'Keep the discussion flag and mark completed': '논의 표시를 둔 채 completed로 바꾸기',
+  '{0} @issue marker(s) remain, so the experiment stays under "{1}": {2}.':
+    "@issue 마커 {0}개가 남아 있어 '{1}'에 계속 보입니다: {2}.",
   'Mark completed': 'completed로 바꾸기',
   'This vault is not a git repository yet, so no review issue will open. Finish the repository setup in {0} first.':
     '이 보관함은 아직 git 저장소가 아니라 검토 이슈가 생성되지 않습니다. 먼저 {0}의 저장소 연결을 마치세요.',

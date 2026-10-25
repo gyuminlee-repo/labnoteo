@@ -796,4 +796,70 @@ describe('refreshUnitOpTocEntries', () => {
     const md = note(['- [UHW010 A](#uhw010-a)', '- [UHW999 Gone](#uhw999-gone)'], ['### [UHW010 A]', '']);
     expect(refreshUnitOpTocEntries(md)).toContain('- [UHW999 Gone](#uhw999-gone)');
   });
+
+  // #372: a marker or memo after the link survives the refresh.
+  it('keeps what follows the link of a renamed entry', () => {
+    const md = note(['- [UHW010 A](#uhw010-a) @issue;ISS-a;조건 확인'], ['### [UHW010 Aseptic]', '']);
+    expect(refreshUnitOpTocEntries(md)).toContain('- [UHW010 Aseptic](#uhw010-aseptic) @issue;ISS-a;조건 확인');
+  });
+});
+
+// #372: the TOC is rebuilt from the headings, but what the user wrote after
+// an entry's link is theirs.
+describe('TOC entry tails', () => {
+  const note = (toc: string[], headings: string[]): string =>
+    ['## Related Unit Operations', '', ...toc, '', '---', '', ...headings, ''].join('\n');
+
+  it('keeps a marker and a memo through a sort', () => {
+    const md = note(
+      ['- [USW020 B](#usw020-b) — 담당 테크니션 확인 필요', '- [UHW010 A](#uhw010-a) @issue;ISS-a;열 순환 조건'],
+      ['### [UHW010 A]', '', '### [USW020 B]', '']
+    );
+    expect(rebuildUnitOpToc(md)).toBe(
+      note(
+        ['- [UHW010 A](#uhw010-a) @issue;ISS-a;열 순환 조건', '- [USW020 B](#usw020-b) — 담당 테크니션 확인 필요'],
+        ['### [UHW010 A]', '', '### [USW020 B]', '']
+      )
+    );
+  });
+
+  it('leaves an entry with a tail alone when nothing else changed', () => {
+    const md = note(['- [UHW010 A](#uhw010-a) @issue;ISS-a;x'], ['### [UHW010 A]', '']);
+    expect(rebuildUnitOpToc(md)).toBe(md);
+    expect(computeUnitOpSyncEdits(md)).toEqual([]);
+  });
+
+  it('still reads a reorder when entries have tails', () => {
+    const md = note(
+      ['- [USW020 B](#usw020-b) 메모', '- [UHW010 A](#uhw010-a)'],
+      ['### [UHW010 A]', '', '### [USW020 B]', '']
+    );
+    expect(computeUnitOpSyncEdits(md, { onlyOnReorder: true })).not.toEqual([]);
+  });
+});
+
+// #367: a lone bracket in an alias must not break the TOC link.
+describe('TOC labels with brackets', () => {
+  it('escapes brackets in the label, not in the anchor', () => {
+    expect(buildUnitOpTocLine('USW260', 'Hyperparameter Tuning', 'dropout 0.3] 2회차')).toBe(
+      '- [USW260 Hyperparameter Tuning | dropout 0.3\\] 2회차](#usw260-hyperparameter-tuning-dropout-03-2회차)'
+    );
+    expect(buildUnitOpTocLine('USW240', 'Training', 'lr]1e-4 [재')).toBe(
+      '- [USW240 Training | lr\\]1e-4 \\[재](#usw240-training-lr1e-4-재)'
+    );
+  });
+
+  it('rewrites an old unescaped entry and keeps its tail', () => {
+    const md = [
+      '## Related Unit Operations',
+      '',
+      '- [USW260 T | a] b](#usw260-t-a-b) 메모',
+      '',
+      '---',
+      '',
+      '### [USW260 T] a] b',
+      '',
+    ].join('\n');
+    expect(rebuildUnitOpToc(md)).toContain('- [USW260 T | a\\] b](#usw260-t-a-b) 메모');
+  });
 });

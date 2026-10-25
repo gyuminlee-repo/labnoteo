@@ -9,12 +9,15 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   ISSUE_MARKER_ID_PREFIX,
   codeBlockRanges,
+  codeSpanRanges,
   commentRanges,
   fencedCodeRanges,
+  markerHiddenRanges,
   findEnclosingHeading,
   findIssueMarkerRanges,
   generateIssueMarkerId,
   issueSentenceRange,
+  lineHasSampleReference,
   parseIssueMarkers,
   planIssueMarkerInsertion,
   markerSpanAcrossRuns,
@@ -275,6 +278,80 @@ describe('indented code blocks', () => {
 
   it('ignores headings in them', () => {
     expect(findEnclosingHeading('## Results\n\n    # not a heading\n\n@issue;ISS-a;x', 5)).toBe('Results');
+  });
+});
+
+// #373: a sample reference is the record of what a unit operation used; the
+// marker must neither replace it nor run into its alias.
+describe('markers on a sample reference line', () => {
+  it('go on the next line, continuing the list item', () => {
+    const doc = '#### Input\n- Plasmid-1792901781302;PLS-base\n#### Reagent\n';
+    const s = issueSentenceRange(doc, doc.indexOf('PLS-base'))!;
+    const plan = planIssueMarkerInsertion(doc, s.from, s.to, 'ISS-a');
+    expect('edit' in plan && applyEdit(doc, plan.edit)).toBe(
+      '#### Input\n- Plasmid-1792901781302;PLS-base\n  @issue;ISS-a;Plasmid-1792901781302;PLS-base\n#### Reagent\n'
+    );
+    const caret = doc.indexOf('\n#### Reagent');
+    const typed = planIssueMarkerInsertion(doc, caret, caret, 'ISS-b', '농도 확인');
+    expect('edit' in typed && applyEdit(doc, typed.edit)).toBe(
+      '#### Input\n- Plasmid-1792901781302;PLS-base\n  @issue;ISS-b;농도 확인\n#### Reagent\n'
+    );
+  });
+
+  it('are recognised by an ID with an alias, a definition, or an ID alone', () => {
+    expect(lineHasSampleReference('- Reagent-1792901856066;RGT-dpn1')).toBe(true);
+    expect(lineHasSampleReference('- @DNA;DNA-3;insert;설명')).toBe(true);
+    expect(lineHasSampleReference('사용: DNA-3|insert 를 넣음')).toBe(true);
+    expect(lineHasSampleReference('- DNA-3')).toBe(true);
+    expect(lineHasSampleReference('- 37°C에서 1시간 배양')).toBe(false);
+    expect(lineHasSampleReference('- DNA-3 을 넣고 섞는다')).toBe(false);
+  });
+});
+
+const applyEdit = (doc: string, e: { from: number; to: number; insert: string }): string =>
+  doc.slice(0, e.from) + e.insert + doc.slice(e.to);
+
+// #378: the reading view shows an inline code span as code, so a marker
+// starting in one is an example.
+describe('markers in inline code', () => {
+  const md = [
+    '마커는 `@issue;ISS-ex1;주제` 처럼 적습니다.',
+    '형식이 틀린 예시 `@issue;주제만` 도 마찬가지',
+    '``두 개로 감싼 `@issue;ISS-ex2;예시` ``',
+    '닫히지 않은 `@issue;ISS-live1;진짜 마커',
+    '@issue;ISS-live2;주제 안의 `코드`는 그대로 주제',
+    '`예시` 뒤 @issue;ISS-live3;진짜 마커',
+  ].join('\n');
+
+  it('are not read, nor reported as malformed', () => {
+    const scan = parseIssueMarkers(md);
+    expect(scan.markers.map(m => m.id)).toEqual(['ISS-live1', 'ISS-live2', 'ISS-live3']);
+    expect(scan.malformed).toEqual([]);
+    expect(codeSpanRanges('a `b` c')).toEqual([{ start: 2, end: 5 }]);
+  });
+
+  it('keep their IDs and text when markers are reassigned or stripped', () => {
+    const line = '예시 `@issue;ISS-ex;주제` 뒤 @issue;ISS-a;진짜';
+    expect(reassignIssueMarkerIds(line, () => 'ISS-new')).toEqual({
+      content: '예시 `@issue;ISS-ex;주제` 뒤 @issue;ISS-new;진짜',
+      count: 1,
+    });
+    expect(stripIssueMarkers('예시 `@issue;ISS-ex;주제`')).toBe('예시 `@issue;ISS-ex;주제`');
+  });
+
+  it('do not count as a second marker on the line a marker goes into', () => {
+    const doc = '예시 `@issue;ISS-ex;주제`';
+    const plan = planIssueMarkerInsertion(doc, doc.length, doc.length, 'ISS-x', '질문');
+    expect('edit' in plan).toBe(true);
+  });
+
+  it('gives the editor the same markers', () => {
+    const hidden = markerHiddenRanges(md);
+    const lineAt = (offset: number): number => md.slice(0, offset).split('\n').length;
+    const styled = findIssueMarkerRanges(md, at => hidden.some(c => at >= c.start && at < c.end)).map(r =>
+      lineAt(r.start)
+    );
+    expect(styled).toEqual(parseIssueMarkers(md).markers.map(m => m.line));
   });
 });
 
