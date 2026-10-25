@@ -37,6 +37,32 @@ describe('toSettingDefinitions', () => {
     (defs[0] as unknown as { render: (s: Setting) => void }).render(setting);
     expect(render).toHaveBeenCalledWith(setting);
   });
+
+  // #362: Obsidian calls what `render` returns when it tears the row down.
+  it('returns nothing from render, though a row hands back its Setting', () => {
+    const setting = {} as Setting;
+    const [def] = toSettingDefinitions([{ rows: [{ name: 'Scan width', render: s => s }] }]);
+    expect((def as unknown as { render: (s: Setting) => unknown }).render(setting)).toBeUndefined();
+  });
+
+  it('keeps drawing when one row throws', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const [def] = toSettingDefinitions([
+      {
+        rows: [
+          {
+            name: 'Slack connection',
+            render: () => {
+              throw new TypeError("Cannot read properties of undefined (reading 'linkCode')");
+            },
+          },
+        ],
+      },
+    ]);
+    expect(() => (def as unknown as { render: (s: Setting) => void }).render({} as Setting)).not.toThrow();
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
 });
 
 describe('commitOnChange', () => {

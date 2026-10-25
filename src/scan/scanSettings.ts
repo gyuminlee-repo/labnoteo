@@ -97,7 +97,8 @@ export function scanSettingSections(plugin: LabnotePlugin, ctx: SettingsContext)
           ),
           visible: hasWatcher,
           render: setting => {
-            const watcher = feature.watcher!;
+            const watcher = feature.watcher;
+            if (!watcher) return;
             const cfg = watcher.config();
             let path = cfg?.path ?? '';
             mode = cfg?.mode ?? 'dedicated';
@@ -151,8 +152,8 @@ export function scanSettingSections(plugin: LabnotePlugin, ctx: SettingsContext)
                 .setValue(mode)
                 .onChange(v => {
                   mode = v as ScanFolderMode;
-                  const watcher = feature.watcher!;
-                  if (watcher.config()) watcher.setConfig(watcher.config()!.path, mode);
+                  const path = feature.watcher?.config()?.path;
+                  if (path !== undefined) feature.watcher?.setConfig(path, mode);
                 })
             ),
         },
@@ -244,7 +245,8 @@ function slackSettingSection(plugin: LabnotePlugin, ctx: SettingsContext): Setti
         name: t('Slack connection'),
         visible: linked,
         render: setting => {
-          const cfg = slack.config()!;
+          const cfg = slack.config();
+          if (!cfg) return;
           const status = slack.status();
           const statusDesc =
             status === 'linked'

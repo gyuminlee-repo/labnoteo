@@ -14,7 +14,10 @@ export interface SettingRow {
   aliases?: string[];
   /** Checked on every draw: whether the row is shown now. */
   visible?: () => boolean;
-  /** Adds the controls (and any status line under the description). */
+  /**
+   * Adds the controls (and any status line under the description). On
+   * Obsidian 1.13 and later it also runs while the row is hidden by `visible`.
+   */
   render?: (setting: Setting) => void;
 }
 
@@ -52,7 +55,16 @@ export function toSettingDefinitions(sections: readonly SettingSection[]): Setti
     const defs = section.rows.map(row => {
       const def: SettingDefinitionRender = {
         name: row.name,
-        render: setting => row.render?.(setting),
+        // Nothing returned: Obsidian calls what `render` returns when it tears
+        // the row down, and a row's `render` may hand back its Setting (#362).
+        // Hidden rows are drawn too, so one that throws must not stop the rest.
+        render: setting => {
+          try {
+            row.render?.(setting);
+          } catch (e) {
+            console.error(`labnoteo: could not draw the setting "${row.name}"`, e);
+          }
+        },
       };
       if (row.desc) def.desc = row.desc;
       if (row.aliases) def.aliases = row.aliases;
