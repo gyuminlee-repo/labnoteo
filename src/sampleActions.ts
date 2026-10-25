@@ -49,7 +49,9 @@ import {
 } from '@labnoteo/core/lib/sampleStorage';
 import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
 import { getSeoulDateString } from '@labnoteo/core/lib/dateUtils';
+import { invalidVaultFolderReason } from '@labnoteo/core/lib/regexUtils';
 import type LabnotePlugin from './main';
+import { invalidFolderText } from './settings';
 import { processNoteThroughVault } from './commands';
 import { promptModal, confirmModal, pickModal } from './modals';
 import { isReadingViewTarget } from './obsidianHost';
@@ -352,6 +354,16 @@ export async function createSampleInteractive(
   }
 ): Promise<CreatedSample | undefined> {
   const { type, folder, mode } = opts;
+  // Checked before the prompts, so what would be typed into them is not lost (#328).
+  const badFolder = invalidVaultFolderReason(folder);
+  if (badFolder) {
+    const why = plugin.t('Samples cannot be saved in "{0}": {1}', folder, invalidFolderText(plugin.t, badFolder));
+    const fix = isSameSampleFolder(folder, plugin.settings.globalSampleFolder)
+      ? plugin.t('Change the Global sample folder in Settings.')
+      : '';
+    new Notice([why, fix].filter(Boolean).join(' '), 10000);
+    return undefined;
+  }
   const initial = opts.initial?.trim() ?? '';
   const initialId = initial && normalizeSampleId(type, initial) ? initial : undefined;
   const initialAlias = initial && !initialId ? initial : '';

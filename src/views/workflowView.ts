@@ -14,6 +14,7 @@ import {
   buildWorkflowTree,
   filterExperiments,
   isDiscussFlagged,
+  linkRetries,
   type ExperimentEntry,
   type TreeNode,
   type UnitOperationItem,
@@ -24,7 +25,7 @@ import {
   loadWorkflows,
   loadUnitOperations,
 } from '@labnoteo/core/lib/workflowDataLoader';
-import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
+import { getExperimentDir, retryOfLinkpath } from '@labnoteo/core/lib/labnoteStructure';
 import { parseWorkflowChecklistFromReadme } from '@labnoteo/core/lib/workflowStructure';
 import * as posix from '@labnoteo/core/posix';
 import type LabnotePlugin from '../main';
@@ -34,8 +35,11 @@ import {
   unitOpAliasPrompt,
   changeExperimentStatusCommand,
   toggleDiscussionFlagCommand,
+  retryExperimentCommand,
   catalogDescription,
+  statusNames,
 } from '../commands';
+import { noteMarkerIds } from '../issueMarkerIndex';
 import { focusTree, renderTree } from './treeRender';
 
 const README = 'README.labnote.md';
@@ -56,6 +60,9 @@ export class WorkflowTreeView extends ItemView {
   /** README checklist progress by path, valid while the file's mtime is unchanged. */
   private readonly progress = new Map<string, { mtime: number; items: { done: boolean; fileName: string }[] }>();
   private readonly reading = new Set<string>();
+  /** `@issue` markers of each note by path, valid while the file's mtime is unchanged (#337). */
+  private readonly markers = new Map<string, { mtime: number; count: number }>();
+  private readonly readingMarkers = new Set<string>();
 
   constructor(leaf: WorkspaceLeaf, private readonly plugin: LabnotePlugin) {
     super(leaf);
@@ -80,8 +87,9 @@ export class WorkflowTreeView extends ItemView {
 
   async onOpen(): Promise<void> {
     this.registerEvent(
-      this.app.metadataCache.on('changed', file => {
-        if (file.name === README) this.scheduleRender();
+      this.app.metadataCache.on('changed', (file, data) => {
+        const counted = this.markers.has(file.path) && this.countMarkers(file, data);
+        if (file.name === README || counted) this.scheduleRender();
       })
     );
     const onTree = (file: TAbstractFile, oldPath?: string): void => {
@@ -148,7 +156,7 @@ export class WorkflowTreeView extends ItemView {
     });
     groupBy.createEl('option', { value: 'status', text: this.plugin.t('By status') });
     groupBy.createEl('option', { value: 'project', text: this.plugin.t('By project') });
-    groupBy.createEl('option', { value: 'discuss', text: this.plugin.t('By discussion flag') });
+    groupBy.createEl('option', { value: 'discuss', text: this.plugin.t('By discussion') });
     groupBy.value = this.plugin.settings.workflowViewGroupBy;
     this.registerDomEvent(groupBy, 'change', () => {
       this.plugin.settings.workflowViewGroupBy =
@@ -173,14 +181,15 @@ export class WorkflowTreeView extends ItemView {
    * progress read so far (#157).
    */
   private experiments(): ExperimentEntry[] {
-    return this.app.vault
+    const entries = this.app.vault
       .getMarkdownFiles()
       .filter(f => f.name === README && getExperimentDir(f.path) === posix.dirname(f.path))
       .map(f => {
         const fm = this.app.metadataCache.getFileCache(f)?.frontmatter;
         const updated: unknown = fm?.last_updated_date;
+        const folder = posix.dirname(f.path);
         return {
-          folder: posix.dirname(f.path),
+          folder,
           title: typeof fm?.title === 'string' ? fm.title : undefined,
           status: typeof fm?.status === 'string' ? fm.status : undefined,
           discuss: fm ? isDiscussFlagged(fm) : false,
@@ -188,8 +197,55 @@ export class WorkflowTreeView extends ItemView {
           progress: this.checklistProgress(f),
           project:
             typeof fm?.project === 'string' || typeof fm?.project === 'number' ? String(fm.project) : undefined,
+          markers: this.markerCount(folder),
+          retryOf: this.retryOf(f, fm?.retry_of),
         };
       });
+    return linkRetries(entries);
+  }
+
+  /** The experiment folder a README's `retry_of` link resolves to (#327). */
+  private retryOf(readme: TFile, value: unknown): string | undefined {
+    const linkpath = retryOfLinkpath(value);
+    if (!linkpath) return undefined;
+    const target = this.app.metadataCache.getFirstLinkpathDest(linkpath, readme.path);
+    const folder = target?.parent?.path;
+    return folder && folder !== posix.dirname(readme.path) ? folder : undefined;
+  }
+
+  /**
+   * The `@issue` markers of the notes directly in `folder`, the ones
+   * `validate` reads, as counted so far (#337); a note not counted yet, or
+   * changed since, is read in the background and the tree drawn again.
+   */
+  private markerCount(folder: string): number {
+    const dir = this.app.vault.getAbstractFileByPath(folder);
+    if (!(dir instanceof TFolder)) return 0;
+    let total = 0;
+    for (const file of dir.children) {
+      if (!(file instanceof TFile) || !/\.labnote\.md$/i.test(file.name)) continue;
+      const cached = this.markers.get(file.path);
+      if (cached?.mtime !== file.stat.mtime && !this.readingMarkers.has(file.path)) {
+        this.readingMarkers.add(file.path);
+        void this.app.vault
+          .cachedRead(file)
+          .then(text => {
+            if (this.countMarkers(file, text)) this.scheduleRender();
+          })
+          .catch(() => undefined)
+          .finally(() => this.readingMarkers.delete(file.path));
+      }
+      total += cached?.count ?? 0;
+    }
+    return total;
+  }
+
+  /** Record `file`'s marker count from `text`; true when it changed. */
+  private countMarkers(file: TFile, text: string): boolean {
+    const count = noteMarkerIds(text).length;
+    const before = this.markers.get(file.path);
+    this.markers.set(file.path, { mtime: file.stat.mtime, count });
+    return before?.count !== count;
   }
 
   /**
@@ -257,13 +313,23 @@ export class WorkflowTreeView extends ItemView {
   /** Re-read the experiments (cheap: metadata cache only) and draw both sections. */
   private render(): void {
     const discuss = this.plugin.t('Flagged for discussion');
+    const discussGroup = this.plugin.t('Something to discuss');
     const experiments = buildExperimentTree(
-      filterExperiments(this.experiments(), this.query, discuss),
+      filterExperiments(
+        this.experiments(),
+        this.query,
+        `${discuss} ${discussGroup}`,
+        statusNames(this.plugin.host)
+      ),
       {
         root: this.plugin.t('Experiments'),
         noStatus: this.plugin.t('(none)'),
         discuss,
-        noDiscuss: this.plugin.t('Not flagged for discussion'),
+        discussGroup,
+        noDiscuss: this.plugin.t('Nothing to discuss'),
+        markers: this.plugin.t('@issue markers'),
+        retryOf: this.plugin.t('Retry of'),
+        retriedBy: this.plugin.t('Retried in'),
         invalidStatus: this.plugin.t('(not an allowed status)'),
         invalidStatusTooltip: this.plugin.t('Validation fails on this status. Allowed statuses: {0}'),
         status: this.plugin.t('Status'),
@@ -304,7 +370,7 @@ export class WorkflowTreeView extends ItemView {
 
   private onContext(node: TreeNode, evt: MouseEvent): void {
     if (node.kind === 'experiment') {
-      const { folder } = node.payload as { folder: string };
+      const { folder, status } = node.payload as { folder: string; status?: string };
       const menu = new Menu();
       menu.addItem(item =>
         item
@@ -324,6 +390,14 @@ export class WorkflowTreeView extends ItemView {
             void toggleDiscussionFlagCommand(app, host, stampLastUpdated, folder);
           })
       );
+      if (status === 'failed' || status === 'needs-repeat') {
+        menu.addItem(item =>
+          item
+            .setTitle(this.plugin.t('Retry this experiment'))
+            .setIcon('rotate-ccw')
+            .onClick(() => this.plugin.run(() => retryExperimentCommand(this.app, this.plugin.host, folder)))
+        );
+      }
       menu.showAtMouseEvent(evt);
       return;
     }

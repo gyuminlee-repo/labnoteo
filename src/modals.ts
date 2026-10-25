@@ -14,6 +14,35 @@ import { createObsidianTranslator } from './i18n';
 // plugin's `t()`, so the shared catalog is resolved once at load.
 const t = createObsidianTranslator();
 
+/**
+ * How well `item` matches the lowercased query `q`, lower first, or undefined
+ * when it does not (#324): the label, a word of it or a short keyword (such
+ * as a Korean name) equal to the query; the label containing it; a short
+ * keyword or the description containing it; then only the detail or a long
+ * keyword (an English description kept searchable).
+ */
+function pickRank<T>(item: PickItem<T>, q: string): number | undefined {
+  const label = item.label.toLowerCase();
+  const keywords = item.keywords?.map(k => k.toLowerCase()) ?? [];
+  const short = keywords.filter(k => k.split(/\s+/).length <= 3);
+  if (label === q || short.includes(q) || label.split(/[\s:·|]+/).includes(q)) return 0;
+  if (label.includes(q)) return 1;
+  if (short.some(k => k.includes(q)) || item.description?.toLowerCase().includes(q)) return 2;
+  if (item.detail?.toLowerCase().includes(q) || keywords.some(k => k.includes(q))) return 3;
+  return undefined;
+}
+
+/** The items matching `query`, best match first and in their given order otherwise. */
+export function rankPickItems<T>(items: readonly PickItem<T>[], query: string): PickItem<T>[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [...items];
+  return items
+    .map((item, index) => ({ item, index, rank: pickRank(item, q) }))
+    .filter((r): r is { item: PickItem<T>; index: number; rank: number } => r.rank !== undefined)
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map(r => r.item);
+}
+
 /** Single-select fuzzy picker backed by Obsidian's `SuggestModal`. */
 class PickModal<T> extends SuggestModal<PickItem<T>> {
   private done = false;
@@ -32,15 +61,7 @@ class PickModal<T> extends SuggestModal<PickItem<T>> {
   }
 
   getSuggestions(query: string): PickItem<T>[] {
-    const q = query.toLowerCase();
-    if (!q) return this.items;
-    return this.items.filter(
-      it =>
-        it.label.toLowerCase().includes(q) ||
-        (it.description?.toLowerCase().includes(q) ?? false) ||
-        (it.detail?.toLowerCase().includes(q) ?? false) ||
-        (it.keywords?.some(k => k.toLowerCase().includes(q)) ?? false)
-    );
+    return rankPickItems(this.items, query);
   }
 
   renderSuggestion(item: PickItem<T>, el: HTMLElement): void {

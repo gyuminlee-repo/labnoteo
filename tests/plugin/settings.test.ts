@@ -8,6 +8,7 @@ import { describe, it, expect } from 'vitest';
 import {
   countSampleRecords,
   migrateSettings,
+  parseRangedNumber,
   partitionCustomSampleTypes,
   removedCustomSampleTypes,
   DEFAULT_SETTINGS,
@@ -275,5 +276,29 @@ describe('migrateSettings', () => {
         DEFAULT_SETTINGS.llmEndpointOllama
       );
     });
+  });
+});
+
+// #321: a number field keeps only a whole value inside its range.
+describe('parseRangedNumber', () => {
+  const range = { min: 800, max: 6000 };
+
+  it('takes a value inside the range, rounded', () => {
+    expect(parseRangedNumber('2400', range)).toBe(2400);
+    expect(parseRangedNumber(' 800 ', range)).toBe(800);
+    expect(parseRangedNumber('1600.4', range)).toBe(1600);
+  });
+
+  it('refuses values outside the range, empty and non-numbers', () => {
+    expect(parseRangedNumber('8000', range)).toBeUndefined();
+    expect(parseRangedNumber('100', range)).toBeUndefined();
+    expect(parseRangedNumber('', range)).toBeUndefined();
+    expect(parseRangedNumber('-900', range)).toBeUndefined();
+    expect(parseRangedNumber('1e3', range)).toBeUndefined();
+  });
+
+  it('takes the extra values it is given', () => {
+    expect(parseRangedNumber('0', { min: 100, max: 1600 }, [0])).toBe(0);
+    expect(parseRangedNumber('0', { min: 100, max: 1600 })).toBeUndefined();
   });
 });

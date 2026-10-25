@@ -343,6 +343,43 @@ export function resetCopiedExperimentReadme(content: string, title: string, toda
 }
 
 /**
+ * The `retry_of` value of a README that runs the experiment in `folder` again
+ * (#327): a link to that README, shown by its number. A link rather than the
+ * folder name, so Obsidian keeps it pointing there when folders are renumbered.
+ */
+export function retryOfLink(folder: string): string {
+  const name = path.basename(folder);
+  return `[[${path.join(folder, 'README.labnote')}|${/^(\d{3})_/.exec(name)?.[1] ?? name}]]`;
+}
+
+/** The vault path a `retry_of` link points at (`[[path|061]]` → `path`), or undefined. */
+export function retryOfLinkpath(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  return /^\s*\[\[([^\]|#]+)(?:[#|][^\]]*)?\]\]\s*$/.exec(value)?.[1].trim() || undefined;
+}
+
+/**
+ * The README with `retry_of` set to `link`: in place when it has the key,
+ * else after `project` (or at the end of the front matter).
+ */
+export function setRetryOf(content: string, link: string): string {
+  const lines = content.split(/\r?\n/);
+  const fmEnd = lines[0]?.trim() === '---' ? lines.findIndex((l, i) => i > 0 && l.trim() === '---') : -1;
+  if (fmEnd < 0) return content;
+  const keyAt = (key: string): number => lines.findIndex((l, i) => i > 0 && i < fmEnd && new RegExp(`^${key}\\s*:`).test(l));
+  if (keyAt('retry_of') >= 0) return rewriteFrontMatterKeys(content, { retry_of: link });
+  let at = keyAt('project');
+  if (at >= 0) {
+    while (at + 1 < fmEnd && /^\s+\S/.test(lines[at + 1])) at++;
+    at++;
+  } else {
+    at = fmEnd;
+  }
+  lines.splice(at, 0, serializeFrontMatterEntry('retry_of', link));
+  return lines.join(content.includes('\r\n') ? '\r\n' : '\n');
+}
+
+/**
  * The README with its `id` set to `id`, or the `id` line dropped when `id` is
  * undefined (#353). A copied experiment keeps the original's `id`, which the
  * automation's validate rejects as a duplicate.

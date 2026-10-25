@@ -260,12 +260,12 @@ export class SampleTreeView extends ItemView {
             new Notice(this.plugin.t('Open a note first to add a local sample.'));
             return;
           }
-          void createSampleInteractive(this.app, this.plugin, {
+          this.plugin.run(() => createSampleInteractive(this.app, this.plugin, {
             type: payload.type,
             folder: this.scopeFolder(payload.scope),
             mode: 'generate',
             scope: payload.scope,
-          });
+          }));
         })
     );
     menu.showAtMouseEvent(evt);
@@ -311,11 +311,11 @@ export class SampleTreeView extends ItemView {
             new Notice(this.plugin.t('Open a note to insert into.'));
             return;
           }
-          void insertSampleReference(
+          this.plugin.run(() => insertSampleReference(
             this.plugin,
             target,
             buildSampleReferenceText(sample.id, sample.record.alias)
-          );
+          ));
           if (sample.record.discarded) {
             new Notice(this.plugin.t('{0} was marked discarded on {1}.', sample.id, sample.record.discarded));
           }
@@ -325,7 +325,7 @@ export class SampleTreeView extends ItemView {
       item
         .setTitle(this.plugin.t('View usages'))
         .setIcon('search')
-        .onClick(() => void this.showUsages(folder, sample))
+        .onClick(() => this.plugin.run(() => this.showUsages(folder, sample)))
     );
     addPartbankMenuItems(menu, this.plugin, {
       type: sample.type,
@@ -338,12 +338,12 @@ export class SampleTreeView extends ItemView {
         .setTitle(this.plugin.t('Edit sample'))
         .setIcon('pencil')
         .onClick(() => {
-          void editSampleInteractive(this.app, this.plugin, {
+          this.plugin.run(() => editSampleInteractive(this.app, this.plugin, {
             folder,
             type: sample.type,
             id: sample.id,
             record: sample.record,
-          });
+          }));
         })
     );
     // Outside an experiment Local is the Global folder: there is no Local to move to (#159).
@@ -362,13 +362,13 @@ export class SampleTreeView extends ItemView {
             // never re-derive Local from a since-changed active file and land in
             // a different experiment than the one shown.
             const toScope: SampleScope = sample.scope === 'local' ? 'global' : 'local';
-            void moveSampleInteractive(this.app, this.plugin, {
+            this.plugin.run(() => moveSampleInteractive(this.app, this.plugin, {
               fromScope: sample.scope,
               fromFolder: this.scopeFolder(sample.scope),
               toFolder: this.scopeFolder(toScope),
               type: sample.type,
               id: sample.id,
-            });
+            }));
           })
       );
     }
@@ -377,11 +377,11 @@ export class SampleTreeView extends ItemView {
         .setTitle(this.plugin.t('Change type'))
         .setIcon('replace')
         .onClick(() => {
-          void changeSampleTypeInteractive(this.app, this.plugin, {
+          this.plugin.run(() => changeSampleTypeInteractive(this.app, this.plugin, {
             folder,
             type: sample.type,
             id: sample.id,
-          });
+          }));
         })
     );
     const discarded = Boolean(sample.record.discarded);
@@ -390,12 +390,12 @@ export class SampleTreeView extends ItemView {
         .setTitle(discarded ? this.plugin.t('Unmark discarded') : this.plugin.t('Mark as discarded'))
         .setIcon(discarded ? 'archive-restore' : 'archive')
         .onClick(() => {
-          void setSampleDiscardedInteractive(this.plugin, {
+          this.plugin.run(() => setSampleDiscardedInteractive(this.plugin, {
             folder,
             type: sample.type,
             id: sample.id,
             discarded: !discarded,
-          });
+          }));
         })
     );
     menu.addItem(item =>
@@ -403,11 +403,11 @@ export class SampleTreeView extends ItemView {
         .setTitle(this.plugin.t('Delete sample'))
         .setIcon('trash')
         .onClick(() => {
-          void deleteSampleInteractive(this.app, this.plugin, {
+          this.plugin.run(() => deleteSampleInteractive(this.app, this.plugin, {
             folder,
             type: sample.type,
             id: sample.id,
-          });
+          }));
         })
     );
 

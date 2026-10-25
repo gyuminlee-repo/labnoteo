@@ -50,6 +50,12 @@
   outline-offset: -2px;
 }
 
+/* 기록지 출력 창: 키보드로 옮겨 간 토글이 보이게 (#325) */
+.labnote-worksheet-modal .checkbox-container:has(input:focus-visible) {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+
 .labnote-tree-twistie,
 .labnote-tree-icon {
   display: inline-flex;

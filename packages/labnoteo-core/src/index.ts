@@ -40,6 +40,7 @@ export {
   replaceSectionBody,
   replaceSectionBodyAt,
   findSectionMatches,
+  diffBodyLines,
   type SectionEditResult,
   type SectionMatch,
 } from './sections/sectionEdit';
@@ -80,6 +81,7 @@ export {
 export {
   WORKSHEET_SCANS_HEADING,
   listUnitOpBlocks,
+  findSameAliasUnitOp,
   resolveScanTarget,
   insertScanEntries,
   removeScanEntry,
@@ -257,6 +259,7 @@ export {
   buildSampleTree,
   filterSampleTree,
   filterExperiments,
+  linkRetries,
   type ExperimentGrouping,
   type TreeNode,
   type TreeNodeKind,

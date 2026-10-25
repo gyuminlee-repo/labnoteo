@@ -19,8 +19,11 @@ import type {
   PickItem,
   PromptHint,
   InsertUnitOperationInput,
+  UnitOpBlock,
 } from '@labnoteo/core';
 import {
+  findSameAliasUnitOp,
+  listUnitOpBlocks,
   insertUnitOperation,
   workflowPathProblem,
   rebuildUnitOpToc,
@@ -51,6 +54,8 @@ import {
   experimentTitleLength,
   getExperimentDir,
   sanitizeTitle,
+  retryOfLink,
+  setRetryOf,
 } from '@labnoteo/core/lib/labnoteStructure';
 import { fullPathLength, WINDOWS_PATH_MAX } from '@labnoteo/core/lib/regexUtils';
 import {
@@ -165,11 +170,9 @@ async function experimentFolderNames(host: LabnoteHost): Promise<string[]> {
  * deep in the disk can still push the whole path over.
  */
 function warnIfWindowsPathTooLong(app: App, host: LabnoteHost, vaultPath: string): void {
-  if (!Platform.isWin) return;
-  const basePath = (app.vault.adapter as { getBasePath?: () => string }).getBasePath?.();
-  if (!basePath) return;
-  const length = fullPathLength(basePath, vaultPath);
-  if (length < WINDOWS_PATH_MAX) return;
+  const [over] = windowsPathsOver(app, [vaultPath], WINDOWS_PATH_MAX - 1);
+  if (!over) return;
+  const { length } = over;
   host.notify(
     'warn',
     host.t(
@@ -179,6 +182,25 @@ function warnIfWindowsPathTooLong(app: App, host: LabnoteHost, vaultPath: string
       String(WINDOWS_PATH_MAX - 1)
     )
   );
+}
+
+/**
+ * The vault paths longer than `max` on disk once the vault's own folder is
+ * put in front, longest first (#148, #348). Only on Windows, where the limits
+ * apply; empty elsewhere.
+ */
+export function windowsPathsOver(
+  app: App,
+  vaultPaths: readonly string[],
+  max: number
+): Array<{ path: string; length: number }> {
+  if (!Platform.isWin) return [];
+  const basePath = (app.vault.adapter as { getBasePath?: () => string }).getBasePath?.();
+  if (!basePath) return [];
+  return vaultPaths
+    .map(path => ({ path, length: fullPathLength(basePath, path) }))
+    .filter(p => p.length > max)
+    .sort((a, b) => b.length - a.length);
 }
 
 /**
@@ -244,11 +266,27 @@ export function workflowAliasHint(
 }
 
 /** A unit-operation alias goes into no file name, so it has no limit (#213). */
-export function unitOpAliasHint(host: Pick<LabnoteHost, 't'>): (value: string) => PromptHint {
-  return value =>
-    ({
+export function unitOpAliasHint(
+  host: Pick<LabnoteHost, 't'>,
+  op: { id: string; name: string } = { id: '', name: '' },
+  /** The note's unit operations: one of this ID with the same alias is flagged (#339). */
+  blocks: readonly UnitOpBlock[] = []
+): (value: string) => PromptHint {
+  return value => {
+    const twin = findSameAliasUnitOp(blocks, op.id, op.name, value);
+    if (twin) {
+      return {
+        text: host.t(
+          '{0} is already in this note, so the two would read the same in the headings and the table of contents. Give this one its own alias to tell them apart.',
+          `[${twin.opId} ${twin.opName}]${twin.alias ? ` ${twin.alias}` : ''}`
+        ),
+        warn: true,
+      };
+    }
+    return {
       text: host.t('{0} characters · no limit (not used in a file name)', String(Array.from(value.trim()).length)),
-    });
+    };
+  };
 }
 
 /** What a workflow is, for the workflow name prompts (#213). */
@@ -263,11 +301,21 @@ export function catalogDescription(id: string, description: string): string {
   return catalogDescriptionFor(id, description, getObsidianLanguage());
 }
 
-/** Create a new experiment folder (labnote/###_Title) + README scaffold. */
-export async function createExperimentCommand(app: App, host: LabnoteHost): Promise<void> {
+/**
+ * Create a new experiment folder (labnote/###_Title) + README scaffold. With
+ * `retryOf`, the README's `retry_of` links to that experiment's (#327).
+ */
+export async function createExperimentCommand(
+  app: App,
+  host: LabnoteHost,
+  opts: { title?: string; retryOf?: string } = {}
+): Promise<void> {
   const title = await host.prompt({
-    title: host.t('New experiment'),
+    title: opts.retryOf
+      ? host.t('Retry experiment {0}', posix.basename(opts.retryOf))
+      : host.t('New experiment'),
     prompt: host.t('Experiment title'),
+    value: opts.title,
     validate: v => {
       if (!v.trim()) return host.t('Title is required.');
       if (!sanitizeTitle(v.trim())) {
@@ -287,11 +335,34 @@ export async function createExperimentCommand(app: App, host: LabnoteHost): Prom
   await host.fs.mkdir(structure.labnoteFolder);
   await host.fs.mkdir(structure.imagesFolder);
   await host.fs.mkdir(structure.resourcesFolder);
-  await host.fs.write(structure.readmePath, structure.readmeContent);
+  await host.fs.write(
+    structure.readmePath,
+    opts.retryOf ? setRetryOf(structure.readmeContent, retryOfLink(opts.retryOf)) : structure.readmeContent
+  );
 
   await host.openFile(structure.readmePath);
   host.notify('info', host.t('Experiment created: {0}', posix.basename(structure.labnoteFolder)));
   warnIfWindowsPathTooLong(app, host, structure.readmePath);
+}
+
+/** The title a retry of `title` starts from: `… 1차` becomes `… 2차`, anything else gets the run suffix. */
+export function retryTitle(host: Pick<LabnoteHost, 't'>, title: string): string {
+  const run = /^(.*\S)\s*(\d+)차$/.exec(title.trim());
+  return run ? `${run[1]} ${Number(run[2]) + 1}차` : host.t('{0} (retry)', title.trim());
+}
+
+/**
+ * Create an experiment that runs the one in `folder` again (#327), for a
+ * failed one or one that needs a repeat: the title starts from the
+ * original's, and the README's `retry_of` links back so the workflow view
+ * shows the two together.
+ */
+export async function retryExperimentCommand(app: App, host: LabnoteHost, folder: string): Promise<void> {
+  const readmePath = posix.join(folder, README);
+  const text = (await host.fs.exists(readmePath)) ? await host.fs.read(readmePath) : '';
+  const { frontMatter } = parseFrontMatterYaml(text.replace(/\r\n/g, '\n'));
+  const original = typeof frontMatter.title === 'string' && frontMatter.title.trim() ? frontMatter.title : posix.basename(folder).replace(/^\d{3}_/, '');
+  await createExperimentCommand(app, host, { title: retryTitle(host, original), retryOf: folder });
 }
 
 /**
@@ -332,6 +403,18 @@ function statusMeanings(host: LabnoteHost): Record<ExperimentStatus, { detail: s
       keywords: host.t('needs repeat again redo'),
     },
   };
+}
+
+/**
+ * Each status's name in the UI language (검토 필요 for `needs-review`), the
+ * part of its meaning before `:` or `—`, for the workflow view search (#333).
+ * Only the name: the search words would also match needs-review on 논의.
+ */
+export function statusNames(host: LabnoteHost): Record<ExperimentStatus, string> {
+  const meanings = statusMeanings(host);
+  return Object.fromEntries(
+    EXPERIMENT_STATUSES.map(status => [status, meanings[status].detail.split(/\s*(?::|—)\s*/)[0].trim()])
+  ) as Record<ExperimentStatus, string>;
 }
 
 /**
@@ -1087,8 +1170,9 @@ export function unitOpAliasPrompt(
   app: App,
   host: LabnoteHost
 ): (input: InsertUnitOperationInput) => Promise<string | undefined> {
-  return input =>
-    workflowAliasModal(app, {
+  return async input => {
+    const blocks = listUnitOpBlocks((await host.editTarget()?.getText()) ?? '');
+    return workflowAliasModal(app, {
       id: input.opId,
       catalogName: input.opName,
       title: host.t('Unit operation alias'),
@@ -1097,8 +1181,9 @@ export function unitOpAliasPrompt(
         'A unit operation is a single task within a workflow (one step using a piece of equipment or software). The alias tells repeats of the same task apart by run or condition and appears in its heading and the table of contents. You can leave it empty.'
       ),
       description: input.opDescription ? catalogDescription(input.opId, input.opDescription) : undefined,
-      hint: unitOpAliasHint(host),
+      hint: unitOpAliasHint(host, { id: input.opId, name: input.opName }, blocks),
     });
+  };
 }
 
 /**

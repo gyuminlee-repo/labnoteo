@@ -106,6 +106,22 @@ export function listUnitOpBlocks(md: string): UnitOpBlock[] {
   return blocksOf(lines, scanHeadings(lines));
 }
 
+/**
+ * A block among `blocks` that a new unit operation `opId` with `alias` would
+ * read the same as in the headings and table of contents (#339): same ID, and
+ * name and alias (possibly empty) compared like {@link unitOpFingerprint}, so
+ * exactly the twins that leave a scanned page no single block to go to.
+ */
+export function findSameAliasUnitOp(
+  blocks: readonly UnitOpBlock[],
+  opId: string,
+  opName: string,
+  alias: string
+): UnitOpBlock | undefined {
+  const wanted = unitOpFingerprint(opName, alias);
+  return blocks.find(b => b.opId === opId && unitOpFingerprint(b.opName, b.alias) === wanted);
+}
+
 export type ScanTarget =
   | { kind: 'block'; block: UnitOpBlock; by: 'index' | 'opId' | 'fingerprint' }
   | { kind: 'note' }

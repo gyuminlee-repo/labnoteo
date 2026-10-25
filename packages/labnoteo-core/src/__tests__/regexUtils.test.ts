@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { capPathSegment, fullPathLength, isPathTooLongError } from '../lib/regexUtils';
+import { capPathSegment, fullPathLength, invalidVaultFolderReason, isPathTooLongError } from '../lib/regexUtils';
 
 // #148
 describe('capPathSegment', () => {
@@ -48,5 +48,36 @@ describe('fullPathLength', () => {
     expect(fullPathLength('C:\\Users\\me\\vault', 'labnote/001_A/README.labnote.md')).toBe(17 + 1 + 31);
     expect(fullPathLength('C:\\Users\\me\\vault\\', 'a.md')).toBe(17 + 1 + 4);
     expect(fullPathLength('', 'a.md')).toBe(4);
+  });
+});
+
+// #328: the Global sample folder must be a folder every OS sharing the vault can make.
+describe('invalidVaultFolderReason', () => {
+  it('accepts ordinary vault folders, Korean and an outer slash included', () => {
+    expect(invalidVaultFolderReason('resources/labsamples')).toBeUndefined();
+    expect(invalidVaultFolderReason('/공용 시료/2026/')).toBeUndefined();
+    expect(invalidVaultFolderReason('a.b/c-d')).toBeUndefined();
+    expect(invalidVaultFolderReason('console/command')).toBeUndefined();
+  });
+
+  it('refuses characters Windows does not allow', () => {
+    expect(invalidVaultFolderReason('""')).toEqual({ kind: 'chars', chars: '"' });
+    expect(invalidVaultFolderReason('a:b/c?*')).toEqual({ kind: 'chars', chars: ':?*' });
+    expect(invalidVaultFolderReason('a\tb')).toEqual({ kind: 'chars', chars: '\t' });
+    expect(invalidVaultFolderReason('a\u0001b')).toEqual({ kind: 'chars', chars: '\u0001' });
+  });
+
+  it('refuses a part ending in a dot or a space, and reserved device names', () => {
+    expect(invalidVaultFolderReason('samples./x')).toEqual({ kind: 'trailing', part: 'samples.' });
+    expect(invalidVaultFolderReason('x/samples /y')).toEqual({ kind: 'trailing', part: 'samples ' });
+    expect(invalidVaultFolderReason('res/CON')).toEqual({ kind: 'reserved', part: 'CON' });
+    expect(invalidVaultFolderReason('com1.txt')).toEqual({ kind: 'reserved', part: 'com1.txt' });
+  });
+
+  it('refuses empty, empty parts and . or ..', () => {
+    expect(invalidVaultFolderReason('  ')).toEqual({ kind: 'empty' });
+    expect(invalidVaultFolderReason('a//b')).toEqual({ kind: 'parent' });
+    expect(invalidVaultFolderReason('../outside')).toEqual({ kind: 'parent' });
+    expect(invalidVaultFolderReason('a/./b')).toEqual({ kind: 'parent' });
   });
 });

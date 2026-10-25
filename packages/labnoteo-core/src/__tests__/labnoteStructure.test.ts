@@ -26,7 +26,36 @@ import {
   isSampleTrackingOff,
   isSampleTrackingOn,
   suggestExperimentFolderName,
+  retryOfLink,
+  retryOfLinkpath,
+  setRetryOf,
 } from '../lib/labnoteStructure';
+
+// #327
+describe('retry_of', () => {
+  it('links the original README, shown by its number, and reads the link back', () => {
+    const link = retryOfLink('labnote/061_Organoid');
+    expect(link).toBe('[[labnote/061_Organoid/README.labnote|061]]');
+    expect(retryOfLinkpath(link)).toBe('labnote/061_Organoid/README.labnote');
+    expect(retryOfLinkpath('061_Organoid')).toBeUndefined();
+    expect(retryOfLinkpath(['x'])).toBeUndefined();
+  });
+
+  it('goes after project in a new README, as valid YAML that keeps the link', () => {
+    const readme = generateReadmeContent('GFP 2차');
+    const out = setRetryOf(readme, retryOfLink('labnote/061_GFP'));
+    const lines = out.split('\n');
+    expect(lines[lines.findIndex(l => l.startsWith('project:')) + 1]).toMatch(/^retry_of: /);
+    expect(parseFrontMatterYaml(out).frontMatter.retry_of).toBe('[[labnote/061_GFP/README.labnote|061]]');
+    expect(out.slice(out.indexOf('\n---\n'))).toBe(readme.slice(readme.indexOf('\n---\n')));
+  });
+
+  it('replaces a retry_of already there', () => {
+    const out = setRetryOf('---\ntitle: A\nretry_of: old\n---\nbody\n', '[[x|1]]');
+    expect(parseFrontMatterYaml(out).frontMatter.retry_of).toBe('[[x|1]]');
+    expect(out.match(/retry_of/g)).toHaveLength(1);
+  });
+});
 
 // #105: an experiment README can turn sample tracking off for that experiment.
 describe('isSampleTrackingOff', () => {

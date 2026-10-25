@@ -8,6 +8,8 @@ import type { LabnoteHost } from '@labnoteo/core';
 import { MemFileSystem } from '../../packages/labnoteo-core/src/fs/memFileSystem';
 import {
   applyAsset,
+  backupPathFor,
+  freeBackupPath,
   managedFileContent,
   refreshAutomationFiles,
   setupResearchAutomationCommand,
@@ -30,7 +32,7 @@ function makeHost(files: Record<string, string> = {}) {
   const host = {
     fs,
     notify: vi.fn(),
-    confirm: vi.fn(async () => true),
+    confirm: vi.fn(async (_message: string) => true),
     t: (key: string, ...args: Array<string | number | boolean>) =>
       key.replace(/\{(\d+)\}/g, (_, i: string) => String(args[Number(i)])),
   };
@@ -422,6 +424,56 @@ describe('QUICKSTART managed block', () => {
     const plain = makeHost({ 'GUIDE.md': marked('guide v1', 'Below.') });
     expect(await applyAsset(plain.asHost, GUIDE, contentHash('guide v1\n'), legacy)).toBe('merged');
     expect(plain.host.confirm).not.toHaveBeenCalled();
+    expect(await plain.fs.exists('GUIDE.backup.md')).toBe(false);
+  });
+
+  it('keeps the file before replacing an edited block, under a name no earlier backup has (#351)', async () => {
+    const edited = marked('guide v1 (lab: no raw cryo-EM)', 'Below.');
+    const { fs, host, asHost } = makeHost({ 'GUIDE.md': edited, 'GUIDE.backup.md': 'earlier backup\n' });
+    expect(await applyAsset(asHost, GUIDE, contentHash('guide v1\n'), legacy)).toBe('merged');
+    expect(await fs.read('GUIDE.backup.md')).toBe('earlier backup\n');
+    expect(await fs.read('GUIDE.backup_2.md')).toBe(edited);
+    const message = host.confirm.mock.calls[0][0] as string;
+    expect(message).toContain('Replace the block with the new version?');
+    expect(message).toContain('GUIDE.backup_2.md');
+    expect(message).toContain('Lines removed:\n  guide v1 (lab: no raw cryo-EM)');
+    expect(host.notify).toHaveBeenCalledWith('info', 'Kept the previous GUIDE.md as GUIDE.backup_2.md.');
+  });
+
+  it('asks to put the block back, not to update it, when the template is the one installed (#351)', async () => {
+    const edited = marked('guide v2 (lab note)', 'Below.');
+    const { fs, host, asHost } = makeHost({ 'GUIDE.md': edited });
+    host.confirm.mockResolvedValueOnce(false);
+    expect(await applyAsset(asHost, GUIDE, contentHash('guide v2\n'), legacy)).toBe('skipped');
+    expect(host.confirm.mock.calls[0][0]).toContain('Put the block back to the installed text?');
+    expect(await fs.exists('GUIDE.backup.md')).toBe(false);
+  });
+
+  it('lists at most eight removed lines', async () => {
+    const lines = Array.from({ length: 10 }, (_, i) => `lab line ${i + 1}`);
+    const { host, asHost } = makeHost({ 'GUIDE.md': marked(lines.join('\n'), 'Below.') });
+    host.confirm.mockResolvedValueOnce(false);
+    await applyAsset(asHost, GUIDE, contentHash('guide v1\n'), legacy);
+    const message = host.confirm.mock.calls[0][0] as string;
+    expect(message).toContain('lab line 8');
+    expect(message).not.toContain('lab line 9');
+    expect(message).toContain('(+2 more line(s))');
+  });
+
+  it('finds a free backup name: the plain one, then with the version, then numbered', async () => {
+    const fs = new MemFileSystem({});
+    expect(await freeBackupPath(fs, 'Q.backup.md', '0.1.0')).toBe('Q.backup.md');
+    await fs.write('Q.backup.md', 'a');
+    expect(await freeBackupPath(fs, 'Q.backup.md', '0.1.0')).toBe('Q.backup-0.1.0.md');
+    expect(await freeBackupPath(fs, 'Q.backup.md')).toBe('Q.backup_2.md');
+    await fs.write('Q.backup-0.1.0.md', 'b');
+    expect(await freeBackupPath(fs, 'Q.backup.md', '0.1.0')).toBe('Q.backup-0.1.0_2.md');
+  });
+
+  it('names a backup beside its file', () => {
+    expect(backupPathFor('AGENTS.md')).toBe('AGENTS.backup.md');
+    expect(backupPathFor('.labnoteo/x.y/CLAUDE.md')).toBe('.labnoteo/x.y/CLAUDE.backup.md');
+    expect(backupPathFor('.labnoteo/README')).toBe('.labnoteo/README.backup');
   });
 
   it('does not put a block back into an unmarked file of an asset without migrateUnmarked', async () => {
@@ -448,7 +500,9 @@ describe('refresh strings are translated', () => {
     'These automation files are not in the vault: {0}. Run "Setup research automation" to install them if you need them.',
     '{0} differs from the new version. Edits made after it was installed are lost if you replace it. Replace it with the new version?',
     'From then on, updates change only the marked block and keep what you write below it.',
-    'The marked block of {0} was edited after it was installed. Replace the block with the new version? Text outside the block is kept.',
+    'The marked block of {0} was edited after it was installed. Replace the block with the new version? Text outside the block is kept, and the current file is kept as {1}.',
+    'The marked block of {0} was edited after it was installed, and this plugin version has the same block. Put the block back to the installed text? Text outside the block is kept, and the current file is kept as {1}.',
+    'Kept the previous {0} as {1}.',
   ])('%s', key => {
     expect(obsidianKo[key]).toBeTruthy();
   });

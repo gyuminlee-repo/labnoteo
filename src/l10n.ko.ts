@@ -48,6 +48,7 @@ const obsidianKo: Record<string, string> = {
   'End_date {0} is earlier than Start_date {1}.': 'End_date({0})가 Start_date({1})보다 이릅니다.',
   'Pick date and time': '날짜 및 시간 선택',
   'Export tables to CSV': '표를 CSV로 내보내기',
+  'Export all tables of this experiment to CSV': '이 실험의 표를 모두 CSV로 내보내기',
   'Open workflow view': '워크플로 뷰 열기',
   'Open sample view': '샘플 뷰 열기',
   'Open sample definition': '샘플 정의 열기 (편집·이동·삭제)',
@@ -111,6 +112,8 @@ const obsidianKo: Record<string, string> = {
   'an earlier version': '이전 버전',
   'Replace with the new version': '새 버전으로 바꾸기',
   'Updated the user guide to labnoteo {0}.': '설명서를 labnoteo {0} 기준으로 바꿨습니다.',
+  'Updated the user guide to labnoteo {0}. The previous file is kept as {1}.':
+    '설명서를 labnoteo {0} 기준으로 바꿨습니다. 바꾸기 전 파일은 {1}로 남겼습니다.',
   '{0} was edited, so it was left at its earlier version. Run "Open user guide" to get the new version.':
     '{0}이(가) 고쳐져 있어 이전 버전으로 두었습니다. "사용법 열기"를 실행하면 새 버전으로 바꿀 수 있습니다.',
   'Created the user guide: {0}': '사용법 문서를 만들었습니다: {0}',
@@ -136,8 +139,15 @@ const obsidianKo: Record<string, string> = {
   'Group experiments by': '실험 묶는 기준',
   'By status': '상태별',
   'By project': '과제별',
-  'By discussion flag': '논의 표시별',
-  'Not flagged for discussion': '논의 표시 없음',
+  'By discussion': '논의 여부별',
+  'Something to discuss': '논의할 것 있음',
+  'Nothing to discuss': '논의할 것 없음',
+  '@issue markers': '@issue 마커',
+  'Retry of': '재시도 대상',
+  'Retried in': '재시도',
+  'Retry this experiment': '이 실험 다시 하기',
+  'Retry experiment {0}': '{0} 다시 하기',
+  '{0} (retry)': '{0} 2차',
   'Type @dna (or another type) in a note, or right-click → "{0}" to register a sample.':
     '노트에서 @dna처럼 입력하거나 우클릭 → "{0}"(으)로 샘플을 등록합니다.',
 
@@ -180,6 +190,8 @@ const obsidianKo: Record<string, string> = {
   "This workflow's name is long, so the alias won't fit in the file name. The title and checklist still keep it.":
     '이 워크플로는 이름이 길어 별칭이 파일 이름에 들어가지 않습니다. 제목과 체크리스트에는 남습니다.',
   '{0} characters · no limit (not used in a file name)': '{0}자 · 글자 수 제한 없음 (파일 이름에 쓰이지 않음)',
+  '{0} is already in this note, so the two would read the same in the headings and the table of contents. Give this one its own alias to tell them apart.':
+    '이 노트에 같은 공정·같은 별칭({0})이 이미 있어 제목과 목차에서 둘이 똑같이 보입니다. 구분하려면 다른 별칭을 주세요.',
   'A workflow is a note for one design, build, test or learn stage of the experiment. The alias tells uses of the same workflow apart and also goes into the file name and the README checklist. You can leave it empty.':
     '워크플로는 실험을 이루는 설계·구축·시험·학습 단계 가운데 하나를 기록하는 노트입니다. 별칭은 같은 워크플로를 여러 번 쓸 때 서로 구분하는 이름으로, 파일 이름과 README 체크리스트에 함께 쓰입니다. 비워 두어도 됩니다.',
   'A unit operation is a single task within a workflow (one step using a piece of equipment or software). The alias tells repeats of the same task apart by run or condition and appears in its heading and the table of contents. You can leave it empty.':
@@ -325,8 +337,11 @@ const obsidianKo: Record<string, string> = {
   'Use ./images': './images 쓰기',
   'New attachments now go to the images folder next to each note.':
     '이제 새 첨부 파일은 각 노트 옆 images 폴더에 저장됩니다.',
-  'The marked block of {0} was edited after it was installed. Replace the block with the new version? Text outside the block is kept.':
-    '{0}의 표시된 블록이 설치 후 고쳐졌습니다. 블록을 새 버전으로 바꿀까요? 블록 밖의 내용은 그대로 둡니다.',
+  'The marked block of {0} was edited after it was installed. Replace the block with the new version? Text outside the block is kept, and the current file is kept as {1}.':
+    '{0}의 표시된 블록이 설치 후 고쳐졌습니다. 블록을 새 버전으로 바꿀까요? 블록 밖의 내용은 그대로 두고, 지금 파일은 {1}로 남깁니다.',
+  'The marked block of {0} was edited after it was installed, and this plugin version has the same block. Put the block back to the installed text? Text outside the block is kept, and the current file is kept as {1}.':
+    '{0}의 표시된 블록이 설치 후 고쳐졌습니다. 이 플러그인 버전의 블록은 설치할 때와 같습니다. 블록을 설치할 때의 내용으로 되돌릴까요? 블록 밖의 내용은 그대로 두고, 지금 파일은 {1}로 남깁니다.',
+  'Kept the previous {0} as {1}.': '바꾸기 전의 {0} 파일은 {1}로 남겼습니다.',
   'Research automation set up ({0} written, {1} merged, {2} skipped, {3} removed). Researchers: see {4}. Admin setup: {5} (run "git config core.hooksPath {6}").':
     '연구노트 자동화를 설정했습니다 (생성 {0} · 병합 {1} · 건너뜀 {2} · 정리 {3}). 연구원 안내는 {4}, 관리자 설정은 {5} 문서를 확인하고 "git config core.hooksPath {6}"를 실행하세요.',
   'Remove {0} file(s) left by the previous layout ({1})? Afterwards run "git config core.hooksPath {2}" so the pre-commit hook keeps working.':
@@ -350,8 +365,18 @@ const obsidianKo: Record<string, string> = {
     '표 {0}개는 내보내지 않았습니다. 바로 위에 빈 줄이 없어 읽기 화면에서 표가 아닌 글로 보입니다. 내보내려면 표 위에 빈 줄을 넣으세요.',
   '{0} table(s) were not exported: they are inside a comment, so the reading view does not show them at all.':
     '표 {0}개는 내보내지 않았습니다. 주석(<!-- -->, %% %%) 안에 있어 읽기 화면에 아예 보이지 않습니다.',
-  'Excel would read cells like {0} as dates or times, or drop their leading zeros. Open the CSV with Data → From Text/CSV and set those columns to Text.':
-    '{0} 같은 칸은 엑셀에서 날짜·시각으로 바뀌거나 앞자리 0이 사라집니다. 엑셀에서는 데이터 → 텍스트/CSV에서로 열고 그 열의 형식을 텍스트로 지정하세요.',
+  'Excel would change cells when it opens the CSV: {0}. Open the CSV with Data → From Text/CSV and set those columns to Text.':
+    '엑셀로 열면 바뀌는 칸이 있습니다: {0}. 엑셀에서는 데이터 → 텍스트/CSV에서로 열고 그 열의 형식을 텍스트로 지정하세요.',
+  '{0} become dates or times': '{0}은(는) 날짜·시각으로 바뀜',
+  '{0} become negative numbers': '{0}은(는) 음수로 바뀜',
+  '{0} lose the digits past the 15th': '{0}은(는) 15자리 뒤가 0으로 바뀜',
+  '{0} lose their leading zeros': '{0}은(는) 앞자리 0이 사라짐',
+  'Excel cannot open a file whose path is longer than {0} characters, and {1} is {2} characters long including the vault folder. Shorten the note name or move the vault to a shorter folder path.':
+    '엑셀은 경로가 {0}자를 넘는 파일을 열지 못하는데, {1}은(는) 보관함 폴더를 포함해 {2}자입니다. 노트 이름을 줄이거나 보관함을 더 짧은 경로로 옮기세요.',
+  'No tables found in the notes of {0}.': '{0}의 노트에서 표를 찾을 수 없습니다.',
+  'Tables per note: {0}.': '노트별 표: {0}.',
+  '{0} note(s) without tables were skipped.': '표가 없는 노트 {0}개는 건너뛰었습니다.',
+  'Open a note of an experiment first.': '실험의 노트를 먼저 여세요.',
   'These table CSV files no longer match a table in the note. Move them to the trash?\n\n{0}':
     '다음 표 CSV 파일은 이 노트에 더 이상 해당하는 표가 없습니다. 휴지통으로 옮길까요?\n\n{0}',
   'The table CSV files of the deleted note(s) are still in the folder. Move them to the trash?\n\n{0}':
@@ -589,6 +614,20 @@ const obsidianKo: Record<string, string> = {
   'Put back': '다시 넣기',
   'Put back: {0}': '다시 넣었습니다: {0}',
   'Global sample folder': '전역 샘플 폴더',
+  '"{0}" cannot be the Global sample folder: {1} It is back to {2}.':
+    '"{0}"은(는) 전역 샘플 폴더로 쓸 수 없습니다: {1} {2}(으)로 되돌렸습니다.',
+  'The folder path is empty.': '폴더 경로가 비어 있습니다.',
+  'Folder names cannot contain {0}.': '폴더 이름에는 {0}을(를) 쓸 수 없습니다.',
+  'A folder path cannot have an empty part (//), or a . or .. part.':
+    '폴더 경로에는 빈 구간(//)이나 . · .. 구간을 쓸 수 없습니다.',
+  '"{0}" ends in a dot or a space, which Windows does not allow.':
+    '"{0}"은(는) 점이나 공백으로 끝나 Windows에서 쓸 수 없습니다.',
+  '"{0}" is a name Windows keeps for devices.': '"{0}"은(는) Windows가 장치 이름으로 예약한 이름입니다.',
+  'Samples cannot be saved in "{0}": {1}': '"{0}"에는 샘플을 저장할 수 없습니다: {1}',
+  'Change the Global sample folder in Settings.': '설정에서 전역 샘플 폴더를 바꾸세요.',
+  '{0} takes {1}; the value was not saved and is back to {2}.':
+    '{0}에는 {1}만 넣을 수 있어 저장하지 않고 {2}(으)로 되돌렸습니다.',
+  '0 or {0}–{1}': '0 또는 {0}–{1}',
   'Vault-relative folder for vault-global samples.':
     '볼트 전역 샘플을 저장할 볼트 기준 상대 폴더입니다.',
   'The old Global sample folder {0} still has {1} sample(s). Move them to the new folder {2}?':
@@ -620,6 +659,7 @@ const obsidianKo: Record<string, string> = {
   'API key': 'API 키',
   'Only sent to OpenAI-compatible providers, never to Ollama.':
     'OpenAI 호환 프로바이더에만 전송되며, Ollama에는 전송되지 않습니다.',
+  'MCP server': 'MCP 서버',
   'Enable MCP server': 'MCP 서버 활성화',
   'Desktop only. Exposes tools to external MCP clients. Tools that change the vault run only after you allow them in Obsidian.':
     '데스크톱 전용. 외부 MCP 클라이언트에 도구를 노출합니다. 볼트를 바꾸는 도구는 Obsidian에서 허용해야 실행됩니다.',
