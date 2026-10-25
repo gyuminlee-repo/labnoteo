@@ -331,8 +331,21 @@ function escapeCsvCell(cell: string, guardLoneSign = false): string {
 
 const MONTHS =
   'jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december';
-/** `3-1`, `1/2`, `4-12`: Excel reads these as March 1, 2 January, 12 April. */
-const DATE_PAIR_RE = /^\d{1,2}[-/]\d{1,2}$/;
+/**
+ * `3-1`, `1/2`, `4-12`: Excel reads these as March 1, 2 January, 12 April —
+ * only when the two numbers can be a month and a day, in either order:
+ * `12/48` or `7/40` stay text (#377).
+ */
+const DATE_PAIR_RE = /^(\d{1,2})[-/](\d{1,2})$/;
+function isDatePair(text: string): boolean {
+  const m = DATE_PAIR_RE.exec(text);
+  if (!m) return false;
+  const [a, b] = [Number(m[1]), Number(m[2])];
+  const monthDay = (month: number, day: number) => month >= 1 && month <= 12 && day >= 1 && day <= 31;
+  return monthDay(a, b) || monthDay(b, a);
+}
+/** `2E4`, `1E-3`, `1.2E3`: plate-well names and dilutions become numbers in E notation (#376). */
+const E_NOTATION_RE = /^\d+(?:\.\d+)?[eE][+-]?\d+$/;
 /** `SEPT9`, `MARCH1`, `DEC-1`: a month name next to a number is a date to Excel. */
 const MONTH_NAME_RE = new RegExp(`^(?:${MONTHS})[-/ ]?\\d{1,2}$`, 'i');
 /** `007`, `0031`: Excel reads them as numbers and the zeros are gone. */
@@ -349,18 +362,21 @@ const LONG_NUMBER_RE = /^[+-]?\d{16,}$/;
 const PAREN_NUMBER_RE = /^\((?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d*)?|\.\d+)%?\)$/;
 
 /** How Excel would change a cell; see {@link excelRiskCells}. */
-export type ExcelRiskKind = 'dateTime' | 'negative' | 'precision' | 'leadingZero';
+export type ExcelRiskKind = 'dateTime' | 'negative' | 'precision' | 'leadingZero' | 'eNotation';
 
 /** A cell Excel would change, and how. */
 export interface ExcelRiskCell {
   text: string;
   kind: ExcelRiskKind;
+  /** The 0-based columns the value is in (#375). */
+  columns: number[];
 }
 
 function excelRiskKind(text: string): ExcelRiskKind | undefined {
-  if (DATE_PAIR_RE.test(text) || MONTH_NAME_RE.test(text) || TIME_RE.test(text)) return 'dateTime';
+  if (isDatePair(text) || MONTH_NAME_RE.test(text) || TIME_RE.test(text)) return 'dateTime';
   if (LEADING_ZERO_RE.test(text)) return 'leadingZero';
   if (LONG_NUMBER_RE.test(text)) return 'precision';
+  if (E_NOTATION_RE.test(text)) return 'eNotation';
   if (PAREN_NUMBER_RE.test(text)) return 'negative';
   return undefined;
 }
@@ -369,22 +385,27 @@ function excelRiskKind(text: string): ExcelRiskKind | undefined {
  * Cells Excel would change when it opens the CSV as a spreadsheet (#256):
  * clone or well names like `3-1` and `SEPT9` become dates, ratios like `2:1`
  * or `1:80` become times (#272, #343), IDs like `007` lose their leading
- * zeros, numbers longer than 15 digits lose their last digits (#345), and
- * `(1)` becomes -1 (#346). The file itself holds the text as typed — this is
- * only to warn about what opening it in Excel does. The header row is left
- * out, and each distinct value is reported once.
+ * zeros, numbers longer than 15 digits lose their last digits (#345), `(1)`
+ * becomes -1 (#346), and `2E4` becomes 20000 (#376). The file itself holds
+ * the text as typed — this is only to warn about what opening it in Excel
+ * does. The header row is left out, and each distinct value is reported
+ * once, with the columns it is in.
  */
 export function excelRiskCells(rows: readonly string[][]): ExcelRiskCell[] {
-  const found = new Map<string, ExcelRiskKind>();
+  const found = new Map<string, ExcelRiskCell>();
   for (const row of rows.slice(1)) {
-    for (const cell of row) {
+    row.forEach((cell, column) => {
       const text = cell.trim();
-      if (found.has(text)) continue;
+      const known = found.get(text);
+      if (known) {
+        if (!known.columns.includes(column)) known.columns.push(column);
+        return;
+      }
       const kind = excelRiskKind(text);
-      if (kind) found.set(text, kind);
-    }
+      if (kind) found.set(text, { text, kind, columns: [column] });
+    });
   }
-  return [...found].map(([text, kind]) => ({ text, kind }));
+  return [...found.values()];
 }
 
 /** UTF-8 byte-order mark. */

@@ -1206,16 +1206,23 @@ export default class LabnotePlugin extends Plugin {
 
   /** A workflow note was renamed by hand: its table CSVs follow it (#60). */
   private async moveTableCsvsAfterRename(dir: string, from: string, to: string): Promise<void> {
-    const { skipped } = await moveTableCsvs(
+    const { kept } = await moveTableCsvs(
       this.app,
       { from: dir, to: dir },
       { from, to },
       new Set(await this.fs.list(dir))
     );
-    if (skipped > 0) {
+    // Name them and the way out: the CSV of the new name is not this note's
+    // table, and the one left on the old name has no note any more (#374).
+    if (kept.length > 0) {
       this.host.notify(
         'warn',
-        this.t('{0} table CSV file(s) kept their old name: the new name was taken or the rename failed.', String(skipped))
+        this.t(
+          'Kept {0} table CSV file(s) under the old name: {1}. A CSV of the new name was already there, holding another note\'s table, or the rename failed. Run "{2}" on this note to rewrite its CSVs and move the leftovers to the trash.',
+          String(kept.length),
+          kept.length > 3 ? this.t('{0} (+{1} more)', kept.slice(0, 3).join(', '), String(kept.length - 3)) : kept.join(', '),
+          this.t('Export tables to CSV')
+        )
       );
     }
   }

@@ -67,10 +67,11 @@ describe('exportExperimentTablesToCsv (#347)', () => {
     expect(await fs.read(`${DIR}/README.labnote_table1.csv`)).toBe('\uFEFF요약\n1\n');
     expect(await fs.read(`${DIR}/001_WT020_A.labnote_table1.csv`)).toBe('\uFEFFa\n1\n');
     expect(await fs.read(`${DIR}/001_WT020_A.labnote_table2.csv`)).toBe('\uFEFFb\n2\n');
-    expect(await fs.exists(`${DIR}/notes_table1.csv`)).toBe(false);
+    // #369: a plain note in the folder too, as exporting it alone does.
+    expect(await fs.read(`${DIR}/notes_table1.csv`)).toBe('\uFEFFx\n9\n');
     const notice = Notice.shown.at(-1)!;
-    expect(notice).toContain('Exported 3 CSV file(s).');
-    expect(notice).toContain('Tables per note: README 1, 001_WT020_A 2.');
+    expect(notice).toContain('Exported 4 CSV file(s).');
+    expect(notice).toContain('Tables per note: README 1, 001_WT020_A 2, notes 1.');
     expect(notice).toContain('1 note(s) without tables were skipped.');
     expect(confirmModal).not.toHaveBeenCalled();
   });
@@ -115,24 +116,68 @@ describe('exportExperimentTablesToCsv (#347)', () => {
 
     expect(Notice.shown.at(-1)).toBe('No tables found in the notes of 001_Test.');
   });
+
+  // #370: with several notes, which one holds the table left out.
+  it('names the notes of the tables left out, and words the cleanup prompt for several notes', async () => {
+    await fs.write(README, `${table('요약', '1')}\n%%\n${table('숨김', '2')}%%\n`);
+    await fs.write(WF1, 'no tables');
+    await fs.write(`${DIR}/001_WT020_A.labnote_table1.csv`, '\uFEFFold\n');
+    vi.mocked(confirmModal).mockResolvedValue(false);
+
+    await exportExperimentTablesToCsv(plugin(), DIR);
+
+    expect(Notice.shown.at(-1)).toContain('1 table(s) were not exported: they are inside a comment');
+    expect(Notice.shown.at(-1)).toContain('In: README 1.');
+    expect(vi.mocked(confirmModal).mock.calls.at(-1)?.[1]).toContain('no longer match a table in their notes');
+  });
+
+  // #374: a CSV left on a note's old name by a rename has no note any more.
+  it('offers the CSVs whose note is gone for the trash', async () => {
+    await fs.write(WF1, table('a', '1'));
+    await fs.write(`${DIR}/004_WT020_A.labnote_table1.csv`, '\uFEFFb\n2\n');
+    vi.mocked(confirmModal).mockResolvedValue(true);
+
+    await exportExperimentTablesToCsv(plugin(), DIR);
+
+    expect(vi.mocked(confirmModal).mock.calls.at(-1)?.[1]).toContain(
+      'These table CSV files have no note of their name in the folder'
+    );
+    expect(await fs.exists(`${DIR}/004_WT020_A.labnote_table1.csv`)).toBe(false);
+    expect(await fs.exists(`${DIR}/001_WT020_A.labnote_table1.csv`)).toBe(true);
+  });
 });
 
-describe('the Excel warning (#343 #345 #346)', () => {
-  it('names each kind of change with up to two examples', async () => {
+describe('the Excel warning (#343 #345 #346 #375 #376)', () => {
+  it('names the CSV and its columns, and each kind of change with up to three examples', async () => {
     await fs.write(
       WF1,
-      '| 희석 | 바코드 | 회차 | ID |\n|---|---|---|---|\n' +
-        '| 1:80 | 880123456789012345 | (1) | 007 |\n' +
-        '| 1:60 | 880123456789012346 | (2) | 008 |\n' +
-        '| 3-1 | 1 | 2 | 3 |\n'
+      '| 희석 | 바코드 | 회차 | ID | 판-웰 |\n|---|---|---|---|---|\n' +
+        '| 1:80 | 880123456789012345 | (1) | 007 | 2E4 |\n' +
+        '| 1:60 | 880123456789012346 | (2) | 008 | x |\n' +
+        '| 3-1 | 1 | 2 | 3 | x |\n' +
+        '| 1/2 | 1 | 2 | 3 | x |\n'
     );
 
     await exportTablesToCsv(plugin(), new TFile(WF1) as unknown as VaultFile);
 
     expect(Notice.shown.at(-1)).toContain(
-      'Excel would change cells when it opens the CSV: 1:80, 1:60 become dates or times; ' +
+      'Excel would change cells when it opens the CSV: 001_WT020_A.labnote_table1.csv, column(s) 희석, 바코드, 회차, ID, 판-웰: ' +
+        '1:80, 1:60, 3-1 (+1 more) become dates or times; ' +
         '880123456789012345, 880123456789012346 lose the digits past the 15th; ' +
-        '(1), (2) become negative numbers; 007, 008 lose their leading zeros.'
+        '(1), (2) become negative numbers; 007, 008 lose their leading zeros; ' +
+        '2E4 become numbers in E notation (2E4 → 20000).'
+    );
+  });
+
+  it('warns for every note of an experiment, each CSV on its own', async () => {
+    await fs.write(WF1, table('희석', '1/2', '1/4'));
+    await fs.write(WF2, table('비율', '12/48', '1/8'));
+
+    await exportExperimentTablesToCsv(plugin(), DIR);
+
+    expect(Notice.shown.at(-1)).toContain(
+      '001_WT020_A.labnote_table1.csv, column(s) 희석: 1/2, 1/4 become dates or times / ' +
+        '002_WT030_B.labnote_table1.csv, column(s) 비율: 1/8 become dates or times.'
     );
   });
 });

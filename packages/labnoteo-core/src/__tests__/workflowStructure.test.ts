@@ -32,6 +32,7 @@ import {
   createWorkflowFileName,
   siblingTableCsvs,
   staleTableCsvs,
+  orphanTableCsvs,
   planTableCsvMoves,
   planTableCsvNames,
   tableCsvName,
@@ -739,6 +740,20 @@ describe('table CSVs of a workflow note', () => {
     ]);
     expect(staleTableCsvs('002_WT020_C.labnote.md', more, 12)).toEqual([]);
     expect(staleTableCsvs('002_WT020_C.labnote.md', more, 0)).toHaveLength(4);
+  });
+
+  // #374: a rename that found the new CSV name taken leaves the old one behind.
+  it('lists the lab note CSVs whose note is gone', () => {
+    expect(
+      orphanTableCsvs([
+        '001_WT110_A.labnote.md',
+        '001_WT110_A.labnote_table1.csv',
+        '004_WT110_A.labnote_table1.csv',
+        '원자료_table1.csv',
+        'README.labnote.md',
+        'README.labnote_table2.csv',
+      ])
+    ).toEqual(['004_WT110_A.labnote_table1.csv']);
   });
 
   it('plans renames that keep the table number', () => {

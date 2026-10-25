@@ -1485,14 +1485,14 @@ export async function moveTableCsvs(
   note: WorkflowRename,
   names: Set<string>,
   toNames: Set<string> = names
-): Promise<{ moved: number; skipped: number }> {
+): Promise<{ moved: number; skipped: number; kept: string[] }> {
   let moved = 0;
-  let skipped = 0;
-  if (dirs.from === dirs.to && note.from === note.to) return { moved, skipped };
+  const kept: string[] = [];
+  if (dirs.from === dirs.to && note.from === note.to) return { moved, skipped: 0, kept };
   for (const csv of planTableCsvMoves(note.from, note.to, [...names])) {
     const file = app.vault.getFileByPath(posix.join(dirs.from, csv.from));
     if (!(file instanceof TFile) || toNames.has(csv.to)) {
-      skipped++;
+      kept.push(csv.from);
       continue;
     }
     try {
@@ -1502,10 +1502,10 @@ export async function moveTableCsvs(
       moved++;
     } catch (err) {
       console.warn('[labnoteo] could not move table CSV:', err);
-      skipped++;
+      kept.push(csv.from);
     }
   }
-  return { moved, skipped };
+  return { moved, skipped: kept.length, kept };
 }
 
 /**

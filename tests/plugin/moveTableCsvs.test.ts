@@ -38,7 +38,7 @@ describe('moveTableCsvs to another folder', () => {
       new Set(['001_WT020_Assay.labnote_table1.csv', '001_WT020_Assay.labnote_table2.csv', '002_Other.labnote_table1.csv']),
       new Set([NOTE])
     );
-    expect(result).toEqual({ moved: 2, skipped: 0 });
+    expect(result).toEqual({ moved: 2, skipped: 0, kept: [] });
     expect(Object.keys(fs.snapshot()).sort()).toEqual(
       [
         `${A}/002_Other.labnote_table1.csv`,
@@ -53,7 +53,7 @@ describe('moveTableCsvs to another folder', () => {
     const csv = '001_WT020_Assay.labnote_table1.csv';
     const { fs, app } = vault({ [`${A}/${csv}`]: 'old', [`${B}/${csv}`]: 'theirs' });
     const result = await moveTableCsvs(app, { from: A, to: B }, { from: NOTE, to: NOTE }, new Set([csv]), new Set([csv]));
-    expect(result).toEqual({ moved: 0, skipped: 1 });
+    expect(result).toEqual({ moved: 0, skipped: 1, kept: [csv] });
     expect(await fs.read(`${B}/${csv}`)).toBe('theirs');
     expect(await fs.read(`${A}/${csv}`)).toBe('old');
   });

@@ -391,6 +391,11 @@ const obsidianKo: Record<string, string> = {
   '{0} become negative numbers': '{0}은(는) 음수로 바뀜',
   '{0} lose the digits past the 15th': '{0}은(는) 15자리 뒤가 0으로 바뀜',
   '{0} lose their leading zeros': '{0}은(는) 앞자리 0이 사라짐',
+  '{0} become numbers in E notation (2E4 → 20000)': '{0}은(는) 지수 표기 숫자로 바뀜(2E4 → 20000)',
+  '{0}, column(s) {1}: {2}': '{0}의 {1} 열: {2}',
+  'column {0}': '{0}번째',
+  '(+{0} more CSV file(s))': '(CSV {0}개 더)',
+  'In: {0}.': '해당 노트: {0}.',
   'Excel cannot open a file whose path is longer than {0} characters, and {1} is {2} characters long including the vault folder. Shorten the note name or move the vault to a shorter folder path.':
     '엑셀은 경로가 {0}자를 넘는 파일을 열지 못하는데, {1}은(는) 보관함 폴더를 포함해 {2}자입니다. 노트 이름을 줄이거나 보관함을 더 짧은 경로로 옮기세요.',
   'No tables found in the notes of {0}.': '{0}의 노트에서 표를 찾을 수 없습니다.',
@@ -399,6 +404,10 @@ const obsidianKo: Record<string, string> = {
   'Open a note of an experiment first.': '실험의 노트를 먼저 여세요.',
   'These table CSV files no longer match a table in the note. Move them to the trash?\n\n{0}':
     '다음 표 CSV 파일은 이 노트에 더 이상 해당하는 표가 없습니다. 휴지통으로 옮길까요?\n\n{0}',
+  'These table CSV files no longer match a table in their notes. Move them to the trash?\n\n{0}':
+    '다음 표 CSV 파일은 각자 이름의 노트에 더 이상 해당하는 표가 없습니다. 휴지통으로 옮길까요?\n\n{0}',
+  'These table CSV files have no note of their name in the folder: the note was deleted, or renamed while a CSV of its new name was there. Move them to the trash?\n\n{0}':
+    '다음 표 CSV 파일은 폴더에 같은 이름의 노트가 없습니다. 노트를 지웠거나, 새 이름의 CSV가 이미 있을 때 노트 이름을 바꿨기 때문입니다. 휴지통으로 옮길까요?\n\n{0}',
   'The table CSV files of the deleted note(s) are still in the folder. Move them to the trash?\n\n{0}':
     '삭제한 노트의 표 CSV 파일이 폴더에 남아 있습니다. 휴지통으로 옮길까요?\n\n{0}',
   'Move to trash': '휴지통으로 옮기기',
@@ -818,6 +827,8 @@ const obsidianKo: Record<string, string> = {
     '복제본의 이슈 마커 {0}개에 새 ID를 붙였습니다(원본의 이슈와 섞이지 않게).',
   '{0} table CSV file(s) kept their old name: the new name was taken or the rename failed.':
     '표 CSV 파일 {0}개는 옛 이름 그대로 두었습니다. 새 이름의 파일이 이미 있거나 이름 변경에 실패했습니다.',
+  'Kept {0} table CSV file(s) under the old name: {1}. A CSV of the new name was already there, holding another note\'s table, or the rename failed. Run "{2}" on this note to rewrite its CSVs and move the leftovers to the trash.':
+    '표 CSV 파일 {0}개는 옛 이름 그대로 두었습니다: {1}. 새 이름의 CSV가 이미 있었거나(다른 노트의 표가 담긴 파일) 이름 변경에 실패했습니다. 이 노트에서 "{2}"를 실행하면 이 노트의 CSV를 다시 쓰고 남은 파일을 휴지통으로 옮길지 묻습니다.',
   'Moved {0} table CSV file(s) to {1} with the note.': '노트와 함께 표 CSV 파일 {0}개를 {1}(으)로 옮겼습니다.',
   '{0} table CSV file(s) stayed in {1}: a file with the same name is already in {2}, or the move failed.':
     '표 CSV 파일 {0}개는 {1}에 남았습니다. {2}에 같은 이름의 파일이 이미 있거나 옮기지 못했습니다.',

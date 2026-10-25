@@ -869,6 +869,20 @@ export function staleTableCsvs(noteName: string, files: readonly string[], table
 }
 
 /**
+ * The `<note>.labnote_tableN.csv` exports among `files` (base names in one
+ * folder) whose note is not there: left behind by a note deleted, or by a
+ * rename that found the new CSV name taken (#374). Only lab notes' CSVs, so
+ * a CSV of another source that happens to end in `_table1` is left alone.
+ */
+export function orphanTableCsvs(files: readonly string[]): string[] {
+  const present = new Set(files);
+  return files.filter(f => {
+    const stem = /^(.+\.labnote)_table\d+\.csv$/.exec(f)?.[1];
+    return stem !== undefined && !present.has(`${stem}.md`);
+  });
+}
+
+/**
  * The renames that keep a note's table CSVs named after it when the note goes
  * from `fromNote` to `toNote` (#60). Collisions are left to the caller.
  */
