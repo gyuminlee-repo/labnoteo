@@ -1,6 +1,6 @@
 # Labnote Assistant for Obsidian (labnoteo)
 
-**Version 0.127.2**
+**Version 0.128.0**
 
 [한국어](README.md)
 
@@ -19,7 +19,7 @@ This repository is the Obsidian port of the Labnote Assistant. It shares its pla
 ## Features
 
 - **Sample tracking**: A dedicated Samples sidebar view to define, insert, and edit samples (DNA, RNA, Plasmid, and custom types) and move them between local (note) and global scope. Typing `@` autocompletes references and highlights them; an ID that is in no registry gets a red wavy underline, and an alias that no longer matches the registry gets an orange dotted one. A used-up sample stays registered with *Mark as discarded* instead of being deleted. → [Samples](docs/REFERENCE.en.md#samples)
-- **Workflow checklists**: A Workflows sidebar view to create numbered workflow notes and keep the README table of contents in sync. Its **Experiments** section at the top groups the vault's experiments by status, project, or discussion, with a search box and full keyboard control (↑↓→←, Enter, Shift+F10). A failed experiment's right-click *Retry this experiment* creates a retry linked to the original. → [Workflows](docs/REFERENCE.en.md#workflows)
+- **Workflow checklists**: A Workflows sidebar view to create numbered workflow notes and keep the README table of contents in sync. Its **Experiments** section at the top groups the vault's experiments by status, project, author, or discussion, with a search box and full keyboard control (↑↓→←, Enter, Shift+F10). A failed experiment's right-click *Retry this experiment* creates a retry linked to the original. → [Workflows](docs/REFERENCE.en.md#workflows)
 - **Unit operations**: Insert hardware/software unit operations from a bundled catalog, with automatic heading normalization and TOC updates. → [Insert unit operation](docs/REFERENCE.en.md#insert-unit-operation)
 - **Sample suggestions & CSV export**: Inline suggestions and highlighting for sample references while editing, plus CSV export of note tables (Excel-compatible UTF-8 with BOM). → [Export tables to CSV](docs/REFERENCE.en.md#export-tables-to-csv)
 - **Experiment status, discussion flag, issue markers**: Track each experiment's lifecycle (`planned` → `in-progress` → … → `completed`/`failed`) in frontmatter, and flag a note for team discussion either whole (*Toggle discussion flag*) or at a specific line (`@issue;<ID>;<topic>` marker). The next push opens a GitHub Issue.

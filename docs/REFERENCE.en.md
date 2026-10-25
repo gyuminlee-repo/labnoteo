@@ -36,9 +36,10 @@ itself, to open a date and time field. A changed value goes into the note at onc
 click elsewhere closes the field, and Escape puts back the value it opened with. One Ctrl+Z undoes
 everything changed while it was open.
 
-- Enter without picking anything keeps a value that is already there. Dotted dates such as
-  `2026.10.23 14:00` are read and shown; a value the field cannot read is left as it is too. An
-  empty value shows the current time, and Enter writes it.
+- Enter without picking anything keeps a value that is already there. Dates written with dots or
+  slashes, or with single digits, such as `2026.10.23 14:00`, `2026/10/23` or `2026-1-5 9:30`, are
+  read and shown; a value the field cannot read is left as it is too, and the field says it starts
+  at another time. An empty value shows the current time, and Enter writes it.
 - With a `Start_date` in the same block, the `End_date` calendar starts at that date, and closing
   with an end earlier than the start says so (the value is still written).
 - Years outside 1900–2100, such as 0001 after stepping the year with the arrow keys or the digits
@@ -63,16 +64,20 @@ Update the active experiment's `status` frontmatter via a picker.
 - Each status is listed with what it means, and its search also matches words for it (in the
   Korean UI, Korean ones). The stored value is the English term either way.
 - Also on an experiment's right-click menu in the workflow view, where it changes that experiment
-  (the picker title and notice name the experiment folder).
+  (the picker title and notice name the experiment folder). In a list filtered by a search, the
+  experiment stays listed until the search changes, so it can be right-clicked again to undo.
 - Picking `completed` while checklist workflows are unchecked, or while workflow notes have an
-  empty `end_date`, shows the counts and asks first.
+  empty `end_date`, shows the counts and the note names and asks first. A note whose front matter
+  `end_date` is empty but whose unit operations all have an `End_date` counts as finished.
+- With the discussion flag on, picking `completed` offers to clear the flag or keep it, and lists
+  where `@issue` markers remain (`note:line`).
 
 ### Retry this experiment
 
 On the right-click menu of a `failed` or `needs-repeat` experiment in the workflow view: create the
 next experiment to run it again. The title starts from the original's (`… 1차` becomes `… 2차`;
-otherwise ` (retry)` is added, ` 2차` in the Korean UI) and can be edited; the new experiment is
-`planned`.
+otherwise ` (retry)` is added, ` 2차` in the Korean UI; a run that already has a folder is skipped)
+and can be edited; the new experiment is `planned`.
 
 - Its README gets `retry_of` with a link to the original README (`[[labnote/061_…/README.labnote|061]]`),
   so Obsidian keeps it pointing there when folders are renumbered.
@@ -87,6 +92,9 @@ Turn the active experiment's `discuss` flag on or off, so the next push opens a 
 - Run from a workflow note, it still changes that experiment's README, and the notice says so.
 - Also on an experiment's right-click menu in the workflow view, where it changes that experiment;
   flagged experiments show a speech-bubble icon.
+- Turning it off while `@issue` markers remain says where they are (`note:line`), since the
+  experiment then stays under "Something to discuss". **Show @issue markers** on the experiment's
+  right-click menu picks one and opens its line.
 - Editing the front matter by hand, `yes`, `y`, `on`, `1`, `예` and `네` also turn it on, besides
   `true`.
 
@@ -105,12 +113,16 @@ opens its own Issue (requires Setup research automation).
 - On a README workflow checklist line the link is never replaced: the marker always goes after it,
   and the topic box is prefilled with the label rather than the link. A line whose link became the
   marker would no longer be a workflow entry.
+- On a line with a sample reference (`DNA-001;pUC19`), such as a sample line in `Input` or
+  `Reagent`, the topic box starts empty and the marker goes on an indented line below: at the end of
+  the line the reference's alias would run into the marker, dropping the sample from the list.
 - On a heading it goes on the line below. Inside a table, the front matter, a code block
   (including code indented four spaces after a blank line) or a comment (`<!-- -->`, `%% %%`) it is
   not inserted.
-- Markers inside code blocks or comments are not highlighted, open no Issue and are not validated.
-  Commenting out a marker leaves an Issue it already opened as it is. Rerun `Setup research
-  automation` after updating for the server automation to skip comments.
+- Markers inside code blocks, inline code (`` `@issue;…` ``) or comments are not highlighted, open
+  no Issue, are not validated and keep their IDs when a note is copied. Commenting out a marker
+  leaves an Issue it already opened as it is. Rerun `Setup research automation` after updating for
+  the server automation to skip comments and inline code.
 
 ## Workflows
 
@@ -149,11 +161,17 @@ put, with a notice.
   not list goes where its number puts it.
 - The confirmation shows what the order follows and each changed file as `old → new` (more than ten
   are summed up as "+N more"). A name whose number has the wrong number of digits (`01_…`) is fixed
-  too, marked "name format fixed".
+  too, marked "name format fixed", and a listed note without a number (`WB020_Cloning.labnote.md`)
+  gets the number of its place in the checklist.
+- A checklist entry whose file is gone is pointed at an unlisted file of the same workflow ID and
+  name (such as a note renumbered by hand), shown in the same confirmation.
 - Nothing changes when the numbers already follow the checklist; a README without the section is
   reported.
-- When two notes share a number, moving a note in and `Sync workflow checklist with folder` point at
-  this command.
+- When two notes share a number, moving a note in, renaming a note to another's number and
+  `Sync workflow checklist with folder` point at this command.
+- Renaming a note by hand while a CSV of its new name is there keeps its CSVs on the old name and
+  names them; `Export tables to CSV` on the note then rewrites its CSVs and offers the leftovers for
+  the trash.
 
 ### Sync workflow checklist with folder
 
@@ -197,6 +215,9 @@ the alias goes into no file name.
 - With **Auto-sync unit operation TOC** on, the TOC is reordered to match the headings. Turned
   off, the order stays as you arranged it, but renaming a unit operation still updates the entry's
   name and link.
+- A note or `@issue` marker written after a TOC entry's link stays on that line when the TOC is
+  rebuilt, and `[`/`]` in an alias are written `\[`/`\]` in the TOC, so an unmatched one does not
+  break the link.
 
 ### Update catalogs
 
@@ -238,10 +259,13 @@ Export note tables to `<note name>.labnote_tableN.csv` next to the note.
   column where such a cell appears, like `+/-`, a lone `+` or `-` gets the tab too.
 - Opening the CSV by double-clicking it in Excel turns `3-1`, `1/2` and `SEPT9` into dates,
   `2:1`, `10:30` and `1:80` (a dilution) into times, `(1)` and `(0.05)` into negative numbers,
-  numbers of 16 digits or more (barcodes, LIMS IDs) into ones with zeros past the 15th digit, and
-  drops the leading zero of `007`. The file holds the text as typed; Excel is what changes it.
+  numbers of 16 digits or more (barcodes, LIMS IDs) into ones with zeros past the 15th digit,
+  plate-well names and dilutions such as `2E4` and `1E-3` into numbers in E notation (`20000`,
+  `0.001`), and drops the leading zero of `007`. A pair that cannot be a month and a day, such as
+  `12/48` or `7/40`, stays text. The file holds the text as typed; Excel is what changes it.
   Open it with Data → From Text/CSV and set those columns to Text. When a table has such cells,
-  the export notice says so, with up to two examples per kind of change.
+  the export notice names each CSV with the columns to set to Text, and up to three examples per
+  kind of change ("+N more").
 - Excel cannot open a file whose path is longer than 218 characters. When a CSV's path including
   the vault folder is longer, the notice names it and its length.
 
@@ -267,16 +291,21 @@ Export note tables to `<note name>.labnote_tableN.csv` next to the note.
 - The completion notice counts the files written and the ones left unchanged separately and shows
   the folder and file names, with a hint that the file explorer hides them while Obsidian's "Show
   all file types" setting is off.
-- CSVs of tables the note no longer has are listed and moved to the trash after asking.
+- CSVs of tables the note no longer has are listed and moved to the trash after asking. So are
+  `….labnote_tableN.csv` files with no note of their name in the folder (left by a deleted note, or
+  by a rename that found the new CSV name taken), listed apart in the same prompt.
 
 ### Export all tables of this experiment to CSV
 
 Export the tables of every note directly in the experiment folder, the README first and then the
-workflow notes, by the rules above. Run it from a note of the experiment, or right-click the
-experiment folder or its `README.labnote.md` in the file explorer.
+others by name (workflow notes and plain `.md` notes alike), by the rules above. Run it from a note
+of the experiment, or right-click the experiment folder or its `README.labnote.md` in the file
+explorer.
 
-- CSVs that would be overwritten are asked about once for the whole experiment.
-- The completion notice gives the table count per note and how many notes had none.
+- CSVs that would be overwritten or moved to the trash are asked about once for the whole
+  experiment.
+- The completion notice gives the table count per note and how many notes had none. Tables left
+  out (inside a comment, or with no blank line above) are counted per note (`In: README 1`).
 
 ## Samples
 
@@ -319,7 +348,8 @@ reference, view usages, edit, delete, move between Local and Global, or change i
 Insert, at the cursor, a Markdown table of every Local sample of this experiment and the Global
 samples the note refers to, with ID, alias, description (the first one), location, scope, and
 discarded columns, leaving the cursor below the table. With a Live Preview table cell focused it
-goes below that table. Use `Export tables to CSV` for a CSV.
+goes below that table; run from the front matter or above the first heading, it goes at the end of
+the note, with a notice. Use `Export tables to CSV` for a CSV.
 
 References the note makes that no registry has are left out of the table, and the notice names them.
 
@@ -474,7 +504,9 @@ read is left unchanged, with a notice.
 
 Pick a workflow note's unit operations (lab ones preselected) and print them as worksheets with a
 QR code in two corners of every page; A4 or Letter. Method steps keep the numbers they have in the
-note, lines indented under a step print below it, and pipe tables print as tables. Sections with
+note, lines indented under a step print below it, and pipe tables print as tables. Notes written
+between a unit operation's title and its first `####` section print at the top, as a section without
+a title. Sections with
 nothing in them are left as ruled writing space, Method and Results & Discussions widest. The
 dialog opens with focus on **Print**, so Enter prints; tabbing to a toggle shows a focus ring. When
 printing from Obsidian does not work, it opens in the browser. See the
@@ -482,7 +514,8 @@ printing from Obsidian does not work, it opens in the browser. See the
 
 ### Print whole note with barcodes
 
-Print the whole note split into pages, with a QR code on each. READMEs too.
+Print the whole note split into pages, with a QR code on each. READMEs too. Each unit operation
+starts on a new page, so the sheets can be filed by unit operation.
 
 ### Import scanned pages
 
@@ -558,6 +591,8 @@ README, which has the next command.
 - The template's `- (…)` wording and summaries inserted earlier are left out of what the model
   reads, and it is told not to invent a measurement that is not in the note.
 - Moving to another note while waiting opens the answer dialog, as for the Method draft.
+- Inserting the summary leaves the cursor where it was, so text typed while waiting does not end
+  up inside the callout.
 - The summary and the Method draft ask the model to write in Obsidian's interface language.
 - Both summaries ask the model to call samples by their alias rather than copy `ID;alias`
   references. `@issue` markers are sent as their topic sentences, and any `@issue;` or `@issue:`
@@ -618,14 +653,15 @@ Start or stop the local MCP server. See the [Copilot guide](./COPILOT.md) (Korea
 Reveal the sidebar view and move focus into its list; arrow keys move, →← expand and collapse,
 Enter opens, and Shift+F10 or the menu key opens the right-click menu.
 
-- The workflow view's **Experiments** section groups experiments by status, by project, or by
-  discussion. **By discussion** puts the ones flagged for discussion or with at least one `@issue`
-  marker (counted in the notes directly in the experiment folder, as the automation does) under
-  **Something to discuss** and the rest under **Nothing to discuss**; the tooltip gives the marker
-  count.
-- **Search experiments** matches the folder name, title, project and status, the status also by its
-  name in the UI language (`검토 필요` for `needs-review` in Korean), and `discuss` for the ones with
-  something to discuss.
+- The workflow view's **Experiments** section groups experiments by status, by project, by author
+  (the README `author`, empty ones under **(no author)**), or by discussion. **By discussion** puts
+  the ones flagged for discussion or with at least one `@issue` marker (counted in the notes
+  directly in the experiment folder, as the automation does) under **Something to discuss** and the
+  rest under **Nothing to discuss**; the tooltip gives the marker count and the author.
+- **Search experiments** matches the folder name, title, project, author and status, the status also
+  by its name in the UI language (`검토 필요` for `needs-review` in Korean), and `discuss` for the
+  ones with something to discuss. An experiment whose status or discussion flag was changed from
+  the list stays listed until the search changes.
 
 ### Setup research automation
 
@@ -727,8 +763,11 @@ objective and summary, and every entry unchecked. Nothing is asked when the whol
   original's issues.
 - An experiment folder duplicated with "Make a copy" (`001_… 1`) asks for a title and becomes the
   next experiment: its README gets the new `title`, today's dates and status `planned`, its
-  discussion flag and `retry_of` link are removed, and its notes get new `@issue` marker IDs and
-  note IDs.
+  discussion flag is removed, and its notes get new `@issue` marker IDs and note IDs.
+- When the original is `failed` or `needs-repeat`, or is itself a retry, you are asked whether to
+  mark the copy as a retry. **Mark as retry** points the copy's `retry_of` at the original (or, for a
+  copy of a retry, at the experiment it retried); otherwise `retry_of` is removed, as it is without
+  asking for any other original. The completion notice says which.
 - The copied README's `id` (`EXP-###`) becomes the number after the highest one with that prefix;
   an `id` not ending in a number is removed, so the folder name is the experiment ID. Either way the
   automation does not take the copy for the original.
