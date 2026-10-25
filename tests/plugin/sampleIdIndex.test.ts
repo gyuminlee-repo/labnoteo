@@ -56,6 +56,18 @@ describe('SampleIdIndex', () => {
     );
   });
 
+  it('takes the discard date from the record that gives the alias (#330)', async () => {
+    const { index } = setup({
+      [`${LOCAL}/DNA.json`]: JSON.stringify({ 'DNA-1': { alias: 'a' } }),
+      [`${GLOBAL}/DNA.json`]: JSON.stringify({
+        'DNA-1': { alias: 'a', discarded: '2026-10-01' },
+        'DNA-2': { alias: null, discarded: '2026-10-25' },
+      }),
+    });
+
+    expect((await known(index)).discarded).toEqual(new Map([['dna-2', '2026-10-25']]));
+  });
+
   it('covers lab notes only', async () => {
     const { index, onChange } = setup({ [`${GLOBAL}/DNA.json`]: json(['DNA-1']) });
 

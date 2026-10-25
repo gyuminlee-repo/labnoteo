@@ -39,8 +39,8 @@ export interface SampleCompletionEntry {
   label: string;
   insertText: string;
   scope?: 'local' | 'global';
-  /** The sample was marked discarded; such entries come last (#158). */
-  discarded?: boolean;
+  /** Date the sample was marked discarded; such entries come last (#158, #330). */
+  discarded?: string;
 }
 
 /**
@@ -123,7 +123,7 @@ export function buildSampleCompletionEntries(
         label,
         insertText: buildSampleInsertText(candidate),
         ...(candidate.scope ? { scope: candidate.scope } : {}),
-        ...(candidate.discarded ? { discarded: true } : {}),
+        ...(candidate.discarded ? { discarded: candidate.discarded } : {}),
       });
     }
   }
@@ -163,13 +163,23 @@ export function findSampleIdRanges(text: string, types: readonly string[]): Samp
  * after `;` as a whole word, and the mark covers the first word written
  * there. Undefined when the reference gives no alias, the registry has none,
  * or the two agree.
+ *
+ * `cut` says `text` stops where rendered Markdown split it, as reading view
+ * does before a link an older alias holds (`표준 [트롤록스](1mM)`, #329): what
+ * is left of it then only has to start the registry alias.
  */
-export function staleSampleAliasEnd(text: string, idEnd: number, alias: string | null | undefined): number | undefined {
+export function staleSampleAliasEnd(
+  text: string,
+  idEnd: number,
+  alias: string | null | undefined,
+  cut = false
+): number | undefined {
   const registry = alias?.trim();
   if (!registry || text[idEnd] !== ';') return undefined;
   const rest = text.slice(idEnd + 1);
   const written = escapeSamplePipes(registry);
   if (rest.startsWith(written) && !/^[\p{L}\p{N}_-]/u.test(rest.slice(written.length))) return undefined;
+  if (cut && rest.trim() && written.startsWith(rest)) return undefined;
   const word = /^(?:\\\||[^\s|;])+/.exec(rest)?.[0];
   return word ? idEnd + 1 + word.length : undefined;
 }

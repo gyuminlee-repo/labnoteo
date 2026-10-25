@@ -13,6 +13,7 @@ import {
   EditorSuggest,
   EditorSuggestContext,
   EditorSuggestTriggerInfo,
+  Notice,
   TFile,
 } from 'obsidian';
 import {
@@ -171,10 +172,15 @@ export class SampleEditorSuggest extends EditorSuggest<SuggestEntry> {
       }));
     }
 
-    const existing: SuggestEntry[] = buildSampleCompletionEntries(
-      trigger,
-      recordsByType
-    ).map(entry => ({ kind: 'existing', entry }));
+    const entries = buildSampleCompletionEntries(trigger, recordsByType);
+    const existing: SuggestEntry[] = entries
+      .filter(entry => !entry.discarded)
+      .map(entry => ({ kind: 'existing', entry }));
+    // A discarded sample comes after the create actions, so Enter on a lone
+    // match makes a new ID rather than reusing a tube already thrown out (#330).
+    const discarded: SuggestEntry[] = entries
+      .filter(entry => entry.discarded)
+      .map(entry => ({ kind: 'existing', entry }));
 
     // Append synthetic create actions for a concrete type (never for @sample);
     // this also guarantees a non-empty list so the popup shows even with no
@@ -197,7 +203,7 @@ export class SampleEditorSuggest extends EditorSuggest<SuggestEntry> {
     const partbankType = this.partbankSearchType(trigger.typesToSearch);
     if (partbankType !== undefined) actions.push({ kind: 'partbank', type: partbankType });
 
-    return [...existing, ...actions];
+    return [...existing, ...actions, ...discarded];
   }
 
   /**
@@ -281,6 +287,8 @@ export class SampleEditorSuggest extends EditorSuggest<SuggestEntry> {
         ch: start.ch + item.entry.insertText.length,
       });
       this.close();
+      const { id, discarded } = item.entry;
+      if (discarded) new Notice(this.deps.plugin.t('{0} was marked discarded on {1}.', id, discarded));
       return;
     }
 

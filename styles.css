@@ -103,6 +103,16 @@
   text-underline-offset: 3px;
 }
 
+/* A reference to a sample marked discarded (#330): faded and struck through. */
+.labnote-sample-discarded {
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+
+.labnote-sample-alias-stale.labnote-sample-discarded {
+  text-decoration-line: underline line-through;
+}
+
 /* --- @issue markers (editor + reading mode) ------------------------------
    Only well-formed markers get this class, so the styling is also the signal
    that a marker will actually open an issue. The opaque error background hides

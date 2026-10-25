@@ -467,6 +467,9 @@ const obsidianKo: Record<string, string> = {
     '{0}의 정의를 찾을 수 없습니다. 시료 대장에 없는 시료입니다. 대장에서 지웠거나 다른 실험으로 옮겼거나, 전역 샘플 폴더 설정을 바꿨을 수 있습니다.',
   'Not in the sample registry': '시료 대장에 없는 시료',
   'The registry calls this sample {0}': '대장의 별칭: {0}',
+  'Marked discarded on {0}': '폐기: {0}',
+  'Updated the sample list table in {0} note(s).': '노트 {0}개의 시료 목록 표를 대장에 맞춰 고쳤습니다.',
+  '{0} was marked discarded on {1}.': '{0}은(는) {1}에 폐기로 표시된 시료입니다.',
   'Close': '닫기',
   'Enter the {0} sample ID': '{0} 샘플 ID를 입력하세요',
   'e.g. {0}-12345': '예: {0}-12345',
@@ -531,8 +534,8 @@ const obsidianKo: Record<string, string> = {
   'Sample moved: {0}': '샘플을 이동했습니다: {0}',
   'An alias cannot contain ";" or ":", which separate the ID, alias and description in a note. Use "-" or "/" instead (e.g. 1-10).':
     '별칭에는 ";"나 ":"를 쓸 수 없습니다. 노트에서 ID·별칭·설명을 가르는 글자입니다. 대신 "-"나 "/"를 쓰세요(예: 1-10).',
-  'An alias cannot contain #, [[, ]], *, _ or `, which Markdown reads as a tag, link, emphasis or code. Use "-" or "/" instead.':
-    '별칭에는 #, [[, ]], *, _, `를 쓸 수 없습니다. 마크다운이 태그·링크·강조(기울임)·코드로 읽는 글자입니다. 대신 "-"나 "/"를 쓰세요.',
+  'An alias cannot contain #, [[, ]], ](, *, _ or `, which Markdown reads as a tag, link, emphasis or code. Use "-" or "/" instead.':
+    '별칭에는 #, [[, ]], ](, *, _, `를 쓸 수 없습니다. 마크다운이 태그·링크·강조(기울임)·코드로 읽는 글자입니다. 대신 "-"나 "/"를 쓰세요.',
   'A description cannot contain ";", which ends the description in a note. Use "," instead.':
     '설명에는 ";"를 쓸 수 없습니다. 노트에서 설명을 끝내는 글자입니다. 대신 ","를 쓰세요.',
   "Notes in {0} use {1} local sample(s) that are still in another experiment's registry, so the notes cannot find them. Bring them into {0}?":

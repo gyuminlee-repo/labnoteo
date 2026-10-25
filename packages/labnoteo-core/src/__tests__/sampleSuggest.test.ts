@@ -34,6 +34,15 @@ describe('staleSampleAliasEnd (#239)', () => {
     expect(end('DNA-1;집락B', '')).toBeUndefined();
     expect(end('DNA-1;집락B', null)).toBeUndefined();
   });
+
+  // #329: reading view splits `표준 [트롤록스](1mM)` before its link.
+  it('accepts the start of the registry alias in text the reading view cut', () => {
+    const alias = '표준 [트롤록스](1mM)';
+    expect(staleSampleAliasEnd('DNA-1;표준 ', 5, alias, true)).toBeUndefined();
+    expect(staleSampleAliasEnd('DNA-1;표준 ', 5, alias)).toBe('DNA-1;표준'.length);
+    expect(staleSampleAliasEnd('DNA-1;다른 ', 5, alias, true)).toBe('DNA-1;다른'.length);
+    expect(staleSampleAliasEnd('DNA-1;', 5, alias, true)).toBeUndefined();
+  });
 });
 
 describe('parseSampleTrigger', () => {
@@ -186,8 +195,8 @@ describe('findSampleIdRanges', () => {
   });
 });
 
-describe('discarded samples in completion (#158)', () => {
-  it('lists discarded samples after every sample in use, keeping their order', () => {
+describe('discarded samples in completion (#158, #330)', () => {
+  it('lists discarded samples after every sample in use, keeping their order and date', () => {
     const trigger = parseSampleTrigger('@dna;', TYPES)!;
     const entries = buildSampleCompletionEntries(trigger, {
       DNA: [
@@ -200,8 +209,8 @@ describe('discarded samples in completion (#158)', () => {
     expect(entries.map(e => [e.id, e.discarded ?? false])).toEqual([
       ['DNA-2', false],
       ['DNA-4', false],
-      ['DNA-1', true],
-      ['DNA-3', true],
+      ['DNA-1', '2026-10-01'],
+      ['DNA-3', '2026-10-02'],
     ]);
   });
 });

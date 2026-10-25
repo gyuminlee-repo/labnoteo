@@ -19,6 +19,7 @@ import {
   hasSampleDescriptionSeparator,
   sampleAliasProblem,
   buildMarkdownTable,
+  planSampleListRowUpdate,
 } from '@labnoteo/core/lib/sampleUtils';
 import {
   loadSamplesByType,
@@ -103,7 +104,7 @@ export function validateAlias(plugin: Pick<LabnotePlugin, 't'>): (value: string)
         );
       case 'markdown':
         return plugin.t(
-          'An alias cannot contain #, [[, ]], *, _ or `, which Markdown reads as a tag, link, emphasis or code. Use "-" or "/" instead.'
+          'An alias cannot contain #, [[, ]], ](, *, _ or `, which Markdown reads as a tag, link, emphasis or code. Use "-" or "/" instead.'
         );
       default:
         return null;
@@ -182,25 +183,17 @@ export async function insertExperimentSamplesTable(app: App, plugin: LabnotePlug
     for (const id of Object.keys(db)) known.add(id.toLowerCase());
   };
   const rows: string[][] = [];
-  const row = (id: string, rec: SampleRecord, scope: string): string[] => [
-    id,
-    rec.alias ?? '',
-    rec.descriptions?.[0] ?? '',
-    rec.location ?? '',
-    scope,
-    rec.discarded ?? '',
-  ];
   for (const type of types) {
     const localDb = await loadSamplesByType(plugin.fs, local, type);
     remember(localDb);
     if (isCatalogSampleType(type)) remember(await loadCatalogSamples(plugin, local, type));
-    for (const [id, rec] of Object.entries(localDb)) rows.push(row(id, rec, plugin.t('Local')));
+    for (const [id, rec] of Object.entries(localDb)) rows.push(sampleListRow(plugin, id, rec, 'local'));
     if (!globalFolder) continue;
     const globalDb = await loadSamplesByType(plugin.fs, globalFolder, type);
     remember(globalDb);
     if (isCatalogSampleType(type)) remember(await loadCatalogSamples(plugin, globalFolder, type));
     for (const [id, rec] of Object.entries(globalDb)) {
-      if (!localDb[id] && used.has(`${type}\u0000${id}`)) rows.push(row(id, rec, plugin.t('Global')));
+      if (!localDb[id] && used.has(`${type}\u0000${id}`)) rows.push(sampleListRow(plugin, id, rec, 'global'));
     }
   }
   const unregistered = unregisteredReferences(references, known);
@@ -217,17 +210,7 @@ export async function insertExperimentSamplesTable(app: App, plugin: LabnotePlug
     return false;
   }
 
-  const table = buildMarkdownTable(
-    [
-      plugin.t('ID'),
-      plugin.t('Alias'),
-      plugin.t('Description'),
-      plugin.t('Location'),
-      plugin.t('Scope'),
-      plugin.t('Discarded'),
-    ],
-    rows
-  );
+  const table = buildMarkdownTable(sampleListHeaders(plugin)[0], rows, new Set([0]));
   const text = await target.getText();
   const at = target.getCursorOffset ? await target.getCursorOffset() : text.length;
   const before = at === 0 || text[at - 1] === '\n' ? (at > 1 && text[at - 2] !== '\n' ? '\n' : '') : '\n\n';
@@ -239,6 +222,79 @@ export async function insertExperimentSamplesTable(app: App, plugin: LabnotePlug
   plugin.markUserEdit(target.path);
   new Notice(`${plugin.t('Inserted {0} sample(s).', String(rows.length))}${leftOut}`);
   return true;
+}
+
+const SAMPLE_LIST_HEADERS = ['ID', 'Alias', 'Description', 'Location', 'Scope', 'Discarded'];
+
+/** The header of a sample list table in the UI language, then in English. */
+function sampleListHeaders(plugin: Pick<LabnotePlugin, 't'>): string[][] {
+  return [SAMPLE_LIST_HEADERS.map(h => plugin.t(h)), SAMPLE_LIST_HEADERS];
+}
+
+/** A sample's row in a sample list table, in {@link SAMPLE_LIST_HEADERS} order. */
+function sampleListRow(plugin: Pick<LabnotePlugin, 't'>, id: string, rec: SampleRecord, scope: SampleScope): string[] {
+  return [
+    id,
+    rec.alias ?? '',
+    rec.descriptions?.[0] ?? '',
+    rec.location ?? '',
+    plugin.t(scope === 'local' ? 'Local' : 'Global'),
+    rec.discarded ?? '',
+  ];
+}
+
+/**
+ * Bring the rows of sample `(type, id)` of `folder` in the sample list tables
+ * of its notes up to the registry (#336): the table is written from it, so it
+ * follows it like a definition does. A Global sample is skipped in experiments
+ * with a Local record of the same id, which the table lists instead.
+ * `notesOf` is the folder whose notes are read, `folder` by default. Returns
+ * how many notes changed.
+ */
+async function updateSampleListTables(
+  app: App,
+  plugin: LabnotePlugin,
+  opts: { folder: string; type: string; id: string; notesOf?: string }
+): Promise<number> {
+  const { folder, type, id } = opts;
+  const record = (await loadSamplesByType(plugin.fs, folder, type))[id];
+  if (!record) return 0;
+  const isGlobal = isSameSampleFolder(folder, plugin.settings.globalSampleFolder);
+  const cells = sampleListRow(plugin, id, record, isGlobal ? 'global' : 'local');
+  const headers = sampleListHeaders(plugin);
+  const shadowed = new Map<string, boolean>();
+  let updated = 0;
+  for (const note of await notesInSampleScope(app, opts.notesOf ?? folder)) {
+    if (planSampleListRowUpdate(note.text, headers, id, cells).length === 0) continue;
+    if (isGlobal) {
+      const local = noteLabsamplesFolder(note.path, plugin.settings.globalSampleFolder);
+      if (!isSameSampleFolder(local, folder)) {
+        if (!shadowed.has(local)) {
+          shadowed.set(local, Boolean((await loadSamplesByType(plugin.fs, local, type))[id]));
+        }
+        if (shadowed.get(local)) continue;
+      }
+    }
+    if (note.editor) {
+      const editor = note.editor;
+      const edits = planSampleListRowUpdate(editor.getValue(), headers, id, cells);
+      if (edits.length === 0) continue;
+      editor.transaction({
+        changes: edits.map(e => ({ from: editor.offsetToPos(e.start), to: editor.offsetToPos(e.end), text: e.text })),
+      });
+      updated++;
+    } else if (
+      await processNoteThroughVault(app, plugin.host, note.path, content =>
+        planSampleListRowUpdate(content, headers, id, cells).reduceRight(
+          (out, e) => out.slice(0, e.start) + e.text + out.slice(e.end),
+          content
+        )
+      )
+    ) {
+      updated++;
+    }
+  }
+  return updated;
 }
 
 /**
@@ -390,6 +446,7 @@ export async function createSampleInteractive(
       const reusedAlias = record?.alias ?? null;
       const reusedDesc = record?.descriptions?.[0] ?? null;
       new Notice(plugin.t('Using the existing sample {0} instead of creating one.', reuse));
+      if (record?.discarded) new Notice(plugin.t('{0} was marked discarded on {1}.', reuse, record.discarded));
       return {
         id: reuse,
         alias: reusedAlias,
@@ -420,13 +477,14 @@ export async function createSampleInteractive(
   if (existing) {
     // A blank field keeps the stored value, as in the note sync (#73); clearing
     // or rewriting one is what "Edit sample" is for.
-    await mergeSampleRecord(plugin.fs, existing.folder, type, id, {
+    const { discarded } = await mergeSampleRecord(plugin.fs, existing.folder, type, id, {
       alias: alias ?? undefined,
       description: description ?? undefined,
       location: location ?? undefined,
     });
     plugin.refreshSampleViews();
     new Notice(plugin.t('Sample updated: {0}', id));
+    if (discarded) new Notice(plugin.t('{0} was marked discarded on {1}.', id, discarded));
     const merged = (await loadSamplesByType(plugin.fs, existing.folder, type))[id];
     const mergedAlias = merged?.alias ?? null;
     const mergedDesc = merged?.descriptions?.[0] ?? null;
@@ -635,11 +693,13 @@ export async function editSampleInteractive(
     }
   }
 
+  const tables = await updateSampleListTables(app, plugin, { folder, type, id });
+  const tablesNote = tables > 0 ? plugin.t('Updated the sample list table in {0} note(s).', String(tables)) : undefined;
   const oldAlias = record.alias?.trim() ?? '';
   // From no alias to one, bare-id references can show it too (#170).
   const rewritten =
     oldAlias !== (alias ?? '')
-      ? await rewriteStaleAliases(app, plugin, { folder, type, id, oldAlias, newAlias: alias ?? '' })
+      ? await rewriteStaleAliases(app, plugin, { folder, type, id, oldAlias, newAlias: alias ?? '', tablesNote })
       : undefined;
   const copies = await otherExperimentsWithSample(plugin, folder, type, id);
   const elsewhere =
@@ -647,8 +707,8 @@ export async function editSampleInteractive(
       ? plugin.t('{0} is also registered in other experiments ({1}); only this one changed.', id, copies.join(', '))
       : undefined;
   new Notice(
-    [plugin.t('Sample updated: {0}', id), rewritten, elsewhere].filter(Boolean).join(' '),
-    rewritten || elsewhere ? 8000 : undefined
+    [plugin.t('Sample updated: {0}', id), tablesNote, rewritten, elsewhere].filter(Boolean).join(' '),
+    tablesNote || rewritten || elsewhere ? 8000 : undefined
   );
   return true;
 }
@@ -686,7 +746,15 @@ export async function setSampleDiscardedInteractive(
     return false;
   }
   plugin.refreshSampleViews();
-  new Notice(discarded ? plugin.t('Marked {0} as discarded.', id) : plugin.t('{0} is no longer marked discarded.', id));
+  const tables = await updateSampleListTables(plugin.app, plugin, { folder, type, id });
+  new Notice(
+    [
+      discarded ? plugin.t('Marked {0} as discarded.', id) : plugin.t('{0} is no longer marked discarded.', id),
+      tables > 0 ? plugin.t('Updated the sample list table in {0} note(s).', String(tables)) : '',
+    ]
+      .filter(Boolean)
+      .join(' ')
+  );
   return true;
 }
 
@@ -899,14 +967,14 @@ export async function notesInSampleScope(app: App, folder: string): Promise<Scop
 async function rewriteStaleAliases(
   app: App,
   plugin: LabnotePlugin,
-  opts: { folder: string; type: string; id: string; oldAlias: string; newAlias: string }
+  opts: { folder: string; type: string; id: string; oldAlias: string; newAlias: string; tablesNote?: string }
 ): Promise<string | undefined> {
   const { folder, type, id, oldAlias, newAlias } = opts;
   const isGlobal = !getExperimentDir(folder);
   const shadowed = new Map<string, boolean>();
   const planned: Array<ScopedNote & { edits: AliasRewriteEdit[] }> = [];
   for (const note of await notesInSampleScope(app, folder)) {
-    const edits = planAliasRewrite(note.text, type, id, oldAlias, newAlias);
+    const edits = planAliasRewrite(note.text, type, id, oldAlias, newAlias, sampleListHeaders(plugin));
     if (edits.length === 0) continue;
     if (isGlobal) {
       const local = noteLabsamplesFolder(note.path, plugin.settings.globalSampleFolder);
@@ -927,6 +995,7 @@ async function rewriteStaleAliases(
     return `- ${n.path} (${plugin.t('{0} definition(s), {1} reference(s)', String(defs), String(n.edits.length - defs))})`;
   });
   if (planned.length > shownMax) lines.push(`(+${planned.length - shownMax})`);
+  if (opts.tablesNote) lines.push('', opts.tablesNote);
   const count = String(planned.length);
   const ok = await confirmModal(
     app,
@@ -952,7 +1021,7 @@ async function rewriteStaleAliases(
       // Re-planned on the live text (the user may have typed meanwhile), as
       // one transaction so a single undo reverts the note.
       const editor = note.editor;
-      const edits = planAliasRewrite(editor.getValue(), type, id, oldAlias, newAlias);
+      const edits = planAliasRewrite(editor.getValue(), type, id, oldAlias, newAlias, sampleListHeaders(plugin));
       if (edits.length === 0) continue;
       editor.transaction({
         changes: edits.map(e => ({
@@ -964,7 +1033,7 @@ async function rewriteStaleAliases(
       updated++;
     } else if (
       await processNoteThroughVault(app, plugin.host, note.path, content =>
-        applyAliasRewrite(content, planAliasRewrite(content, type, id, oldAlias, newAlias))
+        applyAliasRewrite(content, planAliasRewrite(content, type, id, oldAlias, newAlias, sampleListHeaders(plugin)))
       )
     ) {
       updated++;
@@ -1237,6 +1306,16 @@ export async function moveSampleInteractive(
   await putSampleRecord(plugin.fs, tgt, type, id, record);
   await deleteSampleRecord(plugin.fs, src, type, id);
   plugin.refreshSampleViews();
-  new Notice(plugin.t('Sample moved: {0}', id));
+  // The experiment's tables list it with the other scope now.
+  const experiment = getExperimentDir(tgt) ? tgt : src;
+  const tables = await updateSampleListTables(app, plugin, { folder: tgt, type, id, notesOf: experiment });
+  new Notice(
+    [
+      plugin.t('Sample moved: {0}', id),
+      tables > 0 ? plugin.t('Updated the sample list table in {0} note(s).', String(tables)) : '',
+    ]
+      .filter(Boolean)
+      .join(' ')
+  );
   return true;
 }

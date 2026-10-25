@@ -316,6 +316,9 @@ export class SampleTreeView extends ItemView {
             target,
             buildSampleReferenceText(sample.id, sample.record.alias)
           );
+          if (sample.record.discarded) {
+            new Notice(this.plugin.t('{0} was marked discarded on {1}.', sample.id, sample.record.discarded));
+          }
         })
     );
     menu.addItem(item =>

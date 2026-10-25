@@ -11,6 +11,7 @@ import {
   SampleType,
   buildSampleDefinitionText,
   escapeSamplePipes,
+  findSampleListTables,
   hasSampleAliasSeparator,
   isCatalogSampleType,
 } from './sampleUtils';
@@ -596,12 +597,13 @@ export function planAliasRewrite(
   type: string,
   id: string,
   oldAlias: string,
-  newAlias: string
+  newAlias: string,
+  sampleListHeaders: ReadonlyArray<readonly string[]> = []
 ): AliasRewriteEdit[] {
   const edits: AliasRewriteEdit[] = [];
   const oldEsc = escapeSamplePipes(oldAlias);
   const newEsc = escapeSamplePipes(newAlias);
-  if (!oldAlias) return newAlias ? planAliasAddition(text, type, id, newEsc) : edits;
+  if (!oldAlias) return newAlias ? planAliasAddition(text, type, id, newEsc, sampleListHeaders) : edits;
   if (oldAlias === newAlias) return edits;
 
   const startsWithAlias = (s: string, alias: string): boolean =>
@@ -675,15 +677,27 @@ export function planAliasRewrite(
 /**
  * A sample without an alias got one (#170): `;alias` after every plain
  * reference that is the bare id, so the notes show the name too. Definitions
- * are left alone; their blank alias keeps the stored one.
+ * are left alone; their blank alias keeps the stored one. So is the ID cell
+ * of a sample list table under one of `sampleListHeaders`, whose alias has a
+ * column of its own (#336).
  */
-function planAliasAddition(text: string, type: string, id: string, aliasEsc: string): AliasRewriteEdit[] {
+function planAliasAddition(
+  text: string,
+  type: string,
+  id: string,
+  aliasEsc: string,
+  sampleListHeaders: ReadonlyArray<readonly string[]>
+): AliasRewriteEdit[] {
   const edits: AliasRewriteEdit[] = [];
+  const listRows = sampleListHeaders.length > 0 ? findSampleListTables(text, sampleListHeaders).flat() : [];
   const pattern = buildSampleDefinitionPattern(type);
   let match: RegExpExecArray | null;
   while ((match = nextSampleMatch(pattern, text, type)) !== null) {
     if (match[0].startsWith('@') || match[1] !== id || match[2] !== undefined) continue;
-    const end = match.index + match[0].indexOf(match[1]) + match[1].length;
+    const idStart = match.index + match[0].indexOf(match[1]);
+    const end = idStart + match[1].length;
+    const row = listRows.find(r => r.start <= idStart && idStart < r.end);
+    if (row && /^\s*\|?\s*$/.test(text.slice(row.start, idStart))) continue;
     // `DNA-1;` with nothing after the `;` reads as no alias too.
     const at = text[end] === ';' ? end + 1 : end;
     edits.push({ start: end, end: at, text: `;${aliasEsc}`, kind: 'reference' });
@@ -900,19 +914,41 @@ export async function loadSampleAliases(
   labsamplesFolder: string,
   type: string
 ): Promise<Map<string, string> | undefined> {
+  const marks = await loadSampleMarks(fs, labsamplesFolder, type);
+  return marks && new Map([...marks].map(([id, m]) => [id, m.alias]));
+}
+
+/** What a note's reference to a sample is checked against: its alias and discard date. */
+export interface SampleMark {
+  /** '' without one. */
+  alias: string;
+  /** Set when the sample was marked discarded (#330). */
+  discarded?: string;
+}
+
+/** {@link loadSampleAliases} with each sample's discard date (#330). */
+export async function loadSampleMarks(
+  fs: LabnoteFs,
+  labsamplesFolder: string,
+  type: string
+): Promise<Map<string, SampleMark> | undefined> {
   assertSafeSampleType(type);
   const filePath = path.join(labsamplesFolder, `${type}.json`);
   if (!(await fs.exists(filePath))) return new Map();
   try {
     const data: unknown = JSON.parse(await fs.read(filePath));
     if (!data || typeof data !== 'object' || Array.isArray(data)) return undefined;
-    const aliases = new Map<string, string>();
+    const marks = new Map<string, SampleMark>();
     for (const [id, record] of Object.entries(data as Record<string, unknown>)) {
-      const alias = record && typeof record === 'object' ? (record as { alias?: unknown }).alias : undefined;
+      const r = record && typeof record === 'object' ? (record as { alias?: unknown; discarded?: unknown }) : {};
       const key = id.toLowerCase();
-      if (!aliases.has(key)) aliases.set(key, typeof alias === 'string' ? alias.trim() : '');
+      if (marks.has(key)) continue;
+      marks.set(key, {
+        alias: typeof r.alias === 'string' ? r.alias.trim() : '',
+        ...(typeof r.discarded === 'string' && r.discarded ? { discarded: r.discarded } : {}),
+      });
     }
-    return aliases;
+    return marks;
   } catch {
     return undefined;
   }

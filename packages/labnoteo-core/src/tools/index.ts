@@ -488,7 +488,7 @@ async function resolveSampleCreate(
   }
   if (aliasProblem === 'markdown') {
     return {
-      error: `Invalid alias "${alias}": #, [[, ]], *, _ and \` are read by Markdown as a tag, link, emphasis or code. Replace them (e.g. with "-" or "/") and retry.`,
+      error: `Invalid alias "${alias}": #, [[, ]], ](, *, _ and \` are read by Markdown as a tag, link, emphasis or code. Replace them (e.g. with "-" or "/") and retry.`,
     };
   }
   const description = str(args, 'description');

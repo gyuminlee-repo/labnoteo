@@ -2356,6 +2356,7 @@ export default class LabnotePlugin extends Plugin {
     this.sampleIds = sampleIds;
     const missingTitle = this.t('Not in the sample registry');
     const staleAliasTitle = (alias: string): string => this.t('The registry calls this sample {0}', alias);
+    const discardedTitle = (date: string): string => this.t('Marked discarded on {0}', date);
     const getState = (path: string | undefined): HighlightState => {
       const tracked = this.sampleTrackingFor(path);
       const base: HighlightState = tracked
@@ -2370,6 +2371,8 @@ export default class LabnotePlugin extends Plugin {
             missingTitle,
             knownAliases: known.aliases,
             staleAliasTitle,
+            discardedIds: known.discarded,
+            discardedTitle,
           }
         : base;
       const others = markers.othersFor(path);

@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   collectTokenRanges,
+  discardedSampleCheck,
   highlightStateKey,
   missingSampleCheck,
   needsHighlightRebuild,
@@ -116,6 +117,62 @@ describe('sample references with another alias than the registry', () => {
 
   it('keeps the marks apart when the alias runs into another ID', () => {
     expect(ranges(`${ID};DNA-2`)).toEqual([{ text: `${ID};DNA-2`, stale: true, title: 'registry: COL-001' }]);
+  });
+});
+
+// #329: reading view ends the text before the link an older alias holds.
+describe('a registry alias the reading view cut short', () => {
+  const types = ['Reagent'];
+  const colors = { Reagent: 'red' };
+  const ID = 'Reagent-1792868825877';
+  const state = {
+    types,
+    colors,
+    knownIds: new Set([ID.toLowerCase()]),
+    knownAliases: new Map([[ID.toLowerCase(), '표준 [트롤록스](1mM)']]),
+    staleAliasTitle: (a: string) => `registry: ${a}`,
+  };
+  const staleAlias = staleAliasCheck(state, new Set());
+
+  it('takes the start of the registry alias for the alias when the text was cut', () => {
+    const text = `- ${ID};표준 `;
+    expect(collectTokenRanges(text, types, colors, { staleAlias, cut: true })[0].cls).toBe('labnote-sample-id');
+    expect(collectTokenRanges(text, types, colors, { staleAlias })[0].cls).toContain('labnote-sample-alias-stale');
+  });
+});
+
+// #330: a reference to a discarded sample looked like any other.
+describe('references to a discarded sample', () => {
+  const types = ['Other'];
+  const colors = { Other: 'red' };
+  const state = {
+    types,
+    colors,
+    knownIds: new Set(['other-1', 'other-2']),
+    knownAliases: new Map([
+      ['other-1', 'SUP-08'],
+      ['other-2', ''],
+    ]),
+    staleAliasTitle: (a: string) => `registry: ${a}`,
+    discardedIds: new Map([['other-1', '2026-10-25']]),
+    discardedTitle: (d: string) => `discarded: ${d}`,
+  };
+  const ranges = (text: string) =>
+    collectTokenRanges(text, types, colors, {
+      staleAlias: staleAliasCheck(state, new Set()),
+      discarded: discardedSampleCheck(state),
+    }).map(r => ({ text: text.slice(r.start, r.end), cls: r.cls, title: r.title }));
+
+  it('fades the discarded one with its date, also next to a stale alias', () => {
+    expect(ranges('Other-1;SUP-08 Other-2')).toEqual([
+      { text: 'Other-1', cls: 'labnote-sample-id labnote-sample-discarded', title: 'discarded: 2026-10-25' },
+      { text: 'Other-2', cls: 'labnote-sample-id', title: undefined },
+    ]);
+    expect(ranges('Other-1;SUP-09')[0]).toEqual({
+      text: 'Other-1;SUP-09',
+      cls: 'labnote-sample-id labnote-sample-alias-stale labnote-sample-discarded',
+      title: 'discarded: 2026-10-25\nregistry: SUP-08',
+    });
   });
 });
 
