@@ -242,6 +242,7 @@ class WorksheetModal extends Modal {
 
   onOpen(): void {
     const { contentEl, t } = this;
+    this.modalEl.addClass('labnote-worksheet-modal');
     this.setTitle(t('Print experiment worksheet'));
     contentEl.createEl('p', {
       text: t('Each unit operation starts on a new page with a QR code in two corners. Lab unit operations are selected; turn on software ones to print them too.'),
@@ -267,7 +268,11 @@ class WorksheetModal extends Modal {
     );
     new Setting(contentEl)
       .addButton(b => b.setButtonText(t('Open in browser')).onClick(() => this.finish('browser')))
-      .addButton(b => b.setButtonText(t('Print')).setCta().onClick(() => this.finish('print')));
+      .addButton(b => {
+        b.setButtonText(t('Print')).setCta().onClick(() => this.finish('print'));
+        // Otherwise the first toggle gets focus, and Enter turns that page off (#325).
+        window.setTimeout(() => b.buttonEl.focus(), 0);
+      });
   }
 
   private finish(target: WorksheetChoice['target']): void {

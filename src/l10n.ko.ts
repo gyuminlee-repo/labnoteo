@@ -183,6 +183,8 @@ const obsidianKo: Record<string, string> = {
   "This workflow's name is long, so the alias won't fit in the file name. The title and checklist still keep it.":
     '이 워크플로는 이름이 길어 별칭이 파일 이름에 들어가지 않습니다. 제목과 체크리스트에는 남습니다.',
   '{0} characters · no limit (not used in a file name)': '{0}자 · 글자 수 제한 없음 (파일 이름에 쓰이지 않음)',
+  '{0} is already in this note, so the two would read the same in the headings and the table of contents. Give this one its own alias to tell them apart.':
+    '이 노트에 같은 공정·같은 별칭({0})이 이미 있어 제목과 목차에서 둘이 똑같이 보입니다. 구분하려면 다른 별칭을 주세요.',
   'A workflow is a note for one design, build, test or learn stage of the experiment. The alias tells uses of the same workflow apart and also goes into the file name and the README checklist. You can leave it empty.':
     '워크플로는 실험을 이루는 설계·구축·시험·학습 단계 가운데 하나를 기록하는 노트입니다. 별칭은 같은 워크플로를 여러 번 쓸 때 서로 구분하는 이름으로, 파일 이름과 README 체크리스트에 함께 쓰입니다. 비워 두어도 됩니다.',
   'A unit operation is a single task within a workflow (one step using a piece of equipment or software). The alias tells repeats of the same task apart by run or condition and appears in its heading and the table of contents. You can leave it empty.':

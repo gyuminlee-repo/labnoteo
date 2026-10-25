@@ -81,6 +81,7 @@ export {
 export {
   WORKSHEET_SCANS_HEADING,
   listUnitOpBlocks,
+  findSameAliasUnitOp,
   resolveScanTarget,
   insertScanEntries,
   removeScanEntry,

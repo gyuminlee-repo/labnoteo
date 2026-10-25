@@ -3,6 +3,7 @@
  * warn past the cap without blocking.
  */
 import { describe, it, expect } from 'vitest';
+import { listUnitOpBlocks } from '@labnoteo/core';
 import { experimentTitleHint, unitOpAliasHint, workflowAliasHint } from '../../src/commands';
 
 const host = { t: (s: string, ...args: string[]) => args.reduce((acc, a, i) => acc.replace(`{${i}}`, a), s) };
@@ -48,5 +49,24 @@ describe('name prompt hints', () => {
 
   it('only counts a unit operation alias', () => {
     expect(unitOpAliasHint(host)(' 1차 37도 ')).toEqual({ text: '6 characters · no limit (not used in a file name)' });
+  });
+
+  it('flags a unit operation of this ID with the same alias already in the note (#339)', () => {
+    const blocks = listUnitOpBlocks(
+      [
+        '## [WB020 Phage Library] 파지라이브러리',
+        '### [UHW265 Sanger Sequencing] 무작위 클론',
+        'body',
+        '### [UHW240 SDS-PAGE]',
+      ].join('\n')
+    );
+    const hint = unitOpAliasHint(host, 'UHW265', blocks);
+    expect(hint(' 무작위 클론 ')).toEqual({
+      text: '[UHW265 Sanger Sequencing] 무작위 클론 is already in this note, so the two would read the same in the headings and the table of contents. Give this one its own alias to tell them apart.',
+      warn: true,
+    });
+    expect(hint('2차 클론').warn).toBeUndefined();
+    expect(unitOpAliasHint(host, 'UHW240', blocks)('').text).toContain('[UHW240 SDS-PAGE] is already');
+    expect(unitOpAliasHint(host, 'UHW240', blocks)('순도').warn).toBeUndefined();
   });
 });

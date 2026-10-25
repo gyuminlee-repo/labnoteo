@@ -19,8 +19,11 @@ import type {
   PickItem,
   PromptHint,
   InsertUnitOperationInput,
+  UnitOpBlock,
 } from '@labnoteo/core';
 import {
+  findSameAliasUnitOp,
+  listUnitOpBlocks,
   insertUnitOperation,
   workflowPathProblem,
   rebuildUnitOpToc,
@@ -261,11 +264,27 @@ export function workflowAliasHint(
 }
 
 /** A unit-operation alias goes into no file name, so it has no limit (#213). */
-export function unitOpAliasHint(host: Pick<LabnoteHost, 't'>): (value: string) => PromptHint {
-  return value =>
-    ({
+export function unitOpAliasHint(
+  host: Pick<LabnoteHost, 't'>,
+  opId = '',
+  /** The note's unit operations: one of this ID with the same alias is flagged (#339). */
+  blocks: readonly UnitOpBlock[] = []
+): (value: string) => PromptHint {
+  return value => {
+    const twin = findSameAliasUnitOp(blocks, opId, value);
+    if (twin) {
+      return {
+        text: host.t(
+          '{0} is already in this note, so the two would read the same in the headings and the table of contents. Give this one its own alias to tell them apart.',
+          `[${twin.opId} ${twin.opName}]${twin.alias ? ` ${twin.alias}` : ''}`
+        ),
+        warn: true,
+      };
+    }
+    return {
       text: host.t('{0} characters · no limit (not used in a file name)', String(Array.from(value.trim()).length)),
-    });
+    };
+  };
 }
 
 /** What a workflow is, for the workflow name prompts (#213). */
@@ -1104,8 +1123,9 @@ export function unitOpAliasPrompt(
   app: App,
   host: LabnoteHost
 ): (input: InsertUnitOperationInput) => Promise<string | undefined> {
-  return input =>
-    workflowAliasModal(app, {
+  return async input => {
+    const blocks = listUnitOpBlocks((await host.editTarget()?.getText()) ?? '');
+    return workflowAliasModal(app, {
       id: input.opId,
       catalogName: input.opName,
       title: host.t('Unit operation alias'),
@@ -1114,8 +1134,9 @@ export function unitOpAliasPrompt(
         'A unit operation is a single task within a workflow (one step using a piece of equipment or software). The alias tells repeats of the same task apart by run or condition and appears in its heading and the table of contents. You can leave it empty.'
       ),
       description: input.opDescription ? catalogDescription(input.opId, input.opDescription) : undefined,
-      hint: unitOpAliasHint(host),
+      hint: unitOpAliasHint(host, input.opId, blocks),
     });
+  };
 }
 
 /**
