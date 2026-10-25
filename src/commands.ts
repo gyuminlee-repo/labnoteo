@@ -85,7 +85,9 @@ import {
   normalizeWorkflowChecklistLabels,
   normalizeWorkflowChecklistLinks,
   normalizeChecklistLink,
+  rebuildExperimentReadme,
   relinkWorkflowChecklistEntries,
+  unlinkableNameChars,
   collapseWorkflowRenames,
   defaultWorkflowTitle,
   isValidWorkflowPath,
@@ -393,7 +395,7 @@ export async function changeExperimentStatusCommand(
   const updated = renderNote({ ...frontMatter, status: chosen }, body);
 
   await writeNoteThroughVault(app, host, readmePath, stamp(updated));
-  let message = host.t('Experiment status changed ({0}): {1} → {2}', folderName, current ?? host.t('(none)'), chosen);
+  let message = host.t('Experiment status changed ({0}): {1} → {2}.', folderName, current ?? host.t('(none)'), chosen);
   // Ctrl+Z only reaches the README when it is the open note (#126).
   const active = app.workspace.getActiveFile()?.path;
   if (active !== readmePath) {
@@ -1442,6 +1444,33 @@ function workflowLabels(notes: ReadonlyMap<string, string | undefined>): Map<str
 }
 
 /**
+ * Write a new README for experiment `dir` whose README was deleted (#340),
+ * listing its workflow notes; the author comes from the first note with an
+ * experimenter. Returns how many notes were listed.
+ */
+export async function rebuildExperimentReadmeFile(host: LabnoteHost, dir: string): Promise<number> {
+  const { names, notes } = await readWorkflowFolder(host, dir);
+  let author: string | undefined;
+  for (const content of notes.values()) {
+    if (!content) continue;
+    try {
+      const value = parseFrontMatterYaml(content.replace(/\r\n/g, '\n')).frontMatter.experimenter;
+      if (typeof value === 'string' && value.trim()) {
+        author = value.trim();
+        break;
+      }
+    } catch {
+      // A note with broken front matter has no experimenter to offer.
+    }
+  }
+  const content = rebuildExperimentReadme(posix.basename(dir), names, workflowLabels(notes), author, {
+    locale: getObsidianLanguage(),
+  });
+  await host.fs.write(posix.join(dir, README), content);
+  return notes.size;
+}
+
+/**
  * Add one workflow file of `labnoteDir` to its README checklist unless it is
  * already listed. Returns whether the README changed.
  */
@@ -1659,8 +1688,8 @@ export async function syncWorkflowChecklistCommand(
   const samplesBrought = adoptSamples ? await adoptSamples(labnoteDir, names) : 0;
   // The checklist cannot order notes that share a number (#288).
   const clashNotice = (): void => {
-    if (plan.numberClashes.length === 0) return;
-    host.notify('warn', workflowNumberClashNotice(host, plan.numberClashes));
+    if (plan.numberClashes.length > 0) host.notify('warn', workflowNumberClashNotice(host, plan.numberClashes));
+    if (plan.unlinkable.length > 0) host.notify('warn', unlinkableWorkflowNotice(host, plan.unlinkable));
   };
 
   if (
@@ -1726,6 +1755,16 @@ export async function syncWorkflowChecklistCommand(
 /** The warning that workflow notes `names` share a number, pointing at "Renumber workflows" (#288). */
 export function workflowNumberClashNotice(host: Pick<LabnoteHost, 't'>, names: readonly string[]): string {
   return host.t('Workflow notes share a number: {0}. Run "{1}" to give each its own.', names.join(', '), host.t('Renumber workflows'));
+}
+
+/** Workflow notes whose names no checklist link can reach (#326). */
+export function unlinkableWorkflowNotice(host: Pick<LabnoteHost, 't'>, names: readonly string[]): string {
+  const chars = [...new Set(names.flatMap(unlinkableNameChars))].join(' ');
+  return host.t(
+    'No link can open these workflow notes, so their checklist entries do not work: {0}. Rename them without {1}.',
+    names.join(', '),
+    chars
+  );
 }
 
 // === README auto-sync on native rename / delete ==============================

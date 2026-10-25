@@ -18,8 +18,11 @@ import {
   copiedExperimentOrigin,
   diagnoseExperimentPath,
   experimentFolderName,
+  experimentLosingLabsamples,
   experimentLosingReadme,
+  nextExperimentId,
   resetCopiedExperimentReadme,
+  setExperimentReadmeId,
   isSampleTrackingOff,
   isSampleTrackingOn,
   suggestExperimentFolderName,
@@ -126,12 +129,13 @@ describe('copied experiment folders (#223)', () => {
     expect(experimentFolderName('004', '효모 다중자리 삽입 2차')).toBe('004_효모_다중자리_삽입_2차');
   });
 
-  it('retitles, redates and unflags the README, leaving the rest', () => {
+  it('retitles, redates, unflags and replans the README, leaving the rest', () => {
     const readme = [
       '---',
       'title: 효모 다중자리 삽입 1차',
       'author: 김연구',
-      'status: in-progress',
+      'status: needs-review',
+      'id: EXP-106',
       'discuss: true',
       'created_date: 2026-10-01',
       'last_updated_date: 2026-10-10',
@@ -145,7 +149,8 @@ describe('copied experiment folders (#223)', () => {
         '---',
         'title: 효모 다중자리 삽입 2차',
         'author: 김연구',
-        'status: in-progress',
+        'status: planned',
+        'id: EXP-106',
         'created_date: 2026-10-21',
         'last_updated_date: 2026-10-21',
         '---',
@@ -155,6 +160,22 @@ describe('copied experiment folders (#223)', () => {
       ].join('\r\n')
     );
     expect(resetCopiedExperimentReadme('본문만', 'x', '2026-10-21')).toBe('본문만');
+  });
+
+  it('gives the copy its own id or drops it (#353)', () => {
+    const readme = ['---', 'title: A', 'id: EXP-106', 'status: needs-review', '---', 'id: 본문'].join('\n');
+    expect(setExperimentReadmeId(readme, 'EXP-107')).toBe(
+      ['---', 'title: A', 'id: EXP-107', 'status: needs-review', '---', 'id: 본문'].join('\n')
+    );
+    expect(setExperimentReadmeId(readme, undefined)).toBe(['---', 'title: A', 'status: needs-review', '---', 'id: 본문'].join('\n'));
+    expect(setExperimentReadmeId('---\ntitle: A\n---\n', 'EXP-1')).toBe('---\ntitle: A\n---\n');
+  });
+
+  it('numbers the next id past every taken one with the same prefix (#353)', () => {
+    expect(nextExperimentId('EXP-106', ['EXP-106', 'EXP-107', 'OTHER-900'])).toBe('EXP-108');
+    expect(nextExperimentId('EXP-006', [])).toBe('EXP-007');
+    expect(nextExperimentId('KIM-2026-9', ['KIM-2026-12'])).toBe('KIM-2026-13');
+    expect(nextExperimentId('효모실험', [])).toBeUndefined();
   });
 });
 
@@ -171,6 +192,22 @@ describe('experimentLosingReadme (#226)', () => {
     expect(experimentLosingReadme(readme, 'labnote/002_GFP/README.labnote.md')).toBeUndefined();
     expect(experimentLosingReadme('labnote/001_GFP/notes/README.labnote.md', 'labnote/001_GFP/notes/x.md')).toBeUndefined();
     expect(experimentLosingReadme('labnote/001_GFP/001_WD010_Design.labnote.md', 'labnote/001_GFP/x.md')).toBeUndefined();
+  });
+});
+
+describe('experimentLosingLabsamples (#338)', () => {
+  it('names the experiment whose sample registry folder was renamed or moved away', () => {
+    expect(experimentLosingLabsamples('labnote/001_A/resources/labsamples', 'labnote/001_A/resources/labsamples_old')).toBe(
+      'labnote/001_A'
+    );
+    expect(experimentLosingLabsamples('labnote/001_A/resources', 'labnote/001_A/resources_bak')).toBe('labnote/001_A');
+    expect(experimentLosingLabsamples('labnote/001_A/resources/labsamples', 'archive/labsamples')).toBe('labnote/001_A');
+  });
+
+  it('ignores a registry that moved with its renamed experiment, and other folders', () => {
+    expect(experimentLosingLabsamples('labnote/001_A/resources/labsamples', 'labnote/002_A/resources/labsamples')).toBeUndefined();
+    expect(experimentLosingLabsamples('labnote/001_A/images', 'labnote/001_A/pics')).toBeUndefined();
+    expect(experimentLosingLabsamples('labnote/001_A/resources/labsamples/sub', 'labnote/001_A/resources/labsamples/x')).toBeUndefined();
   });
 });
 

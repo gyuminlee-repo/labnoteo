@@ -17,6 +17,7 @@ import { generateNoteId, NOTE_ID_KEY } from './noteId';
 import {
   commandName,
   diagnoseExperimentPath,
+  generateReadmeContent,
   getExperimentDir,
   KO_COMMAND_NAMES,
   type TemplateHintOptions,
@@ -117,7 +118,34 @@ export function diagnoseWorkflowPath(filePath: string): WorkflowPathDiagnosis {
 export function suggestWorkflowFileName(baseName: string): string | undefined {
   if (!/^\d{3}_/.test(baseName) || !/\.md$/i.test(baseName)) return undefined;
   if (baseName.toLowerCase().endsWith('.labnote.md')) return undefined;
-  return `${baseName.slice(0, -'.md'.length).replace(/\.labnote/i, '')}.labnote.md`;
+  const moved = `${baseName.slice(0, -'.md'.length).replace(/\.labnote/i, '')}.labnote.md`;
+  return suggestLinkableFileName(moved) ?? moved;
+}
+
+const UNLINKABLE_CHAR_RE = /[#^|[\]]/g;
+
+/**
+ * The characters of `fileName` that no link can reach it through (#326):
+ * Obsidian reads `#` as a heading, `^` as a block and `|` as an alias in a
+ * link target, and `[`/`]` end the link; neither `%23` nor `\#` helps. A
+ * workflow note named so drops out of its README checklist.
+ */
+export function unlinkableNameChars(fileName: string): string[] {
+  return [...new Set(fileName.match(UNLINKABLE_CHAR_RE) ?? [])];
+}
+
+/**
+ * `fileName` without the characters of {@link unlinkableNameChars}, with
+ * doubled or trailing `_` tidied, when that is still a workflow file name;
+ * else undefined (also when nothing needs removing).
+ */
+export function suggestLinkableFileName(fileName: string): string | undefined {
+  if (unlinkableNameChars(fileName).length === 0) return undefined;
+  const fixed = fileName
+    .replace(UNLINKABLE_CHAR_RE, '')
+    .replace(/_{2,}/g, '_')
+    .replace(/_+(?=\.labnote\.md$)/i, '');
+  return /^\d{3}_.+\.labnote\.md$/i.test(fixed) ? fixed : undefined;
 }
 
 /** What a vault rename means for the README checklist; see {@link classifyWorkflowRename}. */
@@ -1028,6 +1056,12 @@ export interface WorkflowChecklistSyncPlan {
    * (#288). The checklist cannot tell their order; "Renumber workflows" can.
    */
   numberClashes: string[];
+  /**
+   * Workflow files of the folder whose name no checklist link can reach
+   * (see {@link unlinkableNameChars}), sorted (#326). Their entries look
+   * matched here but do not open; only renaming the file helps.
+   */
+  unlinkable: string[];
   /** README with `added` inserted by number (see {@link insertWorkflowChecklistEntries}); unchanged when nothing is added. */
   content: string;
 }
@@ -1384,6 +1418,9 @@ export function planWorkflowChecklistSync(
   }
 
   const numberClashes = workflowNumberClashes(existingNames);
+  const unlinkable = existingNames
+    .filter(name => parseWorkflowFileName(name) !== null && unlinkableNameChars(name).length > 0)
+    .sort();
   if (!hasSection || added.length === 0) {
     return {
       hasSection,
@@ -1393,11 +1430,29 @@ export function planWorkflowChecklistSync(
       duplicates,
       unescaped,
       numberClashes,
+      unlinkable,
       content: readmeContent,
     };
   }
   const content = insertWorkflowChecklistEntries(readmeContent, added);
-  return { hasSection, added, stale, relabel, duplicates, unescaped, numberClashes, content };
+  return { hasSection, added, stale, relabel, duplicates, unescaped, numberClashes, unlinkable, content };
+}
+
+/**
+ * A new `README.labnote.md` for experiment folder `folderName` whose README
+ * was deleted (#340): titled from the folder name (`003_효모_삽입` →
+ * `효모 삽입`), with the workflow notes among `names` checklisted by number
+ * under the labels `titles` gives. Status, objective and summary start over.
+ */
+export function rebuildExperimentReadme(
+  folderName: string,
+  names: readonly string[],
+  titles: ReadonlyMap<string, string>,
+  author: string | undefined,
+  opts: TemplateHintOptions = {}
+): string {
+  const title = folderName.replace(/^\d{3}_/, '').replace(/_/g, ' ').trim() || folderName;
+  return planWorkflowChecklistSync(generateReadmeContent(title, author, opts), names, titles).content;
 }
 
 /** The workflow file names among `names` that share their number with another, sorted. */
@@ -1448,6 +1503,42 @@ export function relinkWorkflowChecklistEntries(
     lines[index] = lines[index].replace(written, () => `](./${r.to})`);
   }
   return lines.join('\n');
+}
+
+/**
+ * Point the checklist of a copied experiment back at its own notes (#320).
+ * Renaming the copy makes Obsidian write vault-absolute links, because the
+ * original holds notes of the same names; copied again, those links reach
+ * the earlier experiment. An entry whose link reaches a note directly in
+ * some experiment folder, when `copyDir` holds a note of that name (`names`),
+ * becomes `./<name>`, keeping checkbox, label and tail. Returns how many changed.
+ */
+export function relinkCopiedExperimentChecklist(
+  readmeContent: string,
+  copyDir: string,
+  names: readonly string[]
+): { content: string; count: number } {
+  const own = new Set(names);
+  const lines = readmeContent.split('\n');
+  let count = 0;
+  for (const e of entriesInLines(lines)) {
+    let decoded = e.link;
+    try {
+      decoded = decodeURI(e.link);
+    } catch {
+      // Compared as written.
+    }
+    const resolved = decoded.startsWith('../')
+      ? path.normalize(path.join(copyDir, decoded))
+      : path.normalize(decoded).replace(/^\/+/, '');
+    if (!resolved.includes('/')) continue;
+    const folder = path.dirname(resolved);
+    const name = path.basename(resolved);
+    if (getExperimentDir(folder) !== folder || !own.has(name)) continue;
+    lines[e.index] = renderChecklistEntryLine({ ...e, link: name });
+    count++;
+  }
+  return count === 0 ? { content: readmeContent, count } : { content: lines.join('\n'), count };
 }
 
 /** Each checklist entry of the "Related Workflows" section: line index, raw label, in-folder target. */
@@ -1565,7 +1656,8 @@ export function suggestCopiedWorkflowFileName(
   const stem = baseName.slice(0, baseName.search(/\.labnote/i));
   const parts = parseWorkflowFileName(`${stem}.labnote.md`);
   if (!parts) return undefined;
-  return `${getNextWorkflowNumber([...existingNames])}_${parts.id}_${parts.safeName}.labnote.md`;
+  const name = `${getNextWorkflowNumber([...existingNames])}_${parts.id}_${parts.safeName}.labnote.md`;
+  return suggestLinkableFileName(name) ?? name;
 }
 
 /** {@link planWorkflowExperimenterSync} result. */

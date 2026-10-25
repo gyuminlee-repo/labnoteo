@@ -75,6 +75,7 @@ export {
   resolveScanTarget,
   insertScanEntries,
   removeScanEntry,
+  removeAllScanEntries,
   listScanHashes,
   listFiledScans,
   renderScanEntry,

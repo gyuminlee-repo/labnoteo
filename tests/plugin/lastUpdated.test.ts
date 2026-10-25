@@ -102,7 +102,7 @@ describe('changing the status to needs-review', () => {
 
   it('says to run the setup when the automation is not installed', async () => {
     expect(await notified({}, 'needs-review')).toEqual([
-      'Experiment status changed ({0}): {1} → {2} To open a review issue, run "Setup research automation" first.',
+      'Experiment status changed ({0}): {1} → {2}. To open a review issue, run "Setup research automation" first.',
     ]);
   });
 
@@ -113,9 +113,9 @@ describe('changing the status to needs-review', () => {
 
   it('adds nothing when the automation is ready, or for another status', async () => {
     expect(await notified({ [WORKFLOW_YML]: '', '.git': '' }, 'needs-review')).toEqual([
-      'Experiment status changed ({0}): {1} → {2}',
+      'Experiment status changed ({0}): {1} → {2}.',
     ]);
-    expect(await notified({}, 'in-progress')).toEqual(['Experiment status changed ({0}): {1} → {2}']);
+    expect(await notified({}, 'in-progress')).toEqual(['Experiment status changed ({0}): {1} → {2}.']);
   });
 });
 
@@ -139,12 +139,12 @@ describe('the status-change notice', () => {
   }
 
   it('shows the old and new status', async () => {
-    expect(await shownFrom(README)).toBe('Experiment status changed (001_Test): planned → discontinued');
+    expect(await shownFrom(README)).toBe('Experiment status changed (001_Test): planned → discontinued.');
   });
 
   it('names the README and how to undo when run from another note', async () => {
     expect(await shownFrom(WORKFLOW)).toBe(
-      "Experiment status changed (001_Test): planned → discontinued Changed 001_Test's README, not this note. " +
+      "Experiment status changed (001_Test): planned → discontinued. Changed 001_Test's README, not this note. " +
         'To undo, run "Change experiment status" again and pick planned.'
     );
   });

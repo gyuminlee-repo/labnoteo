@@ -52,6 +52,28 @@ export function experimentLosingReadme(oldPath: string, newPath: string): string
   return getExperimentDir(oldPath);
 }
 
+/** Whether folder `p` is `resources` or `resources/labsamples` of an experiment. */
+function isSampleRegistryFolder(p: string): boolean {
+  const dir = getExperimentDir(p);
+  const normalized = path.normalize(p);
+  return dir !== undefined && (normalized === path.join(dir, 'resources') || normalized === path.join(dir, 'resources', 'labsamples'));
+}
+
+/**
+ * The experiment folder whose Local sample registry went out of reach when
+ * folder `oldPath` (its `resources/labsamples`, or the `resources` holding
+ * it) was renamed or moved to `newPath` (#338): every Local sample of that
+ * experiment reads as unregistered. Undefined for other folders, and when the
+ * folder only moved along with its renamed experiment.
+ */
+export function experimentLosingLabsamples(oldPath: string, newPath: string): string | undefined {
+  if (!isSampleRegistryFolder(oldPath)) return undefined;
+  const oldRel = path.normalize(oldPath).slice(getExperimentDir(oldPath)!.length);
+  const newDir = getExperimentDir(newPath);
+  if (newDir !== undefined && path.normalize(newPath).slice(newDir.length) === oldRel) return undefined;
+  return getExperimentDir(oldPath);
+}
+
 /** {@link diagnoseExperimentPath} result. */
 export type ExperimentPathDiagnosis =
   /** Inside an experiment; `folder` is its `labnote/###_Name` folder. */
@@ -280,27 +302,70 @@ export function copiedExperimentOrigin(name: string): string | undefined {
 }
 
 /**
- * The README of a copied experiment made the README of a new one (#223):
- * `title` set, `created_date` and `last_updated_date` today, and the `discuss`
- * flag dropped so the automation does not open a second discussion of the
- * original. Only the front matter changes.
+ * `content` with the front-matter keys in `values` rewritten in place:
+ * a string replaces the value, `null` drops the key (with any indented
+ * continuation lines). Keys not already present are not added.
  */
-export function resetCopiedExperimentReadme(content: string, title: string, today: string): string {
+function rewriteFrontMatterKeys(content: string, values: Readonly<Record<string, string | null>>): string {
   const newline = content.includes('\r\n') ? '\r\n' : '\n';
   const lines = content.split(/\r?\n/);
   const fmEnd = lines[0]?.trim() === '---' ? lines.findIndex((l, i) => i > 0 && l.trim() === '---') : -1;
   if (fmEnd < 0) return content;
   const out = [lines[0]];
   for (let i = 1; i < fmEnd; i++) {
-    const key = /^(title|created_date|last_updated_date|discuss)\s*:/.exec(lines[i])?.[1];
-    if (!key) {
+    const key = /^([A-Za-z_][\w-]*)\s*:/.exec(lines[i])?.[1];
+    if (key === undefined || !Object.prototype.hasOwnProperty.call(values, key)) {
       out.push(lines[i]);
       continue;
     }
     while (i + 1 < fmEnd && /^\s+\S/.test(lines[i + 1])) i++;
-    if (key !== 'discuss') out.push(serializeFrontMatterEntry(key, key === 'title' ? title : today));
+    const value = values[key];
+    if (value !== null) out.push(serializeFrontMatterEntry(key, value));
   }
   return [...out, ...lines.slice(fmEnd)].join(newline);
+}
+
+/**
+ * The README of a copied experiment made the README of a new one (#223):
+ * `title` set, `created_date` and `last_updated_date` today, the `discuss`
+ * flag dropped so the automation does not open a second discussion of the
+ * original, and `status` back to `planned`: a copy is a new run, not one under
+ * review (#353). Only the front matter changes.
+ */
+export function resetCopiedExperimentReadme(content: string, title: string, today: string): string {
+  return rewriteFrontMatterKeys(content, {
+    title,
+    created_date: today,
+    last_updated_date: today,
+    discuss: null,
+    status: 'planned',
+  });
+}
+
+/**
+ * The README with its `id` set to `id`, or the `id` line dropped when `id` is
+ * undefined (#353). A copied experiment keeps the original's `id`, which the
+ * automation's validate rejects as a duplicate.
+ */
+export function setExperimentReadmeId(content: string, id: string | undefined): string {
+  return rewriteFrontMatterKeys(content, { id: id ?? null });
+}
+
+/**
+ * The next free experiment `id` after `id` (`EXP-106` → `EXP-107`, or past
+ * every `taken` one with the same prefix), keeping the digits' width. An `id`
+ * that does not end in a number has no successor: undefined (#353).
+ */
+export function nextExperimentId(id: string, taken: Iterable<string>): string | undefined {
+  const m = /^(.*?)(\d+)$/.exec(id.trim());
+  if (!m) return undefined;
+  const [, prefix, digits] = m;
+  let max = Number(digits);
+  for (const other of taken) {
+    const o = /^(.*?)(\d+)$/.exec(other.trim());
+    if (o && o[1] === prefix) max = Math.max(max, Number(o[2]));
+  }
+  return `${prefix}${String(max + 1).padStart(digits.length, '0')}`;
 }
 
 export function createLabnoteStructure(

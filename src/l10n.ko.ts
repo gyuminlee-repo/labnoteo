@@ -245,7 +245,20 @@ const obsidianKo: Record<string, string> = {
     '복사본 {0}의 날짜를 초기화했습니다: 생성일은 오늘로, 종료일과 유닛 오퍼레이션의 Start_date/End_date는 비웠습니다.',
   'Workflow notes moved into {0} are not in its README checklist yet. Run "{1}" to add them.':
     '{0}(으)로 옮겨 온 워크플로 노트가 README 체크리스트에 없습니다. "{1}"을(를) 실행해 등록하세요.',
-  'Experiment status changed ({0}): {1} → {2}': '실험 상태가 변경되었습니다({0}): {1} → {2}',
+  'Experiment status changed ({0}): {1} → {2}.': '실험 상태가 변경되었습니다({0}): {1} → {2}.',
+  'No link can open these workflow notes, so their checklist entries do not work: {0}. Rename them without {1}.':
+    '링크로 열 수 없는 이름의 워크플로 노트가 있어 체크리스트 항목이 동작하지 않습니다: {0}. 이름에서 {1}을(를) 빼 주세요.',
+  '"{0}" has {1} in its name, which no link can reach: its README checklist entry will not open.':
+    '"{0}"의 이름에 링크로 닿을 수 없는 문자 {1}이(가) 있어 README 체크리스트 항목이 열리지 않습니다.',
+  'Rename it to "{0}"?': '"{0}"(으)로 이름을 바꿀까요?',
+  '"{0}" no longer has resources/labsamples: its Local samples will show as unregistered, and new ones go to a new, empty registry.':
+    '"{0}"에 resources/labsamples 폴더가 없어졌습니다. 이 실험의 Local 시료가 모두 등록되지 않은 것으로 보이고, 새 시료는 비어 있는 새 대장에 저장됩니다.',
+  "The README.labnote.md of \"{0}\" was deleted: the experiment list and the workflow checklist no longer find this experiment. If you can, restore it from the trash (Obsidian's .trash folder or the system trash).":
+    '"{0}"의 README.labnote.md가 삭제되었습니다. 실험 목록과 워크플로 체크리스트가 이 실험을 찾지 못합니다. 가능하면 휴지통(Obsidian의 .trash 폴더 또는 시스템 휴지통)에서 복원하세요.',
+  'Or create a new README now, listing the workflow notes in the folder? Its status starts at planned, and the objective and summary start empty.':
+    '아니면 폴더의 워크플로 노트를 나열한 새 README를 지금 만들까요? 상태는 planned에서 시작하고, 목적과 요약은 비어 있습니다.',
+  'Create README': 'README 만들기',
+  'Created a new README for {0}, listing {1} workflow note(s).': '{0}의 새 README를 만들었습니다. 워크플로 노트 {1}개를 나열했습니다.',
   '(none)': '(없음)',
   'To undo, run "{0}" again and pick {1}.': '되돌리려면 "{0}"을(를) 다시 실행해 {1}을(를) 고르세요.',
   'To undo, right-click this experiment in the workflow view again and pick {0}.':
@@ -674,9 +687,20 @@ const obsidianKo: Record<string, string> = {
   '"{0}" is a copy of the experiment {1} with its number, title and discussion flag, so the workflow view lists the two alike. Rename the folder to a new number and change its README title to tell them apart.':
     '"{0}"은(는) 실험 {1}의 복사본이라 번호·제목·논의 표시가 같아 워크플로 뷰에 똑같이 보입니다. 구분하려면 폴더 이름을 새 번호로 바꾸고 README 제목을 고치세요.',
   'Name this copy of the experiment': '복제한 실험의 제목',
-  '"{0}" is a copy of the experiment {1}. Give the copy its own title: it becomes the next experiment, dated today, without the discussion flag.':
-    '"{0}"은(는) 실험 {1}의 복사본입니다. 복사본의 제목을 정하세요. 다음 번호의 실험이 되고, 날짜는 오늘로, 논의 표시는 꺼집니다.',
+  '"{0}" is a copy of the experiment {1}. Give the copy its own title: it becomes the next experiment, dated today, planned, without the discussion flag.':
+    '"{0}"은(는) 실험 {1}의 복사본입니다. 복사본의 제목을 정하세요. 다음 번호의 실험이 되고, 날짜는 오늘로, 상태는 planned로 바뀌고, 논의 표시는 꺼집니다.',
   'Made the copy the experiment {0}, created today.': '복사본을 실험 {0}(으)로 만들었습니다. 생성일은 오늘입니다.',
+  'Its status went from {0} back to planned.': '상태는 {0}에서 planned로 되돌렸습니다.',
+  "Changed the copy's id from {0} to {1}, so the automation does not take it for the original.":
+    '복사본의 id를 {0}에서 {1}(으)로 바꿨습니다. 자동화가 원본과 같은 실험으로 보지 않게 하기 위해서입니다.',
+  "Removed the copy's id {0}, so the automation does not take it for the original; its folder name serves as its ID.":
+    '복사본의 id {0}을(를) 지웠습니다. 자동화가 원본과 같은 실험으로 보지 않게 하기 위해서이며, 이제 폴더 이름이 실험 ID가 됩니다.',
+  "Check that the checklist of {0} links to its own notes, not the original's; run \"{1}\" to fix it.":
+    '{0}의 체크리스트가 원본이 아니라 자기 노트를 가리키는지 확인하세요. 고치려면 "{1}"을 실행하세요.',
+  "Pointed {0} checklist link(s) of {1} back at its own notes instead of the original's.":
+    '{1}의 체크리스트 링크 {0}개가 원본 노트를 가리켜 자기 노트로 바꿨습니다.',
+  "Removed the {0} worksheet scan(s) of the original from the copy {1}; the scan images stay for the original.":
+    '복사본 {1}에서 원본의 기록지 스캔 {0}개를 뺐습니다. 스캔 이미지는 원본용으로 남겨 두었습니다.',
   'The discussion flag was turned off; run "{0}" if the copy needs its own discussion.':
     '논의 표시를 껐습니다. 복사본에도 논의가 필요하면 "{0}"을 실행하세요.',
   '"{0}" no longer has README.labnote.md: the experiment list and the workflow checklist will not find this experiment.':
