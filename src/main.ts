@@ -81,6 +81,7 @@ import {
   catalogDescription,
   experimentTitleHint,
   workflowAliasHint,
+  workflowAliasValidator,
   workflowConcept,
   rebuildExperimentReadmeFile,
   unlinkableWorkflowNotice,
@@ -1811,6 +1812,7 @@ export default class LabnotePlugin extends Plugin {
       about: workflowConcept(this.host),
       description,
       hint: workflowAliasHint(this.host, heading.id, heading.name, await this.fs.list(posix.dirname(copyPath))),
+      validate: workflowAliasValidator(this.host, originalAlias),
     });
     if (alias === undefined || this.unloaded) return;
     if (!this.copiedWorkflows.has(copyPath) || file.path !== copyPath) return;

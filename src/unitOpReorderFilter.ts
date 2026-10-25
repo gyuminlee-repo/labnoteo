@@ -15,7 +15,7 @@
  * file itself.
  */
 import { EditorState, type Extension, type Text, type Transaction } from '@codemirror/state';
-import { computeUnitOpSyncEdits } from '@labnoteo/core';
+import { computeUnitOpSyncEdits, pruneUnitOpTocEntries } from '@labnoteo/core';
 import { isValidWorkflowPath } from '@labnoteo/core/lib/workflowStructure';
 import { readLastUpdatedDate } from '@labnoteo/core/lib/dateUtils';
 
@@ -125,7 +125,6 @@ export function createUnitOpReorderFilter(opts: UnitOpReorderFilterOptions): Ext
       if (!tr.docChanged) return tr;
       const path = opts.getFilePath(tr.startState);
       const fromHistory = tr.isUserEvent('undo') || tr.isUserEvent('redo');
-      if (!opts.isEnabled()) return tr;
       // Never interfere with IME composition or file reloads (`set`). Undo/redo
       // already restore a tidy document, because the move and its cleanup were
       // recorded together.
@@ -134,9 +133,15 @@ export function createUnitOpReorderFilter(opts: UnitOpReorderFilterOptions): Ext
       if (!touchesUnitOpHeading(tr)) return tr;
 
       // CodeMirror documents are `\n`-only, so string offsets map 1:1 to positions.
-      const edits = computeUnitOpSyncEdits(tr.newDoc.toString(), {
-        onlyOnReorder: !deletesWholeUnitOpHeading(tr),
-      });
+      // With sorting off, a deleted block still takes its own entry (#406); a cut
+      // block is usually pasted back elsewhere, so its entry stays.
+      const edits = !opts.isEnabled()
+        ? deletesWholeUnitOpHeading(tr) && !tr.isUserEvent('delete.cut')
+          ? pruneUnitOpTocEntries(tr.newDoc.toString())
+          : []
+        : computeUnitOpSyncEdits(tr.newDoc.toString(), {
+            onlyOnReorder: !deletesWholeUnitOpHeading(tr),
+          });
       if (edits.length === 0) return tr;
       return [tr, { changes: edits, sequential: true }];
     } catch (err) {

@@ -8,8 +8,60 @@
  * unit-op blocks at the cursor and keeps the TOC in sync with these targeted
  * helpers.
  */
+import { normalizeHeadingText } from './sectionEdit';
 
 export const UNIT_OP_HEADING_PATTERN = /^###\s+\[([A-Z]+\d+)\s+(.+?)\]\s*(.*)/;
+
+const UNIT_OP_SECTION_NAMES = ['related unit operations', '관련 유닛 오퍼레이션'];
+
+/** Whether a `##` title names the unit-operation section, emoji, case and translation aside (#402). */
+export function isUnitOpSectionTitle(title: string): boolean {
+  const text = normalizeHeadingText(title);
+  return UNIT_OP_SECTION_NAMES.some(name => text.includes(name));
+}
+
+/** Whether `text` is a unit-operation TOC entry, `- [UHW010 Mixing](#…)`; a `- [ ] task` is not. */
+export function isUnitOpTocEntryLine(text: string): boolean {
+  return /^\s*- \[[A-Z]+\d+\s(?:\\.|[^\\])*?\]\(#[^)\s]*\)/.test(text);
+}
+
+/**
+ * Line index of the unit-operation section's `##` heading, or -1 (#402). The
+ * heading is matched loosely, as the README's Related Workflows is: any `##`
+ * naming it in English or Korean. Failing that, the first `##` section holding
+ * a `### [ID …]` block or a TOC entry is taken, since a heading renamed to
+ * anything else still has its unit operations under it. Fenced lines are
+ * skipped.
+ */
+export function findUnitOpSection(lines: readonly { text: string; fenced: boolean }[]): number {
+  const isH2 = (j: number): boolean => !lines[j].fenced && /^##\s/.test(lines[j].text);
+  const named = lines.findIndex((_, j) => isH2(j) && isUnitOpSectionTitle(lines[j].text.replace(/^##\s+/, '')));
+  if (named !== -1) return named;
+  for (let j = 0; j < lines.length; j++) {
+    if (!isH2(j)) continue;
+    let k = j + 1;
+    for (; k < lines.length && !isH2(k); k++) {
+      const { text, fenced } = lines[k];
+      if (!fenced && (UNIT_OP_HEADING_PATTERN.test(text) || isUnitOpTocEntryLine(text))) return j;
+    }
+    j = k - 1;
+  }
+  return -1;
+}
+
+/** {@link findUnitOpSection} on a whole note: the 0-based line of its unit-operation `##` heading, or -1. */
+export function unitOpSectionLine(md: string): number {
+  return findUnitOpSection(scanLines(md));
+}
+
+/** Line index of the note's conclusions `##` heading (`## Conclusions and Discussion`), or -1. */
+function findConclusionsIdx(lines: readonly { text: string; fenced: boolean }[]): number {
+  return lines.findIndex(l => {
+    if (l.fenced || !/^##\s/.test(l.text)) return false;
+    const text = normalizeHeadingText(l.text.replace(/^##\s+/, ''));
+    return text.includes('conclusion') || text.includes('결론');
+  });
+}
 
 /**
  * The anchor GitHub gives a heading with this text, before de-duplication:
@@ -73,7 +125,7 @@ export function appendUnitOpToWorkflowToc(
   const newline = md.includes('\r\n') ? '\r\n' : '\n';
   const lines = md.split(/\r?\n/);
 
-  const headingIdx = lines.findIndex(l => l.trim() === '## Related Unit Operations');
+  const headingIdx = findUnitOpSection(scanLines(md));
   if (headingIdx === -1) return md;
 
   // Section spans until the next `## ` heading or a thematic break `---`.
@@ -133,13 +185,7 @@ export function findUnitOpInsertOffset(md: string): number {
     return md.slice(lineStarts[i], end).replace(/\r?\n$/, '');
   };
 
-  let headingIdx = -1;
-  for (let i = 0; i < lineStarts.length; i++) {
-    if (lineAt(i).trim() === '## Related Unit Operations') {
-      headingIdx = i;
-      break;
-    }
-  }
+  const headingIdx = findUnitOpSection(scanLines(md));
   if (headingIdx === -1) return md.length;
 
   for (let i = headingIdx + 1; i < lineStarts.length; i++) {
@@ -152,11 +198,14 @@ export function findUnitOpInsertOffset(md: string): number {
  * Where {@link findUnitOpInsertPointAt} puts a new unit-op block. `place` says
  * how it relates to the blocks already there: after the block headed `after`,
  * before the first block, after the last one (`end`), or `empty` when the
- * section has no block yet (or is missing).
+ * section has no block yet. `noSection` means no unit-operation section was
+ * found (#402): the block goes before the conclusions heading
+ * (`beforeConclusions`), or at the end of the note when that is missing too.
  */
 export interface UnitOpInsertPoint {
   offset: number;
-  place: 'after' | 'first' | 'end' | 'empty';
+  place: 'after' | 'first' | 'end' | 'empty' | 'noSection';
+  beforeConclusions?: boolean;
   /** Heading text of the block the new one follows, e.g. `[UHW010 Spin]`. */
   after?: string;
 }
@@ -180,8 +229,14 @@ export function findUnitOpInsertPointAt(md: string, cursor: number): UnitOpInser
     return md.slice(lineStarts[i], end).replace(/\r?\n$/, '');
   };
 
-  const headingIdx = lineStarts.findIndex((_, i) => lineAt(i).trim() === '## Related Unit Operations');
-  if (headingIdx === -1) return { offset: md.length, place: 'empty' };
+  const scanned = scanLines(md);
+  const headingIdx = findUnitOpSection(scanned);
+  if (headingIdx === -1) {
+    const conclusions = findConclusionsIdx(scanned);
+    return conclusions === -1
+      ? { offset: md.length, place: 'noSection' }
+      : { offset: scanned[conclusions].start, place: 'noSection', beforeConclusions: true };
+  }
   let endIdx = lineStarts.length;
   for (let i = headingIdx + 1; i < lineStarts.length; i++) {
     if (/^##\s/.test(lineAt(i))) {
@@ -304,25 +359,55 @@ const tocLabel = (line: string): string =>
     .replace(/\]\(#[^)]*\)$/, ']');
 
 /**
- * The rebuilt entries, each with the tail of the current entry for the same
- * unit operation (the nth entry of an opId goes with its nth heading).
+ * Which current TOC line stands for each heading (keyed by its index in
+ * `scan.entries`): an entry with the heading's label goes with it, and the
+ * rest of an opId's entries pair with its remaining headings in order. Deleting
+ * the first of two blocks with the same opId thus leaves the second block its
+ * own entry and `@issue` tail (#406).
  */
+function pairTocEntries(scan: UnitOpTocScan): Map<number, number> {
+  const pairs = new Map<number, number>();
+  const taken = new Set<number>();
+  const take = (k: number, match: (idx: number) => boolean): void => {
+    if (pairs.has(k)) return;
+    const idx = scan.entryIdxs.find(j => !taken.has(j) && match(j));
+    if (idx === undefined) return;
+    pairs.set(k, idx);
+    taken.add(idx);
+  };
+  scan.entries.forEach((line, k) => take(k, j => tocLabel(scan.lines[j].text) === tocLabel(line)));
+  scan.entries.forEach((_, k) => take(k, j => tocEntryOpId(scan.lines[j].text) === scan.entryOpIds[k]));
+  return pairs;
+}
+
+/** The rebuilt entries, each with the tail of the current entry paired with it (see {@link pairTocEntries}). */
 function entriesWithTails(scan: UnitOpTocScan): string[] {
-  const tails = new Map<string, string[]>();
-  for (const idx of scan.entryIdxs) {
-    const opId = tocEntryOpId(scan.lines[idx].text);
-    if (!opId) continue;
-    const list = tails.get(opId) ?? [];
-    list.push(splitTocEntry(scan.lines[idx].text).tail);
-    tails.set(opId, list);
-  }
-  const used = new Map<string, number>();
+  const pairs = pairTocEntries(scan);
   return scan.entries.map((line, k) => {
-    const opId = scan.entryOpIds[k];
-    const nth = used.get(opId) ?? 0;
-    used.set(opId, nth + 1);
-    return line + (tails.get(opId)?.[nth] ?? '');
+    const idx = pairs.get(k);
+    return line + (idx === undefined ? '' : splitTocEntry(scan.lines[idx].text).tail);
   });
+}
+
+/**
+ * Edits that drop the TOC entries no `### [..]` heading is left for, without
+ * touching the order or the other lines (#406): what deleting a block does
+ * when TOC sorting is off. Entries pair with headings as in
+ * {@link pairTocEntries}; a dropped entry's tail goes with it.
+ */
+export function pruneUnitOpTocEntries(md: string): TextEdit[] {
+  const scan = scanUnitOpToc(md);
+  if (!scan) return [];
+  const paired = new Set(pairTocEntries(scan).values());
+  const edits: TextEdit[] = [];
+  for (const idx of scan.entryIdxs) {
+    if (paired.has(idx) || !tocEntryOpId(scan.lines[idx].text)) continue;
+    const line = scan.lines[idx];
+    const next = scan.lines[idx + 1];
+    const prev = scan.lines[idx - 1];
+    edits.push(next ? { from: line.start, to: next.start, insert: '' } : { from: prev ? prev.end : line.start, to: line.end, insert: '' });
+  }
+  return edits;
 }
 
 /** Everything the TOC and separator edits need, from one pass over the document. */
@@ -340,7 +425,7 @@ interface UnitOpTocScan {
 
 function scanUnitOpToc(md: string): UnitOpTocScan | null {
   const lines = scanLines(md);
-  const headingIdx = lines.findIndex(l => !l.fenced && l.text.trim() === '## Related Unit Operations');
+  const headingIdx = findUnitOpSection(lines);
   if (headingIdx === -1) return null;
 
   // The entry region ends at the first `---` break or at ANY heading, so the

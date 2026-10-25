@@ -406,6 +406,8 @@ export interface WorkflowAliasOpts {
   description?: string;
   /** A note under the input, worked out again on every change; never blocks the submit. */
   hint?: (value: string) => PromptHint | undefined;
+  /** Why the alias cannot be used, or null; shown under the input and blocks the submit. */
+  validate?: (value: string) => string | null;
 }
 
 /**
@@ -430,7 +432,13 @@ class WorkflowAliasModal extends Modal {
     const { contentEl } = this;
     this.setTitle(this.opts.title);
 
+    let errorEl: HTMLElement | undefined;
     const submit = () => {
+      const err = this.opts.validate?.(this.value);
+      if (err) {
+        errorEl?.setText(err);
+        return;
+      }
       this.resolved = true;
       this.resolve(this.value);
       this.close();
@@ -456,6 +464,7 @@ class WorkflowAliasModal extends Modal {
       input.value = this.opts.value;
       this.value = this.opts.value;
     }
+    errorEl = contentEl.createDiv({ cls: 'labnote-prompt-error' });
     const hintEl = this.opts.hint ? contentEl.createDiv({ cls: 'labnote-input-hint' }) : undefined;
     const showHint = () => {
       if (hintEl && this.opts.hint) renderHint(hintEl, this.opts.hint(this.value));
@@ -463,6 +472,7 @@ class WorkflowAliasModal extends Modal {
     showHint();
     input.addEventListener('input', () => {
       this.value = input.value;
+      errorEl?.setText('');
       showHint();
     });
     input.addEventListener('keydown', ev => {

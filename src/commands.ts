@@ -106,6 +106,7 @@ import {
   type WorkflowRename,
   type WorkflowRelabel,
   type WorkflowSubfolderNotes,
+  workflowAliasProblem,
 } from '@labnoteo/core/lib/workflowStructure';
 import { removeWorkflowFromReadme } from '@labnoteo/core/lib/workflowDelete';
 // Re-exported so command registration in main.ts imports every command from one
@@ -224,6 +225,20 @@ export function experimentTitleHint(host: Pick<LabnoteHost, 't'>): (value: strin
       warn: length > budget,
     };
   };
+}
+
+/**
+ * The alias modal's check (#411): a `#` breaks links to the heading. `keep` is
+ * an alias already in use (a copy's original), passed through unchanged.
+ */
+export function workflowAliasValidator(
+  host: Pick<LabnoteHost, 't'>,
+  keep?: string
+): (value: string) => string | null {
+  return value =>
+    value.trim() !== (keep ?? '').trim() && workflowAliasProblem(value)
+      ? host.t('An alias cannot contain "#": links to its heading would break.')
+      : null;
 }
 
 /**
@@ -959,6 +974,7 @@ async function createWorkflowFile(
     about: workflowConcept(host),
     description: chosen.description ? catalogDescription(chosen.id, chosen.description) : undefined,
     hint: workflowAliasHint(host, chosen.id, chosen.name, existingFiles),
+    validate: workflowAliasValidator(host),
   });
   if (alias === undefined) return undefined; // cancelled
   const cleanAlias = alias.trim();
@@ -1261,6 +1277,7 @@ export function unitOpAliasPrompt(
       ),
       description: input.opDescription ? catalogDescription(input.opId, input.opDescription) : undefined,
       hint: unitOpAliasHint(host, { id: input.opId, name: input.opName }, blocks),
+      validate: workflowAliasValidator(host),
     });
   };
 }

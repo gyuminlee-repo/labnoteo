@@ -126,7 +126,11 @@ export async function insertUnitOperation(
         ? host.t('(before the first unit operation)')
         : at.place === 'end'
           ? host.t('(after the last unit operation)')
-          : '';
+          : at.place === 'noSection'
+            ? at.beforeConclusions
+              ? host.t('(before the conclusions: no unit operation section was found, so the table of contents was not updated)')
+              : host.t('(at the end of the note: no unit operation section was found, so the table of contents was not updated)')
+            : '';
   host.notify('info', [host.t('Unit operation inserted: {0} {1}', opId, opName), where].filter(Boolean).join(' '));
   return true;
 }

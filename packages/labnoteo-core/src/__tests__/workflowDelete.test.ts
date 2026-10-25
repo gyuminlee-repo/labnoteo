@@ -55,3 +55,13 @@ describe('removeWorkflowFromReadme', () => {
     expect(removeWorkflowFromReadme(md, '005_WB045_재_겨울.labnote.md').content).not.toContain('005_');
   });
 });
+
+// #412: a file name with a space is linked as `%20`.
+describe('removeWorkflowFromReadme with a space in the name', () => {
+  it('removes the %20 entry', () => {
+    const readme = README.replace('./001_WD010_Design.labnote.md', './001_WD010_Design%201.labnote.md');
+    const res = removeWorkflowFromReadme(readme, '001_WD010_Design 1.labnote.md');
+    expect(res.changed).toBe(true);
+    expect(res.content).not.toContain('Design%201');
+  });
+});

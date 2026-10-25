@@ -244,6 +244,15 @@ export function sanitizeWorkflowName(name: string): string {
 }
 
 /**
+ * Why `alias` cannot name a workflow or unit operation, or undefined (#411).
+ * A `#` anywhere in the heading makes a link to it (`[[note#heading]]`, the
+ * TOC's `(#anchor)`) end early, as a sample alias's does.
+ */
+export function workflowAliasProblem(alias: string): 'hash' | undefined {
+  return alias.includes('#') ? 'hash' : undefined;
+}
+
+/**
  * Create workflow file content with YAML front matter
  * @param workflow Workflow information
  * @param experimenter Experimenter name (from README author field)
@@ -369,9 +378,25 @@ function parseChecklistEntryLine(line: string, index: number): ChecklistEntryLin
   return { index, prefix: m[1], box: m[2], raw: m[3], link: m[4], tail: m[5] };
 }
 
+/**
+ * A checklist link with its `%20`-style escapes undone, so it compares with a
+ * file name; a malformed escape is kept as written (#412).
+ */
+export function decodeChecklistLink(link: string): string {
+  try {
+    return decodeURI(link);
+  } catch {
+    return link;
+  }
+}
+
+/** A file name as a Markdown link target: a space would end the link, so it becomes `%20` (#412). */
+const encodeChecklistLink = (fileName: string): string => fileName.replace(/ /g, '%20');
+
 /** The link as written into a checklist line; one with a folder part is not made relative (#102). */
 function checklistLinkText(fileName: string): string {
-  return fileName.includes('/') ? fileName : `./${fileName}`;
+  const link = encodeChecklistLink(fileName);
+  return link.includes('/') ? link : `./${link}`;
 }
 
 function renderChecklistEntryLine(e: Omit<ChecklistEntryLine, 'index'>): string {
@@ -454,7 +479,7 @@ export function parseWorkflowChecklistFromReadme(readmeContent: string): Workflo
   return entriesInLines(readmeContent.split('\n')).map(e => ({
     done: e.box.toLowerCase() === 'x',
     title: unescapeChecklistLabel(e.raw),
-    fileName: e.link,
+    fileName: decodeChecklistLink(e.link),
   }));
 }
 
@@ -976,7 +1001,7 @@ export function reconcileWorkflowChecklist(
   const renumbered: string[] = [];
   current.forEach((entry, k) => {
     const written = dir === undefined ? source[k].link : normalizeChecklistLink(source[k].link, dir);
-    const base = baseName(written);
+    const base = decodeChecklistLink(baseName(written));
     const to = remap.get(base);
     const link = to ?? written;
     let raw = entry.raw;
@@ -1007,7 +1032,7 @@ export function reconcileWorkflowChecklist(
  */
 function moveEntryIntoNumberOrder(lines: string[], link: string): void {
   const entries = entriesInLines(lines);
-  const at = entries.findIndex(e => e.link === link);
+  const at = entries.findIndex(e => decodeChecklistLink(e.link) === decodeChecklistLink(link));
   const seq = checklistSequence(link);
   if (at === -1 || seq === undefined) return;
   const prev = entries.slice(0, at).reverse().find(e => checklistSequence(e.link) !== undefined);
@@ -1107,12 +1132,7 @@ export interface WorkflowChecklistSyncPlan {
  * is returned as is.
  */
 export function normalizeChecklistLink(link: string, dir: string): string {
-  let decoded = link;
-  try {
-    decoded = decodeURI(link);
-  } catch {
-    // Compared as written.
-  }
+  const decoded = decodeChecklistLink(link);
   const normalized = path.normalize(decoded).replace(/^\/+/, '');
   if (!normalized.includes('/')) return link;
   const folder = path.normalize(dir).replace(/^\/+/, '').replace(/\/+$/, '');
@@ -1135,7 +1155,7 @@ export function normalizeWorkflowChecklistLinks(
     const short = normalizeChecklistLink(link, dir);
     if (short === link) continue;
     const written = lines[index].includes(`](./${link})`) ? `](./${link})` : `](${link})`;
-    lines[index] = lines[index].replace(written, () => `](./${short})`);
+    lines[index] = lines[index].replace(written, () => `](${checklistLinkText(short)})`);
     count++;
   }
   return count === 0 ? { content: readmeContent, count } : { content: lines.join('\n'), count };
@@ -1149,12 +1169,7 @@ export function normalizeWorkflowChecklistLinks(
  */
 function linkTargetInFolder(link: string, dir?: string): string | null {
   if (dir !== undefined) link = normalizeChecklistLink(link, dir);
-  let decoded = link;
-  try {
-    decoded = decodeURI(link);
-  } catch {
-    // Keep the raw link; a malformed escape is compared as written.
-  }
+  const decoded = decodeChecklistLink(link);
   const normalized = path.normalize(decoded);
   return normalized.includes('/') ? null : normalized;
 }
@@ -1505,12 +1520,7 @@ export function workflowNumberClashes(names: readonly string[]): string[] {
  */
 function subfolderMatches(link: string, subfolders: WorkflowSubfolderNotes | undefined): string[] | undefined {
   if (!subfolders) return undefined;
-  let decoded = link;
-  try {
-    decoded = decodeURI(link);
-  } catch {
-    // Compared as written.
-  }
+  const decoded = decodeChecklistLink(link);
   const normalized = path.normalize(decoded).replace(/^\//, '');
   const rel = (subfolders.files.get(path.basename(normalized)) ?? []).find(
     r => normalized === r || normalized === `${subfolders.dir}/${r}`
@@ -1569,7 +1579,7 @@ export function relinkWorkflowChecklistEntries(
     const r = links.find(l => l.from === link);
     if (!r) continue;
     const written = lines[index].includes(`](./${link})`) ? `](./${link})` : `](${link})`;
-    lines[index] = lines[index].replace(written, () => `](./${r.to})`);
+    lines[index] = lines[index].replace(written, () => `](./${encodeChecklistLink(r.to)})`);
   }
   return lines.join('\n');
 }
@@ -1591,12 +1601,7 @@ export function relinkCopiedExperimentChecklist(
   const lines = readmeContent.split('\n');
   let count = 0;
   for (const e of entriesInLines(lines)) {
-    let decoded = e.link;
-    try {
-      decoded = decodeURI(e.link);
-    } catch {
-      // Compared as written.
-    }
+    const decoded = decodeChecklistLink(e.link);
     const resolved = decoded.startsWith('../')
       ? path.normalize(path.join(copyDir, decoded))
       : path.normalize(decoded).replace(/^\/+/, '');

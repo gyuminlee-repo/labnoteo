@@ -37,6 +37,8 @@ import {
   planTableCsvNames,
   tableCsvName,
   labelMatchesFileName,
+  workflowAliasProblem,
+  decodeChecklistLink,
   workflowLabelFor,
   rewriteWorkflowTitle,
   parseWorkflowHeading,
@@ -1783,5 +1785,43 @@ describe('unitOpsAllEnded', () => {
     expect(unitOpsAllEnded(`---\nend_date: ''\n---\n${op('2026-10-25 09:00')}${op('2026-10-25 10:00')}`)).toBe(true);
     expect(unitOpsAllEnded(`${op('2026-10-25 09:00')}${op('')}`)).toBe(false);
     expect(unitOpsAllEnded('# no unit operations\n')).toBe(false);
+  });
+});
+
+describe('workflowAliasProblem', () => {
+  it('refuses a "#" anywhere', () => {
+    expect(workflowAliasProblem('1차 #2')).toBe('hash');
+    expect(workflowAliasProblem('#1')).toBe('hash');
+    expect(workflowAliasProblem('1차 37도')).toBeUndefined();
+  });
+});
+
+// #412: a file name with a space is linked as `%20`.
+describe('checklist links with spaces', () => {
+  const OLD = '001_WD010_A B.labnote.md';
+  const NEW = '003_WD010_A B.labnote.md';
+  const B = '002_WB030_B.labnote.md';
+
+  it('decodes a link, keeping a malformed escape as written', () => {
+    expect(decodeChecklistLink('./001_A%20B.labnote.md')).toBe('./001_A B.labnote.md');
+    expect(decodeChecklistLink('001_%E0%A4%A.labnote.md')).toBe('001_%E0%A4%A.labnote.md');
+  });
+
+  it('relinks and relabels an entry Obsidian has not updated', () => {
+    const readme = readmeWith(['- [ ] [WD010 A B](./001_WD010_A%20B.labnote.md)']);
+    const res = reconcileWorkflowChecklist(readme, [{ from: OLD, to: NEW }], { labelFor: () => 'WD010 A B 2차' });
+    expect(res.content).toBe(readmeWith(['- [ ] [WD010 A B 2차](./003_WD010_A%20B.labnote.md)']));
+  });
+
+  it('relabels an entry Obsidian already relinked', () => {
+    const readme = readmeWith(['- [ ] [WD010 A B](./003_WD010_A%20B.labnote.md)']);
+    const res = reconcileWorkflowChecklist(readme, [{ from: OLD, to: NEW }], { labelFor: () => 'WD010 A B 2차' });
+    expect(res.content).toBe(readmeWith(['- [ ] [WD010 A B 2차](./003_WD010_A%20B.labnote.md)']));
+  });
+
+  it('moves a renumbered entry into number order', () => {
+    const readme = readmeWith(['- [ ] [WD010 A B](./003_WD010_A%20B.labnote.md)', `- [ ] [B](./${B})`]);
+    const res = reconcileWorkflowChecklist(readme, [{ from: OLD, to: NEW }], { move: true });
+    expect(res.content).toBe(readmeWith([`- [ ] [B](./${B})`, '- [ ] [WD010 A B](./003_WD010_A%20B.labnote.md)']));
   });
 });

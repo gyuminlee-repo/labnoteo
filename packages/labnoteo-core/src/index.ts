@@ -20,6 +20,8 @@ export {
   type UnitOpInsertPoint,
   minimalReplacement,
   computeUnitOpSyncEdits,
+  pruneUnitOpTocEntries,
+  isUnitOpSectionTitle,
   applyTextEdits,
   type TextEdit,
 } from './sections/workflowSectionParser';

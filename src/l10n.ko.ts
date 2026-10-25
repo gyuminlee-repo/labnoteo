@@ -433,6 +433,12 @@ const obsidianKo: Record<string, string> = {
   '(after {0})': '({0} 다음)',
   '(before the first unit operation)': '(첫 유닛 오퍼레이션 앞)',
   '(after the last unit operation)': '(마지막 유닛 오퍼레이션 다음)',
+  'An alias cannot contain "#": links to its heading would break.':
+    '별칭에는 "#"를 쓸 수 없습니다. 제목으로 가는 링크가 끊어집니다.',
+  '(before the conclusions: no unit operation section was found, so the table of contents was not updated)':
+    '(결론 절 앞: 유닛 오퍼레이션 절을 찾지 못해 목차는 갱신하지 않았습니다)',
+  '(at the end of the note: no unit operation section was found, so the table of contents was not updated)':
+    '(노트 끝: 유닛 오퍼레이션 절을 찾지 못해 목차는 갱신하지 않았습니다)',
   'Please open a workflow file.': '워크플로 파일을 열어주세요.',
   'Please run this command on a workflow file inside the labnote folder.':
     'labnote 폴더 내의 워크플로 파일에서 실행해주세요.',
@@ -673,8 +679,8 @@ const obsidianKo: Record<string, string> = {
   'Catalog files not moved, {0} already has them: {1}':
     '{0}에 같은 이름이 있어 옮기지 않은 카탈로그 파일: {1}',
   'Auto-sync unit operation TOC': '유닛오퍼레이션 TOC 자동 정렬',
-  "Reorder a workflow note's Related Unit Operations list to match heading order after edits, and tidy the --- separators immediately when a block is moved. Off, the order is left as you arranged it but the names and links still follow the headings.":
-    '편집 후 워크플로 노트의 Related Unit Operations 목록을 헤딩 순서에 맞게 정렬하고, 블록을 옮기면 구분선(---)도 즉시 정리합니다. 끄면 순서는 그대로 두고 이름·링크만 헤딩에 맞춰 갱신합니다.',
+  "Reorder a workflow note's Related Unit Operations list to match heading order after edits, and tidy the --- separators immediately when a block is moved. Off, the order is left as you arranged it but the names and links still follow the headings, and a deleted block's entry is removed.":
+    '편집 후 워크플로 노트의 Related Unit Operations 목록을 헤딩 순서에 맞게 정렬하고, 블록을 옮기면 구분선(---)도 즉시 정리합니다. 끄면 순서는 그대로 두고 이름·링크만 헤딩에 맞춰 갱신하며, 지운 블록의 줄은 뺍니다.',
   'Auto-update last updated date': '마지막 갱신일 자동 기록',
   "Set a lab note's last_updated_date to today (once a day) when you edit it, change its status or discussion flag, or the AI edits it. Editing a workflow note also updates its experiment README. Changes pulled from git are ignored. A date you type by hand is kept for the rest of that day; turning this off and on resumes it at once.":
     '연구노트를 편집하거나 상태·논의 표시를 바꾸거나 AI가 고치면 last_updated_date를 오늘 날짜로 바꿉니다(하루 한 번). 워크플로 노트를 고치면 실험 README도 함께 바뀝니다. git으로 받아온 변경은 반영하지 않습니다. 날짜를 손으로 고친 노트는 그날 하루 동안 고친 날짜를 그대로 두고, 이 설정을 껐다 켜면 바로 다시 기록합니다.',

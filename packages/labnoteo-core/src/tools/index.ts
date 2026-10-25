@@ -49,6 +49,7 @@ import {
   insertWorkflowChecklistEntries,
   hasWorkflowChecklistSection,
   parseExperimenterFromReadme,
+  workflowAliasProblem,
 } from '../lib/workflowStructure';
 import {
   findSectionMatches,
@@ -555,6 +556,7 @@ async function resolveWorkflowCreate(
   if (args.alias !== undefined && typeof args.alias !== 'string') return { error: 'alias must be a string' };
   const rawAlias = typeof args.alias === 'string' ? args.alias.trim() : '';
   if (/[\r\n]/.test(rawAlias)) return { error: 'alias must be a single line' };
+  if (workflowAliasProblem(rawAlias)) return { error: 'alias must not contain "#": links to its heading would break' };
   // As in the app, an alias of only symbols, which leaves no file name part, is dropped.
   const alias = rawAlias && sanitizeWorkflowName(rawAlias) ? rawAlias : undefined;
   const labnoteDir = getExperimentDir(documentPath);
@@ -1005,7 +1007,7 @@ export function createLabnoteTools(): ToolDef[] {
           workflowId: { type: 'string', description: 'Catalog workflow id, e.g. WD010 (case-insensitive).' },
           alias: {
             type: 'string',
-            description: 'Optional name for this workflow instance, added after the catalog name.',
+            description: 'Optional name for this workflow instance, added after the catalog name. Must not contain "#".',
           },
         },
         required: ['documentPath', 'workflowId'],

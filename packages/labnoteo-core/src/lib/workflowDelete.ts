@@ -6,6 +6,7 @@
  * section. The filesystem side (moving the file to trash, sample cleanup) is
  * handled by the command; this module stays pure and unit-testable.
  */
+import { decodeChecklistLink } from './workflowStructure';
 
 export interface RemoveWorkflowFromReadmeResult {
   changed: boolean;
@@ -25,7 +26,7 @@ function isChecklistLineForFile(line: string, fileName: string): boolean {
   const match = line.trim().match(/^(?:[-*+]\s+)?\[[ xX]\]\s*\[.*?\]\(([^)]+)\)/);
   if (!match) return false;
   const link = match[1].replace(/^\.\//, '');
-  const linkFile = link.split('/').pop();
+  const linkFile = decodeChecklistLink(link.split('/').pop() ?? '');
   return linkFile === fileName;
 }
 

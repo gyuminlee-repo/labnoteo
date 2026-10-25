@@ -13,6 +13,7 @@ import { HW_PLACEHOLDERS, SW_PLACEHOLDERS } from './unitOpTemplate';
 import { stripAiCallouts } from './aiCallout';
 import { stripIssueMarkers } from './issueMarker';
 import { classifyUnitOp } from './worksheet';
+import { unitOpSectionLine } from '../sections/workflowSectionParser';
 
 export { stripAiCallouts, maskAiCallouts } from './aiCallout';
 
@@ -54,20 +55,26 @@ interface HeadingSection {
   level: number;
   title: string;
   body: string[];
+  /** The unit-operation section, under whatever title the researcher gave it (#402). */
+  unitOps: boolean;
 }
+
+/** Whether the template wrote this heading, so nothing under it is a result. */
+const isTemplateSection = (s: HeadingSection): boolean => TEMPLATE_HEADINGS.has(s.title) || s.unitOps;
 
 /** The note's headings with the lines under each, code fences left alone. */
 function sections(md: string): HeadingSection[] {
   const out: HeadingSection[] = [];
+  const unitOpLine = unitOpSectionLine(md);
   let fence: OpenFence | null = null;
   let current: HeadingSection | null = null;
-  for (const line of md.split(/\r?\n/)) {
+  for (const [i, line] of md.split(/\r?\n/).entries()) {
     const next = stepFence(line, fence);
     const inFence = fence !== null || next !== null;
     fence = next;
     const heading = inFence ? null : HEADING_RE.exec(line);
     if (heading) {
-      current = { level: heading[1].length, title: heading[2].trim(), body: [] };
+      current = { level: heading[1].length, title: heading[2].trim(), body: [], unitOps: i === unitOpLine };
       out.push(current);
     } else if (current) {
       current.body.push(line);
@@ -89,7 +96,7 @@ function written(body: readonly string[]): boolean {
 
 /** Whether `md` follows the workflow template (a `## [ID Name]` heading or unit operations). */
 function isWorkflowNote(md: string): boolean {
-  return sections(md).some(s => BRACKET_HEADING_RE.test(s.title) || TEMPLATE_HEADINGS.has(s.title));
+  return sections(md).some(s => BRACKET_HEADING_RE.test(s.title) || isTemplateSection(s));
 }
 
 /** A result section of a workflow note: the unit operation it is in ('' for none), its title and text. */
@@ -111,7 +118,8 @@ function resultSectionsOf(text: string): ResultSection[] {
   let block = '';
   let opId = '';
   let meta: string[] = [];
-  for (const { level, title, body } of sections(text)) {
+  for (const section of sections(text)) {
+    const { level, title, body } = section;
     if (BRACKET_HEADING_RE.test(title)) {
       block = level >= 3 ? title : '';
       opId = level >= 3 ? (/^\[([A-Za-z]+\d+)\s/.exec(title)?.[1] ?? '') : '';
@@ -121,7 +129,7 @@ function resultSectionsOf(text: string): ResultSection[] {
     if (level <= 2) block = opId = '';
     if (title === 'Meta') meta = body;
     const swOutput = title === 'Output' && opId !== '' && classifyUnitOp(opId, meta) === 'sw';
-    if (TEMPLATE_HEADINGS.has(title) && !swOutput) continue;
+    if (isTemplateSection(section) && !swOutput) continue;
     out.push({ block, title, body });
   }
   return out;
