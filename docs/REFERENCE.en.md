@@ -67,6 +67,18 @@ Update the active experiment's `status` frontmatter via a picker.
 - Picking `completed` while checklist workflows are unchecked, or while workflow notes have an
   empty `end_date`, shows the counts and asks first.
 
+### Retry this experiment
+
+On the right-click menu of a `failed` or `needs-repeat` experiment in the workflow view: create the
+next experiment to run it again. The title starts from the original's (`… 1차` becomes `… 2차`;
+otherwise ` (retry)` is added, ` 2차` in the Korean UI) and can be edited; the new experiment is
+`planned`.
+
+- Its README gets `retry_of` with a link to the original README (`[[labnote/061_…/README.labnote|061]]`),
+  so Obsidian keeps it pointing there when folders are renumbered.
+- In the workflow view the retry's tooltip says `Retry of: 061` and the original's says
+  `Retried in: 103`; searching `061` finds both.
+
 ### Toggle discussion flag
 
 Turn the active experiment's `discuss` flag on or off, so the next push opens a GitHub Issue
@@ -175,6 +187,13 @@ the alias goes into no file name.
   experiment moved into a subfolder of `labnote/`, …), it says what is wrong before the list opens.
 - A HW unit operation whose catalog entry names its equipment lists it in `#### Equipment`, not in
   `#### Meta`.
+- If the note already has a block of the same unit operation with the same alias (both empty
+  included; case and spacing ignored), the alias prompt warns that the two would read the same in
+  the headings and TOC, and a scanned worksheet page could not tell them apart. Inserting is not
+  blocked.
+- Typing in the list puts items whose name (Korean name included) equals the query first, then
+  names containing it, then items that only mention it in their description, so Enter picks the
+  named one. Every picker (workflows, statuses, …) ranks this way.
 - With **Auto-sync unit operation TOC** on, the TOC is reordered to match the headings. Turned
   off, the order stays as you arranged it, but renaming a unit operation still updates the entry's
   name and link.
@@ -218,9 +237,13 @@ Export note tables to `<note name>.labnote_tableN.csv` next to the note.
   tab so Excel shows it as typed instead of evaluating it. Numbers like `-80` are left alone. In a
   column where such a cell appears, like `+/-`, a lone `+` or `-` gets the tab too.
 - Opening the CSV by double-clicking it in Excel turns `3-1`, `1/2` and `SEPT9` into dates,
-  `2:1` and `10:30` into times (`2:01`), and drops the leading zero of `007`. The file holds the text as typed; Excel is what changes it.
+  `2:1`, `10:30` and `1:80` (a dilution) into times, `(1)` and `(0.05)` into negative numbers,
+  numbers of 16 digits or more (barcodes, LIMS IDs) into ones with zeros past the 15th digit, and
+  drops the leading zero of `007`. The file holds the text as typed; Excel is what changes it.
   Open it with Data → From Text/CSV and set those columns to Text. When a table has such cells,
-  the export notice says so with an example.
+  the export notice says so, with up to two examples per kind of change.
+- Excel cannot open a file whose path is longer than 218 characters. When a CSV's path including
+  the vault folder is longer, the notice names it and its length.
 
 **Which tables are exported**
 
@@ -245,6 +268,15 @@ Export note tables to `<note name>.labnote_tableN.csv` next to the note.
   the folder and file names, with a hint that the file explorer hides them while Obsidian's "Show
   all file types" setting is off.
 - CSVs of tables the note no longer has are listed and moved to the trash after asking.
+
+### Export all tables of this experiment to CSV
+
+Export the tables of every note directly in the experiment folder, the README first and then the
+workflow notes, by the rules above. Run it from a note of the experiment, or right-click the
+experiment folder or its `README.labnote.md` in the file explorer.
+
+- CSVs that would be overwritten are asked about once for the whole experiment.
+- The completion notice gives the table count per note and how many notes had none.
 
 ## Samples
 
@@ -443,7 +475,8 @@ read is left unchanged, with a notice.
 Pick a workflow note's unit operations (lab ones preselected) and print them as worksheets with a
 QR code in two corners of every page; A4 or Letter. Method steps keep the numbers they have in the
 note, lines indented under a step print below it, and pipe tables print as tables. Sections with
-nothing in them are left as ruled writing space, Method and Results & Discussions widest. When
+nothing in them are left as ruled writing space, Method and Results & Discussions widest. The
+dialog opens with focus on **Print**, so Enter prints; tabbing to a toggle shows a focus ring. When
 printing from Obsidian does not work, it opens in the browser. See the
 [printout scan guide](./SCAN.md#2-기록지-출력) (Korean).
 
@@ -585,6 +618,15 @@ Start or stop the local MCP server. See the [Copilot guide](./COPILOT.md) (Korea
 Reveal the sidebar view and move focus into its list; arrow keys move, →← expand and collapse,
 Enter opens, and Shift+F10 or the menu key opens the right-click menu.
 
+- The workflow view's **Experiments** section groups experiments by status, by project, or by
+  discussion. **By discussion** puts the ones flagged for discussion or with at least one `@issue`
+  marker (counted in the notes directly in the experiment folder, as the automation does) under
+  **Something to discuss** and the rest under **Nothing to discuss**; the tooltip gives the marker
+  count.
+- **Search experiments** matches the folder name, title, project and status, the status also by its
+  name in the UI language (`검토 필요` for `needs-review` in Korean), and `discuss` for the ones with
+  something to discuss.
+
 ### Setup research automation
 
 Scaffold GitHub Actions and scripts into the current vault. See
@@ -598,7 +640,15 @@ research automation needed. Also a button at the top of the settings tab.
 The guide says which release it was written for at the top. Plugin updates replace its marked block
 while nobody edited it. A guide from an older release whose block was edited asks first: replacing
 keeps the old file as `QUICKSTART.backup.md` (committed too in a Git vault), and Cancel opens it as
-it is. Text below the block is always kept.
+it is. When a backup by that name is already there, the new one takes the old guide's release
+(`QUICKSTART.backup-0.125.0.md`, then numbered), so an earlier backup is never written over; the
+dialog and the notice name the file. Text below the block is always kept.
+
+Setup research automation treats an edited marked block of `AGENTS.md` (and the other marked files)
+the same way: it lists the lines that would go (up to eight), asks to put the block back to the
+installed text when this plugin version ships the same block or to replace it with the new version
+otherwise, and on yes keeps the current file beside it as `AGENTS.backup.md` (then
+`AGENTS.backup_2.md`, …) so you can move your lines outside the markers.
 
 ## Inserting while in reading view
 

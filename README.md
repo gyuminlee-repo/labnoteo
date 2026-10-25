@@ -1,6 +1,6 @@
 # Labnote Assistant for Obsidian (labnoteo)
 
-**버전 0.126.0**
+**버전 0.127.0**
 
 [English](README.en.md)
 
@@ -19,7 +19,7 @@
 ## 주요 기능
 
 - **샘플 추적**: 전용 Samples 사이드바 뷰에서 샘플(DNA, RNA, Plasmid 및 사용자 정의 타입)을 정의·삽입·편집하고 로컬(노트)/전역 범위 간에 옮깁니다. 편집 중 `@` 자동완성과 하이라이트가 뜨고, 대장에 없는 ID에는 빨간 물결 밑줄이, 대장과 다른 별칭에는 주황 점선 밑줄이 붙습니다. 다 쓴 시료는 지우지 않고 *폐기로 표시*로 남깁니다. → [샘플 다루기](automation/templates/QUICKSTART.md#샘플-다루기)
-- **워크플로 체크리스트**: Workflows 사이드바 뷰에서 번호가 매겨진 워크플로 노트를 만들고 README 목차를 자동 동기화합니다. 뷰 맨 위 **실험** 칸은 보관함의 실험을 상태별·과제별·논의 표시별로 묶어 보여 주고, 검색과 키보드 조작(↑↓→←, Enter, Shift+F10)을 지원합니다. → [기록하기](automation/templates/QUICKSTART.md#기록하기)
+- **워크플로 체크리스트**: Workflows 사이드바 뷰에서 번호가 매겨진 워크플로 노트를 만들고 README 목차를 자동 동기화합니다. 뷰 맨 위 **실험** 칸은 보관함의 실험을 상태별·과제별·논의 여부별로 묶어 보여 주고, 검색과 키보드 조작(↑↓→←, Enter, Shift+F10)을 지원합니다. 실패한 실험은 우클릭 → *이 실험 다시 하기*로 원래 실험과 이어진 재시도 실험을 만듭니다. → [기록하기](automation/templates/QUICKSTART.md#기록하기)
 - **유닛 오퍼레이션**: 내장 카탈로그에서 하드웨어/소프트웨어 유닛 오퍼레이션을 삽입하고, 헤딩 정규화와 목차를 자동 갱신합니다. → [유닛 오퍼레이션](automation/templates/QUICKSTART.md#유닛-오퍼레이션-한-번의-작업)
 - **샘플 자동완성 · CSV 내보내기**: 편집 중 샘플 참조 인라인 제안과 하이라이트, 노트 표의 CSV 내보내기(엑셀 호환 UTF-8 BOM). → [날짜 · 표](automation/templates/QUICKSTART.md#날짜--표)
 - **실험 상태 · 논의 표시 · 이슈 마커**: 실험 생애주기(`planned` → `in-progress` → … → `completed`/`failed`)를 frontmatter에 기록하고, 팀 논의가 필요한 노트에는 *논의 표시*나 그 자리에 `@issue;<ID>;<주제문장>` 마커를 달아 push 때 GitHub Issue로 엽니다.
@@ -62,6 +62,7 @@ Obsidian 설치와 git·GitHub 계정 준비부터 커뮤니티 플러그인·�
 | 유닛 오퍼레이션 삽입 (`Insert unit operation`) | 카탈로그에서 고른 유닛 오퍼레이션을 워크플로 노트에 넣고 목차를 갱신합니다 |
 | 카탈로그 업데이트 (`Update catalogs`) | 보관함의 `resources/workflows/` 카탈로그를 이 플러그인 버전에 맞춥니다(연구실이 고친 값은 그대로) |
 | 표 CSV 내보내기 (`Export tables to CSV`) | 노트의 표를 `<노트이름>.labnote_tableN.csv`로 내보냅니다(엑셀 호환 UTF-8 BOM) |
+| 이 실험의 표를 모두 CSV로 내보내기 (`Export all tables of this experiment to CSV`) | 실험 폴더의 모든 노트의 표를 한 번에 CSV로 내보냅니다 |
 | 연구노트 자동화 설정 (`Setup research automation`) | GitHub Actions·스크립트를 현재 보관함에 설치합니다([연구노트 자동화](#연구노트-자동화) 참고) |
 | AI: Method 섹션 초안 (`AI: Draft Method section`) | 설정된 LLM으로 유닛 오퍼레이션의 `#### Method` 초안을 씁니다 |
 | AI: 워크플로 결과 요약 (`AI: Summarize workflow results`) | 워크플로 노트의 결과 절을 요약해 `Conclusions and Discussion` 끝에 콜아웃으로 넣습니다 |
@@ -107,7 +108,7 @@ Obsidian 설치와 git·GitHub 계정 준비부터 커뮤니티 플러그인·�
 **업데이트** — 플러그인을 업데이트하면 Obsidian을 켤 때 설치된 파일을 새 버전에 맞추고, 바꾼 파일을 알려 줍니다. 파일 종류마다 처리가 다릅니다.
 
 - **직접 고치지 않은 파일**(`.labnoteo/` 스크립트·`SETUP.md`, `.github/` 워크플로 등) — 그대로 교체합니다.
-- **`AGENTS.md` · `QUICKSTART.md`** — 관리 블록(`<!-- BEGIN labnoteo (managed) -->`~`END`)만 바꿉니다. 블록 안을 직접 고쳤다면 자동으로 바꾸지 않고 목록에 올리며, *연구노트 자동화 설정*을 다시 실행하면 바꿀지 묻습니다.
+- **`AGENTS.md` · `QUICKSTART.md`** — 관리 블록(`<!-- BEGIN labnoteo (managed) -->`~`END`)만 바꿉니다. 블록 안을 직접 고쳤다면 자동으로 바꾸지 않고 목록에 올리며, *연구노트 자동화 설정*을 다시 실행하면 사라질 줄을 보여 주고 바꿀지 묻습니다. 바꾸면 지금 파일은 `AGENTS.backup.md`처럼 백업으로 남습니다.
 - **`.gitignore` · `CLAUDE.md`** — 빠진 줄만 더합니다.
 - **직접 고친 파일과 보관함에 없는 파일** — 건드리지 않고 목록만 알려 줍니다(새 버전마다 한 번). 그때 *연구노트 자동화 설정*을 다시 실행하세요.
 - **`wiki-staging/` 초안** — 자동으로 바꾸지 않습니다.
@@ -121,6 +122,8 @@ Obsidian 설치와 git·GitHub 계정 준비부터 커뮤니티 플러그인·�
 전체 자산 표·전제 조건·백필 절차는 설치 후 보관함에 생기는 관리자 문서 `.labnoteo/SETUP.md`를, 일상 사용법은 `QUICKSTART.md`를 참고하세요. `AGENTS.md`는 [Copilot과도 공유](docs/COPILOT.md#agentsmd-공유-규칙)됩니다.
 
 ## 설정
+
+Obsidian 1.13 이상에서는 설정 창 검색으로 이 플러그인의 항목도 찾습니다. 숫자·폴더 칸은 칸을 벗어나거나 Enter를 누를 때 검사해 저장하고, 범위를 벗어난 숫자나 Windows에서 만들 수 없는 폴더 이름은 이유를 알리고 저장하지 않습니다.
 
 **샘플**
 

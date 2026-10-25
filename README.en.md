@@ -1,6 +1,6 @@
 # Labnote Assistant for Obsidian (labnoteo)
 
-**Version 0.126.0**
+**Version 0.127.0**
 
 [한국어](README.md)
 
@@ -19,7 +19,7 @@ This repository is the Obsidian port of the Labnote Assistant. It shares its pla
 ## Features
 
 - **Sample tracking**: A dedicated Samples sidebar view to define, insert, and edit samples (DNA, RNA, Plasmid, and custom types) and move them between local (note) and global scope. Typing `@` autocompletes references and highlights them; an ID that is in no registry gets a red wavy underline, and an alias that no longer matches the registry gets an orange dotted one. A used-up sample stays registered with *Mark as discarded* instead of being deleted. → [Samples](docs/REFERENCE.en.md#samples)
-- **Workflow checklists**: A Workflows sidebar view to create numbered workflow notes and keep the README table of contents in sync. Its **Experiments** section at the top groups the vault's experiments by status, project, or discussion flag, with a search box and full keyboard control (↑↓→←, Enter, Shift+F10). → [Workflows](docs/REFERENCE.en.md#workflows)
+- **Workflow checklists**: A Workflows sidebar view to create numbered workflow notes and keep the README table of contents in sync. Its **Experiments** section at the top groups the vault's experiments by status, project, or discussion, with a search box and full keyboard control (↑↓→←, Enter, Shift+F10). A failed experiment's right-click *Retry this experiment* creates a retry linked to the original. → [Workflows](docs/REFERENCE.en.md#workflows)
 - **Unit operations**: Insert hardware/software unit operations from a bundled catalog, with automatic heading normalization and TOC updates. → [Insert unit operation](docs/REFERENCE.en.md#insert-unit-operation)
 - **Sample suggestions & CSV export**: Inline suggestions and highlighting for sample references while editing, plus CSV export of note tables (Excel-compatible UTF-8 with BOM). → [Export tables to CSV](docs/REFERENCE.en.md#export-tables-to-csv)
 - **Experiment status, discussion flag, issue markers**: Track each experiment's lifecycle (`planned` → `in-progress` → … → `completed`/`failed`) in frontmatter, and flag a note for team discussion either whole (*Toggle discussion flag*) or at a specific line (`@issue;<ID>;<topic>` marker). The next push opens a GitHub Issue.
@@ -63,6 +63,7 @@ Under a Korean UI the command palette shows each name as `Korean (English)` (e.g
 | Insert unit operation | Insert a unit operation from the catalog into a workflow note and refresh the TOC |
 | Update catalogs | Bring the vault's `resources/workflows/` catalogs up to this plugin version, keeping values the lab edited |
 | Export tables to CSV | Export the note's tables to `<note name>.labnote_tableN.csv` (Excel-compatible UTF-8 with BOM) |
+| Export all tables of this experiment to CSV | Export the tables of every note in the experiment folder at once |
 | Setup research automation | Scaffold GitHub Actions + scripts into the current vault (see [Research automation](#research-automation)) |
 | AI: Draft Method section | Draft a unit operation's `#### Method` with the configured LLM |
 | AI: Summarize workflow results | Summarize a workflow note's result sections into a callout at the end of `Conclusions and Discussion` |
@@ -105,7 +106,7 @@ The bundled scripts are **zero-dependency** Node ESM, so no `npm install` is nee
 **Updates** — after a plugin update, Obsidian brings the installed files up to the new version when it starts and tells you which ones changed. Each kind of file is handled differently.
 
 - **Files you have not edited since they were installed** (the `.labnoteo/` scripts and `SETUP.md`, the `.github/` workflows, …) — replaced outright.
-- **`AGENTS.md` and `QUICKSTART.md`** — only their managed block (`<!-- BEGIN labnoteo (managed) -->` to `END`) is refreshed. A block you edited is not replaced automatically but listed, and running *Setup research automation* again asks before replacing it.
+- **`AGENTS.md` and `QUICKSTART.md`** — only their managed block (`<!-- BEGIN labnoteo (managed) -->` to `END`) is refreshed. A block you edited is not replaced automatically but listed, and running *Setup research automation* again shows the lines that would go and asks before replacing it. If you replace it, the current file is kept as a backup such as `AGENTS.backup.md`.
 - **`.gitignore` and `CLAUDE.md`** — only gain missing lines.
 - **Files you edited, and files missing from the vault** — left alone and only listed (once per new version), so run *Setup research automation* again then.
 - **`wiki-staging/` drafts** — never changed automatically.
@@ -119,6 +120,8 @@ Your lab's own rules in `QUICKSTART.md` survive updates when written **below** t
 See the generated `.labnoteo/SETUP.md` (admins) for the full asset table, prerequisites, and backfill procedure, and `QUICKSTART.md` (researchers) for day-to-day usage. `AGENTS.md` is [shared with Copilot](docs/COPILOT.md).
 
 ## Settings
+
+On Obsidian 1.13 or later, the settings search finds this plugin's items too. Number and folder fields are checked and saved when you leave them or press Enter; a number out of range, or a folder name Windows cannot create, is not saved and the notice says why.
 
 **Samples**
 

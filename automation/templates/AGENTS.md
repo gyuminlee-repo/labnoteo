@@ -59,6 +59,9 @@ Claude Code, Codex, Cursor 등)는 아래 규칙을 따라 작업합니다.
   `status`와는 별개입니다 (아래 Playbook A). 사람은 플러그인의
   *Toggle discussion flag* 명령으로 같은 표시를 켜고 끕니다. 해제는 키를
   제거하는 방식이므로, 해제된 노트에 `discuss: false`를 남기지 마세요.
+- README의 `retry_of`는 이 실험이 다시 하는 실험의 README 링크(`"[[labnote/061_…/README.labnote|061]]"`)로,
+  플러그인의 *이 실험 다시 하기*가 적습니다. 고치거나 지우거나 폴더 이름 문자열로 바꾸지 마세요(번호를
+  다시 매기면 링크만 따라 고쳐집니다).
 - `status` 허용값: `planned`, `in-progress`, `needs-review`, `completed`,
   `failed`, `discontinued`, `needs-repeat`.
 - 본문에 `ID;별칭` 참조만 적는다고 새 샘플이 등록되지는 않습니다. 새 샘플은
