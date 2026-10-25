@@ -222,15 +222,22 @@ function isUnedited(
   return hash === recorded || (legacy[asset.vaultPath]?.includes(hash) ?? false);
 }
 
+/** Whether the managed block of `text` holds `asset`'s template. */
+function blockHoldsTemplate(text: string, asset: ScaffoldAsset): boolean {
+  return managedBlockInner(text) === asset.content.replace(/\r\n/g, '\n').trim();
+}
+
 /**
  * Apply a single asset, returning which tally to bump. `recorded` is the
- * install record's hash for the file, used to tell an unedited unmarked copy.
+ * install record's hash for the file, used to tell an unedited unmarked copy;
+ * `installed` is the template its managed block last held (`blocks`).
  */
 export async function applyAsset(
   host: LabnoteHost,
   asset: ScaffoldAsset,
   recorded?: string,
-  legacy: Readonly<Record<string, readonly string[]>> = LEGACY_TEMPLATE_HASHES
+  legacy: Readonly<Record<string, readonly string[]>> = LEGACY_TEMPLATE_HASHES,
+  installed?: string
 ): Promise<keyof ScaffoldResult | undefined> {
   const exists = await host.fs.exists(asset.vaultPath);
 
@@ -252,8 +259,10 @@ export async function applyAsset(
     if (exists && blockEdited(current, asset, recorded)) {
       const backup = await freeBackupPath(host.fs, backupPathFor(asset.vaultPath));
       // The same template as at install: the edit is undone, not updated.
+      // `recorded` cannot tell: plugin load records the new template for an
+      // edited block it leaves alone.
       const question =
-        recorded === contentHash(asset.content)
+        installed === contentHash(asset.content)
           ? 'The marked block of {0} was edited after it was installed, and this plugin version has the same block. Put the block back to the installed text? Text outside the block is kept, and the current file is kept as {1}.'
           : 'The marked block of {0} was edited after it was installed. Replace the block with the new version? Text outside the block is kept, and the current file is kept as {1}.';
       const removed = removedLinesBlock(host, managedBlockInner(current) ?? '', asset.content);
@@ -347,18 +356,32 @@ export async function setupResearchAutomationCommand(
   const record = await readInstallRecord(host);
 
   for (const asset of SCAFFOLD_ASSETS) {
-    const tally = await applyAsset(host, asset, record.files[asset.vaultPath]);
+    const path = asset.vaultPath;
+    const tally = await applyAsset(host, asset, record.files[path], LEGACY_TEMPLATE_HASHES, record.blocks?.[path]);
     if (tally) result[tally] += 1;
   }
 
   // A declined overwrite is recorded too: the file then counts as edited, and
   // plugin load only mentions it again once the template changes.
   const files = { ...record.files };
+  const blocks = { ...record.blocks };
   for (const asset of SCAFFOLD_ASSETS) {
-    if (!asset.seed) files[asset.vaultPath] = contentHash(asset.content);
+    if (asset.seed) continue;
+    files[asset.vaultPath] = contentHash(asset.content);
+    if (
+      asset.merge === 'managed-block' &&
+      (await host.fs.exists(asset.vaultPath)) &&
+      blockHoldsTemplate(await host.fs.read(asset.vaultPath), asset)
+    ) {
+      blocks[asset.vaultPath] = contentHash(asset.content);
+    }
   }
-  if (!sameFiles(files, record.files) || record.pluginVersion !== pluginVersion) {
-    await writeInstallRecord(host, { pluginVersion, files });
+  if (
+    !sameFiles(files, record.files) ||
+    !sameFiles(blocks, record.blocks) ||
+    record.pluginVersion !== pluginVersion
+  ) {
+    await writeInstallRecord(host, { pluginVersion, files, blocks });
   }
 
   result.removed = await removeLegacyAssets(host);
@@ -453,6 +476,7 @@ export async function refreshAutomationFiles(
   if (record.pluginVersion && compareVersions(record.pluginVersion, pluginVersion) > 0) return result;
   const setUp = await host.fs.exists(ISSUE_SYNC_WORKFLOW_PATH);
   const files = { ...record.files };
+  const blocks = { ...record.blocks };
 
   for (const asset of assets) {
     if (asset.seed) continue;
@@ -470,6 +494,7 @@ export async function refreshAutomationFiles(
           await host.fs.write(path, managedFileContent(asset));
           result.updated.push(path);
           files[path] = template;
+          blocks[path] = template;
         } else if (setUp && files[path] !== template) {
           result.pending.push(path);
           files[path] = template;
@@ -479,6 +504,7 @@ export async function refreshAutomationFiles(
       // The block is refreshed only when the template changed and the block
       // still reads as the one it replaces, so edits in it survive (#147).
       const recorded = files[path];
+      if (blockHoldsTemplate(current, asset)) blocks[path] = template;
       if (recorded === template) continue;
       if (blockEdited(current, asset, recorded)) {
         result.pending.push(path);
@@ -491,6 +517,7 @@ export async function refreshAutomationFiles(
         result.updated.push(path);
       }
       files[path] = template;
+      blocks[path] = template;
       continue;
     }
 
@@ -533,8 +560,8 @@ export async function refreshAutomationFiles(
     }
   }
 
-  if (!sameFiles(files, record.files)) {
-    await writeInstallRecord(host, { pluginVersion, files });
+  if (!sameFiles(files, record.files) || !sameFiles(blocks, record.blocks)) {
+    await writeInstallRecord(host, { pluginVersion, files, blocks });
   }
 
   if (result.updated.length > 0) {

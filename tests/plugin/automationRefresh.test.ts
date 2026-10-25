@@ -23,7 +23,7 @@ import {
   SCAFFOLD_ASSETS,
   type ScaffoldAsset,
 } from '../../src/scaffold/assets';
-import { compareVersions, contentHash } from '../../src/scaffold/installRecord';
+import { compareVersions, contentHash, type InstallRecord } from '../../src/scaffold/installRecord';
 import { LEGACY_HASH_SELF_CHECK, LEGACY_TEMPLATE_HASHES } from '../../src/scaffold/legacyTemplateHashes';
 import obsidianKo from '../../src/l10n.ko';
 
@@ -444,9 +444,41 @@ describe('QUICKSTART managed block', () => {
     const edited = marked('guide v2 (lab note)', 'Below.');
     const { fs, host, asHost } = makeHost({ 'GUIDE.md': edited });
     host.confirm.mockResolvedValueOnce(false);
-    expect(await applyAsset(asHost, GUIDE, contentHash('guide v2\n'), legacy)).toBe('skipped');
+    expect(await applyAsset(asHost, GUIDE, contentHash('guide v2\n'), legacy, contentHash('guide v2\n'))).toBe('skipped');
     expect(host.confirm.mock.calls[0][0]).toContain('Put the block back to the installed text?');
     expect(await fs.exists('GUIDE.backup.md')).toBe(false);
+  });
+
+  it('asks to update an edited block after an update, though plugin load recorded the new template (#351)', async () => {
+    const edited = marked('guide v1 (lab note)', 'Below.');
+    const { fs, host, asHost } = makeHost({
+      [ISSUE_SYNC_WORKFLOW_PATH]: 'wf\n',
+      'GUIDE.md': edited,
+      [INSTALL_RECORD_PATH]: JSON.stringify({
+        pluginVersion: '1.0.0',
+        files: { 'GUIDE.md': contentHash('guide v1\n') },
+        blocks: { 'GUIDE.md': contentHash('guide v1\n') },
+      }),
+    });
+    expect((await refreshAutomationFiles(asHost, '1.1.0', [WF, GUIDE], legacy)).pending).toEqual(['GUIDE.md']);
+    const saved = JSON.parse(await fs.read(INSTALL_RECORD_PATH)) as InstallRecord;
+    expect(saved.files['GUIDE.md']).toBe(contentHash('guide v2\n'));
+    expect(saved.blocks?.['GUIDE.md']).toBe(contentHash('guide v1\n'));
+
+    host.confirm.mockResolvedValueOnce(false);
+    await applyAsset(asHost, GUIDE, saved.files['GUIDE.md'], legacy, saved.blocks?.['GUIDE.md']);
+    expect(host.confirm.mock.calls[0][0]).toContain('Replace the block with the new version?');
+  });
+
+  it('records the template a refreshed block holds (#351)', async () => {
+    const { fs, asHost } = makeHost({
+      [ISSUE_SYNC_WORKFLOW_PATH]: 'wf\n',
+      'GUIDE.md': marked('guide v1', 'Below.'),
+      [INSTALL_RECORD_PATH]: record({ 'GUIDE.md': contentHash('guide v1\n') }),
+    });
+    await refreshAutomationFiles(asHost, '1.1.0', [WF, GUIDE], legacy);
+    const saved = JSON.parse(await fs.read(INSTALL_RECORD_PATH)) as InstallRecord;
+    expect(saved.blocks?.['GUIDE.md']).toBe(contentHash('guide v2\n'));
   });
 
   it('lists at most eight removed lines', async () => {

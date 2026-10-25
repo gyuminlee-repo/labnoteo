@@ -330,7 +330,8 @@ function rewriteFrontMatterKeys(content: string, values: Readonly<Record<string,
  * `title` set, `created_date` and `last_updated_date` today, the `discuss`
  * flag dropped so the automation does not open a second discussion of the
  * original, and `status` back to `planned`: a copy is a new run, not one under
- * review (#353). Only the front matter changes.
+ * review (#353), nor a retry of what the original retried (#327). Only the
+ * front matter changes.
  */
 export function resetCopiedExperimentReadme(content: string, title: string, today: string): string {
   return rewriteFrontMatterKeys(content, {
@@ -339,6 +340,7 @@ export function resetCopiedExperimentReadme(content: string, title: string, toda
     last_updated_date: today,
     discuss: null,
     status: 'planned',
+    retry_of: null,
   });
 }
 

@@ -727,7 +727,8 @@ objective and summary, and every entry unchecked. Nothing is asked when the whol
   original's issues.
 - An experiment folder duplicated with "Make a copy" (`001_… 1`) asks for a title and becomes the
   next experiment: its README gets the new `title`, today's dates and status `planned`, its
-  discussion flag is turned off, and its notes get new `@issue` marker IDs and note IDs.
+  discussion flag and `retry_of` link are removed, and its notes get new `@issue` marker IDs and
+  note IDs.
 - The copied README's `id` (`EXP-###`) becomes the number after the highest one with that prefix;
   an `id` not ending in a number is removed, so the folder name is the experiment ID. Either way the
   automation does not take the copy for the original.
