@@ -339,7 +339,7 @@ export default class LabnotePlugin extends Plugin {
    * of letting the rejected promise vanish (which left commands failing
    * silently with nothing shown to the user).
    */
-  private run(fn: () => Promise<void>): void {
+  run(fn: () => Promise<unknown>): void {
     fn().catch((err: unknown) => {
       console.error('[labnoteo] command failed:', err);
       if (isPathTooLongError(err)) {

@@ -600,6 +600,20 @@ const obsidianKo: Record<string, string> = {
   'Put back': '다시 넣기',
   'Put back: {0}': '다시 넣었습니다: {0}',
   'Global sample folder': '전역 샘플 폴더',
+  '"{0}" cannot be the Global sample folder: {1} It is back to {2}.':
+    '"{0}"은(는) 전역 샘플 폴더로 쓸 수 없습니다: {1} {2}(으)로 되돌렸습니다.',
+  'The folder path is empty.': '폴더 경로가 비어 있습니다.',
+  'Folder names cannot contain {0}.': '폴더 이름에는 {0}을(를) 쓸 수 없습니다.',
+  'A folder path cannot have an empty part (//), or a . or .. part.':
+    '폴더 경로에는 빈 구간(//)이나 . · .. 구간을 쓸 수 없습니다.',
+  '"{0}" ends in a dot or a space, which Windows does not allow.':
+    '"{0}"은(는) 점이나 공백으로 끝나 Windows에서 쓸 수 없습니다.',
+  '"{0}" is a name Windows keeps for devices.': '"{0}"은(는) Windows가 장치 이름으로 예약한 이름입니다.',
+  'Samples cannot be saved in "{0}": {1}': '"{0}"에는 샘플을 저장할 수 없습니다: {1}',
+  'Change the Global sample folder in Settings.': '설정에서 전역 샘플 폴더를 바꾸세요.',
+  '{0} takes {1}; the value was not saved and is back to {2}.':
+    '{0}에는 {1}만 넣을 수 있어 저장하지 않고 {2}(으)로 되돌렸습니다.',
+  '0 or {0}–{1}': '0 또는 {0}–{1}',
   'Vault-relative folder for vault-global samples.':
     '볼트 전역 샘플을 저장할 볼트 기준 상대 폴더입니다.',
   'The old Global sample folder {0} still has {1} sample(s). Move them to the new folder {2}?':
@@ -631,6 +645,7 @@ const obsidianKo: Record<string, string> = {
   'API key': 'API 키',
   'Only sent to OpenAI-compatible providers, never to Ollama.':
     'OpenAI 호환 프로바이더에만 전송되며, Ollama에는 전송되지 않습니다.',
+  'MCP server': 'MCP 서버',
   'Enable MCP server': 'MCP 서버 활성화',
   'Desktop only. Exposes tools to external MCP clients. Tools that change the vault run only after you allow them in Obsidian.':
     '데스크톱 전용. 외부 MCP 클라이언트에 도구를 노출합니다. 볼트를 바꾸는 도구는 Obsidian에서 허용해야 실행됩니다.',

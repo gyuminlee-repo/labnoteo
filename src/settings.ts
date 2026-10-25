@@ -6,7 +6,8 @@
  * that the Obsidian build introduces (VS Code delegates LLM to Copilot Chat,
  * Obsidian talks to Ollama/OpenAI directly).
  */
-import type { ExperimentGrouping, PartbankConnection } from '@labnoteo/core';
+import type { ExperimentGrouping, PartbankConnection, Translator } from '@labnoteo/core';
+import type { InvalidFolderReason } from '@labnoteo/core/lib/regexUtils';
 import {
   isValidSampleTypeName,
   SAMPLE_TYPES,
@@ -135,6 +136,37 @@ export const SCAN_IMAGE_EDGE_RANGE = { min: 800, max: 6000 } as const;
 export const SCAN_JPEG_QUALITY_RANGE = { min: 0.5, max: 1 } as const;
 /** Besides this range, 0 is allowed and means full size. */
 export const SCAN_EMBED_WIDTH_RANGE = { min: 100, max: 1600 } as const;
+
+/**
+ * A whole number typed into a settings field, rounded, when it is inside
+ * `range` or one of `also` (#321); undefined for anything else, empty included.
+ */
+export function parseRangedNumber(
+  value: string,
+  range: { min: number; max: number },
+  also: readonly number[] = []
+): number | undefined {
+  const text = value.trim();
+  if (!/^\d+(?:\.\d+)?$/.test(text)) return undefined;
+  const n = Math.round(Number(text));
+  return also.includes(n) || (n >= range.min && n <= range.max) ? n : undefined;
+}
+
+/** Why a folder path was refused (#328), as one sentence. */
+export function invalidFolderText(t: Translator, reason: InvalidFolderReason): string {
+  switch (reason.kind) {
+    case 'empty':
+      return t('The folder path is empty.');
+    case 'chars':
+      return t('Folder names cannot contain {0}.', reason.chars);
+    case 'parent':
+      return t('A folder path cannot have an empty part (//), or a . or .. part.');
+    case 'trailing':
+      return t('"{0}" ends in a dot or a space, which Windows does not allow.', reason.part);
+    case 'reserved':
+      return t('"{0}" is a name Windows keeps for devices.', reason.part);
+  }
+}
 
 /** {@link partitionCustomSampleTypes} result. */
 export interface CustomSampleTypesInput {

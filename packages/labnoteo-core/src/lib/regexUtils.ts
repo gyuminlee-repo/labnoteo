@@ -153,3 +153,34 @@ export function fullPathLength(basePath: string, vaultPath: string): number {
   const base = basePath.replace(/[\\/]+$/, '');
   return base ? base.length + 1 + vaultPath.length : vaultPath.length;
 }
+
+/** Why a vault folder path cannot be made on some OS; see {@link invalidVaultFolderReason}. */
+export type InvalidFolderReason =
+  | { kind: 'empty' }
+  | { kind: 'chars'; chars: string }
+  | { kind: 'parent' }
+  | { kind: 'trailing'; part: string }
+  | { kind: 'reserved'; part: string };
+
+const FOLDER_FORBIDDEN_RE = /[<>:"|?*\u0000-\u001f]/g;
+const RESERVED_NAME_RE = /^(?:con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(?:\..*)?$/i;
+
+/**
+ * Why `path` (vault-relative, `/`-separated) cannot be a folder on every OS
+ * the vault is shared to (#328), or undefined when it can. Windows is the
+ * strictest: no `<>:"|?*` or control characters, no part ending in a dot or
+ * a space, no reserved device names such as `CON` or `COM1`. Empty parts
+ * (`a//b`) and `..` are refused too. One leading or trailing `/` is allowed.
+ */
+export function invalidVaultFolderReason(path: string): InvalidFolderReason | undefined {
+  const trimmed = path.trim().replace(/^\/|\/$/g, '');
+  if (!trimmed) return { kind: 'empty' };
+  const chars = [...new Set(trimmed.match(FOLDER_FORBIDDEN_RE) ?? [])];
+  if (chars.length > 0) return { kind: 'chars', chars: chars.join('') };
+  for (const part of trimmed.split(/[\\/]/)) {
+    if (part === '' || part === '.' || part === '..') return { kind: 'parent' };
+    if (/[. ]$/.test(part)) return { kind: 'trailing', part };
+    if (RESERVED_NAME_RE.test(part)) return { kind: 'reserved', part };
+  }
+  return undefined;
+}
