@@ -93,6 +93,7 @@ import {
   normalizeChecklistLink,
   rebuildExperimentReadme,
   relinkWorkflowChecklistEntries,
+  matchMissingChecklistEntries,
   unlinkableNameChars,
   collapseWorkflowRenames,
   defaultWorkflowTitle,
@@ -1286,36 +1287,71 @@ export async function renumberWorkflowsCommand(
   const existing = await host.fs.list(labnoteDir);
   const readmePath = posix.join(labnoteDir, README);
   const readmeBefore = (await host.fs.exists(readmePath)) ? await host.fs.read(readmePath) : undefined;
+  // An entry left on a file's old name goes back to that file, rather than
+  // the file being listed a second time (#381).
+  const matched =
+    readmeBefore === undefined
+      ? { relink: [], missing: [] }
+      : matchMissingChecklistEntries(readmeBefore, existing, labnoteDir);
+  const relinkMissing = (content: string): string => relinkWorkflowChecklistEntries(content, matched.relink);
+  const readmePlanned = readmeBefore === undefined ? undefined : relinkMissing(readmeBefore);
   // The checklist is where the researcher orders the experiment (#289).
-  const order = readmeBefore === undefined ? [] : workflowChecklistOrder(readmeBefore, existing, labnoteDir);
+  const order = readmePlanned === undefined ? [] : workflowChecklistOrder(readmePlanned, existing, labnoteDir);
   const renames = planWorkflowRenumber(existing, order);
   // Files the checklist does not list are renumbered too, so register them in
   // the same run; otherwise one takes 001 and the overview starts at 002 (#56).
   const syncPlan =
-    readmeBefore === undefined
+    readmePlanned === undefined
       ? undefined
-      : planWorkflowChecklistSync(readmeBefore, existing, undefined, undefined, labnoteDir);
+      : planWorkflowChecklistSync(readmePlanned, existing, undefined, undefined, labnoteDir);
   const unlisted = syncPlan?.added.length ?? 0;
+  const relinked = matched.relink.length;
   // Without the section nothing can be listed or follow the new numbers (#298).
   const noSection = host.t('README.labnote.md has no "Related Workflows" section.');
-  if (renames.length === 0 && unlisted === 0) {
+  const missingNote =
+    matched.missing.length === 0
+      ? ''
+      : host.t(
+          'The README checklist lists {0} file(s) that are not in the folder: {1}. Run "{2}" to remove them.',
+          String(matched.missing.length),
+          matched.missing.join(', '),
+          host.t('Sync workflow checklist with folder')
+        );
+  if (renames.length === 0 && unlisted === 0 && relinked === 0) {
     if (syncPlan && !syncPlan.hasSection) host.notify('warn', noSection);
+    else if (missingNote) host.notify('warn', missingNote);
     else host.notify('info', host.t('Workflow numbering already follows the README checklist.'));
     return;
   }
 
   const folder = posix.basename(labnoteDir);
   const question =
+    renames.length === 0 && unlisted === 0
+      ? host.t('Point {0} README checklist entry(ies) of {1} back at their file?', String(relinked), folder)
+      : unlisted === 0
+        ? host.t('Renumber {0} workflow file(s) in {1}?', String(renames.length), folder)
+        : renames.length === 0
+          ? host.t('Add {0} workflow file(s) missing from the README checklist of {1}?', String(unlisted), folder)
+          : host.t(
+              'Renumber {0} workflow file(s) in {1} and add {2} file(s) missing from the README checklist?',
+              String(renames.length),
+              folder,
+              String(unlisted)
+            );
+  const relinkNote =
+    relinked === 0
+      ? ''
+      : `\n\n${host.t('These README checklist entries point to a file that is gone and will point to the file of the same workflow:')}\n${listFileNames(
+          host,
+          matched.relink.map(r => `${r.from} → ${r.to}`)
+        )}`;
+  const addNote =
     unlisted === 0
-      ? host.t('Renumber {0} workflow file(s) in {1}?', String(renames.length), folder)
-      : renames.length === 0
-        ? host.t('Add {0} workflow file(s) missing from the README checklist of {1}?', String(unlisted), folder)
-        : host.t(
-            'Renumber {0} workflow file(s) in {1} and add {2} file(s) missing from the README checklist?',
-            String(renames.length),
-            folder,
-            String(unlisted)
-          );
+      ? ''
+      : `\n\n${host.t('Added to the README checklist:')}\n${listFileNames(
+          host,
+          syncPlan!.added.map(a => a.fileName)
+        )}`;
   const preview =
     renames.length === 0
       ? ''
@@ -1332,7 +1368,8 @@ export async function renumberWorkflowsCommand(
           )
         )}`;
   const sectionNote = syncPlan && !syncPlan.hasSection ? `\n\n${noSection}` : '';
-  if (!(await host.confirm(`${question}${preview}${sectionNote}`))) return;
+  const missingPart = missingNote ? `\n\n${missingNote}` : '';
+  if (!(await host.confirm(`${question}${relinkNote}${preview}${addNote}${sectionNote}${missingPart}`))) return;
 
   await readmeSync.flushNow(labnoteDir);
   readmeSync.hold(labnoteDir);
@@ -1357,8 +1394,12 @@ export async function renumberWorkflowsCommand(
     try {
       await readmeSync.settle();
       if (baseline !== undefined) {
+        const fixedBaseline = relinkMissing(baseline);
         const relink = (content: string): string =>
-          moved.length > 0 ? reconcileWorkflowChecklist(content, moved, { baseline, dir: labnoteDir }).content : content;
+          moved.length > 0
+            ? reconcileWorkflowChecklist(relinkMissing(content), moved, { baseline: fixedBaseline, dir: labnoteDir })
+                .content
+            : relinkMissing(content);
         const { names, notes } = await readWorkflowFolder(host, labnoteDir);
         const titles = workflowLabels(notes);
         await processNoteThroughVault(app, host, readmePath, content => {
@@ -1387,6 +1428,9 @@ export async function renumberWorkflowsCommand(
   }
   if (added > 0) {
     host.notify('info', host.t('Added {0} workflow file(s) to the README checklist.', String(added)));
+  }
+  if (relinked > 0 && renames.length === 0) {
+    host.notify('info', host.t('Pointed {0} README checklist entry(ies) back at their file.', String(relinked)));
   }
   if (csvSkipped > 0) {
     host.notify(

@@ -220,6 +220,14 @@ const obsidianKo: Record<string, string> = {
   'The block is no longer where it was printed from, so check that the scan went to the right one.':
     '출력한 뒤 블록 위치가 바뀌었습니다. 맞는 블록에 붙었는지 확인하세요.',
   'Workflow numbering already follows the README checklist.': '워크플로 번호가 이미 README 체크리스트 순서와 같습니다.',
+  'The README checklist lists {0} file(s) that are not in the folder: {1}. Run "{2}" to remove them.':
+    'README 체크리스트에 폴더에 없는 파일 {0}개가 있습니다: {1}. "{2}"을(를) 실행하면 지울 수 있습니다.',
+  'Point {0} README checklist entry(ies) of {1} back at their file?':
+    '{1}의 README 체크리스트 항목 {0}개를 원래 파일에 다시 연결할까요?',
+  'These README checklist entries point to a file that is gone and will point to the file of the same workflow:':
+    '아래 README 체크리스트 항목은 없는 파일을 가리키고 있어, 같은 워크플로의 파일에 다시 연결합니다:',
+  'Added to the README checklist:': 'README 체크리스트에 등록할 파일:',
+  'Pointed {0} README checklist entry(ies) back at their file.': 'README 체크리스트 항목 {0}개를 원래 파일에 다시 연결했습니다.',
   'New numbers follow the order of the README checklist.': '새 번호는 README 체크리스트 순서를 따릅니다.',
   'New numbers follow the current file numbers.': '새 번호는 지금 파일 번호 순서를 따릅니다.',
   '{0} → {1} (name format fixed)': '{0} → {1} (이름 형식 고침)',

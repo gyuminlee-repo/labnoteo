@@ -35,6 +35,7 @@ import {
   parseWorkflowFileName,
   parseWorkflowHeading,
   planWorkflowChecklistSync,
+  workflowNumberClashes,
   planWorkflowRetitle,
   relinkCopiedExperimentChecklist,
   resetCopiedWorkflowDates,
@@ -900,6 +901,7 @@ export default class LabnotePlugin extends Plugin {
               this.run(() => this.moveTableCsvsAfterRename(dir, from, to));
               if (unlinkableNameChars(to).length > 0) this.run(() => this.offerLinkableNameFix(file, dir, from, to));
               else this.run(() => this.retitleAfterRename(file, dir, from, to));
+              this.run(() => this.noticeRenamedNumberClash(dir, to));
             }
             return;
           case 'strayMoved':
@@ -1881,6 +1883,12 @@ export default class LabnotePlugin extends Plugin {
    * listed in that folder's README. Point the user at the sync command, once
    * per folder for a batch of moves, and only if something is unlisted.
    */
+  /** A note renamed to a number another note has, said when it happens (#382). */
+  private async noticeRenamedNumberClash(dir: string, name: string): Promise<void> {
+    const clashes = workflowNumberClashes(await this.fs.list(dir));
+    if (clashes.includes(name)) this.host.notify('warn', workflowNumberClashNotice(this.host, clashes));
+  }
+
   private noticeWorkflowMovedIn(oldPath: string, newPath: string): void {
     if (!isValidWorkflowPath(newPath)) return;
     const dir = posix.dirname(newPath);
