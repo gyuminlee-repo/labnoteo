@@ -40,6 +40,7 @@ export {
   replaceSectionBody,
   replaceSectionBodyAt,
   findSectionMatches,
+  diffBodyLines,
   type SectionEditResult,
   type SectionMatch,
 } from './sections/sectionEdit';

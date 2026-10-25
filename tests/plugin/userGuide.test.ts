@@ -18,7 +18,7 @@ function makeHost(files: Record<string, string> = {}, confirmResult = true) {
     fs,
     openFile: vi.fn(async () => undefined),
     notify: vi.fn(),
-    confirm: vi.fn(async () => confirmResult),
+    confirm: vi.fn(async (_message: string) => confirmResult),
     t: (key: string, ...args: Array<string | number | boolean>) =>
       key.replace(/\{(\d+)\}/g, (_, i: string) => String(args[Number(i)])),
   };
@@ -87,6 +87,19 @@ describe('openUserGuide with a guide left at an older release', () => {
     expect(await fs.read(QUICKSTART_BACKUP_PATH)).toBe(edited);
     expect(await fs.read(QUICKSTART_DOC_PATH)).toBe(oldFile(QUICKSTART_DOC_CONTENT));
     expect(await fs.read(QUICKSTART_DOC_PATH)).toContain('연구실 규칙');
+  });
+
+  it('does not write over a backup an earlier replacement left (#344)', async () => {
+    const edited = oldFile(`> 이 설명서는 labnoteo 0.121.0 기준입니다.\n${OLD}\n메모 E`);
+    const { fs, host, asHost } = makeHost({
+      [QUICKSTART_DOC_PATH]: edited,
+      [QUICKSTART_BACKUP_PATH]: '메모 C\n',
+    });
+    await openUserGuide(asHost, VERSION);
+    expect(host.confirm.mock.calls[0][0]).toContain('QUICKSTART.backup-0.121.0.md');
+    expect(await fs.read(QUICKSTART_BACKUP_PATH)).toBe('메모 C\n');
+    expect(await fs.read('QUICKSTART.backup-0.121.0.md')).toBe(edited);
+    expect(host.notify).toHaveBeenCalledWith('info', expect.stringContaining('QUICKSTART.backup-0.121.0.md'));
   });
 
   it('opens an edited old block as it is when declined', async () => {
@@ -158,6 +171,7 @@ describe('user guide strings are translated', () => {
     'Created the user guide: {0}',
     'Replace with the new version',
     'Updated the user guide to labnoteo {0}.',
+    'Updated the user guide to labnoteo {0}. The previous file is kept as {1}.',
     '{0} was edited, so it was left at its earlier version. Run "Open user guide" to get the new version.',
     'New here? Open the quick-start guide. Searching "Labnote" in the command palette lists every command.',
     'Click an experiment to open its README, or right-click it to change its status or toggle its discussion flag. Right-click a catalog item to create a workflow or insert a unit operation. No experiment yet? Run "{0}" first.',

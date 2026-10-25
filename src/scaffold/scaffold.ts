@@ -12,7 +12,7 @@
  * runs Git; the only paths it touches outside the registry are the known
  * leftovers in `LEGACY_ASSET_PATHS`, and only after the user confirms.
  */
-import type { LabnoteHost } from '@labnoteo/core';
+import { diffBodyLines, type LabnoteFs, type LabnoteHost } from '@labnoteo/core';
 import {
   HOOKS_DIR_PATH,
   ISSUE_SYNC_WORKFLOW_PATH,
@@ -161,6 +161,45 @@ export function managedBlockStatus(
   return blockIsTemplate(inner, recorded) ? 'outdated' : 'edited';
 }
 
+/** `X.backup.md` beside `X.md`: the name a replaced copy is kept under first. */
+export function backupPathFor(path: string): string {
+  const dot = path.lastIndexOf('.');
+  return dot > path.lastIndexOf('/') + 1 ? `${path.slice(0, dot)}.backup${path.slice(dot)}` : `${path}.backup`;
+}
+
+/**
+ * A free name to keep a copy under before it is replaced (#344, #351): `base`
+ * while nothing is there, then `base` tagged with `-<version>` (the release
+ * the copy came from) when known, then numbered `_2`, `_3`…, so an earlier
+ * backup is never written over.
+ */
+export async function freeBackupPath(fs: Pick<LabnoteFs, 'exists'>, base: string, version?: string): Promise<string> {
+  if (!(await fs.exists(base))) return base;
+  const dot = base.lastIndexOf('.');
+  const stem = dot > base.lastIndexOf('/') + 1 ? base.slice(0, dot) : base;
+  const ext = base.slice(stem.length);
+  const tagged = version ? `${stem}-${version}` : stem;
+  if (version && !(await fs.exists(`${tagged}${ext}`))) return `${tagged}${ext}`;
+  for (let i = 2; ; i++) {
+    const candidate = `${tagged}_${i}${ext}`;
+    if (!(await fs.exists(candidate))) return candidate;
+  }
+}
+
+/** How many lines a replacement prompt lists before summing up the rest. */
+const REMOVED_LINES_SHOWN = 8;
+
+/** The lines of `before` that `after` drops, as a block for a confirmation, or '' when none. */
+export function removedLinesBlock(host: LabnoteHost, before: string, after: string): string {
+  const { removed } = diffBodyLines(before, after);
+  if (removed.length === 0) return '';
+  const rows = removed.slice(0, REMOVED_LINES_SHOWN).map(l => `  ${l}`);
+  if (removed.length > REMOVED_LINES_SHOWN) {
+    rows.push(`  ${host.t('(+{0} more line(s))', String(removed.length - REMOVED_LINES_SHOWN))}`);
+  }
+  return [host.t('Lines removed:'), ...rows].join('\n');
+}
+
 /** A `managed-block` file as first written: the block, then the asset's trailer. */
 export function managedFileContent(asset: ScaffoldAsset): string {
   const block = upsertManagedBlock('', asset.content);
@@ -211,14 +250,20 @@ export async function applyAsset(
     const updated = upsertManagedBlock(current, asset.content);
     if (updated === current) return undefined; // block already up to date
     if (exists && blockEdited(current, asset, recorded)) {
+      const backup = await freeBackupPath(host.fs, backupPathFor(asset.vaultPath));
+      // The same template as at install: the edit is undone, not updated.
+      const question =
+        recorded === contentHash(asset.content)
+          ? 'The marked block of {0} was edited after it was installed, and this plugin version has the same block. Put the block back to the installed text? Text outside the block is kept, and the current file is kept as {1}.'
+          : 'The marked block of {0} was edited after it was installed. Replace the block with the new version? Text outside the block is kept, and the current file is kept as {1}.';
+      const removed = removedLinesBlock(host, managedBlockInner(current) ?? '', asset.content);
       const ok = await host.confirm(
-        host.t(
-          'The marked block of {0} was edited after it was installed. Replace the block with the new version? Text outside the block is kept.',
-          asset.vaultPath
-        ),
+        [host.t(question, asset.vaultPath, backup), removed].filter(Boolean).join('\n\n'),
         { confirmLabel: host.t('Overwrite'), destructive: true }
       );
       if (!ok) return 'skipped';
+      await host.fs.write(backup, current);
+      host.notify('info', host.t('Kept the previous {0} as {1}.', asset.vaultPath, backup));
     }
     await host.fs.write(asset.vaultPath, updated);
     return exists ? 'merged' : 'written';

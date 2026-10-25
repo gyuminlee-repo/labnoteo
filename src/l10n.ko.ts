@@ -112,6 +112,8 @@ const obsidianKo: Record<string, string> = {
   'an earlier version': '이전 버전',
   'Replace with the new version': '새 버전으로 바꾸기',
   'Updated the user guide to labnoteo {0}.': '설명서를 labnoteo {0} 기준으로 바꿨습니다.',
+  'Updated the user guide to labnoteo {0}. The previous file is kept as {1}.':
+    '설명서를 labnoteo {0} 기준으로 바꿨습니다. 바꾸기 전 파일은 {1}로 남겼습니다.',
   '{0} was edited, so it was left at its earlier version. Run "Open user guide" to get the new version.':
     '{0}이(가) 고쳐져 있어 이전 버전으로 두었습니다. "사용법 열기"를 실행하면 새 버전으로 바꿀 수 있습니다.',
   'Created the user guide: {0}': '사용법 문서를 만들었습니다: {0}',
@@ -326,8 +328,11 @@ const obsidianKo: Record<string, string> = {
   'Use ./images': './images 쓰기',
   'New attachments now go to the images folder next to each note.':
     '이제 새 첨부 파일은 각 노트 옆 images 폴더에 저장됩니다.',
-  'The marked block of {0} was edited after it was installed. Replace the block with the new version? Text outside the block is kept.':
-    '{0}의 표시된 블록이 설치 후 고쳐졌습니다. 블록을 새 버전으로 바꿀까요? 블록 밖의 내용은 그대로 둡니다.',
+  'The marked block of {0} was edited after it was installed. Replace the block with the new version? Text outside the block is kept, and the current file is kept as {1}.':
+    '{0}의 표시된 블록이 설치 후 고쳐졌습니다. 블록을 새 버전으로 바꿀까요? 블록 밖의 내용은 그대로 두고, 지금 파일은 {1}로 남깁니다.',
+  'The marked block of {0} was edited after it was installed, and this plugin version has the same block. Put the block back to the installed text? Text outside the block is kept, and the current file is kept as {1}.':
+    '{0}의 표시된 블록이 설치 후 고쳐졌습니다. 이 플러그인 버전의 블록은 설치할 때와 같습니다. 블록을 설치할 때의 내용으로 되돌릴까요? 블록 밖의 내용은 그대로 두고, 지금 파일은 {1}로 남깁니다.',
+  'Kept the previous {0} as {1}.': '바꾸기 전의 {0} 파일은 {1}로 남겼습니다.',
   'Research automation set up ({0} written, {1} merged, {2} skipped, {3} removed). Researchers: see {4}. Admin setup: {5} (run "git config core.hooksPath {6}").':
     '연구노트 자동화를 설정했습니다 (생성 {0} · 병합 {1} · 건너뜀 {2} · 정리 {3}). 연구원 안내는 {4}, 관리자 설정은 {5} 문서를 확인하고 "git config core.hooksPath {6}"를 실행하세요.',
   'Remove {0} file(s) left by the previous layout ({1})? Afterwards run "git config core.hooksPath {2}" so the pre-commit hook keeps working.':
