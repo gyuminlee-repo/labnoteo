@@ -259,6 +259,7 @@ export {
   buildSampleTree,
   filterSampleTree,
   filterExperiments,
+  linkRetries,
   type ExperimentGrouping,
   type TreeNode,
   type TreeNodeKind,

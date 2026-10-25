@@ -139,8 +139,15 @@ const obsidianKo: Record<string, string> = {
   'Group experiments by': '실험 묶는 기준',
   'By status': '상태별',
   'By project': '과제별',
-  'By discussion flag': '논의 표시별',
-  'Not flagged for discussion': '논의 표시 없음',
+  'By discussion': '논의 여부별',
+  'Something to discuss': '논의할 것 있음',
+  'Nothing to discuss': '논의할 것 없음',
+  '@issue markers': '@issue 마커',
+  'Retry of': '재시도 대상',
+  'Retried in': '재시도',
+  'Retry this experiment': '이 실험 다시 하기',
+  'Retry experiment {0}': '{0} 다시 하기',
+  '{0} (retry)': '{0} 2차',
   'Type @dna (or another type) in a note, or right-click → "{0}" to register a sample.':
     '노트에서 @dna처럼 입력하거나 우클릭 → "{0}"(으)로 샘플을 등록합니다.',
 

@@ -5,6 +5,7 @@ import {
   buildSampleTree,
   filterSampleTree,
   filterExperiments,
+  linkRetries,
   type ExperimentEntry,
   type WorkflowTreeData,
 } from '../tree/treeModel';
@@ -250,6 +251,7 @@ describe('buildExperimentTree', () => {
     expect(planned[0].payload).toEqual({
       folder: 'labnote/002_GFP',
       readmePath: 'labnote/002_GFP/README.labnote.md',
+      status: 'planned',
     });
   });
 
@@ -350,16 +352,18 @@ describe('experiments flagged for discussion', () => {
   ];
 
   it('gathers the flagged experiments first, whatever their status', () => {
-    const t = buildExperimentTree(entries, { discuss: '논의 표시됨', noDiscuss: '논의 표시 없음' }, 'discuss');
+    const t = buildExperimentTree(entries, { discussGroup: '논의할 것 있음', noDiscuss: '논의할 것 없음' }, 'discuss');
     expect(t.children!.map(g => [g.id, g.label, g.kind])).toEqual([
-      ['experimentDiscuss:true', '논의 표시됨 [2]', 'experimentDiscuss'],
-      ['experimentDiscuss:false', '논의 표시 없음 [1]', 'experimentDiscuss'],
+      ['experimentDiscuss:true', '논의할 것 있음 [2]', 'experimentDiscuss'],
+      ['experimentDiscuss:false', '논의할 것 없음 [1]', 'experimentDiscuss'],
     ]);
     expect(t.children![0].children!.map(e => e.label)).toEqual(['001 · A', '002 · B']);
   });
 
   it('leaves out an empty group', () => {
-    expect(buildExperimentTree(entries.slice(0, 1), {}, 'discuss').children!.map(g => g.label)).toEqual(['Not flagged [1]']);
+    expect(buildExperimentTree(entries.slice(0, 1), {}, 'discuss').children!.map(g => g.label)).toEqual([
+      'Nothing to discuss [1]',
+    ]);
   });
 
   it('finds them by "discuss" or the words of the UI label', () => {
@@ -367,5 +371,64 @@ describe('experiments flagged for discussion', () => {
     expect(filterExperiments(entries, 'discuss').map(e => e.folder)).toEqual(flagged);
     expect(filterExperiments(entries, '논의', '논의 표시됨').map(e => e.folder)).toEqual(flagged);
     expect(filterExperiments(entries, '논의 completed', '논의 표시됨').map(e => e.folder)).toEqual(['labnote/002_B']);
+  });
+
+  // #337
+  it('counts an experiment with @issue markers as something to discuss, and says how many', () => {
+    const marked: ExperimentEntry[] = [...entries, { folder: 'labnote/004_D', title: 'D', status: 'planned', markers: 2 }];
+    const t = buildExperimentTree(marked, { markers: '@issue 마커' }, 'discuss');
+    const group = t.children![0];
+    expect(group.label).toBe('Something to discuss [3]');
+    const d = group.children!.find(e => e.label === '004 · D')!;
+    expect(d).toMatchObject({ icon: 'comment-discussion', tooltip: 'D\nlabnote/004_D\nStatus: planned\n@issue 마커: 2' });
+    expect(filterExperiments(marked, 'discuss').map(e => e.folder)).toContain('labnote/004_D');
+  });
+});
+
+// #333
+describe('searching experiments by the status name of the UI', () => {
+  const entries: ExperimentEntry[] = [
+    { folder: 'labnote/001_A', title: '검토 계획', status: 'planned' },
+    { folder: 'labnote/002_B', title: 'B', status: 'needs-review' },
+  ];
+  const names = { planned: '계획', 'needs-review': '검토 필요' };
+
+  it('finds a status by its name as well as its value', () => {
+    expect(filterExperiments(entries, '검토 필요', undefined, names).map(e => e.folder)).toEqual(['labnote/002_B']);
+    expect(filterExperiments(entries, '검토', undefined, names).map(e => e.folder)).toEqual([
+      'labnote/001_A',
+      'labnote/002_B',
+    ]);
+    expect(filterExperiments(entries, 'needs-review').map(e => e.folder)).toEqual(['labnote/002_B']);
+  });
+});
+
+// #327
+describe('retried experiments', () => {
+  const entries = linkRetries([
+    { folder: 'labnote/061_A', title: '1차', status: 'failed' },
+    { folder: 'labnote/103_B', title: '2차', status: 'in-progress', retryOf: 'labnote/061_A' },
+    { folder: 'labnote/104_C', title: '3차', status: 'planned', retryOf: 'labnote/061_A' },
+  ]);
+
+  it('links each experiment to the runs that retry it', () => {
+    expect(entries[0].retriedBy).toEqual(['labnote/103_B', 'labnote/104_C']);
+    expect(entries[1].retriedBy).toBeUndefined();
+  });
+
+  it('names both sides in the tooltip', () => {
+    const t = buildExperimentTree(entries, { retryOf: '재시도 대상', retriedBy: '재시도' });
+    const tips = t.children!.flatMap(g => g.children!).map(e => e.tooltip);
+    expect(tips).toContain('1차\nlabnote/061_A\nStatus: failed\n재시도: 103, 104');
+    expect(tips).toContain('2차\nlabnote/103_B\nStatus: in-progress\n재시도 대상: 061');
+  });
+
+  it('finds a retry by the number of the experiment it retries, and the other way', () => {
+    expect(filterExperiments(entries, '061').map(e => e.folder)).toEqual([
+      'labnote/061_A',
+      'labnote/103_B',
+      'labnote/104_C',
+    ]);
+    expect(filterExperiments(entries, '104').map(e => e.folder)).toEqual(['labnote/061_A', 'labnote/104_C']);
   });
 });

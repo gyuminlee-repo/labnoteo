@@ -67,6 +67,12 @@ export interface ExperimentEntry {
   progress?: { done: number; total: number };
   /** The README's `project`: the larger project the experiment belongs to (#204). */
   project?: string;
+  /** `@issue` markers in the experiment's notes (#337). */
+  markers?: number;
+  /** The folder of the experiment this one runs again, from the README's `retry_of` (#327). */
+  retryOf?: string;
+  /** The folders of the experiments that run this one again; see {@link linkRetries}. */
+  retriedBy?: string[];
 }
 
 /** What {@link buildExperimentTree} groups experiments by (#204, #220). */
@@ -76,10 +82,17 @@ export type ExperimentGrouping = 'status' | 'project' | 'discuss';
 export interface ExperimentTreeLabels {
   root?: string;
   noStatus?: string;
-  /** Tooltip line of a flagged experiment, and the group of those (#220). */
+  /** Tooltip line of a flagged experiment (#220). */
   discuss?: string;
-  /** Group of the experiments not flagged for discussion (#220). */
+  /** Group of the experiments flagged for discussion or with `@issue` markers (#337). */
+  discussGroup?: string;
+  /** Group of the others (#220). */
   noDiscuss?: string;
+  /** Tooltip line name for the `@issue` marker count (#337). */
+  markers?: string;
+  /** Tooltip line names for the experiment retried and those retrying it (#327). */
+  retryOf?: string;
+  retriedBy?: string;
   /** Suffix of a group whose status is outside {@link EXPERIMENT_STATUSES} (#143). */
   invalidStatus?: string;
   /** Tooltip of that group; `{0}` is the allowed list. */
@@ -98,6 +111,32 @@ function experimentNumber(name: string): string {
   return /^(\d{3})_/.exec(name)?.[1] ?? name;
 }
 
+/** Whether an experiment has something to discuss: its flag, or an `@issue` marker (#337). */
+function hasDiscussion(e: ExperimentEntry): boolean {
+  return !!e.discuss || (e.markers ?? 0) > 0;
+}
+
+/**
+ * `experiments` with each one's `retriedBy` filled from the others' `retryOf`
+ * (#327), so the experiment that failed shows which runs followed it.
+ */
+export function linkRetries(experiments: readonly ExperimentEntry[]): ExperimentEntry[] {
+  const by = new Map<string, string[]>();
+  for (const e of experiments) {
+    if (e.retryOf && e.retryOf !== e.folder) by.set(e.retryOf, [...(by.get(e.retryOf) ?? []), e.folder]);
+  }
+  return experiments.map(e => (by.has(e.folder) ? { ...e, retriedBy: by.get(e.folder) } : e));
+}
+
+/** The numbers of the experiments in `folders`, in folder order: `061, 103`. */
+function experimentNumbers(folders: readonly string[]): string {
+  return folders
+    .map(f => path.basename(f))
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+    .map(experimentNumber)
+    .join(', ');
+}
+
 /**
  * The vault's experiments grouped by `status` (the default), in {@link EXPERIMENT_STATUSES}
  * order. Experiments without a status, and each value outside that list, get
@@ -110,8 +149,9 @@ function experimentNumber(name: string): string {
  *
  * Grouped by `project` instead, the experiments of one project sit together
  * whatever their status, projects in name order and those without one last
- * (#204). Grouped by `discuss`, the experiments flagged for discussion come
- * first and the rest after them (#220).
+ * (#204). Grouped by `discuss`, the experiments with something to discuss
+ * (flagged, or with `@issue` markers) come first and the rest after them
+ * (#220, #337).
  */
 export function buildExperimentTree(
   experiments: ExperimentEntry[],
@@ -150,8 +190,8 @@ export function buildExperimentTree(
   }
 
   if (groupBy === 'discuss') {
-    const flagged = experiments.filter(e => e.discuss);
-    const others = experiments.filter(e => !e.discuss);
+    const flagged = experiments.filter(hasDiscussion);
+    const others = experiments.filter(e => !hasDiscussion(e));
     const group = (discuss: boolean, members: ExperimentEntry[], label: string): TreeNode => ({
       id: `experimentDiscuss:${discuss}`,
       label: `${label} [${members.length}]`,
@@ -163,8 +203,8 @@ export function buildExperimentTree(
     return {
       ...root,
       children: [
-        ...(flagged.length > 0 ? [group(true, flagged, labels.discuss ?? 'Flagged for discussion')] : []),
-        ...(others.length > 0 ? [group(false, others, labels.noDiscuss ?? 'Not flagged')] : []),
+        ...(flagged.length > 0 ? [group(true, flagged, labels.discussGroup ?? 'Something to discuss')] : []),
+        ...(others.length > 0 ? [group(false, others, labels.noDiscuss ?? 'Nothing to discuss')] : []),
       ],
     };
   }
@@ -228,38 +268,48 @@ function experimentNode(e: ExperimentEntry, labels: ExperimentTreeLabels): TreeN
       ? [`${labels.workflows ?? 'Workflows done'}: ${e.progress.done}/${e.progress.total}`]
       : []),
     ...(e.lastUpdated ? [`${labels.lastUpdated ?? 'Last updated'}: ${e.lastUpdated}`] : []),
+    ...(e.retryOf ? [`${labels.retryOf ?? 'Retry of'}: ${experimentNumbers([e.retryOf])}`] : []),
+    ...(e.retriedBy?.length ? [`${labels.retriedBy ?? 'Retried in'}: ${experimentNumbers(e.retriedBy)}`] : []),
     ...(e.discuss ? [labels.discuss ?? 'Flagged for discussion'] : []),
+    ...(e.markers ? [`${labels.markers ?? '@issue markers'}: ${e.markers}`] : []),
   ].join('\n');
   return {
     id: `experiment:${e.folder}`,
     label: `${named}${progress}`,
     kind: 'experiment',
-    icon: e.discuss ? 'comment-discussion' : 'file',
+    icon: hasDiscussion(e) ? 'comment-discussion' : 'file',
     tooltip,
-    payload: { folder: e.folder, readmePath: path.join(e.folder, 'README.labnote.md') },
+    payload: { folder: e.folder, readmePath: path.join(e.folder, 'README.labnote.md'), status: status || undefined },
   };
 }
 
 /**
  * The experiments whose folder name, title, project or status contains every
  * word of `query`, ignoring case (#204). A blank query returns the input.
- * One flagged for discussion also matches `discuss` and the words of
- * `discussLabel`, e.g. the UI's "Flagged for discussion" (#220).
+ * One with something to discuss also matches `discuss` and the words of
+ * `discussLabel`, e.g. the UI's group name (#220, #337); a status also
+ * matches its name in `statusWords`, e.g. 검토 필요 for `needs-review`
+ * (#333); and a retry and the experiment it retries match each other's
+ * number (#327).
  */
 export function filterExperiments(
   experiments: ExperimentEntry[],
   query: string,
-  discussLabel?: string
+  discussLabel?: string,
+  statusWords: Readonly<Record<string, string>> = {}
 ): ExperimentEntry[] {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (words.length === 0) return experiments;
   return experiments.filter(e => {
+    const status = e.status?.trim() ?? '';
     const haystack = [
       path.basename(e.folder),
       e.title ?? '',
       e.project ?? '',
-      e.status ?? '',
-      ...(e.discuss ? ['discuss', discussLabel ?? ''] : []),
+      status,
+      ...(Object.prototype.hasOwnProperty.call(statusWords, status) ? [statusWords[status]] : []),
+      ...(hasDiscussion(e) ? ['discuss', discussLabel ?? ''] : []),
+      experimentNumbers([...(e.retryOf ? [e.retryOf] : []), ...(e.retriedBy ?? [])]),
     ]
       .join('\u0000')
       .toLowerCase();
