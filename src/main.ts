@@ -167,7 +167,7 @@ import { LabnoteMcpServer } from './llm/mcpServer';
 import { CURRENT_SCHEMA_VERSION, migrateSettings, type LabnoteSettings } from './settings';
 import { BarcodeFeature } from './barcode/barcodeFeature';
 import { PartbankFeature } from './partbank/partbankFeature';
-import { refreshLocationsIn } from './partbank/partbankLocation';
+import { refreshLocationsIn, vaultSampleFolders } from './partbank/partbankLocation';
 import { downloadPartbankCatalog } from './partbank/partbankCatalog';
 import { handleImportUri, IMPORT_ACTION } from './partbank/partbankUri';
 
@@ -560,9 +560,7 @@ export default class LabnotePlugin extends Plugin {
       checkCallback: checking => {
         if (!this.partbank.configured) return false;
         if (!checking) {
-          this.run(() =>
-            refreshLocationsIn(this, [this.localSampleFolder(), this.settings.globalSampleFolder])
-          );
+          this.run(async () => refreshLocationsIn(this, await vaultSampleFolders(this)));
         }
         return true;
       },

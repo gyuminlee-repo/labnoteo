@@ -16,11 +16,15 @@ import {
   type SampleSource,
 } from '@labnoteo/core';
 import {
+  isSameSampleFolder,
+  listExperimentSampleFolders,
   loadSamplesByType,
   upsertSampleRecord,
   type SampleRecord,
 } from '@labnoteo/core/lib/sampleStorage';
 import { getSampleDisplayMeta } from '@labnoteo/core/lib/sampleUtils';
+import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
+import * as posix from '@labnoteo/core/posix';
 import type LabnotePlugin from '../main';
 import { confirmModal, pickManyModal } from '../modals';
 import { PartbankError } from './client';
@@ -98,6 +102,17 @@ export function locationRefreshNotice(plugin: LabnotePlugin, main: string, noSto
   return parts.join(' ');
 }
 
+/**
+ * Every experiment's Local registry, then the Global one: the whole vault, so
+ * the result does not depend on which note is open (#437).
+ */
+export async function vaultSampleFolders(plugin: LabnotePlugin): Promise<string[]> {
+  const folders = await listExperimentSampleFolders(plugin.fs, '');
+  const global = plugin.settings.globalSampleFolder;
+  if (global && !folders.some(folder => isSameSampleFolder(folder, global))) folders.push(global);
+  return folders;
+}
+
 /** Every sample in `folders` that carries a partbank link. */
 export async function linkedSamplesIn(
   plugin: LabnotePlugin,
@@ -132,6 +147,12 @@ export async function applyLocationChanges(
     });
   }
   if (changes.length > 0) plugin.samplesChanged();
+}
+
+/** The experiment folder a Local registry belongs to, or Global. */
+function registryName(folder: string, plugin: LabnotePlugin): string {
+  const dir = getExperimentDir(folder);
+  return dir ? posix.basename(dir) : plugin.t('Global');
 }
 
 /** `old → new`, as the confirmation list shows a change. */
@@ -256,7 +277,7 @@ export async function refreshLocationsIn(
     plugin.app,
     offer.map(change => ({
       label: `${change.id}${change.alias ? `;${change.alias}` : ''}`,
-      description: describeChange(change, plugin),
+      description: `${describeChange(change, plugin)} · ${registryName(change.folder, plugin)}`,
       checked: true,
       value: change,
     })),
