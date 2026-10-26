@@ -65,3 +65,28 @@ describe('insertIssueMarkerCommand on a workflow checklist entry (#293)', () => 
     expect(text().endsWith(';WB030 Gibson')).toBe(true);
   });
 });
+
+// #428: a marker in a note the automation does not read opened no issue, without a word.
+describe('insertIssueMarkerCommand in a note that is not read for markers', () => {
+  it.each(['labnote/002_ALE/랩미팅 메모.md', 'labnote/002_ALE/sub/001_WD010_A.labnote.md', 'Daily.md', ''])(
+    'refuses in %s before asking for a topic',
+    async path => {
+      const { editor, text } = fakeEditor('질문', 2);
+      const notes: string[] = [];
+      const { host, prompts } = hostAnswering(v => v);
+      Object.assign(host, { notify: (_: string, m: string) => notes.push(m) });
+
+      expect(await insertIssueMarkerCommand(editor, host, path)).toBe(false);
+
+      expect(prompts).toEqual([]);
+      expect(text()).toBe('질문');
+      expect(notes[0]).toMatch(/^Markers in this note open no issue/);
+    }
+  );
+
+  it('inserts in a workflow note directly in the experiment folder', async () => {
+    const { editor } = fakeEditor('질문', 2);
+    const { host } = hostAnswering(v => v);
+    expect(await insertIssueMarkerCommand(editor, host, 'labnote/002_ALE/001_WD010_A.labnote.md')).toBe(true);
+  });
+});

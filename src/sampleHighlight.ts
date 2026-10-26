@@ -57,6 +57,8 @@ export interface HighlightState {
   discardedIds?: ReadonlyMap<string, string>;
   /** Tooltip of a reference to a discarded sample. */
   discardedTitle?: (date: string) => string;
+  /** The note is not one the automation reads markers from, so they stay plain (#428). */
+  markersUnread?: boolean;
 }
 
 const SAMPLE_ID_CLASS = 'labnote-sample-id';
@@ -92,6 +94,8 @@ interface MarkerOptions {
   discarded?: (id: string) => string | undefined;
   /** The text stops where reading view split it, e.g. before a link (#329). */
   cut?: boolean;
+  /** Leave the markers plain: the note's markers open no issue (#428). */
+  noMarkers?: boolean;
 }
 
 /**
@@ -151,7 +155,9 @@ export function collectTokenRanges(
   colors: Record<string, string>,
   opts: MarkerOptions = {}
 ): TokenRange[] {
-  const markers = findIssueMarkerRanges(text, opts.inComment).filter(r => !opts.inCode?.(r.start, r.end));
+  const markers = opts.noMarkers
+    ? []
+    : findIssueMarkerRanges(text, opts.inComment).filter(r => !opts.inCode?.(r.start, r.end));
   const ranges: TokenRange[] = markers.map(r => {
     const id = MARKER_ID_RE.exec(text.slice(r.start, r.end))?.[1];
     const title = id ? opts.duplicate?.(id) : undefined;
@@ -209,7 +215,8 @@ function sampleColorVar(color: string): string | undefined {
 export function highlightStateKey(state: HighlightState): string {
   const key = state.types.map(t => `${t}=${state.colors[t] ?? ''}`).join('\u0000');
   const marker = state.markerVersion === undefined ? key : `${key}\u0001${state.markerVersion}`;
-  return state.sampleVersion === undefined ? marker : `${marker}\u0002${state.sampleVersion}`;
+  const samples = state.sampleVersion === undefined ? marker : `${marker}\u0002${state.sampleVersion}`;
+  return state.markersUnread ? `${samples}\u0003` : samples;
 }
 
 /**
@@ -304,6 +311,7 @@ export function createSampleHighlightPlugin(getState: (path: string | undefined)
             missing,
             staleAlias,
             discarded,
+            noMarkers: state.markersUnread,
           })) {
             const styleVar = sampleColorVar(r.color ?? '');
             const attributes: Record<string, string> = {};
@@ -350,7 +358,7 @@ export function createSampleReadingHighlighter(
       staleAlias = staleAliasCheck(state, definedIds);
       discarded = discardedSampleCheck(state);
     }
-    highlightTextNodes(el, types, colors, { missing, staleAlias, discarded });
+    highlightTextNodes(el, types, colors, { missing, staleAlias, discarded, noMarkers: state.markersUnread });
   };
 }
 
@@ -400,7 +408,7 @@ function highlightTextNodes(
   colors: Record<string, string>,
   opts: MarkerOptions = {}
 ): void {
-  wrapFormattedMarkers(root);
+  if (!opts.noMarkers) wrapFormattedMarkers(root);
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const targets: Text[] = [];
   let node: Node | null;

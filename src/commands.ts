@@ -113,7 +113,7 @@ import { removeWorkflowFromReadme } from '@labnoteo/core/lib/workflowDelete';
 // place; the implementation lives under src/scaffold with its asset registry.
 export { setupResearchAutomationCommand } from './scaffold/scaffold';
 import { tableCellHostView } from './tableCellTarget';
-import { experimentMarkerSpots, formatMarkerSpots } from './issueMarkerIndex';
+import { experimentMarkerSpots, formatMarkerSpots, markerExperimentDir } from './issueMarkerIndex';
 import { isVaultGitRepository } from './scaffold/scaffold';
 import { removeSourcesForDocument } from '@labnoteo/core/lib/sampleStorage';
 
@@ -704,7 +704,7 @@ export function insertDateCommand(editor: Editor, host: LabnoteHost, text: strin
  * The ID exists so the topic can be reworded later without orphaning the issue
  * it opened, which is also why it is generated rather than typed.
  */
-export async function insertIssueMarkerCommand(editor: Editor, host: LabnoteHost): Promise<boolean> {
+export async function insertIssueMarkerCommand(editor: Editor, host: LabnoteHost, notePath?: string): Promise<boolean> {
   // IDs are a timestamp plus a counter, so generating a duplicate is not
   // actually possible; this scan is kept only because it costs nothing.
   //
@@ -718,10 +718,14 @@ export async function insertIssueMarkerCommand(editor: Editor, host: LabnoteHost
     while (used.has(id)) id = generateIssueMarkerId();
     return id;
   };
-  const refuse = (reason: 'conflict' | 'table' | 'frontMatter' | 'codeBlock' | 'comment'): false => {
+  const refuse = (reason: 'conflict' | 'table' | 'frontMatter' | 'codeBlock' | 'comment' | 'notLabnote'): false => {
     host.notify(
       'warn',
-      reason === 'table'
+      reason === 'notLabnote'
+        ? host.t(
+            'Markers in this note open no issue: only the README and workflow notes (.labnote.md) directly in an experiment folder are read. Put the marker in one of those.'
+          )
+        : reason === 'table'
         ? host.t('Issue markers cannot go inside a table. Run this on a line below the table.')
         : reason === 'frontMatter'
           ? host.t('Issue markers cannot go in the front matter. Run this in the note body.')
@@ -733,6 +737,9 @@ export async function insertIssueMarkerCommand(editor: Editor, host: LabnoteHost
     );
     return false;
   };
+
+  // issue-sync and validate read only these notes (#428).
+  if (notePath !== undefined && !markerExperimentDir(notePath)) return refuse('notLabnote');
 
   // A README workflow entry whose link became the marker would no longer be an
   // entry (#293): there the marker always goes after the link.

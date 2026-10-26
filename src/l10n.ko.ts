@@ -351,6 +351,8 @@ const obsidianKo: Record<string, string> = {
     '코드 블록 안의 이슈 마커는 이슈를 열지 않습니다. 코드 블록 밖의 줄에서 실행하세요.',
   'Issue markers inside a comment open no issue. Run this on a line outside the comment.':
     '주석 안의 이슈 마커는 이슈를 열지 않습니다. 주석 밖의 줄에서 실행하세요.',
+  'Markers in this note open no issue: only the README and workflow notes (.labnote.md) directly in an experiment folder are read. Put the marker in one of those.':
+    '이 노트의 마커는 이슈로 열리지 않습니다. 실험 폴더 바로 안의 README와 워크플로 노트(.labnote.md)만 읽습니다. 그 노트에 마커를 넣으세요.',
   'This marker ID appears more than once in this note.': '이 마커 ID는 이 노트에 두 번 이상 있습니다.',
   'This marker ID is already used in {0}.': '이 마커 ID는 이미 {0}에서 쓰고 있습니다.',
   'Marker ID {0} appears twice in this note, so the two questions merge into one issue. Delete one of these markers and insert it again with "Insert issue marker".':

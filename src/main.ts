@@ -137,7 +137,7 @@ import {
 import { createMetaDatePickerExtension } from './dateFieldPicker';
 import { createUnitOpReorderFilter } from './unitOpReorderFilter';
 import { LastUpdatedTracker } from './lastUpdatedTracker';
-import { IssueMarkerIndex } from './issueMarkerIndex';
+import { IssueMarkerIndex, markerExperimentDir } from './issueMarkerIndex';
 import { SampleIdIndex } from './sampleIdIndex';
 import { isLabNotePath, stampNoteAndReadme, writeNoteStamped } from './lastUpdatedStamp';
 import { createOutlineDropTidy, type OutlineDropSnapshot } from './outlineDropTidy';
@@ -455,9 +455,10 @@ export default class LabnotePlugin extends Plugin {
     this.addCommand({
       id: 'insert-issue-marker',
       name: this.paletteName('Insert issue marker'),
-      editorCallback: editor =>
+      editorCallback: (editor, ctx) =>
         this.run(async () => {
-          if (!(await insertIssueMarkerCommand(editor, this.host)) || this.issueAutomationHintShown) return;
+          const inserted = await insertIssueMarkerCommand(editor, this.host, ctx.file?.path ?? '');
+          if (!inserted || this.issueAutomationHintShown) return;
           const state = await issueAutomationState(this.host);
           if (state === 'ready') return;
           this.issueAutomationHintShown = true;
@@ -2677,9 +2678,10 @@ export default class LabnotePlugin extends Plugin {
           }
         : base;
       const others = markers.othersFor(path);
-      return others
+      const withMarkers = others
         ? { ...samples, otherMarkerIds: others.ids, markerVersion: others.version, duplicateTitle }
         : samples;
+      return path !== undefined && !markerExperimentDir(path) ? { ...withMarkers, markersUnread: true } : withMarkers;
     };
     this.registerIssueMarkerIndex(markers);
     // Sample JSON written by the plugin arrives through `refreshSampleViews`;
