@@ -547,6 +547,9 @@ const obsidianKo: Record<string, string> = {
   'Location': '보관 위치',
   'Scope': '범위',
   'File': '파일',
+  'Product catalog (read-only)': '제품 카탈로그(읽기 전용)',
+  'Samples in a product catalog file ({Type}_name.json) are read-only here. To change one, edit that file, or rename it back to {0} if it was the sample registry.':
+    '제품 카탈로그 파일({Type}_이름.json)의 시료는 여기서 고칠 수 없습니다. 바꾸려면 그 파일을 직접 고치거나, 원래 시료 대장이었다면 이름을 {0}(으)로 되돌리세요.',
   'Open JSON file': 'JSON 파일 열기',
   'Could not open {0}': '{0}을(를) 열 수 없습니다',
   'No definition found for {0}. It is not in the sample registry: it may have been deleted or moved to another experiment, or the Global sample folder setting changed.':

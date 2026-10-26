@@ -999,12 +999,14 @@ export async function hasReferenceCatalog(
 /**
  * Load reference DB: all JSON files matching {type}_{suffix}.json in labsamples folder.
  * Used for Reagent/Labware product catalog (read-only). Same record format as loadSamplesByType.
+ * `fileOf`, when given, receives the catalog file each id was read from.
  */
 export async function loadReferenceSamplesByType(
   fs: LabnoteFs,
   labsamplesFolder: string,
   type: string,
-  knownTypes?: readonly string[]
+  knownTypes?: readonly string[],
+  fileOf?: Record<string, string>
 ): Promise<Record<string, SampleRecord>> {
   const merged: Record<string, SampleRecord> = {};
   if (!(await fs.exists(labsamplesFolder))) {
@@ -1032,6 +1034,7 @@ export async function loadReferenceSamplesByType(
         // type is not this type's, whatever file it turned up in.
         if (normalized.type.toLowerCase() !== type.toLowerCase()) continue;
         merged[id] = normalized;
+        if (fileOf) fileOf[id] = filePath;
       }
     } catch (err) {
       console.warn(`[labnoteo] Failed to load reference ${filePath}:`, err);

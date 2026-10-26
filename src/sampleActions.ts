@@ -87,13 +87,15 @@ function clean(value: string | undefined): string | null {
 export function loadCatalogSamples(
   plugin: LabnotePlugin,
   folder: string,
-  type: string
+  type: string,
+  fileOf?: Record<string, string>
 ): Promise<Record<string, SampleRecord>> {
   return loadReferenceSamplesByType(
     plugin.fs,
     folder,
     type,
-    getSampleDisplayMeta(plugin.settings.customSampleTypes).types
+    getSampleDisplayMeta(plugin.settings.customSampleTypes).types,
+    fileOf
   );
 }
 
@@ -880,6 +882,8 @@ export interface ResolvedSampleDefinition {
   scope: 'local' | 'global' | 'catalog';
   folder: string;
   record: SampleRecord;
+  /** The catalog file a `catalog` record was read from (#431). */
+  file?: string;
 }
 
 /**
@@ -906,13 +910,14 @@ export async function resolveSampleDefinition(
   }
 
   if (isCatalogSampleType(type)) {
+    const fileOf: Record<string, string> = {};
     if (localFolder) {
-      const localCat = await loadCatalogSamples(plugin, localFolder, type);
-      if (localCat[id]) return { scope: 'catalog', folder: localFolder, record: localCat[id] };
+      const localCat = await loadCatalogSamples(plugin, localFolder, type, fileOf);
+      if (localCat[id]) return { scope: 'catalog', folder: localFolder, record: localCat[id], file: fileOf[id] };
     }
     if (globalFolder) {
-      const globalCat = await loadCatalogSamples(plugin, globalFolder, type);
-      if (globalCat[id]) return { scope: 'catalog', folder: globalFolder, record: globalCat[id] };
+      const globalCat = await loadCatalogSamples(plugin, globalFolder, type, fileOf);
+      if (globalCat[id]) return { scope: 'catalog', folder: globalFolder, record: globalCat[id], file: fileOf[id] };
     }
   }
 
