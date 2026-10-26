@@ -442,4 +442,63 @@ describe('extractMarkdownTables', () => {
     expect(rows.slice(1)).toEqual([['+/-'], ['-']]);
     expect(tableToCsv(rows)).toBe('점수\n"\t+/-"\n"\t-"\n');
   });
+
+  // #415
+  it('decodes HTML entities and drops <sub>/<sup> tags as the reading view shows them', () => {
+    const md =
+      '| 후보 | OD<sub>600</sub> | 활성 | 비고 |\n|---|---|---|---|\n' +
+      '| ASN-1 | &lt;0.1 | 8.1&nbsp;U | 검출 한계 미만 &amp; 재측정 |\n' +
+      '| ASN-2 | 10<sup>6</sup> | 37&deg;C &#x3BC;L | &#0; `&lt;` &foo; |\n';
+    expect(extractMarkdownTables(md)[0].rows).toEqual([
+      ['후보', 'OD600', '활성', '비고'],
+      ['ASN-1', '<0.1', '8.1 U', '검출 한계 미만 & 재측정'],
+      ['ASN-2', '10^6', '37°C μL', '\uFFFD &lt; &foo;'],
+    ]);
+  });
+
+  // #416: `==12.4==` came out as a formula-guarded "\t==12.4==".
+  it('drops highlight marks before guarding formulas', () => {
+    const rows = extractMarkdownTables('| 활성 | 판정 |\n|---|---|\n| ==12.4== | ==후보 유지== |\n| =A1 | a == b |\n')[0].rows;
+    expect(rows.slice(1)).toEqual([['12.4', '후보 유지'], ['=A1', 'a == b']]);
+    expect(tableToCsv(rows)).toBe('활성,판정\n12.4,후보 유지\n"\t=A1",a == b\n');
+  });
+
+  // #435
+  it('drops footnote numbers and math dollars, and shows links by their text', () => {
+    const md =
+      '| 역가 | 수식 | 원자료 |\n|---|---|---|\n' +
+      '| 455.1 [^t1] | $3.9 \\times 10^{2}$ | [GC 원자료](images/gc_H6.png) |\n' +
+      '| $410$ | $5-$10 | [[gc_H6\\|GC]] ![[plot.png]] |\n';
+    expect(extractMarkdownTables(md)[0].rows.slice(1)).toEqual([
+      ['455.1', '3.9 \\times 10^{2}', 'GC 원자료'],
+      ['410', '$5-$10', 'GC plot.png'],
+    ]);
+  });
+});
+
+// #417
+describe('tables without pipes at the ends of their rows', () => {
+  it('finds a GFM table whose rows have no edge pipes', () => {
+    const md = '시료 | 농도\n--- | ---\nA | 1\nB | 2\n';
+    expect(extractMarkdownTables(md)).toEqual([{ index: 0, rows: [['시료', '농도'], ['A', '1'], ['B', '2']] }]);
+  });
+
+  it('takes no setext heading or a header whose cell count differs for a table', () => {
+    expect(extractMarkdownTables('a | b\n---\n')).toEqual([]);
+    expect(extractMarkdownTables('a | b | c\n--- | ---\n')).toEqual([]);
+    expect(extractMarkdownTables('- a | b\n--- | ---\n')).toEqual([]);
+  });
+
+  it('stops a table at a list item or Method step under it', () => {
+    const md = '| a | b |\n|---|---|\n| 1 | 2 |\n- 메모 a | b\n2. 원심 | 4 °C\n';
+    expect(extractMarkdownTables(md)[0].rows).toEqual([['a', 'b'], ['1', '2']]);
+  });
+
+  it('keeps the numbers and count of tables with edge pipes', () => {
+    const md = '| a |\n|---|\n| 1 |\n\n텍스트\n\n| b |\n|---|\n| 2 |\n';
+    expect(extractMarkdownTables(md).map(t => [t.index, t.rows[0][0]])).toEqual([
+      [0, 'a'],
+      [1, 'b'],
+    ]);
+  });
 });

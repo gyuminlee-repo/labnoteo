@@ -138,6 +138,51 @@ describe('worksheetPrintPages', () => {
       'Spin 300 g with plasmid see doc [img.png]'
     );
   });
+
+  // #418, #436
+  it('prints a code block as written, under its step, and ticks a checked step', () => {
+    const body = worksheetBody(md =>
+      md.replace(
+        '#### Method\n- (method used in this step)',
+        ['#### Method', '1. [x] 프로그램 실행', '```', '1. run --dry', '<b>', '```', '2. [ ] 결과 확인'].join('\n')
+      )
+    );
+    expect(body).toContain('<span class="box done"></span><span class="n">1.</span>');
+    expect(body).toContain('<pre class="code">1. run --dry\n&lt;b&gt;</pre>');
+    expect(body).toContain('<span class="box"></span><span class="n">2.</span><div class="s">결과 확인');
+    expect(body).not.toContain('<span class="n">3.</span>');
+  });
+
+  it('gives a table above the first step no box or number', () => {
+    const body = worksheetBody(md =>
+      md.replace('#### Method\n- (method used in this step)', ['#### Method', '| a |', '| --- |', '| 1 |', '', '1. 시작'].join('\n'))
+    );
+    expect(body).toContain('<li><div class="s"><table class="grid">');
+    expect(body).toContain('<span class="n">1.</span><div class="s">시작');
+  });
+
+  // #434
+  it('shows inline formatting as the reading view does', () => {
+    const body = worksheetBody(md =>
+      md.replace(
+        '#### Results & Discussions\n- (Any results and discussions. Link file path if needed)',
+        '#### Results & Discussions\nOD<sub>600</sub> ~~0.10~~ 0.12 ==확인== 455.1[^1] $3\\,mL$ &lt;0.1 `<sup>x</sup>` \\*a\\* *재측정* sample_id_1'
+      )
+    );
+    expect(body).toContain(
+      '<p>OD<sub>600</sub> <s>0.10</s> 0.12 <mark>확인</mark> 455.1<sup>1</sup> <i>3\\,mL</i> &lt;0.1 &lt;sup&gt;x&lt;/sup&gt; *a* <i>재측정</i> sample_id_1</p>'
+    );
+  });
+
+  it('prints a table cell\'s formatting like the text around it', () => {
+    const body = worksheetBody(md =>
+      md.replace(
+        '#### Equipment\n- (e.g. centrifuge, spectrophotometer, etc.)',
+        '#### Equipment\n| 장비 | 비고 |\n| --- | --- |\n| **원심기** | *4 °C* ~~5 °C~~ |'
+      )
+    );
+    expect(body).toContain('<td>원심기</td><td><i>4 °C</i> <s>5 °C</s></td>');
+  });
 });
 
 describe('sliceIntoPages', () => {

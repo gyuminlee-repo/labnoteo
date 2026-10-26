@@ -15,6 +15,17 @@ import {
   type WorksheetSection,
   type WorksheetUnitOp,
 } from '@labnoteo/core/lib/worksheet';
+import {
+  CODE_SPAN_RE,
+  EM_STAR_RE,
+  EM_UNDERSCORE_RE,
+  ESCAPED_MARK_RE,
+  FOOTNOTE_REF_RE,
+  HIGHLIGHT_RE,
+  MATH_BLOCK_RE,
+  MATH_INLINE_RE,
+  codeSpanText,
+} from '@labnoteo/core/lib/exportTablesCsv';
 import type { WorksheetPaperSize } from '../settings';
 import { buildPrintHtml, escapeHtml, openHtmlInBrowser, printHtml, type PrintPage } from './printPages';
 
@@ -29,7 +40,36 @@ export function plainInline(text: string): string {
     .replace(/`([^`]+)`/g, '$1');
 }
 
-const inline = (text: string): string => escapeHtml(plainInline(text));
+/**
+ * Inline Markdown as the reading view shows it, escaped for HTML (#434): code
+ * and math as written, `<sub>`/`<sup>` and HTML entities kept, struck-through
+ * text struck rather than dropped (a crossed-out value must not read as a
+ * live one), a highlight underlined for black-and-white printing and a
+ * footnote reference as its raised number.
+ */
+const inline = (text: string): string => {
+  const held: string[] = [];
+  const hold = (html: string): string => `\u0000${held.push(html) - 1}\u0000`;
+  let s = text
+    .replace(CODE_SPAN_RE, (_m, _ticks: string, body: string) => hold(escapeHtml(codeSpanText(body))))
+    .replace(MATH_BLOCK_RE, (_m, tex: string) => hold(`<i>${escapeHtml(tex)}</i>`))
+    .replace(MATH_INLINE_RE, (_m, before: string, tex: string) => before + hold(`<i>${escapeHtml(tex)}</i>`))
+    .replace(ESCAPED_MARK_RE, (_m, mark: string) => hold(escapeHtml(mark)))
+    .replace(/<(sub|sup)>([\s\S]*?)<\/\1>/gi, (_m, tag: string, body: string) => {
+      const name = tag.toLowerCase();
+      return `${hold(`<${name}>`)}${body}${hold(`</${name}>`)}`;
+    });
+  s = escapeHtml(plainInline(s))
+    .replace(/&amp;([a-z][a-z\d]*|#\d+|#x[\da-f]+);/gi, '&$1;')
+    .replace(EM_STAR_RE, '$1<i>$2</i>')
+    .replace(EM_UNDERSCORE_RE, '$1<i>$2</i>')
+    .replace(/~~(?=\S)([\s\S]*?\S)~~/g, '<s>$1</s>')
+    .replace(HIGHLIGHT_RE, '<mark>$1</mark>')
+    .replace(FOOTNOTE_REF_RE, '<sup>$1</sup>');
+  return s.replace(/\u0000(\d+)\u0000/g, (_m, i: string) => held[Number(i)]);
+};
+
+const codeHtml = (lines: readonly string[]): string => `<pre class="code">${escapeHtml(lines.join('\n'))}</pre>`;
 
 /** A pipe table as a printed table: on paper its `|` marks would be unreadable (#254). */
 function tableHtml(rows: readonly string[][]): string {
@@ -58,7 +98,12 @@ function blocksHtml(blocks: readonly WorksheetBlock[]): string {
       continue;
     }
     flush();
-    html += block.kind === 'table' ? tableHtml(block.rows) : `<p>${inline(block.text) || '&nbsp;'}</p>`;
+    html +=
+      block.kind === 'table'
+        ? tableHtml(block.rows)
+        : block.kind === 'code'
+          ? codeHtml(block.lines)
+          : `<p>${inline(block.text) || '&nbsp;'}</p>`;
   }
   flush();
   return html;
@@ -92,12 +137,15 @@ function sectionHtml(section: WorksheetSection): string {
       return `<div class="sec">${title}<table class="meta">${rows}</table></div>`;
     }
     case 'steps': {
+      // What precedes the first step gets no box or number, so step 1 is the note's step 1.
+      let n = 0;
       const items = section.steps
-        .map((s, i) => {
+        .map(s => {
           const sub = s.sub.length > 0 ? `<ul class="sub">${s.sub.map(l => `<li>${inline(l)}</li>`).join('')}</ul>` : '';
+          const mark = s.preface ? '' : `<span class="box${s.done ? ' done' : ''}"></span><span class="n">${++n}.</span>`;
           return (
-            `<li><span class="box"></span><span class="n">${i + 1}.</span>` +
-            `<div class="s">${inline(s.text)}${sub}${s.table ? tableHtml(s.table) : ''}</div></li>`
+            `<li>${mark}<div class="s">${inline(s.text)}${sub}${s.table ? tableHtml(s.table) : ''}` +
+            `${(s.code ?? []).map(codeHtml).join('')}</div></li>`
           );
         })
         .join('');

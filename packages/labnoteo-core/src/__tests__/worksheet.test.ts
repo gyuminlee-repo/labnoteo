@@ -164,6 +164,35 @@ describe('listWorksheetUnitOps', () => {
     });
   });
 
+  // #418: `1.` lines in a code block were read as steps; #436: a ticked step printed an empty box.
+  it('keeps a code block with the step above it, a footnote under its step, and marks ticked steps', () => {
+    const md = buildNote([hw('UHW010')]).replace(
+      '#### Method\n- (method used in this step)',
+      ['#### Method', '- [x] 준비', '```bash', '1. echo a', '', '2. echo b', '```', '- [ ] 측정 [^1]', '[^1]: 장비 A'].join('\n')
+    );
+    expect(listWorksheetUnitOps(md)[0].sections.find(s => s.title === 'Method')).toEqual({
+      type: 'steps',
+      title: 'Method',
+      steps: [
+        { text: '준비', sub: [], done: true, code: [['1. echo a', '', '2. echo b']] },
+        { text: '측정 [^1]', sub: ['[^1]: 장비 A'] },
+      ],
+    });
+  });
+
+  // #417
+  it('reads a table without pipes at the ends of its rows', () => {
+    const md = buildNote([hw('UHW010')]).replace(
+      '#### Equipment\n- (e.g. centrifuge, spectrophotometer, etc.)',
+      '#### Equipment\n장비 | 설정\n--- | ---\n원심기 | 4 °C'
+    );
+    expect(listWorksheetUnitOps(md)[0].sections.find(s => s.title === 'Equipment')).toEqual({
+      type: 'text',
+      title: 'Equipment',
+      blocks: [{ kind: 'table', rows: [['장비', '설정'], ['원심기', '4 °C']] }],
+    });
+  });
+
   it('skips the Worksheet scans section', () => {
     const md = buildNote([hw('UHW010')]).replace(
       '#### Results & Discussions',
