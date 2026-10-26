@@ -72,6 +72,7 @@ function fakeVault(notes: Record<string, string>) {
     },
     metadataCache: {
       getFileCache: (f: TFile) => ({ frontmatter: { labnote_id: readNoteId(text.get(f.path) ?? '') } }),
+      getFirstLinkpathDest: (link: string) => fileAt(link),
     },
     fileManager: {
       generateMarkdownLink: (f: TFile, _source: string, _subpath?: string, alias?: string) =>
@@ -271,6 +272,37 @@ describe('ScanPipeline.run', () => {
     const [next] = await s.pipeline.run([input('new.jpg')]);
     expect(next.previous).toEqual([{ hash: 'aaaaaaaaaaaa', embed: `![[${old.imagePath}]]` }]);
     expect(listFiledScans(s.text.get(NOTE)!)).toHaveLength(2);
+  });
+
+  // #432: an entry whose image was deleted does not make the scan a duplicate.
+  it('files a scan again in place of the entry whose image was deleted', async () => {
+    const same = page(pagePayload(), 'aaaaaaaaaaaa');
+    const s = setup({ [NOTE]: note }, { 'a.jpg': [same] });
+    const [first] = await s.pipeline.run([input('a.jpg')]);
+    s.binary.delete(first.imagePath!);
+    const [again] = await s.pipeline.run([input('a.jpg')]);
+    expect(again).toMatchObject({ status: 'filed', replacedMissing: true, previous: [] });
+    expect(again.imagePath).toBe(first.imagePath);
+    const filed = listFiledScans(s.text.get(NOTE)!);
+    expect(filed.map(f => f.hash)).toEqual(['aaaaaaaaaaaa']);
+    expect(s.binary.has(again.imagePath!)).toBe(true);
+  });
+
+  // #433: a new image must not take the name an earlier entry still links.
+  it('keeps the new image when the earlier scan of the page lost its own', async () => {
+    const s = setup(
+      { [NOTE]: note },
+      { 'old.jpg': [page(pagePayload(), 'aaaaaaaaaaaa')], 'new.jpg': [page(pagePayload(), 'bbbbbbbbbbbb')] }
+    );
+    const [old] = await s.pipeline.run([input('old.jpg')]);
+    s.binary.delete(old.imagePath!);
+    const [next] = await s.pipeline.run([input('new.jpg')]);
+    expect(next.imagePath).not.toBe(old.imagePath);
+    expect(next.imagePath).toMatch(/_2\.jpg$/);
+    expect(await s.pipeline.removePrevious(next)).toBe(1);
+    expect(s.binary.has(next.imagePath!)).toBe(true);
+    expect(s.trashed).toEqual([]);
+    expect(listFiledScans(s.text.get(NOTE)!).map(f => f.hash)).toEqual(['bbbbbbbbbbbb']);
   });
 
   it('undoes a filed scan: removes its lines and trashes its image', async () => {

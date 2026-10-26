@@ -66,10 +66,21 @@ async function ensureFolder(app: App, folder: string): Promise<void> {
 }
 
 /** Write `bytes` as `folder/name` (renamed when taken) and return the file. */
-export async function saveBinary(app: App, folder: string, name: string, bytes: ArrayBuffer): Promise<TFile> {
+export async function saveBinary(
+  app: App,
+  folder: string,
+  name: string,
+  bytes: ArrayBuffer,
+  avoid?: ReadonlySet<string>
+): Promise<TFile> {
   const dir = normalizePath(folder);
   await ensureFolder(app, dir);
-  const finalName = freeName(name, candidate => app.vault.getAbstractFileByPath(posix.join(dir, candidate)) !== null);
+  // `avoid`: lower-case names still linked from a note though their file is gone.
+  const finalName = freeName(
+    name,
+    candidate =>
+      app.vault.getAbstractFileByPath(posix.join(dir, candidate)) !== null || !!avoid?.has(candidate.toLowerCase())
+  );
   return app.vault.createBinary(posix.join(dir, finalName), bytes);
 }
 

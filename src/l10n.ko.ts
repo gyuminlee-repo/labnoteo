@@ -990,6 +990,8 @@ const obsidianKo: Record<string, string> = {
   '{0} unsupported': '{0}개 지원하지 않는 형식',
   'nothing to do': '처리할 것 없음',
   'Filed in {0}': '{0}에 붙였습니다',
+  'The note already had this scan, but its image was deleted, so it was filed again in its place.':
+    '노트에 이 스캔의 기록은 있었지만 이미지가 삭제되어 있어, 그 자리에 다시 붙였습니다.',
   'Already in {0}; skipped': '{0}에 이미 있어 건너뛰었습니다',
   'Blank page; skipped': '빈 페이지라 건너뛰었습니다',
   'No worksheet QR code; left alone': '기록지 QR 코드가 없어 그대로 두었습니다',
