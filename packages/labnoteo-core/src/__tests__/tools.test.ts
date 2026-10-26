@@ -1089,5 +1089,8 @@ describe('sample lookup across experiments (#169)', () => {
     );
     const byType = await tool('search_samples').handler(ctx, { query: 'pet', type: 'DNA' });
     expect((byType.data as { matches: unknown[] }).matches).toHaveLength(1);
+    // #390: `_` as a note writes it matches the `-` of the registry.
+    const written = await tool('search_samples').handler(ctx, { query: 'box_2' });
+    expect((written.data as { matches: unknown[] }).matches).toEqual(data.matches);
   });
 });

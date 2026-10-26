@@ -51,13 +51,21 @@ class PickModal<T> extends SuggestModal<PickItem<T>> {
     app: App,
     private readonly items: PickItem<T>[],
     private readonly resolve: (value: T | undefined) => void,
-    opts?: { title?: string; placeholder?: string }
+    private readonly opts?: { title?: string; placeholder?: string; initialQuery?: string }
   ) {
     super(app);
     if (opts?.placeholder) this.setPlaceholder(opts.placeholder);
     // A SuggestModal has no title bar; without this the picker never says
     // what is being chosen or for which note (#141).
     if (opts?.title) this.modalEl.prepend(createDiv({ cls: 'labnote-pick-title', text: opts.title }));
+  }
+
+  onOpen(): void {
+    super.onOpen();
+    // What was typed before the picker opened is searched at once (#388).
+    if (!this.opts?.initialQuery) return;
+    this.inputEl.value = this.opts.initialQuery;
+    this.inputEl.dispatchEvent(new Event('input'));
   }
 
   getSuggestions(query: string): PickItem<T>[] {
@@ -96,7 +104,7 @@ class PickModal<T> extends SuggestModal<PickItem<T>> {
 export function pickModal<T>(
   app: App,
   items: PickItem<T>[],
-  opts?: { title?: string; placeholder?: string }
+  opts?: { title?: string; placeholder?: string; initialQuery?: string }
 ): Promise<T | undefined> {
   return new Promise(resolve => new PickModal(app, items, resolve, opts).open());
 }

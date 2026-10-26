@@ -13,7 +13,7 @@ import {
   type WorkflowItem,
   type UnitOperationItem,
 } from '../lib/workflowDataLoader';
-import { sampleTypeColors } from '../lib/sampleUtils';
+import { compareSamples, normalizeSampleSearch, sampleTypeColors } from '../lib/sampleUtils';
 import { EXPERIMENT_STATUSES } from '../lib/experimentStatus';
 import * as path from '../util/posixPath';
 
@@ -477,7 +477,9 @@ async function buildScopeNode(
   const typeNodes: TreeNode[] = [];
   for (const type of types) {
     const records = skipRead ? {} : await loadSamplesByType(fs, folder, type);
-    const ids = Object.keys(records);
+    const ids = Object.keys(records).sort((a, b) =>
+      compareSamples({ id: a, alias: records[a].alias }, { id: b, alias: records[b].alias })
+    );
     const sampleNodes: TreeNode[] = ids.map(id => {
       const rec = records[id];
       const name = rec.alias ? `${id} | ${rec.alias}` : id;
@@ -546,19 +548,14 @@ export async function buildSampleTree(
   ];
 }
 
-/** True when a `sample` node matches a lower-cased free-text query. */
-function sampleMatchesQuery(node: TreeNode, lowerQuery: string): boolean {
+/** True when a `sample` node matches a query made by {@link normalizeSampleSearch}. */
+function sampleMatchesQuery(node: TreeNode, query: string): boolean {
   const payload = node.payload as { id?: string; record?: SampleRecord } | undefined;
   const rec = payload?.record;
-  const haystack = [
-    payload?.id ?? '',
-    rec?.alias ?? '',
-    rec?.descriptions?.[0] ?? '',
-    rec?.location ?? '',
-  ]
+  return [payload?.id ?? '', rec?.alias ?? '', rec?.descriptions?.[0] ?? '', rec?.location ?? '']
+    .map(normalizeSampleSearch)
     .join('\u0000')
-    .toLowerCase();
-  return haystack.includes(lowerQuery);
+    .includes(query);
 }
 
 /**
@@ -570,8 +567,8 @@ function sampleMatchesQuery(node: TreeNode, lowerQuery: string): boolean {
  * input unchanged (reference-equal), so callers can skip re-rendering work.
  */
 export function filterSampleTree(nodes: TreeNode[], query: string): TreeNode[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return nodes;
+  if (!query.trim()) return nodes;
+  const q = normalizeSampleSearch(query.trim());
   return nodes.map(root => {
     const typeNodes = (root.children ?? []).flatMap(typeNode => {
       const matches = (typeNode.children ?? []).filter(

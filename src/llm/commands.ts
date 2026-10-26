@@ -708,7 +708,15 @@ export function parseJsonArray(raw: string): ExtractedSample[] {
 
 /** {@link prepareExtractedSamples} output: what to create, and what was fixed. */
 export interface PreparedSamples {
-  samples: Array<{ type: string; id?: string; alias?: string; description?: string; location?: string }>;
+  samples: Array<{
+    type: string;
+    id?: string;
+    alias?: string;
+    description?: string;
+    location?: string;
+    /** The name as the note wrote it, when the alias rules changed it (#390). Not passed to the tool. */
+    originalAlias?: string;
+  }>;
   /** Samples whose model-given id broke the `<Type>-<number>` rule and gets a new one. */
   regenerated: number;
   /** Samples dropped because their type is not a known sample type. */
@@ -735,15 +743,20 @@ export function prepareExtractedSamples(
     }
     const rawId = typeof s.id === 'string' && s.id.trim() ? s.id.trim() : undefined;
     const id = rawId === undefined ? undefined : normalizeSampleId(type, rawId);
-    const alias = typeof s.alias === 'string' && s.alias.trim() ? toAlias(s.alias) : undefined;
+    const rawAlias = typeof s.alias === 'string' && s.alias.trim() ? s.alias.trim() : undefined;
+    const alias = rawAlias === undefined ? undefined : toAlias(rawAlias);
     const description = typeof s.description === 'string' ? s.description.replace(/;/g, ',') : undefined;
     // Free text in the registry, so it goes in as written (#190).
     const location = typeof s.location === 'string' && s.location.trim() ? s.location.trim() : undefined;
+    const renamed = (from: string | undefined, to: string | undefined) =>
+      from !== undefined && to !== undefined && from !== to ? { originalAlias: from } : {};
     if (rawId !== undefined && !id) {
       out.regenerated++;
-      out.samples.push({ type, alias: alias ?? toAlias(rawId), description, location });
+      const fromId = alias === undefined;
+      const kept = alias ?? toAlias(rawId);
+      out.samples.push({ type, alias: kept, description, location, ...renamed(fromId ? rawId : rawAlias, kept) });
     } else {
-      out.samples.push({ type, id, alias, description, location });
+      out.samples.push({ type, id, alias, description, location, ...renamed(rawAlias, alias) });
     }
   }
   return out;
@@ -870,12 +883,14 @@ export async function extractSamplesCommand(plugin: LabnotePlugin): Promise<void
   let created = 0;
   let noLocation = 0;
   let inGlobal = false;
-  for (const s of fresh) {
+  const renamed: string[] = [];
+  for (const { originalAlias, ...s } of fresh) {
     const res = await runTool(tools, 'create_sample', ctx, { ...s, documentPath: target.path });
     if (res.ok) {
       created++;
       if (!s.location) noLocation++;
       if ((res.data as { scope?: string } | undefined)?.scope === 'global') inGlobal = true;
+      if (originalAlias !== undefined) renamed.push(`${originalAlias} → ${s.alias}`);
     }
   }
   const parts = [
@@ -895,7 +910,17 @@ export async function extractSamplesCommand(plugin: LabnotePlugin): Promise<void
   if (inGlobal) {
     parts.push(plugin.t('This note is outside an experiment folder, so they were added to Global samples.'));
   }
-  new Notice(parts.join(' '));
+  if (renamed.length > 0) {
+    // The note keeps the name as written; say what it is registered as (#390).
+    const shown = renamed.slice(0, 5).join(', ');
+    parts.push(
+      plugin.t(
+        'Aliases changed to fit the alias rules (_ : ; # * become - or go): {0}',
+        renamed.length > 5 ? plugin.t('{0} (+{1} more)', shown, String(renamed.length - 5)) : shown
+      )
+    );
+  }
+  new Notice(parts.join(' '), renamed.length > 0 ? 15000 : undefined);
 }
 
 /**

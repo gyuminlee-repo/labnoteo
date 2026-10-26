@@ -490,9 +490,11 @@ const obsidianKo: Record<string, string> = {
   'Changed {0} to {1}.': '{0}을(를) {1}(으)로 바꿨습니다.',
   'Ctrl+Z only reverts the note, not the sample record. To undo, change the type again.':
     'Ctrl+Z로는 노트만 되돌아가고 샘플 기록은 그대로입니다. 되돌리려면 타입 변경을 다시 하세요.',
-  'Sample tracking is off for this note.': '이 노트는 샘플 추적이 꺼져 있습니다.',
+  "Sample tracking is off for this experiment: its README sets sample_tracking: 'no'.":
+    "이 실험은 샘플 추적이 꺼져 있습니다. README 머리말이 sample_tracking: 'no'입니다.",
+  'Sample tracking is turned off in {0}.': '{0}에서 샘플 추적이 꺼져 있습니다.',
   'No samples are registered yet.': '아직 등록된 샘플이 없습니다.',
-  'Search by ID or alias': 'ID나 별칭으로 검색',
+  'Search by ID, alias or location': 'ID, 별칭, 보관 위치로 검색',
   'Open a note to insert into.': '삽입할 노트를 여세요.',
   'This note was in reading view, so it was switched to editing view to make the change.':
     '읽기 화면이던 노트를 편집 화면으로 바꿔서 고쳤습니다.',
@@ -601,6 +603,8 @@ const obsidianKo: Record<string, string> = {
   'To keep it for those notes but show it as used up, mark it discarded instead.':
     '그 노트를 위해 기록은 남기고 다 쓴 시료로 보이게 하려면 대신 폐기로 표시하세요.',
   '{0} (+{1} more)': '{0} 외 {1}개',
+  'Aliases changed to fit the alias rules (_ : ; # * become - or go): {0}':
+    '별칭 규칙에 맞게 바꾼 이름(_ : ;는 -로, # *는 지움): {0}',
   '{0} is used in notes outside this experiment ({1}). Those notes will no longer find it after the move. Move anyway?':
     '{0}은(는) 이 실험 밖의 노트에서 쓰이고 있습니다({1}). 옮기면 그 노트에서는 이 시료를 찾지 못합니다. 그래도 옮길까요?',
   'Move anyway': '그래도 옮기기',

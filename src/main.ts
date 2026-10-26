@@ -782,7 +782,13 @@ export default class LabnotePlugin extends Plugin {
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
     const path = view?.file?.path ?? this.app.workspace.getActiveFile()?.path;
     if (!this.sampleTrackingFor(path)) {
-      new Notice(this.t('Sample tracking is off for this note.'));
+      // Name the cause: the setting, or this experiment's README (#407).
+      const where = [this.t('Settings'), 'Labnote Assistant', this.t('Samples'), this.t('Sample tracking')].join(' → ');
+      new Notice(
+        this.settings.sampleTracking
+          ? this.t("Sample tracking is off for this experiment: its README sets sample_tracking: 'no'.")
+          : this.t('Sample tracking is turned off in {0}.', where)
+      );
       return;
     }
     const types = getSampleDisplayMeta(this.settings.customSampleTypes).types;
@@ -802,7 +808,7 @@ export default class LabnotePlugin extends Plugin {
     }
     const chosen = await pickModal(this.app, items, {
       title: this.t('Open sample definition'),
-      placeholder: this.t('Search by ID or alias'),
+      placeholder: this.t('Search by ID, alias or location'),
     });
     if (!chosen) return;
     await openSampleDefinition(this.app, this, { ...chosen, docPath: path ?? '' });

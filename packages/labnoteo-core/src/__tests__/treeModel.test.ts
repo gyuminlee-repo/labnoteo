@@ -166,6 +166,34 @@ describe('buildSampleTree', () => {
   });
 });
 
+// #410: WTR-1, WTR-2, WTR-10 came out in creation (ID) order.
+describe('sample order', () => {
+  it('lists aliased samples by alias, numbers by size, then the rest by ID', async () => {
+    const fs = new MemFileSystem();
+    const rec = (alias: string | null) => ({ type: 'DNA', alias, descriptions: [], sources: [] });
+    await fs.write(
+      '/g/DNA.json',
+      JSON.stringify({
+        'DNA-1': rec('WTR-10'),
+        'DNA-2': rec(null),
+        'DNA-3': rec('wtr-2'),
+        'DNA-10': rec('WTR-1'),
+        'DNA-4': rec(null),
+        'DNA-5': rec('WTR-2'),
+      })
+    );
+    const [, global] = await buildSampleTree(fs, { local: '/g', global: '/g' }, ['DNA']);
+    expect(global.children![0].children!.map(s => s.label)).toEqual([
+      'DNA-10 | WTR-1',
+      'DNA-3 | wtr-2',
+      'DNA-5 | WTR-2',
+      'DNA-1 | WTR-10',
+      'DNA-2',
+      'DNA-4',
+    ]);
+  });
+});
+
 describe('filterSampleTree', () => {
   async function tree() {
     const fs = new MemFileSystem();
@@ -197,6 +225,9 @@ describe('filterSampleTree', () => {
 
     const byLocation = filterSampleTree(nodes, 'box-3');
     expect(byLocation[0].children![0].children!.map(s => s.label)).toEqual(['DNA-2 | vectorB']);
+    // #390: `_` and `-` alike.
+    expect(filterSampleTree(nodes, 'Box_3')[0].children![0].children!.map(s => s.label)).toEqual(['DNA-2 | vectorB']);
+    expect(filterSampleTree(nodes, '#')[0].children).toEqual([]);
 
     const byId = filterSampleTree(nodes, 'dna-1');
     expect(byId[0].children![0].children!.map(s => s.label)).toEqual(['DNA-1 | plasmidA']);

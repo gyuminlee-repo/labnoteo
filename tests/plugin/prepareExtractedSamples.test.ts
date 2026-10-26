@@ -40,9 +40,10 @@ describe('prepareExtractedSamples', () => {
       ],
       TYPES
     );
+    // #390: what the note wrote is kept to say what changed.
     expect(out.samples).toEqual([
-      { type: 'DNA', id: 'DNA-1', alias: 'EXT-01-여름', description: '여름 추출, 2차' },
-      { type: 'DNA', alias: 'ratio-1', description: '희석 1:10' },
+      { type: 'DNA', id: 'DNA-1', alias: 'EXT-01-여름', description: '여름 추출, 2차', originalAlias: 'EXT-01;여름' },
+      { type: 'DNA', alias: 'ratio-1', description: '희석 1:10', originalAlias: 'ratio:1' },
     ]);
   });
 
@@ -60,6 +61,7 @@ describe('prepareExtractedSamples', () => {
   it('turns _ into -, as create_sample refuses it (#225)', () => {
     const out = prepareExtractedSamples([{ type: 'DNA', id: 'DNA-1', alias: '대장균_형질전환' }], TYPES);
     expect(out.samples[0].alias).toBe('대장균-형질전환');
+    expect(out.samples[0].originalAlias).toBe('대장균_형질전환');
   });
 
   it('skips unknown types and accepts custom ones', () => {

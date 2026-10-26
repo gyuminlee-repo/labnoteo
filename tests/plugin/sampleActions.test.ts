@@ -533,6 +533,9 @@ describe('editSampleInteractive alias rewrite', () => {
     expect(await deleteSampleInteractive(app, p, { folder: FOLDER, type: 'RNA', id: 'RNA-1' })).toBe(true);
 
     expect(vi.mocked(confirmModal).mock.calls[0][1]).toContain('RNA-1 is only listed in the sample list tables');
+    // #391: what is deleted, beyond its ID.
+    expect(vi.mocked(confirmModal).mock.calls[0][1]).toContain('Alias: si KIF\nDescription: kd\nScope: Local');
+    expect(Notice.shown.at(-1)).toBe('Sample deleted: RNA-1;si KIF');
     expect(JSON.parse(await fs.read(`${FOLDER}/RNA.json`))).not.toHaveProperty('RNA-1');
     expect(await fs.read(`${A}/README.labnote.md`)).not.toContain('RNA-1');
     expect(await fs.read(`${A}/README.labnote.md`)).toContain('| RNA-2 | other |');
@@ -691,7 +694,7 @@ describe('listSampleDefinitions', () => {
   beforeEach(async () => {
     await fs.write(
       REGISTRY,
-      JSON.stringify({ 'RNA-1': { type: 'RNA', alias: 'siKIF', descriptions: ['kd'], sources: [] } })
+      JSON.stringify({ 'RNA-1': { type: 'RNA', alias: 'siKIF', descriptions: ['kd'], sources: [], location: 'Freezer-2' } })
     );
     await fs.write(
       `${GLOBAL}/DNA.json`,
@@ -704,6 +707,9 @@ describe('listSampleDefinitions', () => {
 
     expect(items.map(i => i.label)).toEqual(['RNA-1 | siKIF | Local RNA sample', 'DNA-2 | - | Global DNA sample']);
     expect(items[0].detail).toBe('kd');
+    // #386: the location is searched ahead of the description.
+    expect(items[0].description).toBe('Freezer-2');
+    expect(items[1].description).toBeUndefined();
     expect(items[0].value).toMatchObject({ type: 'RNA', id: 'RNA-1', resolved: { scope: 'local', folder: FOLDER } });
   });
 

@@ -150,6 +150,16 @@ describe('buildSampleCompletionEntries', () => {
     });
   });
 
+  // #390: a name written with `_` in a note finds the alias registered with `-`.
+  it('matches _ and - alike, both ways', () => {
+    const records = { DNA: [{ id: 'DNA-1', alias: 'pX330-lacZ' }, { id: 'DNA-2', alias: 'old_name' }] };
+    const ids = (typed: string) =>
+      buildSampleCompletionEntries(parseSampleTrigger(`@dna;${typed}`, TYPES)!, records).map(e => e.id);
+    expect(ids('px330_lacz')).toEqual(['DNA-1']);
+    expect(ids('old-name')).toEqual(['DNA-2']);
+    expect(ids('old_name')).toEqual(['DNA-2']);
+  });
+
   it('filters by the (case-insensitive) search term against the label', () => {
     const trigger = parseSampleTrigger('@dna:plasmid', TYPES)!;
     const entries = buildSampleCompletionEntries(trigger, {

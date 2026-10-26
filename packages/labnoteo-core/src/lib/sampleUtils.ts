@@ -294,6 +294,34 @@ export function toSampleAlias(name: string): string | undefined {
   );
 }
 
+const SAMPLE_COLLATOR = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
+
+/**
+ * The order samples are listed in (#410): those with an alias first, by alias
+ * with numbers compared by size (`WTR-2` before `WTR-10`), then those without
+ * one by ID; equal aliases go by ID.
+ */
+export function compareSamples(
+  a: { id: string; alias?: string | null },
+  b: { id: string; alias?: string | null }
+): number {
+  const x = a.alias?.trim() ?? '';
+  const y = b.alias?.trim() ?? '';
+  if (x && !y) return -1;
+  if (!x && y) return 1;
+  return (x && y ? SAMPLE_COLLATOR.compare(x, y) : 0) || SAMPLE_COLLATOR.compare(a.id, b.id);
+}
+
+/**
+ * `s` for a sample search (#390): lowercased, with the characters the alias
+ * rules replace or drop treated the same way, so `pX330_lacZ` as written in a
+ * note finds the sample registered as `pX330-lacZ`. Apply it to both the query
+ * and what it is compared with.
+ */
+export function normalizeSampleSearch(s: string): string {
+  return (toSampleAlias(s) ?? s).toLowerCase();
+}
+
 /** Whether a description holds `;`, which ends it in a note (#98). */
 export function hasSampleDescriptionSeparator(description: string): boolean {
   return description.includes(';');

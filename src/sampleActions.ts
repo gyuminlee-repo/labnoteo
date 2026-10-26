@@ -22,6 +22,7 @@ import {
   planSampleListRowUpdate,
   planSampleListRowRemoval,
   maskSampleListTables,
+  compareSamples,
 } from '@labnoteo/core/lib/sampleUtils';
 import {
   loadSamplesByType,
@@ -195,14 +196,24 @@ export async function insertExperimentSamplesTable(app: App, plugin: LabnotePlug
     const localDb = await loadSamplesByType(plugin.fs, local, type);
     remember(localDb);
     if (isCatalogSampleType(type)) remember(await loadCatalogSamples(plugin, local, type));
-    for (const [id, rec] of Object.entries(localDb)) rows.push(sampleListRow(plugin, id, rec, 'local'));
-    if (!globalFolder) continue;
-    const globalDb = await loadSamplesByType(plugin.fs, globalFolder, type);
-    remember(globalDb);
-    if (isCatalogSampleType(type)) remember(await loadCatalogSamples(plugin, globalFolder, type));
-    for (const [id, rec] of Object.entries(globalDb)) {
-      if (!localDb[id] && used.has(`${type}\u0000${id}`)) rows.push(sampleListRow(plugin, id, rec, 'global'));
+    const listed: Array<{ id: string; rec: SampleRecord; scope: SampleScope }> = Object.entries(localDb).map(
+      ([id, rec]) => ({ id, rec, scope: 'local' })
+    );
+    if (globalFolder) {
+      const globalDb = await loadSamplesByType(plugin.fs, globalFolder, type);
+      remember(globalDb);
+      if (isCatalogSampleType(type)) remember(await loadCatalogSamples(plugin, globalFolder, type));
+      for (const [id, rec] of Object.entries(globalDb)) {
+        if (!localDb[id] && used.has(`${type}\u0000${id}`)) listed.push({ id, rec, scope: 'global' });
+      }
     }
+    // By alias within each type, as the sample view lists them (#410).
+    listed.sort(
+      (a, b) =>
+        compareSamples({ id: a.id, alias: a.rec.alias }, { id: b.id, alias: b.rec.alias }) ||
+        (a.scope === b.scope ? 0 : a.scope === 'local' ? -1 : 1)
+    );
+    for (const { id, rec, scope } of listed) rows.push(sampleListRow(plugin, id, rec, scope));
   }
   const unregistered = unregisteredReferences(references, known);
   const leftOut =
@@ -663,9 +674,9 @@ async function findRegisteredSample(
 export async function pickCatalogReference(
   app: App,
   plugin: LabnotePlugin,
-  opts: { type: string; docPath: string }
+  opts: { type: string; docPath: string; initialQuery?: string }
 ): Promise<string | undefined> {
-  const { type, docPath } = opts;
+  const { type, docPath, initialQuery } = opts;
   const localFolder = noteLabsamplesFolder(docPath, plugin.settings.globalSampleFolder);
   const globalFolder = plugin.settings.globalSampleFolder;
 
@@ -696,6 +707,7 @@ export async function pickCatalogReference(
       folder: localFolder,
       mode: 'generate',
       scope: 'local',
+      initial: initialQuery,
     });
     return created?.referenceText;
   }
@@ -703,6 +715,7 @@ export async function pickCatalogReference(
   const chosen = await pickModal(app, items, {
     title: plugin.t('Search {0} catalog', type),
     placeholder: plugin.t('Search catalog'),
+    initialQuery,
   });
   if (chosen === undefined) return undefined;
   return buildSampleReferenceText(chosen, merged[chosen]?.alias);
@@ -907,10 +920,15 @@ export async function listSampleDefinitions(
   for (const { scope, folder } of scopes) {
     for (const type of types) {
       const records = await loadSamplesByType(plugin.fs, folder, type);
-      for (const [id, record] of Object.entries(records)) {
+      const ids = Object.keys(records).sort((a, b) =>
+        compareSamples({ id: a, alias: records[a].alias }, { id: b, alias: records[b].alias })
+      );
+      for (const [id, record] of ids.map(id => [id, records[id]] as const)) {
         const where = scope === 'local' ? plugin.t('Local {0} sample', type) : plugin.t('Global {0} sample', type);
         items.push({
           label: [id, record.alias ?? '-', where].join(' | '),
+          // Searched ahead of the description (#386).
+          description: record.location ?? undefined,
           detail: record.descriptions?.[0],
           value: { type, id, resolved: { scope, folder, record } },
         });
@@ -1187,9 +1205,22 @@ ${plugin.t('To keep it for those notes but show it as used up, mark it discarded
             ? plugin.t('{0} (+{1} more)', listedIn.slice(0, 3).join(', '), String(listedIn.length - 3))
             : listedIn.join(', ')
         );
+  // Similar samples differ by these, not by their long IDs (#391).
+  const record = (await loadSamplesByType(plugin.fs, folder, type))[id];
+  const scope = isSameSampleFolder(folder, plugin.settings.globalSampleFolder) ? plugin.t('Global') : plugin.t('Local');
+  const facts = [
+    [plugin.t('Alias'), record?.alias],
+    [plugin.t('Description'), record?.descriptions?.[0]],
+    [plugin.t('Location'), record?.location],
+    [plugin.t('Scope'), scope],
+    [plugin.t('Discarded'), record?.discarded],
+  ]
+    .filter(([, v]) => v?.trim())
+    .map(([k, v]) => `${k}: ${v}`)
+    .join('\n');
   const ok = await confirmModal(
     app,
-    [plugin.t('Are you sure you want to delete {0}?', id), listed].filter(Boolean).join('\n\n'),
+    [plugin.t('Are you sure you want to delete {0}?', id), facts, listed].filter(Boolean).join('\n\n'),
     plugin.t('Delete'),
     { destructive: true }
   );
@@ -1199,7 +1230,7 @@ ${plugin.t('To keep it for those notes but show it as used up, mark it discarded
   if (listedIn.length > 0) await removeSampleListRows(app, plugin, { folder, type, id });
   await deleteSampleRecord(plugin.fs, folder, type, id);
   plugin.refreshSampleViews();
-  new Notice(plugin.t('Sample deleted: {0}', id));
+  new Notice(plugin.t('Sample deleted: {0}', buildSampleReferenceText(id, record?.alias)));
   return true;
 }
 

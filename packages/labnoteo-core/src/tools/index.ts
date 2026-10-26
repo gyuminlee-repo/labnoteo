@@ -31,6 +31,7 @@ import {
   getSampleDisplayMeta,
   sampleAliasProblem,
   hasSampleDescriptionSeparator,
+  normalizeSampleSearch,
 } from '../lib/sampleUtils';
 import { getExperimentDir } from '../lib/labnoteStructure';
 import {
@@ -746,7 +747,7 @@ export function createLabnoteTools(): ToolDef[] {
       name: 'search_samples',
       mutates: false,
       description:
-        'Search the samples of every type in the global labsamples folder and every experiment\'s local one for `query` in the id, alias, storage location or descriptions (case-insensitive). Each match gives its type, `scope` (local/global), `experiment` folder for a local sample and `discarded` date if it was marked discarded. Use it when you do not know the type or which experiment holds a sample.',
+        'Search the samples of every type in the global labsamples folder and every experiment\'s local one for `query` in the id, alias, storage location or descriptions (case-insensitive; `_`, `:` and `;` match `-`, and `#`, `*`, `[[`, `]]` are ignored, as in aliases, so a name written `lacZ_F1` in a note finds the alias `lacZ-F1`). Each match gives its type, `scope` (local/global), `experiment` folder for a local sample and `discarded` date if it was marked discarded. Use it when you do not know the type or which experiment holds a sample.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -756,8 +757,9 @@ export function createLabnoteTools(): ToolDef[] {
         required: ['query'],
       },
       async handler(ctx, args) {
-        const query = str(args, 'query')?.trim().toLowerCase();
-        if (!query) return { ok: false, error: 'query is required' };
+        const raw = str(args, 'query')?.trim();
+        if (!raw) return { ok: false, error: 'query is required' };
+        const query = normalizeSampleSearch(raw);
         const rawType = str(args, 'type');
         let types = getSampleDisplayMeta(ctx.customTypes).types;
         if (rawType) {
@@ -772,7 +774,7 @@ export function createLabnoteTools(): ToolDef[] {
           for (const type of types) {
             for (const [id, rec] of Object.entries(await loadSamplesByType(ctx.fs, folder, type))) {
               const haystack = [id, rec.alias ?? '', rec.location ?? '', ...(rec.descriptions ?? [])];
-              if (!haystack.some(h => h.toLowerCase().includes(query))) continue;
+              if (!haystack.some(h => normalizeSampleSearch(h).includes(query))) continue;
               if (matches.length >= SEARCH_SAMPLES_LIMIT) {
                 truncated = true;
                 continue;
