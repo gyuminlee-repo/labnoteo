@@ -361,8 +361,8 @@ const obsidianKo: Record<string, string> = {
     '{0}이(가) 새 버전과 다릅니다. 설치 뒤에 직접 고친 내용이 있다면 바꿀 때 사라집니다. 새 버전으로 바꿀까요?',
   'From then on, updates change only the marked block and keep what you write below it.':
     '이번에 바꾸면 다음부터는 업데이트가 표시된 블록만 바꾸고, 그 아래 적은 내용은 그대로 둡니다.',
-  'With the current setting, a pasted image is saved at the top of the vault. Save them in an images folder next to the note instead (for a lab note, the experiment\'s images folder)? This changes Settings → Files and links → Default location for new attachments to "./images".':
-    '지금 설정에서는 붙여넣은 이미지가 보관함 맨 위에 저장됩니다. 노트 옆 images 폴더(랩노트라면 실험의 images 폴더)에 저장하도록 바꿀까요? 설정 → 파일 및 링크 → 새 첨부 파일의 기본 위치를 "./images"로 바꿉니다.',
+  'With the current setting, a pasted image is saved at the top of the vault. Save them in an images folder next to the note instead (for a lab note, the experiment\'s images folder)? This sets Settings → Files and links → "Default location for new attachments" to "In subfolder under current folder", with "Subfolder name" images.':
+    '지금 설정에서는 붙여넣은 이미지가 보관함 맨 위에 저장됩니다. 노트 옆 images 폴더(랩노트라면 실험의 images 폴더)에 저장하도록 바꿀까요? 설정 → 파일 및 링크 → \'새 첨부 파일을 생성할 위치\'를 \'현재 폴더의 하위 폴더\'로, \'하위 폴더 이름\'을 images로 바꿉니다.',
   'Use ./images': './images 쓰기',
   'New attachments now go to the images folder next to each note.':
     '이제 새 첨부 파일은 각 노트 옆 images 폴더에 저장됩니다.',
@@ -373,6 +373,8 @@ const obsidianKo: Record<string, string> = {
   'Kept the previous {0} as {1}.': '바꾸기 전의 {0} 파일은 {1}로 남겼습니다.',
   'Research automation set up ({0} written, {1} merged, {2} skipped, {3} removed). Researchers: see {4}. Admin setup: {5} (run "git config core.hooksPath {6}").':
     '연구노트 자동화를 설정했습니다 (생성 {0} · 병합 {1} · 건너뜀 {2} · 정리 {3}). 연구원 안내는 {4}, 관리자 설정은 {5} 문서를 확인하고 "git config core.hooksPath {6}"를 실행하세요.',
+  'Created again, as they were missing: {0}.': '없어서 새로 만든 파일: {0}.',
+  'Created again, as they were missing: {0} and {1} more.': '없어서 새로 만든 파일: {0} 외 {1}개.',
   'Remove {0} file(s) left by the previous layout ({1})? Afterwards run "git config core.hooksPath {2}" so the pre-commit hook keeps working.':
     '이전 구조에서 남은 파일 {0}개를 삭제할까요? ({1}) 삭제 후 "git config core.hooksPath {2}"를 실행해야 pre-commit 훅이 계속 동작합니다.',
   'Remove': '삭제',
@@ -782,6 +784,8 @@ const obsidianKo: Record<string, string> = {
     '파일 이름 "{0}"은(는) {1}이지만 노트는 {2} 워크플로입니다. README 체크리스트에는 {1}에 노트의 이름이 섞여 보이고, 제목과 헤딩은 {2} 그대로입니다. 다른 워크플로를 쓰려면 "{3}"으로 새 노트를 만드세요.',
   '{0} is not in the workflow catalog.': '{0}은(는) 워크플로 카탈로그에도 없습니다.',
   'Rename it back to "{0}"?': '"{0}"(으)로 이름을 되돌릴까요?',
+  '{0} was renamed to {1}, but AI agents and the research automation look for it only as {0} at the vault root.':
+    '{0}의 이름이 {1}(으)로 바뀌었습니다. AI 에이전트와 연구노트 자동화는 보관함 최상위의 {0}만 찾습니다.',
   'Rename back': '이름 되돌리기',
   'Kept the name "{0}". If the title or the README checklist no longer match the file name later, run "{1}".':
     '이름 "{0}"을(를) 그대로 두었습니다. 나중에 제목이나 README 체크리스트가 파일 이름과 맞지 않으면 "{1}"을(를) 실행하세요.',
@@ -1070,7 +1074,16 @@ const obsidianKo: Record<string, string> = {
   'Where you send scans': '스캔을 보낼 곳',
   'Direct message to the bot': '봇에게 DM',
   'Private channel': '비공개 채널',
-  'Channel ID (C…)': '채널 ID (C…)',
+  'Channel ID (C…) or link': '채널 ID (C…) 또는 링크',
+  'No channel ID in "{0}". Paste the channel ID (it starts with C) or a link to the channel.':
+    '"{0}"에서 채널 ID를 찾지 못했습니다. 채널 ID(C로 시작)나 채널 링크를 붙여 넣으세요.',
+  'Could not reach Slack; check the internet connection ({0}).': 'Slack에 연결하지 못했습니다. 인터넷 연결을 확인하세요({0}).',
+  'The bot token is not valid. Copy the Bot User OAuth Token (xoxb-…) again from OAuth & Permissions of your Slack app.':
+    '봇 토큰이 맞지 않습니다. Slack 앱의 OAuth & Permissions에서 Bot User OAuth Token(xoxb-…)을 다시 복사해 넣으세요.',
+  'The bot token was revoked or the app was removed. Reinstall the Slack app and copy its new token.':
+    '봇 토큰이 취소되었거나 앱이 워크스페이스에서 제거되었습니다. Slack 앱을 다시 설치하고 새 토큰을 복사해 넣으세요.',
+  'The bot token is missing a permission. Add the scopes in docs/SCAN.md under OAuth & Permissions and reinstall the app.':
+    '봇 토큰에 권한이 빠졌습니다. docs/SCAN.md의 권한을 OAuth & Permissions에 더하고 앱을 다시 설치하세요.',
   Connect: '연결',
   'Enter the bot token (it starts with xoxb-).': '봇 토큰을 입력하세요(xoxb-로 시작합니다).',
   'Enter the channel ID (it starts with C).': '채널 ID를 입력하세요(C로 시작합니다).',

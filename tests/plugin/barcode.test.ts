@@ -14,6 +14,7 @@ import {
   scanFileName,
   unmatchedFileName,
   noteIdFromUnmatchedName,
+  sourceNameFromUnmatched,
   unmatchedInfoFromName,
 } from '../../src/scan/imageStore';
 
@@ -133,6 +134,13 @@ describe('scan file names', () => {
     expect(unmatchedInfoFromName('20261016-093012_LN-7K3M9QX2_renamed_x.jpg')).toEqual({ noteId: 'LN-7K3M9QX2', reason: 'renamed' });
     expect(unmatchedInfoFromName('20261016-093012_unknown_no-qr_a.jpg')).toEqual({ reason: 'no-qr' });
     expect(unmatchedInfoFromName('20261016-093012_LN-7K3M9QX2_IMG_1234_p2.jpg')).toEqual({ noteId: 'LN-7K3M9QX2' });
+  });
+
+  // #396
+  it('gives back the source name at the end of a queue file name', () => {
+    expect(sourceNameFromUnmatched('20261025-073505_LN-7K3M9QX2_q2-UHW290-1o3-261025-K7QD_renamed_IMG_9.jpg')).toBe('IMG_9.jpg');
+    expect(sourceNameFromUnmatched('20261016-093012_unknown_photo1.jpg')).toBe('photo1.jpg');
+    expect(sourceNameFromUnmatched('IMG_9.jpg')).toBe('IMG_9.jpg');
   });
 });
 

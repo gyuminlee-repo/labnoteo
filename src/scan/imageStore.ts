@@ -112,6 +112,16 @@ const UNMATCHED_NAME_RE = new RegExp(
     `(?:_(${UNMATCHED_REASONS.join('|')}))?_`
 );
 
+/**
+ * The source file name an unmatched page's `name` ends in, without the
+ * stamp, note ID, QR fields and reason {@link unmatchedFileName} put before
+ * it (#396); `name` itself when it is not such a name.
+ */
+export function sourceNameFromUnmatched(name: string): string {
+  const m = UNMATCHED_NAME_RE.exec(name);
+  return m && name.length > m[0].length ? name.slice(m[0].length) : name;
+}
+
 /** What {@link unmatchedFileName} kept in `name`; older names give the note ID only. */
 export function unmatchedInfoFromName(name: string): UnmatchedInfo {
   const m = UNMATCHED_NAME_RE.exec(name);

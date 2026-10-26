@@ -300,7 +300,8 @@ describe('ScanPipeline.fileManually', () => {
     const result = await s.pipeline.fileManually(file(QUEUED), file(NOTE), 1, { page: 1, pageCount: 1 });
     expect(result.status).toBe('filed');
     const text = s.text.get(NOTE)!;
-    expect(text).toMatch(/\*Printout 1\/1 · imported \d{4}-\d{2}-\d{2} · 20261021-021738_unknown_photo1\.jpg\*/);
+    // #396: the caption names the photo, not the queue's stamped name.
+    expect(text).toMatch(/\*Printout 1\/1 · imported \d{4}-\d{2}-\d{2} · photo1\.jpg\*/);
     expect(text).not.toContain('printed');
   });
 

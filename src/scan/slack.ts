@@ -52,6 +52,33 @@ export const REQUIRED_SCOPES: Record<SlackMode, readonly string[]> = {
 };
 export const RECOMMENDED_SCOPE = 'reactions:write';
 
+/**
+ * A Slack error as what to fix, with the code after it (#397). Slack's
+ * codes are snake_case; anything else came from the request itself.
+ */
+export function describeSlackError(t: Translator, code: string): string {
+  if (!/^[a-z_]+$/.test(code)) return t('Could not reach Slack; check the internet connection ({0}).', code);
+  const fix =
+    code === 'invalid_auth' || code === 'not_authed' || code === 'account_inactive'
+      ? t('The bot token is not valid. Copy the Bot User OAuth Token (xoxb-…) again from OAuth & Permissions of your Slack app.')
+      : code === 'token_revoked' || code === 'token_expired' || code === 'app_uninstalled'
+        ? t('The bot token was revoked or the app was removed. Reinstall the Slack app and copy its new token.')
+        : code === 'missing_scope'
+          ? t('The bot token is missing a permission. Add the scopes in docs/SCAN.md under OAuth & Permissions and reinstall the app.')
+          : '';
+  return fix ? `${fix} (${code})` : code;
+}
+
+/**
+ * The channel ID in `input`: an ID (`C…`/`G…`) or a Slack link holding one
+ * (`…/archives/C…`, `…/client/T…/C…`); undefined otherwise (#397).
+ */
+export function slackChannelId(input: string): string | undefined {
+  const s = input.trim();
+  if (/^[CG][A-Z0-9]+$/.test(s)) return s;
+  return /\/(?:archives|client\/T[A-Z0-9]+)\/([CG][A-Z0-9]+)(?:[/?#]|$)/.exec(s)?.[1];
+}
+
 interface SlackFile {
   name?: string;
   mimetype?: string;
@@ -275,7 +302,12 @@ export class SlackInbox {
       console.warn('[labnoteo] Slack check failed:', msg);
       if (!this.warned) {
         this.warned = true;
-        this.deps.notify(this.deps.t('Slack scans: checking failed ({0}). See the Slack section of docs/SCAN.md for the bot permissions.', msg));
+        this.deps.notify(
+          this.deps.t(
+            'Slack scans: checking failed ({0}). See the Slack section of docs/SCAN.md for the bot permissions.',
+            describeSlackError(this.deps.t, msg)
+          )
+        );
       }
     } finally {
       this.polling = false;

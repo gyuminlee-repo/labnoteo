@@ -153,6 +153,7 @@ import { catalogUpdateNotice, updateCatalogsCommand } from './catalogUpdate';
 import { LabnoteSettingTab } from './settingsTab';
 import { SETUP_DOC_PATH } from './scaffold/assets';
 import { refreshAutomationFiles } from './scaffold/scaffold';
+import { readInstallRecord } from './scaffold/installRecord';
 import {
   draftMethodCommand,
   summarizeResultsCommand,
@@ -168,6 +169,9 @@ import { PartbankFeature } from './partbank/partbankFeature';
 import { refreshLocationsIn } from './partbank/partbankLocation';
 import { downloadPartbankCatalog } from './partbank/partbankCatalog';
 import { handleImportUri, IMPORT_ACTION } from './partbank/partbankUri';
+
+/** Vault-root names of the installed automation that agents and wiki-sync find only by name (#413). */
+const AUTOMATION_ROOT_NAMES = ['AGENTS.md', 'CLAUDE.md', 'wiki-staging'];
 
 /** The front matter of a copied experiment's README that making it a new experiment reads or resets. */
 interface CopiedReadme {
@@ -907,6 +911,7 @@ export default class LabnotePlugin extends Plugin {
         }
         if (!(file instanceof TFile)) return;
         const newPath = file.path;
+        if (AUTOMATION_ROOT_NAMES.includes(oldPath)) this.run(() => this.offerAutomationNameBack(file, oldPath));
         const readmeOf = experimentLosingReadme(oldPath, newPath);
         // Not when the experiment folder itself was renamed: the README went
         // along with it and the folder listener handles the name (#67, #166,
@@ -1055,7 +1060,9 @@ export default class LabnotePlugin extends Plugin {
 
     const before = diagnoseExperimentPath(oldPath, { isFolder: true });
     const after = diagnoseExperimentPath(newPath, { isFolder: true });
-    // Ahead of the check below: `001_GFP 1` → `005_X` is renamed by hand, not by Make a copy (#393).
+    // Ahead of the check below, which only lets experiment folders through.
+    if (AUTOMATION_ROOT_NAMES.includes(oldPath)) this.run(() => this.offerAutomationNameBack(folder, oldPath));
+    // `001_GFP 1` → `005_X` is renamed by hand, not by Make a copy (#393).
     const copyOrigin = this.copiedExperiments.has(oldPath) ? undefined : renamedExperimentCopyOrigin(oldPath, newPath);
     if (
       copyOrigin &&
@@ -1122,6 +1129,32 @@ export default class LabnotePlugin extends Plugin {
       confirmLabel: this.t('Rename back'),
     });
     if (!ok || file.path !== movedPath || !free()) return;
+    await this.app.fileManager.renameFile(file, oldPath);
+  }
+
+  /**
+   * `AGENTS.md`, `CLAUDE.md` or `wiki-staging/` of an installed automation was
+   * renamed (#413): agents and wiki-sync look for them only by that name, and
+   * "Setup research automation" would make an empty one. Offer the name back.
+   */
+  private async offerAutomationNameBack(file: TFile | TFolder, oldPath: string): Promise<void> {
+    const movedPath = file.path;
+    if ((await readInstallRecord(this.host)).pluginVersion === '') return;
+    const warning = this.t(
+      '{0} was renamed to {1}, but AI agents and the research automation look for it only as {0} at the vault root.',
+      oldPath,
+      movedPath
+    );
+    const settled = await this.waitForNoModal();
+    if (this.unloaded || file.path !== movedPath) return;
+    if (!settled || this.app.vault.getAbstractFileByPath(oldPath)) {
+      this.host.notify('warn', warning);
+      return;
+    }
+    const ok = await this.host.confirm(`${warning} ${this.t('Rename it back to "{0}"?', oldPath)}`, {
+      confirmLabel: this.t('Rename back'),
+    });
+    if (!ok || file.path !== movedPath || this.app.vault.getAbstractFileByPath(oldPath)) return;
     await this.app.fileManager.renameFile(file, oldPath);
   }
 
@@ -1830,7 +1863,7 @@ export default class LabnotePlugin extends Plugin {
     if (current !== undefined && current !== null && current !== '' && current !== '/') return;
     const ok = await this.host.confirm(
       this.t(
-        'With the current setting, a pasted image is saved at the top of the vault. Save them in an images folder next to the note instead (for a lab note, the experiment\'s images folder)? This changes Settings → Files and links → Default location for new attachments to "./images".'
+        'With the current setting, a pasted image is saved at the top of the vault. Save them in an images folder next to the note instead (for a lab note, the experiment\'s images folder)? This sets Settings → Files and links → "Default location for new attachments" to "In subfolder under current folder", with "Subfolder name" images.'
       ),
       { confirmLabel: this.t('Use ./images') }
     );

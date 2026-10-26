@@ -30,6 +30,7 @@ import {
   scanFileName,
   sha256Hex,
   shortHash,
+  sourceNameFromUnmatched,
   timestamp,
   unmatchedFileName,
 } from './imageStore';
@@ -368,7 +369,13 @@ export class ScanPipeline {
       printedOn: printedOn ?? '',
       ...(block ? { fingerprint: unitOpFingerprint(block.opName, block.alias) } : {}),
     };
-    const decoded: DecodedPage = { source: image.name, hash, blank: false, payload, render: async () => bytes };
+    const decoded: DecodedPage = {
+      source: sourceNameFromUnmatched(image.name),
+      hash,
+      blank: false,
+      payload,
+      render: async () => bytes,
+    };
     const pending: Pending[] = [];
     const result = await this.filePage(decoded, {}, pending, new Set(), new Map());
     await this.flush(pending);
