@@ -10,7 +10,7 @@
 // bugs are pinned with `it.fails(...)`: they pass now *because* the assertion
 // throws against current behaviour, and Phase 1-2 (yaml.dump for scalars +
 // line-anchored closing fence) will flip them to normal `it(...)`.
-import { parseFrontMatterYaml, planDateInsertion, serializeFrontMatterEntry } from '../sections/frontMatter';
+import { parseFrontMatterYaml, planDateInsertion, serializeFrontMatterEntry, setFrontMatterKeys } from '../sections/frontMatter';
 import { isInFrontMatter, isOffsetBeforeBody } from '../sections/documentHead';
 
 // #106: the date commands typed straight into the YAML.
@@ -179,5 +179,53 @@ describe('isOffsetBeforeBody', () => {
   it('is false in the body', () => {
     expect(isOffsetBeforeBody(doc, doc.indexOf('body'))).toBe(false);
     expect(isOffsetBeforeBody(doc, doc.length)).toBe(false);
+  });
+});
+
+// #422: a status change or discussion flag rewrote the whole block and lost its comments.
+describe('setFrontMatterKeys', () => {
+  const readme = [
+    '---',
+    'title: 정제',
+    "author: '' # 담당자 미정",
+    '# 담당자 미정 - 다음 주 랩미팅에서 정함',
+    'status: planned # 처음 값',
+    'project: 리파제 정제 # 2026 하반기 과제',
+    'tags:',
+    '  - lipase',
+    '---',
+    '',
+    'Body',
+  ].join('\n');
+
+  it('changes only the keys given, keeping every comment', () => {
+    const out = setFrontMatterKeys(readme, { status: 'in-progress' });
+    expect(out).toBe(readme.replace('status: planned # 처음 값', 'status: in-progress # 처음 값'));
+  });
+
+  it('appends a missing key before the closing fence and drops an undefined one', () => {
+    const on = setFrontMatterKeys(readme, { discuss: true });
+    expect(on).toContain('  - lipase\ndiscuss: true\n---');
+    expect(setFrontMatterKeys(on, { discuss: undefined })).toBe(readme);
+  });
+
+  it('replaces a block list with its continuation lines', () => {
+    const out = setFrontMatterKeys(readme, { tags: ['a', 'b'] });
+    expect(out).toContain('tags:\n  - a\n  - b\n---');
+    expect(out).not.toContain('lipase');
+  });
+
+  it('does not take a # inside quotes for a comment', () => {
+    const out = setFrontMatterKeys("---\nstatus: 'a # b'\n---\n", { status: 'done' });
+    expect(out).toBe('---\nstatus: done\n---\n');
+  });
+
+  it('keeps CRLF and adds a block to a note without one', () => {
+    expect(setFrontMatterKeys('---\r\nstatus: x\r\n---\r\nB', { status: 'done' })).toBe('---\r\nstatus: done\r\n---\r\nB');
+    expect(setFrontMatterKeys('Body', { status: 'planned' })).toBe('---\nstatus: planned\n---\n\nBody');
+  });
+
+  it('leaves a missing key out when adding is off', () => {
+    expect(setFrontMatterKeys(readme, { retry_of: 'x' }, { add: false })).toBe(readme);
   });
 });

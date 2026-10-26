@@ -5,7 +5,7 @@
 import * as path from '../util/posixPath';
 import { getSeoulDateString } from './dateUtils';
 import { sanitizePathSegment, capPathSegment, EXPERIMENT_FOLDER_TITLE_MAX } from './regexUtils';
-import { serializeFrontMatterEntry } from '../sections/frontMatter';
+import { serializeFrontMatterEntry, setFrontMatterKeys } from '../sections/frontMatter';
 
 /**
  * Structure returned by createLabnoteStructure
@@ -346,22 +346,8 @@ export function renamedExperimentCopyOrigin(oldPath: string, newPath: string): s
  * continuation lines). Keys not already present are not added.
  */
 function rewriteFrontMatterKeys(content: string, values: Readonly<Record<string, string | null>>): string {
-  const newline = content.includes('\r\n') ? '\r\n' : '\n';
-  const lines = content.split(/\r?\n/);
-  const fmEnd = lines[0]?.trim() === '---' ? lines.findIndex((l, i) => i > 0 && l.trim() === '---') : -1;
-  if (fmEnd < 0) return content;
-  const out = [lines[0]];
-  for (let i = 1; i < fmEnd; i++) {
-    const key = /^([A-Za-z_][\w-]*)\s*:/.exec(lines[i])?.[1];
-    if (key === undefined || !Object.prototype.hasOwnProperty.call(values, key)) {
-      out.push(lines[i]);
-      continue;
-    }
-    while (i + 1 < fmEnd && /^\s+\S/.test(lines[i + 1])) i++;
-    const value = values[key];
-    if (value !== null) out.push(serializeFrontMatterEntry(key, value));
-  }
-  return [...out, ...lines.slice(fmEnd)].join(newline);
+  const set = Object.fromEntries(Object.entries(values).map(([key, value]) => [key, value ?? undefined]));
+  return setFrontMatterKeys(content, set, { add: false });
 }
 
 /**

@@ -103,6 +103,7 @@ export {
   frontMatterNames,
   parseFrontMatterYaml,
   serializeFrontMatterEntry,
+  setFrontMatterKeys,
   stripFrontMatter,
   planDateInsertion,
   type DateInsertion,

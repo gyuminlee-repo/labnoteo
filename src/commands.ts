@@ -41,8 +41,8 @@ import {
   planDateInsertion,
   issueSentenceRange,
   lineHasSampleReference,
-  serializeFrontMatterEntry,
-  setDiscussFlag,
+  DISCUSS_FLAG_KEY,
+  setFrontMatterKeys,
 } from '@labnoteo/core';
 import { ISSUE_SYNC_WORKFLOW_PATH, SETUP_DOC_PATH } from './scaffold/assets';
 import * as posix from '@labnoteo/core/posix';
@@ -460,9 +460,8 @@ export function statusNames(host: LabnoteHost): Record<ExperimentStatus, string>
  * Thin Obsidian wiring over core domain functions: the experiment folder is
  * resolved with `getExperimentDir`, the README front matter parsed with
  * `parseFrontMatterYaml`, the value chosen from the shared `EXPERIMENT_STATUSES`
- * vocabulary, and the block re-emitted with `serializeFrontMatterEntry`. The
- * `status` key is inserted when a pre-existing note lacks it, and the original
- * body is preserved verbatim (only the front-matter block is rewritten).
+ * vocabulary, and only the `status` line rewritten with `setFrontMatterKeys`.
+ * The `status` key is appended when a pre-existing note lacks it.
  */
 export async function changeExperimentStatusCommand(
   app: App,
@@ -507,19 +506,18 @@ export async function changeExperimentStatusCommand(
   );
   if (!chosen || chosen === current) return;
 
-  // Set (or insert, when absent) `status`. Spreading keeps the order of the
-  // existing keys and appends `status` for notes that predate the field.
-  let next: Record<string, unknown> = { ...frontMatter, status: chosen };
+  // Set (or append, when absent) `status`; the other lines stay as written (#422).
+  const changes: Record<string, unknown> = { status: chosen };
   let cleared = false;
   if (chosen === 'completed') {
     const choice = await confirmCompleted(host, labnoteDir, body, isDiscussFlagged(frontMatter));
     if (!choice) return;
     if (choice === 'clear') {
-      next = setDiscussFlag(next, false);
+      changes[DISCUSS_FLAG_KEY] = undefined;
       cleared = true;
     }
   }
-  const updated = renderNote(next, body);
+  const updated = setFrontMatterKeys(parsed.text, changes);
 
   await writeNoteThroughVault(app, host, readmePath, stamp(updated));
   let message = host.t('Experiment status changed ({0}): {1} → {2}.', folderName, current ?? host.t('(none)'), chosen);
@@ -806,18 +804,17 @@ export async function issueAutomationState(host: LabnoteHost): Promise<'none' | 
  * Read an experiment README for a front-matter edit, refusing to continue when
  * the YAML cannot be parsed.
  *
- * Both callers re-serialize the parsed front matter through {@link renderNote}.
- * A failed parse yields an empty object, so writing it back replaced the whole
- * block with the single field the command sets and erased `title`, `author`,
- * `created_date` and everything else. One unquoted colon in a value
- * (`title: EXP: 3rd try`) is enough to break the parse, which makes this a
- * realistic way to lose the metadata of the note that is the single source of
- * truth. Leave the note alone and say which line to fix instead.
+ * Both callers change single keys with `setFrontMatterKeys`, which leaves the
+ * other lines and their comments alone (#422), but they decide from the parsed
+ * values. A failed parse yields an empty object, which would read as "no
+ * status" or "not flagged". One unquoted colon in a value
+ * (`title: EXP: 3rd try`) is enough to break the parse. Leave the note alone
+ * and say which file and line to fix instead (#427).
  */
 async function readNoteForFrontMatterEdit(
   host: LabnoteHost,
   readmePath: string
-): Promise<{ frontMatter: Record<string, unknown>; body: string } | undefined> {
+): Promise<{ frontMatter: Record<string, unknown>; body: string; text: string } | undefined> {
   // `parseFrontMatterYaml` requires LF-normalised text (a bare `\n` after the
   // opening `---`); normalise CRLF so Windows-authored notes parse correctly.
   const original = (await host.fs.read(readmePath)).replace(/\r\n/g, '\n');
@@ -826,22 +823,14 @@ async function readNoteForFrontMatterEdit(
     host.notify(
       'warn',
       host.t(
-        'Front matter of this note could not be read, so it was left unchanged. ' +
-          'Fix the YAML and try again: {0}',
+        'Front matter of {0} could not be read, so it was left unchanged. Fix the YAML and try again: {1}',
+        readmePath,
         parseError
       )
     );
     return undefined;
   }
-  return { frontMatter, body };
-}
-
-/** Re-emit a note from front matter plus an untouched body. */
-function renderNote(frontMatter: Record<string, unknown>, body: string): string {
-  const fmBlock = Object.entries(frontMatter)
-    .map(([key, value]) => serializeFrontMatterEntry(key, value))
-    .join('\n');
-  return `---\n${fmBlock}\n---\n\n${body}`;
+  return { frontMatter, body, text: original };
 }
 
 /**
@@ -871,14 +860,13 @@ export async function toggleDiscussionFlagCommand(
 
   const parsed = await readNoteForFrontMatterEdit(host, readmePath);
   if (!parsed) return;
-  const { frontMatter, body } = parsed;
 
-  const next = !isDiscussFlagged(frontMatter);
+  const next = !isDiscussFlagged(parsed.frontMatter);
   await writeNoteThroughVault(
     app,
     host,
     readmePath,
-    stamp(renderNote(setDiscussFlag(frontMatter, next), body))
+    stamp(setFrontMatterKeys(parsed.text, { [DISCUSS_FLAG_KEY]: next ? true : undefined }))
   );
 
   const state = await issueAutomationState(host);

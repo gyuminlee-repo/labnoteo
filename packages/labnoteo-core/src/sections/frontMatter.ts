@@ -100,6 +100,74 @@ export function serializeFrontMatterEntry(key: string, val: unknown): string {
   return dumped.replace(/\n+$/, '');
 }
 
+/** The ` # comment` ending a single-line `key: value`, outside any quotes, or ''. */
+function trailingComment(line: string): string {
+  let quote: string | undefined;
+  for (let i = line.indexOf(':') + 1; i < line.length; i++) {
+    const c = line[i];
+    if (quote) {
+      if (c === quote) quote = undefined;
+    } else if (c === "'" || c === '"') {
+      quote = c;
+    } else if (c === '#' && /\s/.test(line[i - 1] ?? '')) {
+      return line.slice(i - 1);
+    }
+  }
+  return '';
+}
+
+/**
+ * `content` with the front-matter keys in `values` set line by line (#422):
+ * a value replaces that key's line (and its indented continuation lines),
+ * keeping a trailing ` # comment` when the new value fits on one line;
+ * `undefined` drops the key; a key not present is added before the closing
+ * `---` unless `add` is false. Every other line, comments included, stays as
+ * written. A note without front matter gets a new block.
+ */
+export function setFrontMatterKeys(
+  content: string,
+  values: Readonly<Record<string, unknown>>,
+  { add = true }: { add?: boolean } = {}
+): string {
+  const newline = content.includes('\r\n') ? '\r\n' : '\n';
+  const lines = content.split(/\r?\n/);
+  const fmEnd = lines[0]?.trim() === '---' ? lines.findIndex((l, i) => i > 0 && l.trim() === '---') : -1;
+  const added = (seen: ReadonlySet<string>): string[] =>
+    add
+      ? Object.entries(values)
+          .filter(([key, value]) => value !== undefined && !seen.has(key))
+          .map(([key, value]) => serializeFrontMatterEntry(key, value))
+      : [];
+  if (fmEnd < 0) {
+    const entries = added(new Set());
+    if (entries.length === 0) return content;
+    return ['---', ...entries, '---', '', content.replace(/^(\r?\n)+/, '')].join(newline);
+  }
+  const continues = (line: string): boolean => /^\s+[^\s#]/.test(line) || /^-(\s|$)/.test(line);
+  const out = [lines[0]];
+  const seen = new Set<string>();
+  for (let i = 1; i < fmEnd; i++) {
+    const key = /^([A-Za-z_][\w-]*)\s*:/.exec(lines[i])?.[1];
+    if (key === undefined || !Object.prototype.hasOwnProperty.call(values, key)) {
+      out.push(lines[i]);
+      continue;
+    }
+    seen.add(key);
+    const first = lines[i];
+    let multiline = false;
+    while (i + 1 < fmEnd && continues(lines[i + 1])) {
+      i++;
+      multiline = true;
+    }
+    const value = values[key];
+    if (value === undefined) continue;
+    const entry = serializeFrontMatterEntry(key, value);
+    const comment = !multiline && !entry.includes('\n') ? trailingComment(first) : '';
+    out.push(comment ? `${entry.replace(/\s+$/, '')}${comment}` : entry);
+  }
+  return [...out, ...added(seen), ...lines.slice(fmEnd)].join(newline);
+}
+
 /**
  * The names a front-matter value such as `author` or `experimenter` holds
  * (#394): a string, a flow or block list, or the nested lists an unquoted

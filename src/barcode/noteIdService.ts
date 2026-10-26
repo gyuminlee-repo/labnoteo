@@ -84,8 +84,8 @@ export class NoteIdService {
       this.host.notify(
         'warn',
         this.host.t(
-          'Front matter of this note could not be read, so it was left unchanged. ' +
-            'Fix the YAML and try again: {0}',
+          'Front matter of {0} could not be read, so it was left unchanged. Fix the YAML and try again: {1}',
+          file.path,
           parseError
         )
       );

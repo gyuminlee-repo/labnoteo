@@ -361,8 +361,8 @@ const obsidianKo: Record<string, string> = {
     '이 Start_date/End_date에는 이미 값이 있습니다. 날짜를 바꾸려면 옆의 📅 피커를 쓰세요.',
   'This line already has an issue marker. A line can hold only one.':
     '이 줄에는 이미 이슈 마커가 있습니다. 한 줄에 하나만 둘 수 있습니다.',
-  'Front matter of this note could not be read, so it was left unchanged. Fix the YAML and try again: {0}':
-    '이 노트의 front matter를 읽을 수 없어 변경하지 않았습니다. YAML을 고친 뒤 다시 시도하세요: {0}',
+  'Front matter of {0} could not be read, so it was left unchanged. Fix the YAML and try again: {1}':
+    '{0}의 front matter를 읽을 수 없어 변경하지 않았습니다. YAML을 고친 뒤 다시 시도하세요: {1}',
   '{0} differs from the new version. Edits made after it was installed are lost if you replace it. Replace it with the new version?':
     '{0}이(가) 새 버전과 다릅니다. 설치 뒤에 직접 고친 내용이 있다면 바꿀 때 사라집니다. 새 버전으로 바꿀까요?',
   'From then on, updates change only the marked block and keep what you write below it.':
