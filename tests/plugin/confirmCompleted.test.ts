@@ -47,6 +47,18 @@ function harness(
 }
 
 describe('confirmCompleted (#275)', () => {
+  // #398
+  it('says when the experiment has no workflows at all', async () => {
+    const empty = '# Test\n\n## 🗂️ Related Workflows\n\n';
+    const none = harness({ [`${DIR}/README.labnote.md`]: empty });
+    expect(await confirmCompleted(none.host, DIR, empty)).toBe('keep');
+    expect(none.asked).toEqual(['This experiment has no workflows. Mark the experiment completed anyway?']);
+
+    const unlisted = harness({ [`${DIR}/README.labnote.md`]: empty, [`${DIR}/${A}`]: note('2026-10-01') });
+    expect(await confirmCompleted(unlisted.host, DIR, empty)).toBe('keep');
+    expect(unlisted.asked).toEqual([]);
+  });
+
   it('names only the unchecked workflows when every note has an end_date', async () => {
     const { host, asked } = harness({ [`${DIR}/${A}`]: note('2026-10-01'), [`${DIR}/${B}`]: note('2026-10-02') });
     await confirmCompleted(host, DIR, readme(false, true));

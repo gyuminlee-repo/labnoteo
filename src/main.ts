@@ -102,6 +102,7 @@ import {
   getNextLabnoteNumber,
   isSampleTrackingOn,
   nextExperimentId,
+  renamedExperimentCopyOrigin,
   resetCopiedExperimentReadme,
   retryOfLink,
   retryOfLinkpath,
@@ -167,6 +168,16 @@ import { PartbankFeature } from './partbank/partbankFeature';
 import { refreshLocationsIn } from './partbank/partbankLocation';
 import { downloadPartbankCatalog } from './partbank/partbankCatalog';
 import { handleImportUri, IMPORT_ACTION } from './partbank/partbankUri';
+
+/** The front matter of a copied experiment's README that making it a new experiment reads or resets. */
+interface CopiedReadme {
+  title?: string;
+  discussed: boolean;
+  status?: string;
+  id?: string;
+  retryOf?: string;
+  created?: string;
+}
 
 export default class LabnotePlugin extends Plugin {
   // `Plugin` already declares `settings?: unknown`; re-type it concretely.
@@ -1044,6 +1055,16 @@ export default class LabnotePlugin extends Plugin {
 
     const before = diagnoseExperimentPath(oldPath, { isFolder: true });
     const after = diagnoseExperimentPath(newPath, { isFolder: true });
+    // Ahead of the check below: `001_GFP 1` → `005_X` is renamed by hand, not by Make a copy (#393).
+    const copyOrigin = this.copiedExperiments.has(oldPath) ? undefined : renamedExperimentCopyOrigin(oldPath, newPath);
+    if (
+      copyOrigin &&
+      after.kind === 'ok' &&
+      after.folder === newPath &&
+      this.app.vault.getAbstractFileByPath(posix.join(posix.dirname(newPath), copyOrigin)) instanceof TFolder
+    ) {
+      this.run(() => this.offerRenamedCopyFix(folder, copyOrigin));
+    }
     if (before.kind !== 'ok' || before.folder !== oldPath) return;
     if (after.kind === 'nested' && after.folder === newPath) {
       this.run(() => this.offerExperimentFolderMoveBack(folder, posix.dirname(oldPath)));
@@ -1560,7 +1581,7 @@ export default class LabnotePlugin extends Plugin {
       this.host.notify(
         'warn',
         this.t(
-          '"{0}" is a copy of the experiment {1} with its number, title and discussion flag, so the workflow view lists the two alike. Rename the folder to a new number and change its README title to tell them apart.',
+          '"{0}" is a copy of the experiment {1} with its number, title, status, created date and discussion flag, so the workflow view lists the two alike. Rename the folder to a new number and you will be asked again to make it a new experiment.',
           folder.name,
           origin
         )
@@ -1596,22 +1617,8 @@ export default class LabnotePlugin extends Plugin {
       warn();
       return;
     }
-    let title: unknown;
-    let discussed = false;
-    let status: string | undefined;
-    let id: string | undefined;
-    let retryOf: string | undefined;
-    try {
-      const { frontMatter } = parseFrontMatterYaml((await this.app.vault.read(readme)).replace(/\r\n/g, '\n'));
-      title = frontMatter.title;
-      discussed = isDiscussFlagged(frontMatter);
-      if (typeof frontMatter.status === 'string') status = frontMatter.status.trim();
-      const linkpath = retryOfLinkpath(frontMatter.retry_of);
-      if (linkpath) retryOf = posix.dirname(linkpath);
-      if (typeof frontMatter.id === 'string' || typeof frontMatter.id === 'number') id = String(frontMatter.id).trim() || undefined;
-    } catch {
-      title = undefined;
-    }
+    const facts = await this.readCopiedReadme(readme);
+    const { id } = facts;
     // Like the note IDs above, before any prompt: a copy keeping the
     // original's `id` fails the automation's validate as a duplicate (#353).
     if (id) {
@@ -1634,6 +1641,77 @@ export default class LabnotePlugin extends Plugin {
       warn();
       return;
     }
+    await this.makeCopyNewExperiment(folder, origin, readme, facts, warn);
+  }
+
+  /** What a copied experiment's README holds that making it a new experiment changes. */
+  private async readCopiedReadme(readme: TFile): Promise<CopiedReadme> {
+    const facts: CopiedReadme = { discussed: false };
+    try {
+      const { frontMatter } = parseFrontMatterYaml((await this.app.vault.read(readme)).replace(/\r\n/g, '\n'));
+      if (typeof frontMatter.title === 'string') facts.title = frontMatter.title;
+      facts.discussed = isDiscussFlagged(frontMatter);
+      if (typeof frontMatter.status === 'string') facts.status = frontMatter.status.trim();
+      const linkpath = retryOfLinkpath(frontMatter.retry_of);
+      if (linkpath) facts.retryOf = posix.dirname(linkpath);
+      if (typeof frontMatter.id === 'string' || typeof frontMatter.id === 'number') {
+        facts.id = String(frontMatter.id).trim() || undefined;
+      }
+      if (frontMatter.created_date !== undefined) facts.created = String(frontMatter.created_date);
+    } catch {
+      // Unreadable front matter: ask with an empty title.
+    }
+    return facts;
+  }
+
+  /**
+   * A copied experiment folder renamed by hand to a new name (#393): the
+   * title prompt was cancelled or the app closed under it, so the copy still
+   * has the original's status and created date. Ask again.
+   */
+  private async offerRenamedCopyFix(folder: TFolder, origin: string): Promise<void> {
+    const renamedPath = folder.path;
+    const settled = await this.waitForNoModal();
+    if (this.unloaded || folder.path !== renamedPath) return;
+    const readme = this.app.vault.getAbstractFileByPath(posix.join(renamedPath, 'README.labnote.md'));
+    const original = this.app.vault.getAbstractFileByPath(posix.join(posix.dirname(renamedPath), origin, 'README.labnote.md'));
+    if (!(readme instanceof TFile) || !(original instanceof TFile)) return;
+    const facts = await this.readCopiedReadme(readme);
+    const originalCreated = this.app.metadataCache.getFileCache(original)?.frontmatter?.created_date;
+    if (!settled || facts.created === undefined || facts.created !== String(originalCreated)) {
+      await this.relinkCopiedChecklist(renamedPath);
+      return;
+    }
+    const warn = (): void =>
+      this.host.notify(
+        'warn',
+        this.t(
+          '"{0}" still has the status and created date of the experiment {1} it copies. Change them in its README.',
+          folder.name,
+          origin
+        )
+      );
+    const number = /^(\d{3})_/.exec(folder.name)?.[1];
+    const named = folder.name.replace(/^\d{3}_/, '').replace(/_/g, ' ').trim();
+    await this.makeCopyNewExperiment(folder, origin, readme, { ...facts, title: named || facts.title }, warn, number);
+  }
+
+  /**
+   * Ask the copy's title, then make it a new experiment: titled, dated today,
+   * planned, without the discussion flag, renamed to `number` (if no sibling
+   * has it) or the next number. Cancelling calls `warn`.
+   */
+  private async makeCopyNewExperiment(
+    folder: TFolder,
+    origin: string,
+    readme: TFile,
+    facts: CopiedReadme,
+    warn: () => void,
+    number?: string
+  ): Promise<void> {
+    const copyPath = folder.path;
+    const labnoteDir = posix.dirname(copyPath);
+    const { title, discussed, status, retryOf } = facts;
     const newTitle = (
       await this.host.prompt({
         title: this.t('Name this copy of the experiment'),
@@ -1642,7 +1720,7 @@ export default class LabnotePlugin extends Plugin {
           folder.name,
           origin
         ),
-        value: typeof title === 'string' ? title : '',
+        value: title ?? '',
         validate: v => {
           if (!v.trim()) return this.t('Title is required.');
           if (!sanitizeTitle(v.trim())) {
@@ -1655,8 +1733,10 @@ export default class LabnotePlugin extends Plugin {
     )?.trim();
     if (this.unloaded || folder.path !== copyPath) return;
     const siblings = (await this.fs.list(labnoteDir)).filter(n => n !== folder.name);
-    const target = newTitle ? posix.join(labnoteDir, experimentFolderName(getNextLabnoteNumber(siblings), newTitle)) : '';
-    if (!newTitle || this.app.vault.getAbstractFileByPath(target)) {
+    const free = number && !siblings.some(n => n.startsWith(`${number}_`)) ? number : getNextLabnoteNumber(siblings);
+    const target = newTitle ? posix.join(labnoteDir, experimentFolderName(free, newTitle)) : '';
+    const existing = target ? this.app.vault.getAbstractFileByPath(target) : null;
+    if (!newTitle || (existing && existing !== folder)) {
       warn();
       await this.relinkCopiedChecklist(copyPath);
       return;
@@ -1680,7 +1760,7 @@ export default class LabnotePlugin extends Plugin {
       const reset = resetCopiedExperimentReadme(data, newTitle, getSeoulDateString());
       return markRetry ? setRetryOf(reset, retryOfLink(retryTarget)) : reset;
     });
-    await this.app.fileManager.renameFile(folder, target);
+    if (target !== folder.path) await this.app.fileManager.renameFile(folder, target);
     const done = [
       this.t('Made the copy the experiment {0}, created today.', posix.basename(target)),
       ...(status && status !== 'planned' ? [this.t('Its status went from {0} back to planned.', status)] : []),

@@ -21,6 +21,7 @@ import {
   experimentLosingLabsamples,
   experimentLosingReadme,
   nextExperimentId,
+  renamedExperimentCopyOrigin,
   resetCopiedExperimentReadme,
   setExperimentReadmeId,
   isSampleTrackingOff,
@@ -152,6 +153,14 @@ describe('copied experiment folders (#223)', () => {
     expect(copiedExperimentOrigin('001_GFP')).toBeUndefined();
     expect(copiedExperimentOrigin('001_GFP_1')).toBeUndefined();
     expect(copiedExperimentOrigin('GFP 1')).toBeUndefined();
+  });
+
+  // #393
+  it('finds the original of a copy the user renamed by hand, in the same folder only', () => {
+    expect(renamedExperimentCopyOrigin('labnote/011_X 1', 'labnote/119_Y')).toBe('011_X');
+    expect(renamedExperimentCopyOrigin('labnote/011_X 1', 'labnote/011_X 2')).toBeUndefined();
+    expect(renamedExperimentCopyOrigin('labnote/011_X 1', 'archive/119_Y')).toBeUndefined();
+    expect(renamedExperimentCopyOrigin('labnote/011_X', 'labnote/119_Y')).toBeUndefined();
   });
 
   it('names the new experiment like "Create experiment"', () => {

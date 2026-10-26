@@ -68,8 +68,10 @@ export interface ExperimentEntry {
   progress?: { done: number; total: number };
   /** The README's `project`: the larger project the experiment belongs to (#204). */
   project?: string;
-  /** The README's `author`: who runs the experiment (#365). */
-  author?: string;
+  /** The names in the README's `author`: who runs the experiment (#365), each on its own (#395). */
+  authors?: string[];
+  /** Names of the workflow notes in the folder, for search (#409): `001 WD010 Design` of `001_WD010_Design.labnote.md`. */
+  workflowNames?: string[];
   /** `@issue` markers in the experiment's notes (#337). */
   markers?: number;
   /** The folder of the experiment this one runs again, from the README's `retry_of` (#327). */
@@ -176,8 +178,9 @@ export function buildExperimentTree(
   if (groupBy === 'project' || groupBy === 'author') {
     const byKey = new Map<string, ExperimentEntry[]>();
     for (const e of experiments) {
-      const key = e[groupBy]?.trim() ?? '';
-      byKey.set(key, [...(byKey.get(key) ?? []), e]);
+      // An experiment of several people is in each one's group (#395).
+      const keys = groupBy === 'project' ? [e.project?.trim() ?? ''] : authorsOf(e);
+      for (const key of keys.length > 0 ? keys : ['']) byKey.set(key, [...(byKey.get(key) ?? []), e]);
     }
     const keys = [...byKey.keys()].filter(Boolean).sort((a, b) => a.localeCompare(b));
     if (byKey.has('')) keys.push('');
@@ -255,6 +258,11 @@ export function buildExperimentTree(
   };
 }
 
+/** An experiment's authors, trimmed, blank ones left out and each once. */
+function authorsOf(e: ExperimentEntry): string[] {
+  return [...new Set((e.authors ?? []).map(a => a.trim()).filter(Boolean))];
+}
+
 function sortByFolder(entries: ExperimentEntry[]): ExperimentEntry[] {
   return [...entries].sort((a, b) =>
     path.basename(a.folder).localeCompare(path.basename(b.folder), undefined, { numeric: true })
@@ -265,7 +273,7 @@ function experimentNode(e: ExperimentEntry, labels: ExperimentTreeLabels): TreeN
   const noStatus = labels.noStatus ?? '(none)';
   const status = e.status?.trim() ?? '';
   const project = e.project?.trim();
-  const author = e.author?.trim();
+  const author = authorsOf(e).join(', ');
   const name = path.basename(e.folder);
   const title = e.title?.trim();
   const named = title && title !== name ? `${experimentNumber(name)} · ${title}` : name;
@@ -296,8 +304,9 @@ function experimentNode(e: ExperimentEntry, labels: ExperimentTreeLabels): TreeN
 }
 
 /**
- * The experiments whose folder name, title, project, author or status
- * contains every word of `query`, ignoring case (#204, #365). A blank query returns the input.
+ * The experiments whose folder name, title, project, author, status or one of
+ * its workflow note names (#409) contains every word of `query`, ignoring case
+ * (#204, #365). A blank query returns the input.
  * One with something to discuss also matches `discuss` and the words of
  * `discussLabel`, e.g. the UI's group name (#220, #337); a status also
  * matches its name in `statusWords`, e.g. 검토 필요 for `needs-review`
@@ -318,7 +327,8 @@ export function filterExperiments(
       path.basename(e.folder),
       e.title ?? '',
       e.project ?? '',
-      e.author ?? '',
+      ...authorsOf(e),
+      ...(e.workflowNames ?? []),
       status,
       ...(Object.prototype.hasOwnProperty.call(statusWords, status) ? [statusWords[status]] : []),
       ...(hasDiscussion(e) ? ['discuss', discussLabel ?? ''] : []),

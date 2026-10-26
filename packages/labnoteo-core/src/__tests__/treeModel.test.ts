@@ -377,9 +377,9 @@ describe('experiments by project', () => {
 // #365
 describe('experiments by author', () => {
   const entries: ExperimentEntry[] = [
-    { folder: 'labnote/076_A', title: 'MIC 1차', status: 'needs-review', author: '이서연' },
-    { folder: 'labnote/012_B', title: 'GFP', status: 'completed', author: '김민준' },
-    { folder: 'labnote/080_C', title: 'MIC 2차', status: 'planned', author: ' 이서연 ' },
+    { folder: 'labnote/076_A', title: 'MIC 1차', status: 'needs-review', authors: ['이서연'] },
+    { folder: 'labnote/012_B', title: 'GFP', status: 'completed', authors: ['김민준'] },
+    { folder: 'labnote/080_C', title: 'MIC 2차', status: 'planned', authors: [' 이서연 '] },
     { folder: 'labnote/003_D', title: 'Misc', status: 'planned' },
   ];
 
@@ -391,6 +391,24 @@ describe('experiments by author', () => {
     const t = buildExperimentTree(entries, { noAuthor: '(담당자 없음)' }, 'author');
     expect(t.children!.map(g => g.label)).toEqual(['김민준 [1]', '이서연 [2]', '(담당자 없음) [1]']);
     expect(t.children![1]).toMatchObject({ id: 'experimentAuthor:이서연', kind: 'experimentAuthor', payload: { author: '이서연' } });
+  });
+
+  // #395: "이서연, 박하늘" made a group of its own.
+  it('puts an experiment of two people in each one\'s group, the root counting it once', () => {
+    const shared: ExperimentEntry[] = [...entries, { folder: 'labnote/090_E', title: 'Joint', authors: ['박하늘', '이서연'] }];
+    const t = buildExperimentTree(shared, {}, 'author');
+    expect(t.label).toBe('Experiments [5]');
+    expect(t.children!.map(g => g.label)).toEqual(['김민준 [1]', '박하늘 [1]', '이서연 [3]', '(no author) [1]']);
+    expect(buildExperimentTree(shared.slice(-1), {}).children![0].children![0].tooltip).toContain('Author: 박하늘, 이서연');
+  });
+
+  // #409
+  it('finds an experiment by the name of one of its workflow notes', () => {
+    const withNotes: ExperimentEntry[] = [
+      ...entries,
+      { folder: 'labnote/091_F', title: 'Screen', workflowNames: ['001 WB030 Gibson Assembly'] },
+    ];
+    expect(filterExperiments(withNotes, 'gibson').map(e => e.folder)).toEqual(['labnote/091_F']);
   });
 
   it('names the author in the tooltip', () => {

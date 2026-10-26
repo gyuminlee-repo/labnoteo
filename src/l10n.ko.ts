@@ -298,6 +298,9 @@ const obsidianKo: Record<string, string> = {
   'To undo, right-click this experiment in the workflow view again and pick {0}.':
     '되돌리려면 워크플로 뷰에서 이 실험을 다시 우클릭해 {0}을(를) 고르세요.',
   '{0} workflow(s) in the checklist are not checked.': '체크리스트에서 체크하지 않은 워크플로가 {0}개 있습니다.',
+  'This experiment has no workflows.': '이 실험에는 워크플로가 없습니다.',
+  'No experiment matches "{0}". The search reads folder names, titles, projects, authors, statuses and workflow note names.':
+    '"{0}"에 맞는 실험이 없습니다. 검색은 폴더 이름, 제목, 과제, 담당자, 상태, 워크플로 노트 이름을 봅니다.',
   '{0} workflow note(s) have no end_date in their properties: {1}.':
     '머리말 종료일(end_date)이 빈 워크플로 노트가 {0}개 있습니다: {1}.',
   'The discussion flag is on.': '논의 표시가 켜져 있습니다.',
@@ -786,8 +789,10 @@ const obsidianKo: Record<string, string> = {
     '이름이 바뀌는 항목도 이미 만든 워크플로 노트와 README 체크리스트에서는 옛 이름 그대로입니다. 그 항목을 쓰는 노트는 {0}개입니다. 필요하면 직접 고치세요.',
   'Renamed items keep their old names in the workflow notes and README checklists already made.':
     '이름이 바뀌는 항목도 이미 만든 워크플로 노트와 README 체크리스트에서는 옛 이름 그대로입니다.',
-  '"{0}" is a copy of the experiment {1} with its number, title and discussion flag, so the workflow view lists the two alike. Rename the folder to a new number and change its README title to tell them apart.':
-    '"{0}"은(는) 실험 {1}의 복사본이라 번호·제목·논의 표시가 같아 워크플로 뷰에 똑같이 보입니다. 구분하려면 폴더 이름을 새 번호로 바꾸고 README 제목을 고치세요.',
+  '"{0}" still has the status and created date of the experiment {1} it copies. Change them in its README.':
+    '"{0}"은(는) 아직 원본 실험 {1}의 상태와 생성일을 그대로 가지고 있습니다. README에서 고치세요.',
+  '"{0}" is a copy of the experiment {1} with its number, title, status, created date and discussion flag, so the workflow view lists the two alike. Rename the folder to a new number and you will be asked again to make it a new experiment.':
+    '"{0}"은(는) 실험 {1}의 복사본이라 번호·제목·상태·생성일·논의 표시가 같아 워크플로 뷰에 똑같이 보입니다. 폴더 이름을 새 번호로 바꾸면 새 실험으로 정리할지 다시 묻습니다.',
   'Name this copy of the experiment': '복제한 실험의 제목',
   '"{0}" is a copy of the experiment {1}. Give the copy its own title: it becomes the next experiment, dated today, planned, without the discussion flag.':
     '"{0}"은(는) 실험 {1}의 복사본입니다. 복사본의 제목을 정하세요. 다음 번호의 실험이 되고, 날짜는 오늘로, 상태는 planned로 바뀌고, 논의 표시는 꺼집니다.',

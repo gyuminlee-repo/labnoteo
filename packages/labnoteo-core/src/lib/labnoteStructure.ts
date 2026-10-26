@@ -302,6 +302,17 @@ export function copiedExperimentOrigin(name: string): string | undefined {
 }
 
 /**
+ * The experiment folder an experiment copy renamed by hand copies (#393):
+ * `labnote/011_X 1` → `labnote/119_Y` gives `011_X`. Undefined unless the
+ * folder kept its parent and the old name was a copy's and the new one is not.
+ */
+export function renamedExperimentCopyOrigin(oldPath: string, newPath: string): string | undefined {
+  if (path.dirname(oldPath) !== path.dirname(newPath)) return undefined;
+  if (copiedExperimentOrigin(path.basename(newPath))) return undefined;
+  return copiedExperimentOrigin(path.basename(oldPath));
+}
+
+/**
  * `content` with the front-matter keys in `values` rewritten in place:
  * a string replaces the value, `null` drops the key (with any indented
  * continuation lines). Keys not already present are not added.

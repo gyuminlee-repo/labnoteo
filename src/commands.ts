@@ -602,6 +602,13 @@ export async function confirmCompleted(
   const spots = await experimentMarkerSpots(host.fs, labnoteDir);
 
   const found: string[] = [];
+  // Nothing in the checklist or the folder: no work was recorded (#398).
+  if (items.length === 0) {
+    const names = (await host.fs.exists(labnoteDir)) ? await host.fs.list(labnoteDir) : [];
+    if (!names.some(n => n !== 'README.labnote.md' && parseWorkflowFileName(n))) {
+      found.push(host.t('This experiment has no workflows.'));
+    }
+  }
   if (unchecked > 0) found.push(host.t('{0} workflow(s) in the checklist are not checked.', String(unchecked)));
   if (noEndDate.length > 0) {
     const names =

@@ -13,6 +13,7 @@ import {
   buildExperimentTree,
   buildWorkflowTree,
   filterExperiments,
+  frontMatterNames,
   isDiscussFlagged,
   linkRetries,
   type ExperimentEntry,
@@ -44,15 +45,6 @@ import { focusTree, renderTree } from './treeRender';
 
 const README = 'README.labnote.md';
 
-/** A front-matter value as text: a list (`author: [이서연, 김민준]`) joined, blank as undefined. */
-function frontMatterText(value: unknown): string | undefined {
-  const parts = (Array.isArray(value) ? value : [value])
-    .filter((v): v is string | number => typeof v === 'string' || typeof v === 'number')
-    .map(v => String(v).trim())
-    .filter(Boolean);
-  return parts.length > 0 ? parts.join(', ') : undefined;
-}
-
 export const WORKFLOW_VIEW_TYPE = 'labnote-workflow-view';
 
 export class WorkflowTreeView extends ItemView {
@@ -61,6 +53,8 @@ export class WorkflowTreeView extends ItemView {
   private readonly seeded = new Set<string>();
   /** Tree container; `renderTree` empties it, so the hint above survives. */
   private treeEl: HTMLElement | null = null;
+  /** Says a search found no experiment (#409), outside the tree so a redraw keeps it. */
+  private noMatchEl: HTMLElement | null = null;
   private catalogNodes: TreeNode[] = [];
   private renderTimer: number | undefined;
   /** Experiment search; its box sits outside {@link treeEl} so a redraw keeps focus and text (#204). */
@@ -133,6 +127,8 @@ export class WorkflowTreeView extends ItemView {
       ),
     });
     this.buildControls();
+    this.noMatchEl = this.contentEl.createDiv({ cls: 'labnote-view-hint' });
+    this.noMatchEl.hide();
     this.treeEl = this.contentEl.createDiv();
     this.expanded.add('experiments');
     await this.refresh();
@@ -216,12 +212,22 @@ export class WorkflowTreeView extends ItemView {
           progress: this.checklistProgress(f),
           project:
             typeof fm?.project === 'string' || typeof fm?.project === 'number' ? String(fm.project) : undefined,
-          author: frontMatterText(fm?.author),
+          authors: frontMatterNames(fm?.author),
+          workflowNames: this.workflowNames(folder),
           markers: this.markerCount(folder),
           retryOf: this.retryOf(f, fm?.retry_of),
         };
       });
     return linkRetries(entries);
+  }
+
+  /** The workflow notes directly in `folder`, as words to search (#409): `001 WD010 Design`. */
+  private workflowNames(folder: string): string[] {
+    const dir = this.app.vault.getAbstractFileByPath(folder);
+    if (!(dir instanceof TFolder)) return [];
+    return dir.children
+      .filter((f): f is TFile => f instanceof TFile && /\.labnote\.md$/i.test(f.name) && f.name !== README)
+      .map(f => f.name.replace(/\.labnote\.md$/i, '').replace(/_/g, ' '));
   }
 
   /** The experiment folder a README's `retry_of` link resolves to (#327). */
@@ -331,6 +337,18 @@ export class WorkflowTreeView extends ItemView {
     const discussGroup = this.plugin.t('Something to discuss');
     const all = this.experiments();
     const found = filterExperiments(all, this.query, `${discuss} ${discussGroup}`, statusNames(this.plugin.host));
+    if (this.noMatchEl) {
+      const none = this.query.trim() !== '' && found.length === 0;
+      this.noMatchEl.toggle(none);
+      if (none) {
+        this.noMatchEl.setText(
+          this.plugin.t(
+            'No experiment matches "{0}". The search reads folder names, titles, projects, authors, statuses and workflow note names.',
+            this.query.trim()
+          )
+        );
+      }
+    }
     const experiments = buildExperimentTree(
       found.length === all.length ? found : all.filter(e => found.includes(e) || this.kept.has(e.folder)),
       {
