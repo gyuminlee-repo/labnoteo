@@ -309,6 +309,8 @@ describe('draftMethodCommand (#112)', () => {
     // #280: the draft is marked as the model's until someone removes the line.
     expect(start.text).toMatch(/#### Method\n\n> \[!note\] AI draft \(llama3\.1, [\d-]+\) — review it, then delete this line\n\n1\. 원심분리/);
     expect(Notice.shown).toContain('Inserted the Method draft into 001_WD010_A.labnote.md.');
+    // #420: what the user typed on while waiting must not land in the draft.
+    expect(start.revealOffset).not.toHaveBeenCalled();
   });
 
   it("does not overwrite a same-named unit operation's Method in another note", async () => {
@@ -367,6 +369,7 @@ describe('draftMethodCommand (#112)', () => {
       /^# Free\n\nabc\n\n> \[!note\] AI draft \(llama3\.1, [\d-]+\) — review it, then delete this line\n> 1\. 원심분리\n>\n> 2\. 세척\n$/
     );
     expect(Notice.shown).toContain('The cursor was above the note body, so the draft went to the end of the note.');
+    expect(free.revealOffset).not.toHaveBeenCalled();
   });
 });
 

@@ -195,9 +195,16 @@ async function complete(
  * splitting the line (#48), then reveal it and mark the note edited so
  * `last_updated_date` refreshes. Reads text and cursor now, after the reply
  * arrived, since the user may have kept typing meanwhile. True when a cursor
- * above the body sent the block to the end of the note.
+ * above the body sent the block to the end of the note. `reveal: false` for
+ * replies that arrive while the user writes on, which must leave the cursor
+ * where it is (#357, #420).
  */
-async function insertBlock(plugin: LabnotePlugin, target: EditTarget, answer: string): Promise<boolean> {
+async function insertBlock(
+  plugin: LabnotePlugin,
+  target: EditTarget,
+  answer: string,
+  { reveal = true }: { reveal?: boolean } = {}
+): Promise<boolean> {
   // Whatever the model wrote, nothing it inserts opens an issue (#354).
   const block = neutralizeIssueMarkers(answer);
   let atEnd = false;
@@ -206,7 +213,7 @@ async function insertBlock(plugin: LabnotePlugin, target: EditTarget, answer: st
   } else {
     const plan = planBlockInsert(await target.getText(), await target.getCursorOffset(), block);
     await target.replaceRange(plan.offset, plan.offset, plan.text);
-    await target.revealOffset?.(plan.offset + plan.text.length);
+    if (reveal) await target.revealOffset?.(plan.offset + plan.text.length);
     atEnd = plan.atEnd === true;
   }
   plugin.markUserEdit(target.path);
@@ -271,19 +278,17 @@ async function writeMethodDraft(
   loc: UnitOpMethodLocation | null,
   body: string
 ): Promise<boolean> {
-  if (!loc) return insertBlock(plugin, target, body);
+  // The draft takes long enough to write on meanwhile, so the cursor stays put (#420).
+  if (!loc) return insertBlock(plugin, target, body, { reveal: false });
   const latest = await target.getText();
   const again = findUnitOpMethodByIndex(latest, loc.unitOpIndex, loc.unitOpHeading);
   if (!again) {
     new Notice(plugin.t('The unit operation changed while the AI was writing, so the draft was inserted after the cursor line instead.'));
-    await insertBlock(plugin, target, body);
+    await insertBlock(plugin, target, body, { reveal: false });
     return false;
   }
   const edit = minimalReplacement(latest, replaceSectionBodyAt(latest, again.methodLine, body).md);
-  if (edit) {
-    await target.replaceRange(edit.start, edit.end, edit.text);
-    await target.revealOffset?.(edit.start);
-  }
+  if (edit) await target.replaceRange(edit.start, edit.end, edit.text);
   plugin.markUserEdit(target.path);
   return false;
 }
@@ -556,7 +561,7 @@ export async function summarizeResultsCommand(plugin: LabnotePlugin): Promise<vo
       note,
       block,
       async t => {
-        await insertBlock(plugin, t, block);
+        await insertBlock(plugin, t, block, { reveal: false });
       },
       'Inserted the summary into {0}.'
     );
