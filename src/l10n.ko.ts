@@ -953,6 +953,8 @@ const obsidianKo: Record<string, string> = {
   'Gave the copy {0} its own note ID {1}.': '복사본 {0}에 새 노트 ID {1}을(를) 발급했습니다.',
   'Notes {0} share the note ID {1}, probably because one was copied. Scans of either note would be filed in the wrong one. Give {2} a new ID?':
     '{0} 노트가 같은 노트 ID {1}을(를) 쓰고 있습니다. 하나를 복사했기 때문일 수 있습니다. 이대로 두면 스캔이 다른 노트에 붙을 수 있습니다. {2}에 새 ID를 발급할까요?',
+  '{0} is not a lab note but carries the note ID {1}, so notes made from it as a template get that ID too. Delete its labnote_id line.':
+    '{0}은(는) 실험 노트가 아닌데 노트 ID {1}을(를) 갖고 있어, 이 파일을 템플릿으로 넣은 노트도 같은 ID가 됩니다. 이 파일의 labnote_id 줄을 지우세요.',
   'Experiment worksheet': '실험 기록지',
   continued: '이어서',
   'Page {0} of {1} · printed {2}': '{0}/{1}쪽 · {2} 출력',

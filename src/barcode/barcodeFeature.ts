@@ -10,7 +10,7 @@ import { readNoteId } from '@labnoteo/core/lib/noteId';
 import { isValidWorkflowPath } from '@labnoteo/core/lib/workflowStructure';
 import * as posix from '@labnoteo/core/posix';
 import type LabnotePlugin from '../main';
-import { NoteIdService } from './noteIdService';
+import { isBarcodeNote, NoteIdService } from './noteIdService';
 import { BarcodeModal } from './barcodeModal';
 import { noteTitleOf, printWorksheetCommand, type WorksheetDeps } from '../print/worksheetPrint';
 import { printFullNoteCommand } from '../print/fullNotePrint';
@@ -24,8 +24,7 @@ import { UnmatchedModal, listUnmatched } from '../scan/unmatchedModal';
 import { isScanOfNote, SCANS_SUBFOLDER } from '../scan/imageStore';
 import { SlackInbox } from '../scan/slack';
 
-/** Notes that get a barcode: lab notes (`*.labnote.md`). */
-export const isBarcodeNote = (path: string): boolean => path.toLowerCase().endsWith('.labnote.md');
+export { isBarcodeNote };
 
 /**
  * Which of a note's scans (by name in the old experiment's scans folder) move
@@ -169,7 +168,7 @@ export class BarcodeFeature {
         if (!isBarcodeNote(file.path) || !this.noteIds.idOf(file)) return;
         // A copied experiment renews its notes' IDs itself; asking as well gave the copy two (#265).
         if (this.plugin.isRenewingCopiedNoteId(file.path)) return;
-        if (this.noteIds.filesWithId(this.noteIds.idOf(file)!).length > 1) {
+        if (this.noteIds.sharesId(file)) {
           this.run(() => this.noteIds.offerDuplicateFixes());
         }
       })
