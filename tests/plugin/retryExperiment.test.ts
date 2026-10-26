@@ -47,6 +47,38 @@ describe('retryExperimentCommand', () => {
     expect(frontMatter.status).toBe('planned');
     expect(frontMatter.retry_of).toBe('[[labnote/061_Organoid/README.labnote|061]]');
   });
+
+  // #429: the retry fell out of the original's project and author groups.
+  it("carries the original's author and project over as written", async () => {
+    const fs = new MemFileSystem({
+      'labnote/002_ALE/README.labnote.md':
+        '---\ntitle: ALE 1차\nauthor:\n  - 김신입\n  - "[[이서연]]"\nstatus: failed\nproject: ALE-2026 # 하반기\ndiscuss: true\n---\nbody\n',
+    });
+    const prompt = vi.fn(async (opts: { value?: string }) => opts.value);
+    const host = { fs, t, prompt, notify: vi.fn(), openFile: vi.fn(async () => undefined) };
+
+    await retryExperimentCommand({} as App, host as unknown as LabnoteHost, 'labnote/002_ALE');
+
+    const readme = await fs.read('labnote/003_ALE_2차/README.labnote.md');
+    expect(readme).toContain('author:\n  - 김신입\n  - "[[이서연]]"\n');
+    expect(readme).toContain('project: ALE-2026 # 하반기\n');
+    const { frontMatter } = parseFrontMatterYaml(readme);
+    expect(frontMatter).toMatchObject({ status: 'planned', author: ['김신입', '[[이서연]]'], project: 'ALE-2026' });
+    expect(frontMatter.discuss).toBeUndefined();
+  });
+
+  it('leaves author and project empty when the original has none', async () => {
+    const fs = new MemFileSystem({ 'labnote/002_ALE/README.labnote.md': "---\ntitle: ALE\nauthor: ''\nproject:\n---\n" });
+    const prompt = vi.fn(async (opts: { value?: string }) => opts.value);
+    const host = { fs, t, prompt, notify: vi.fn(), openFile: vi.fn(async () => undefined) };
+
+    await retryExperimentCommand({} as App, host as unknown as LabnoteHost, 'labnote/002_ALE');
+
+    const path = Object.keys(fs.snapshot()).find(p => p.startsWith('labnote/003_') && p.endsWith('/README.labnote.md'))!;
+    const { frontMatter } = parseFrontMatterYaml(await fs.read(path));
+    expect(frontMatter.author).toBe('');
+    expect(frontMatter.project).toBeNull();
+  });
 });
 
 describe('statusNames', () => {

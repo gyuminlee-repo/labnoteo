@@ -42,6 +42,7 @@ import {
   issueSentenceRange,
   lineHasSampleReference,
   DISCUSS_FLAG_KEY,
+  copyFrontMatterKeys,
   setFrontMatterKeys,
 } from '@labnoteo/core';
 import { ISSUE_SYNC_WORKFLOW_PATH, SETUP_DOC_PATH } from './scaffold/assets';
@@ -328,12 +329,13 @@ export function catalogDescription(id: string, description: string): string {
 
 /**
  * Create a new experiment folder (labnote/###_Title) + README scaffold. With
- * `retryOf`, the README's `retry_of` links to that experiment's (#327).
+ * `retryOf`, the README's `retry_of` links to that experiment's (#327), and
+ * `author` and `project` come from `retryReadme`, that experiment's README (#429).
  */
 export async function createExperimentCommand(
   app: App,
   host: LabnoteHost,
-  opts: { title?: string; retryOf?: string } = {}
+  opts: { title?: string; retryOf?: string; retryReadme?: string } = {}
 ): Promise<void> {
   const title = await host.prompt({
     title: opts.retryOf
@@ -360,10 +362,10 @@ export async function createExperimentCommand(
   await host.fs.mkdir(structure.labnoteFolder);
   await host.fs.mkdir(structure.imagesFolder);
   await host.fs.mkdir(structure.resourcesFolder);
-  await host.fs.write(
-    structure.readmePath,
-    opts.retryOf ? setRetryOf(structure.readmeContent, retryOfLink(opts.retryOf)) : structure.readmeContent
-  );
+  let readme = structure.readmeContent;
+  if (opts.retryOf) readme = setRetryOf(readme, retryOfLink(opts.retryOf));
+  if (opts.retryReadme !== undefined) readme = copyFrontMatterKeys(opts.retryReadme, readme, ['author', 'project']);
+  await host.fs.write(structure.readmePath, readme);
 
   await host.openFile(structure.readmePath);
   host.notify('info', host.t('Experiment created: {0}', posix.basename(structure.labnoteFolder)));
@@ -404,6 +406,7 @@ export async function retryExperimentCommand(app: App, host: LabnoteHost, folder
   await createExperimentCommand(app, host, {
     title: retryTitle(host, original, await experimentFolderNames(host)),
     retryOf: folder,
+    retryReadme: text,
   });
 }
 

@@ -168,6 +168,53 @@ export function setFrontMatterKeys(
   return [...out, ...added(seen), ...lines.slice(fmEnd)].join(newline);
 }
 
+/** The front-matter lines `[start, end)` of `key` with its continuation lines, if present. */
+function frontMatterKeyBlock(lines: readonly string[], key: string): { start: number; end: number } | undefined {
+  const fmEnd = lines[0]?.trim() === '---' ? lines.findIndex((l, i) => i > 0 && l.trim() === '---') : -1;
+  for (let i = 1; i < fmEnd; i++) {
+    if (/^([A-Za-z_][\w-]*)\s*:/.exec(lines[i])?.[1] !== key) continue;
+    let end = i + 1;
+    while (end < fmEnd && (/^\s+[^\s#]/.test(lines[end]) || /^-(\s|$)/.test(lines[end]))) end++;
+    return { start: i, end };
+  }
+  return undefined;
+}
+
+/**
+ * `content` with the front-matter lines of `keys` copied from `source` as
+ * written there (#429), so `author: [[이서연]]` stays a link rather than the
+ * nested list it parses as. A key `source` leaves empty, or a `source` whose
+ * front matter cannot be read, leaves `content` as it is; a key `content`
+ * lacks goes before its closing `---`.
+ */
+export function copyFrontMatterKeys(source: string, content: string, keys: readonly string[]): string {
+  const from = source.replace(/\r\n/g, '\n');
+  const parsed = parseFrontMatterYaml(from);
+  if (parsed.parseError) return content;
+  const newline = content.includes('\r\n') ? '\r\n' : '\n';
+  const fromLines = from.split('\n');
+  let lines = content.split(/\r?\n/);
+  for (const key of keys) {
+    const value = parsed.frontMatter[key];
+    const empty =
+      value === undefined ||
+      value === null ||
+      (typeof value === 'string' && !value.trim()) ||
+      (Array.isArray(value) && value.length === 0);
+    const block = frontMatterKeyBlock(fromLines, key);
+    if (empty || !block) continue;
+    const copied = fromLines.slice(block.start, block.end);
+    const target = frontMatterKeyBlock(lines, key);
+    if (target) {
+      lines = [...lines.slice(0, target.start), ...copied, ...lines.slice(target.end)];
+      continue;
+    }
+    const fmEnd = lines[0]?.trim() === '---' ? lines.findIndex((l, i) => i > 0 && l.trim() === '---') : -1;
+    if (fmEnd > 0) lines = [...lines.slice(0, fmEnd), ...copied, ...lines.slice(fmEnd)];
+  }
+  return lines.join(newline);
+}
+
 /**
  * The names a front-matter value such as `author` or `experimenter` holds
  * (#394): a string, a flow or block list, or the nested lists an unquoted
