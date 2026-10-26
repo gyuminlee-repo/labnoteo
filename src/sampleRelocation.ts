@@ -22,6 +22,7 @@ import {
   type SampleAdoption,
   type SampleDatabase,
 } from '@labnoteo/core/lib/sampleStorage';
+import { maskSampleListTables } from '@labnoteo/core/lib/sampleUtils';
 import { notesInSampleScope } from './sampleActions';
 
 export interface SampleRelocationDeps {
@@ -29,6 +30,8 @@ export interface SampleRelocationDeps {
   host: LabnoteHost;
   globalSampleFolder: string;
   customTypes: string[];
+  /** Headers of the sample list tables, whose rows are not a use (#385). */
+  sampleListHeaders?: string[][];
   /** Refresh the sample view and autocomplete after a write. */
   onSamplesChanged: () => void;
 }
@@ -91,8 +94,17 @@ async function planFrom(
   const to = await loadDatabase(host, labsamplesOf(toDir), types);
   const global = await loadDatabase(host, deps.globalSampleFolder, types);
 
+  // A row of a sample list table names a sample without using it (#385).
   const planNote = (text: string, newName: string, usedElsewhere: ReadonlySet<string>) =>
-    planLocalSampleAdoption({ noteText: text, newName, from, to, global, usedElsewhere, additionalTypes: customTypes });
+    planLocalSampleAdoption({
+      noteText: maskSampleListTables(text, deps.sampleListHeaders),
+      newName,
+      from,
+      to,
+      global,
+      usedElsewhere,
+      additionalTypes: customTypes,
+    });
 
   // Scanning the old experiment's notes is the costly part; skip it when no
   // note has anything to bring.
@@ -101,7 +113,7 @@ async function planFrom(
   }
   const usedElsewhere = new Set<string>();
   for (const doc of await notesInSampleScope(app, fromFolder)) {
-    for (const s of extractSampleInfoFromText(doc.text, customTypes)) {
+    for (const s of extractSampleInfoFromText(maskSampleListTables(doc.text, deps.sampleListHeaders), customTypes)) {
       usedElsewhere.add(sampleReferenceKey(s.type, s.id));
     }
   }

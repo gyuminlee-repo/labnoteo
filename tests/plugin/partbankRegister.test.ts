@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MemFileSystem, type SampleSource } from '@labnoteo/core';
-import { loadSamplesByType, upsertSampleRecord } from '@labnoteo/core/lib/sampleStorage';
+import { loadSamplesByType, setSampleDiscarded, upsertSampleRecord } from '@labnoteo/core/lib/sampleStorage';
 import { Notice } from '../stubs/obsidian';
 import { catalogSeedNote, noticeForRegistration, registerPartbankItem } from '../../src/partbank/partbankRegister';
 import type { PartbankClient } from '../../src/partbank/client';
@@ -50,6 +50,14 @@ describe('registerPartbankItem (#270)', () => {
 
     expect(result).toMatchObject({ id: 'DNA-1', reused: true, folder: LOCAL });
     expect(await loadSamplesByType(fs, GLOBAL, 'DNA')).toEqual({});
+  });
+
+  // #387: a sample marked used up was reused without a word.
+  it('carries the discard date of a reused sample', async () => {
+    await upsertSampleRecord(fs, LOCAL, 'DNA', 'DNA-1', { alias: 'sfGFP', description: null, source });
+    await setSampleDiscarded(fs, LOCAL, 'DNA', 'DNA-1', '2026-10-01');
+    const result = await registerPartbankItem(plugin, client, ITEM, { folder: LOCAL, type: 'DNA' });
+    expect(result).toMatchObject({ id: 'DNA-1', reused: true, discarded: '2026-10-01' });
   });
 
   it('writes to the chosen folder when nothing stands for the item yet', async () => {
@@ -133,6 +141,11 @@ describe('noticeForRegistration (#270)', () => {
   it('says when the reused sample has another type than the one asked for', () => {
     noticeForRegistration(plugin, { ...result(LOCAL, true), foundIn: 'local', type: 'Other', id: 'Other-1', requestedType: 'DNA' });
     expect(Notice.shown).toEqual(['Other-1 already stands for this partbank item. It is registered as Other, not DNA.']);
+  });
+
+  it('says a reused sample was marked discarded', () => {
+    noticeForRegistration(plugin, { ...result(LOCAL, true), foundIn: 'local', discarded: '2026-10-01' });
+    expect(Notice.shown).toEqual(['DNA-1 already stands for this partbank item. DNA-1 was marked discarded on 2026-10-01.']);
   });
 
   it('tells a chosen Global apart from Global by default', () => {

@@ -17,10 +17,13 @@ import {
   escapeMarkdownInline,
   findSampleListTables,
   planSampleListRowUpdate,
+  planSampleListRowRemoval,
+  maskSampleListTables,
   sampleAliasProblem,
   toSampleAlias,
 } from '../lib/sampleUtils';
 import { buildSampleInsertText, parseSampleTrigger } from '../sample/sampleSuggest';
+import { findSampleUsages, findSampleUsageSpots } from '../lib/sampleStorage';
 
 const TYPES = ['DNA', 'RNA', 'Plasmid', 'Reagent', 'Primer', 'Protein', 'Equip', 'Labware'];
 
@@ -265,5 +268,32 @@ describe('findSampleListTables / planSampleListRowUpdate (#336)', () => {
     expect(out.split('\n')[3]).toBe('| DNA-1 | frag17v2 | PCR 산물 | -80C 냉동고 B \\#A5 | 로컬 | 2026-10-25 |');
     expect(out.split('\n').slice(4)).toEqual(md.split('\n').slice(4));
     expect(planSampleListRowUpdate(out, headers, 'DNA-1', cells)).toEqual([]);
+  });
+
+  // #385: a table listing the samples is not a use of them.
+  it('blanks the table rows out of usage counts, offsets kept', () => {
+    const masked = maskSampleListTables(md, headers);
+    expect(masked).toHaveLength(md.length);
+    expect(masked.split('\n')[3].trim()).toBe('');
+    expect(masked).toContain('| DNA-1 | old |');
+    expect(maskSampleListTables(md)).toBe(md);
+    const docs = [{ path: 'a.md', text: '| ID | Alias | Description | Location | Scope | Discarded |\n| --- | --- | --- | --- | --- | --- |\n| DNA-1 | x |  |  | Local |  |\n' }];
+    expect(findSampleUsages(docs, 'DNA', 'DNA-1', [], { sampleListHeaders: headers })).toEqual([]);
+    expect(findSampleUsages(docs, 'DNA', 'DNA-1', [])).toEqual(['a.md']);
+    expect(findSampleUsageSpots(docs, 'DNA', 'DNA-1', headers)).toEqual([]);
+  });
+
+  it("removes the sample's rows with their line breaks, CRLF included", () => {
+    const apply = (text: string, edits: Array<{ start: number; end: number; text: string }>) =>
+      edits.reduceRight((out, e) => out.slice(0, e.start) + e.text + out.slice(e.end), text);
+    const out = apply(md, planSampleListRowRemoval(md, headers, 'DNA-1'));
+    expect(out.split('\n').slice(1, 4)).toEqual([
+      '| ID | 별칭 | 설명 | 보관 위치 | 범위 | 폐기 |',
+      '| --- | --- | --- | --- | --- | --- |',
+      '| DNA-2 |  |  |  | 로컬 |  |',
+    ]);
+    expect(out).toContain('| DNA-1 | old |');
+    const crlf = md.replace(/\n/g, '\r\n');
+    expect(apply(crlf, planSampleListRowRemoval(crlf, headers, 'DNA-1'))).toBe(out.replace(/\n/g, '\r\n'));
   });
 });

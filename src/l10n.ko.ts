@@ -433,6 +433,11 @@ const obsidianKo: Record<string, string> = {
   '(after {0})': '({0} 다음)',
   '(before the first unit operation)': '(첫 유닛 오퍼레이션 앞)',
   '(after the last unit operation)': '(마지막 유닛 오퍼레이션 다음)',
+  'Save {0} anyway?': '그래도 {0}을(를) 저장할까요?',
+  'Save anyway': '그래도 저장',
+  '{0} samples already have the alias {1} ({2}).': '{0} 시료 중에 이미 별칭 {1}이(가) 있습니다({2}).',
+  '{0} is only listed in the sample list tables of notes ({1}). Its rows are removed with it.':
+    '{0}은(는) 노트({1})의 시료 목록 표에만 있습니다. 표의 그 줄도 함께 지웁니다.',
   'An alias cannot contain "#": links to its heading would break.':
     '별칭에는 "#"를 쓸 수 없습니다. 제목으로 가는 링크가 끊어집니다.',
   '(before the conclusions: no unit operation section was found, so the table of contents was not updated)':
@@ -653,6 +658,9 @@ const obsidianKo: Record<string, string> = {
   'Global sample folder': '전역 샘플 폴더',
   '"{0}" cannot be the Global sample folder: {1} It is back to {2}.':
     '"{0}"은(는) 전역 샘플 폴더로 쓸 수 없습니다: {1} {2}(으)로 되돌렸습니다.',
+  'It is inside the experiment {0}, whose own samples it holds.': '실험 {0} 안에 있어 그 실험의 로컬 시료를 담는 폴더입니다.',
+  'The old folder {0} is the Local registry of the experiment {1}, so its samples were not moved. To use one of them everywhere, move it with "Move to Global" in the sample view.':
+    '옛 폴더 {0}은(는) 실험 {1}의 로컬 대장이라 시료를 옮기지 않았습니다. 어디서나 쓸 시료는 샘플 뷰의 "전역으로 이동"으로 옮기세요.',
   'The folder path is empty.': '폴더 경로가 비어 있습니다.',
   'Folder names cannot contain {0}.': '폴더 이름에는 {0}을(를) 쓸 수 없습니다.',
   'A folder path cannot have an empty part (//), or a . or .. part.':

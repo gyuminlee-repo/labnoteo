@@ -190,6 +190,47 @@ export function findSampleListTables(text: string, headerSets: ReadonlyArray<rea
 }
 
 /**
+ * `text` with the rows of its sample list tables blanked out, offsets kept
+ * (#385): a table listing the experiment's samples is not a use of them, so
+ * it neither keeps a deleted sample in use nor brings its record back.
+ */
+export function maskSampleListTables(text: string, headerSets: ReadonlyArray<readonly string[]> = []): string {
+  if (headerSets.length === 0) return text;
+  const rows = findSampleListTables(text, headerSets).flat();
+  if (rows.length === 0) return text;
+  let out = '';
+  let at = 0;
+  for (const row of rows) {
+    out += text.slice(at, row.start) + ' '.repeat(row.end - row.start);
+    at = row.end;
+  }
+  return out + text.slice(at);
+}
+
+/**
+ * The edits that delete the rows of sample `id` from the sample list tables of
+ * `text`, each with its line break (#385). A table left with its header alone
+ * stays.
+ */
+export function planSampleListRowRemoval(
+  text: string,
+  headerSets: ReadonlyArray<readonly string[]>,
+  id: string
+): Array<{ start: number; end: number; text: string }> {
+  const edits: Array<{ start: number; end: number; text: string }> = [];
+  for (const rows of findSampleListTables(text, headerSets)) {
+    for (const row of rows) {
+      if (row.id !== id) continue;
+      let end = row.end;
+      if (text[end] === '\r') end++;
+      if (text[end] === '\n') end++;
+      edits.push({ start: row.start, end, text: '' });
+    }
+  }
+  return edits;
+}
+
+/**
  * The edits that bring the rows of sample `id` in the sample list tables of
  * `text` up to `cells` (#336), one per row that differs. `cells` are the
  * row's values in header order, the ID first; the ID is kept as written.

@@ -11,6 +11,7 @@ import { MemFileSystem } from '../../packages/labnoteo-core/src/fs/memFileSystem
 import {
   changeSampleTypeInteractive,
   createSampleInteractive,
+  deleteSampleInteractive,
   editSampleInteractive,
   insertSampleReference,
   listSampleDefinitions,
@@ -487,6 +488,63 @@ describe('editSampleInteractive alias rewrite', () => {
 
     expect(confirmModal).not.toHaveBeenCalled();
     expect(Notice.shown.at(-1)).toBe('Sample updated: RNA-1');
+  });
+
+  // #403
+  it('asks before taking the alias of another sample of the experiment, and saves nothing when declined', async () => {
+    await fs.write(`${FOLDER}/RNA.json`, JSON.stringify({ 'RNA-1': RECORD, 'RNA-2': { ...RECORD, alias: 'siKIF' } }));
+    vi.mocked(confirmModal).mockResolvedValueOnce(false);
+
+    expect(await edit(FOLDER, 'SIKIF ')).toBe(false);
+
+    expect(vi.mocked(confirmModal).mock.calls[0][1]).toBe(
+      'This experiment already has the alias SIKIF (RNA-2). Save RNA-1 anyway?'
+    );
+    expect(JSON.parse(await fs.read(`${FOLDER}/RNA.json`))['RNA-1'].alias).toBe('si KIF');
+  });
+
+  it('saves the shared alias on "Save anyway", and does not ask when only the case changed', async () => {
+    await fs.write(`${FOLDER}/RNA.json`, JSON.stringify({ 'RNA-1': RECORD, 'RNA-2': { ...RECORD, alias: 'siKIF' } }));
+    vi.mocked(confirmModal).mockResolvedValueOnce(true);
+
+    expect(await edit(FOLDER, 'siKIF')).toBe(true);
+    expect(JSON.parse(await fs.read(`${FOLDER}/RNA.json`))['RNA-1'].alias).toBe('siKIF');
+
+    vi.mocked(confirmModal).mockReset();
+    await fs.write(`${FOLDER}/RNA.json`, JSON.stringify({ 'RNA-1': RECORD, 'RNA-2': { ...RECORD } }));
+    expect(await edit(FOLDER, 'SI KIF')).toBe(true);
+    expect(confirmModal).not.toHaveBeenCalled();
+  });
+
+  // #385
+  it('deletes a sample only a sample list table names, with its rows', async () => {
+    const table = [
+      '| ID | Alias | Description | Location | Scope | Discarded |',
+      '| --- | --- | --- | --- | --- | --- |',
+      '| RNA-1 | si KIF | kd |  | Local |  |',
+      '| RNA-2 | other |  |  | Local |  |',
+      '',
+    ].join('\n');
+    await fs.write(`${FOLDER}/RNA.json`, JSON.stringify({ 'RNA-1': RECORD, 'RNA-2': { ...RECORD, alias: 'other' } }));
+    await fs.write(`${A}/README.labnote.md`, table);
+    vi.mocked(confirmModal).mockResolvedValueOnce(true);
+    const { app, p } = editPlugin();
+
+    expect(await deleteSampleInteractive(app, p, { folder: FOLDER, type: 'RNA', id: 'RNA-1' })).toBe(true);
+
+    expect(vi.mocked(confirmModal).mock.calls[0][1]).toContain('RNA-1 is only listed in the sample list tables');
+    expect(JSON.parse(await fs.read(`${FOLDER}/RNA.json`))).not.toHaveProperty('RNA-1');
+    expect(await fs.read(`${A}/README.labnote.md`)).not.toContain('RNA-1');
+    expect(await fs.read(`${A}/README.labnote.md`)).toContain('| RNA-2 | other |');
+  });
+
+  it('still refuses to delete a sample a note uses outside the table', async () => {
+    await fs.write(`${FOLDER}/RNA.json`, JSON.stringify({ 'RNA-1': RECORD }));
+    await fs.write(`${A}/001_WD010_A.labnote.md`, 'RNA-1;si KIF\n');
+    const { app, p } = editPlugin();
+
+    expect(await deleteSampleInteractive(app, p, { folder: FOLDER, type: 'RNA', id: 'RNA-1' })).toBe(false);
+    expect(JSON.parse(await fs.read(`${FOLDER}/RNA.json`))).toHaveProperty('RNA-1');
   });
 
   // #130, #131

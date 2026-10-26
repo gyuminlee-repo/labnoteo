@@ -206,12 +206,16 @@ export class LabnoteSettingTab extends PluginSettingTab {
     const s = this.plugin.settings;
     const folder = value.trim() || DEFAULT_SETTINGS.globalSampleFolder;
     const reason = invalidVaultFolderReason(folder);
-    if (reason) {
+    // Inside an experiment it would be that experiment's own registry (#408).
+    const experiment = reason ? undefined : getExperimentDir(folder);
+    if (reason || experiment) {
       new Notice(
         this.plugin.t(
           '"{0}" cannot be the Global sample folder: {1} It is back to {2}.',
           folder,
-          invalidFolderText(this.plugin.t, reason),
+          reason
+            ? invalidFolderText(this.plugin.t, reason)
+            : this.plugin.t('It is inside the experiment {0}, whose own samples it holds.', experiment!),
           s.globalSampleFolder
         ),
         10000

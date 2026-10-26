@@ -56,6 +56,8 @@ export interface RegisteredPartbankSample {
   foundIn?: LinkedSample['scope'];
   /** For a reused sample of another type than the one asked for (#301): the type asked for. */
   requestedType?: string;
+  /** For a reused sample marked used up (#387): the date it was marked. */
+  discarded?: string;
 }
 
 /** The vault's strain type, when it has one: partbank strains need it. */
@@ -166,6 +168,7 @@ export async function registerPartbankItem(
       reused: true,
       foundIn: existing.scope,
       ...(existing.type !== type ? { requestedType: type } : {}),
+      ...(existing.record.discarded ? { discarded: existing.record.discarded } : {}),
     };
   }
 
@@ -239,11 +242,10 @@ export async function pickPartbankReference(
   const type = opts.type ?? (await resolveSampleType(plugin, item));
   if (!type) return undefined;
   const folder = plugin.localSampleFolder();
-  const alias = aliasForItem(item);
-  if (alias) await warnOnAliasClash(plugin, type, folder, alias);
-
   const result = await registerPartbankItem(plugin, client, item, { folder, type });
   if (!result) return undefined;
+  // Only a new sample can clash; a reused one is the very sample (#387).
+  if (!result.reused && result.alias) await warnOnAliasClash(plugin, type, folder, result.alias, result.id);
   // The autocomplete puts the returned reference into the note being edited.
   noticeForRegistration(plugin, result, undefined, catalogSeedNote(plugin, result, plugin.host.editTarget()?.path));
   return result.referenceText;
@@ -257,7 +259,8 @@ async function warnOnAliasClash(
   plugin: LabnotePlugin,
   type: string,
   folder: string,
-  alias: string
+  alias: string,
+  self: string
 ): Promise<void> {
   const globalFolder = plugin.settings.globalSampleFolder;
   const folders = [folder];
@@ -266,7 +269,7 @@ async function warnOnAliasClash(
   for (const f of folders) {
     const records = await loadSamplesByType(plugin.fs, f, type);
     const clash = Object.keys(records).find(
-      id => records[id].alias?.trim().toLowerCase() === wanted
+      id => id !== self && records[id].alias?.trim().toLowerCase() === wanted
     );
     if (clash) {
       new Notice(plugin.t('"{0}" is already the alias of {1}.', alias, clash));
@@ -325,9 +328,13 @@ export function noticeForRegistration(
             )
           : plugin.t('{0} already stands for this partbank item.', result.id);
     show(
-      result.requestedType
-        ? `${main} ${plugin.t('It is registered as {0}, not {1}.', result.type, result.requestedType)}`
-        : main
+      [
+        main,
+        result.requestedType ? plugin.t('It is registered as {0}, not {1}.', result.type, result.requestedType) : '',
+        result.discarded ? plugin.t('{0} was marked discarded on {1}.', result.id, result.discarded) : '',
+      ]
+        .filter(Boolean)
+        .join(' ')
     );
     return;
   }

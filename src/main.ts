@@ -118,6 +118,7 @@ import {
   insertSampleReference,
   listSampleDefinitions,
   insertExperimentSamplesTable,
+  sampleListHeaders,
 } from './sampleActions';
 import {
   offerSamplesAfterMove,
@@ -674,7 +675,7 @@ export default class LabnotePlugin extends Plugin {
   }
 
   private sampleRelocationDeps(): SampleRelocationDeps {
-    return { app: this.app, host: this.host, ...this.sampleCleanupOpts() };
+    return { app: this.app, host: this.host, ...this.sampleCleanupOpts(), sampleListHeaders: sampleListHeaders(this) };
   }
 
   /** Right-click in a lab-note editor → create a workflow + insert a link at the cursor. */
@@ -2539,7 +2540,8 @@ export default class LabnotePlugin extends Plugin {
         file.path,
         content,
         this.settings.globalSampleFolder,
-        this.settings.customSampleTypes
+        this.settings.customSampleTypes,
+        sampleListHeaders(this)
       );
       // Freshly-written definitions should show up in autocomplete right away.
       this.sampleSuggest?.clearCache();
@@ -2602,6 +2604,19 @@ export default class LabnotePlugin extends Plugin {
       const types = getSampleDisplayMeta(this.settings.customSampleTypes).types;
       const left = await inventorySampleFolder(this.fs, from, types);
       if (left.records === 0 && left.catalogs.length === 0) return;
+      // An experiment's own registry, set as Global by mistake, stays put (#408).
+      const experiment = getExperimentDir(from);
+      if (experiment) {
+        new Notice(
+          this.t(
+            'The old folder {0} is the Local registry of the experiment {1}, so its samples were not moved. To use one of them everywhere, move it with "Move to Global" in the sample view.',
+            from,
+            experiment
+          ),
+          10000
+        );
+        return;
+      }
       const message = [
         this.t(
           'The old Global sample folder {0} still has {1} sample(s). Move them to the new folder {2}?',

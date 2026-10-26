@@ -14,7 +14,6 @@ import {
   suggestSampleTypeName,
   underscoreTurnsItalic,
 } from '@labnoteo/core/lib/sampleUtils';
-
 export type LlmProviderKind = 'none' | 'ollama' | 'openai';
 
 /**
