@@ -24,6 +24,9 @@ already there, it points to the 📅 picker).
 
 While a table cell is being edited, the date goes in at the cursor in that cell. In reading view
 the command is still listed and says to switch to the editing view and place the cursor first.
+Run while a field of the Properties box or the title above the note has focus, it inserts nothing
+and says to click in the note body first, rather than adding the date at the body's last cursor
+position.
 
 ### Insert date and time
 
@@ -68,7 +71,12 @@ Update the active experiment's `status` frontmatter via a picker.
   experiment stays listed until the search changes, so it can be right-clicked again to undo.
 - Picking `completed` while checklist workflows are unchecked, or while workflow notes have an
   empty `end_date`, shows the counts and the note names and asks first. A note whose front matter
-  `end_date` is empty but whose unit operations all have an `End_date` counts as finished.
+  `end_date` is empty but whose unit operations all have an `End_date` counts as finished. An
+  experiment with no workflow at all, in the checklist or the folder, is asked about too.
+- Only the `status` line is rewritten (with the `discuss` line, when the flag is cleared); the
+  other front matter lines, `#` comments included, stay as written. Obsidian's Properties editor
+  can still drop comments when you edit there. When the README front matter cannot be read, it is
+  left unchanged and the notice names the file.
 - With the discussion flag on, picking `completed` offers to clear the flag or keep it, and lists
   where `@issue` markers remain (`note:line`).
 
@@ -77,7 +85,8 @@ Update the active experiment's `status` frontmatter via a picker.
 On the right-click menu of a `failed` or `needs-repeat` experiment in the workflow view: create the
 next experiment to run it again. The title starts from the original's (`… 1차` becomes `… 2차`;
 otherwise ` (retry)` is added, ` 2차` in the Korean UI; a run that already has a folder is skipped)
-and can be edited; the new experiment is `planned`.
+and can be edited; the new experiment is `planned` and keeps the original's `author` and `project`
+as written there (a `[[name]]` link stays a link).
 
 - Its README gets `retry_of` with a link to the original README (`[[labnote/061_…/README.labnote|061]]`),
   so Obsidian keeps it pointing there when folders are renumbered.
@@ -97,12 +106,18 @@ Turn the active experiment's `discuss` flag on or off, so the next push opens a 
   right-click menu picks one and opens its line.
 - Editing the front matter by hand, `yes`, `y`, `on`, `1`, `예` and `네` also turn it on, besides
   `true`.
+- Like Change experiment status, it changes only the `discuss` line (turning it off removes the
+  line) and keeps the other lines and their `#` comments.
 
 ### Insert issue marker
 
 Drop an `@issue;<ID>;<topic>` marker at the cursor (the selection becomes the topic); each marker
 opens its own Issue (requires Setup research automation).
 
+- Only the README and workflow notes (`.labnote.md`) directly in an experiment folder are read for
+  markers. In any other note (a plain `.md` in the experiment folder, a note in a subfolder or
+  outside experiments) it inserts nothing and says so, and markers written there by hand are not
+  highlighted.
 - With nothing selected it asks for the topic in a box prefilled with the sentence on the cursor's
   line; leaving it empty or cancelling inserts nothing.
 - If text follows the selection, the selection starts partway into the line's text, or the cursor
@@ -148,6 +163,10 @@ Create a numbered workflow note and add it to the README checklist.
 - If the experiment already has a workflow with the same ID and alias (both empty included), the
   prompt warns with that file's name, since the two would read the same in the checklist. Saving
   is not blocked.
+- An alias with `#`, with `*`, or with `_` anywhere but between ASCII letters and digits is refused
+  with the reason: `#` breaks links to the heading, and the others turn part of the heading, TOC
+  entry and checklist label italic in the reading view. Use a space; the file name gets `_` for it
+  anyway. Notes made before this rule keep their names.
 - On Windows, it warns when the path including the vault folder reaches 260 characters.
 
 ### Renumber workflows
@@ -186,9 +205,12 @@ file is gone. Also on the README and experiment-folder right-click menus.
 - A link Obsidian rewrote to a vault path such as `labnote/<experiment>/…` because another
   experiment uses the same file name (or one already broken into `./labnote/<experiment>/…`) is
   set back to `./<file name>` with its checkmark kept. Renaming the file fixes it too.
-- Notes whose `experimenter` differs from the README `author` are updated after asking. A finished
-  unit operation, one with an `End_date`, keeps its experimenter, and the dialog lists its empty
-  lines apart for you to fill in.
+- Notes with an empty `experimenter` get the README `author` after asking; a note that names
+  someone keeps that name, since each note may be another person's. A finished unit operation, one
+  with an `End_date`, keeps its experimenter, and the dialog lists its empty lines apart for you to
+  fill in.
+- A README `author` written as a YAML list or as `[[name]]` links is read as those names, joined
+  with commas, here and for new workflows and unit operations.
 - Local samples the notes use but that only another experiment's registry holds are brought into
   this experiment after asking.
 
@@ -197,10 +219,16 @@ file is gone. Also on the README and experiment-folder right-click menus.
 Insert a unit operation from the catalog, asking for an alias that tells runs or conditions apart
 and adding it to the heading and TOC. Leave it empty for none; the prompt says what a unit
 operation is, shows the chosen item's description and counts the characters, with no limit since
-the alias goes into no file name.
+the alias goes into no file name. The same characters are refused as in Create workflow.
 
 - It goes after the unit-operation block the cursor is in, before the first block when the cursor
   is between the TOC and it, and at the end elsewhere. The notice says where.
+- The unit-operation section is `## Related Unit Operations`, its Korean name, or (after the
+  heading was renamed) the first `##` section holding unit-operation blocks or TOC entries. With
+  none, the block goes before `## Conclusions and Discussion`, or at the end of the note, and the
+  notice says the TOC was not updated.
+- The new block's Experimenter is the note's own `experimenter`, or the README `author` when the
+  note names nobody. When the two differ, the notice says which one was used.
 - Run where it can't go (a README, a note without the number, a subfolder of the experiment, an
   experiment moved into a subfolder of `labnote/`, …), it says what is wrong before the list opens.
 - A HW unit operation whose catalog entry names its equipment lists it in `#### Equipment`, not in
@@ -211,10 +239,13 @@ the alias goes into no file name.
   blocked.
 - Typing in the list puts items whose name (Korean name included) equals the query first, then
   names containing it, then items that only mention it in their description, so Enter picks the
-  named one. Every picker (workflows, statuses, …) ranks this way.
+  named one. Last come items that hold the query typed without its spaces (`primerdesign` finds
+  `primer design`) or every word of it in any order. Every picker (workflows, statuses, …) ranks
+  this way.
 - With **Auto-sync unit operation TOC** on, the TOC is reordered to match the headings. Turned
   off, the order stays as you arranged it, but renaming a unit operation still updates the entry's
-  name and link.
+  name and link, and deleting a block removes its entry (cutting one does not, since it is usually
+  pasted back elsewhere).
 - A note or `@issue` marker written after a TOC entry's link stays on that line when the TOC is
   rebuilt, and `[`/`]` in an alias are written `\[`/`\]` in the TOC, so an unmatched one does not
   break the link.
@@ -252,8 +283,10 @@ Export note tables to `<note name>.labnote_tableN.csv` next to the note.
 
 - Rows are fitted to the header: extra cells are dropped, missing ones left empty. `<br>` in a cell
   becomes a line break.
-- Bold, italic and code marks are dropped, and struck-through text is dropped with its marks
-  (`~~0.10~~ 0.12` → `0.12`).
+- A cell holds what the reading view shows. Bold, italic, highlight (`==`) and code marks are
+  dropped, and struck-through text is dropped with its marks (`~~0.10~~ 0.12` → `0.12`). Footnote
+  numbers (`[^1]`) go, math loses its `$`, links become the text they show, `<sup>6</sup>` becomes
+  `^6` (`<sub>` just loses its tags), and HTML entities are decoded (`&lt;0.1` → `<0.1`, `&nbsp;` a space).
 - A cell starting with `=` or `@`, or with a `+`/`-` that is not part of a number, gets a leading
   tab so Excel shows it as typed instead of evaluating it. Numbers like `-80` are left alone. In a
   column where such a cell appears, like `+/-`, a lone `+` or `-` gets the tab too.
@@ -272,6 +305,9 @@ Export note tables to `<note name>.labnote_tableN.csv` next to the note.
 **Which tables are exported**
 
 - Tables inside callouts and quotes (`> | … |`) are exported.
+- A table written without `|` at the ends of its rows is exported too, as the reading view shows
+  it as a table. Its header and `---` row need the same number of cells, so text over a `---`
+  heading underline is not taken for one.
 - Tables inside code blocks are skipped, including code indented four spaces after a blank line. A
   table indented under a list item still counts.
 - A table written right under a line of text, with no blank line between, shows as text in the
@@ -309,16 +345,30 @@ explorer.
 
 ## Samples
 
+- The sample view, autocomplete, the definition search and the sample list table list samples by
+  alias, numbers by their size (`WTR-2` before `WTR-10`), then those without an alias by ID.
+- Choosing `{Type} catalog search` in autocomplete opens the catalog search with what you typed
+  after `;` already searched.
+- The **Global sample folder** setting refuses a folder inside an experiment (its
+  `resources/labsamples/` is that experiment's Local registry) and puts the previous value back.
+  When the old Global folder was such a folder, its samples are not moved to the new one; use
+  `Move to Global` for the ones to share.
+
 ### Open sample definition
 
 Open the definition window for the sample reference under the cursor (on its ID or on the alias of
-`ID;alias`), or else one picked by searching `ID | alias | scope`. The window edits, deletes, moves
-between Local and Global, and changes the type.
+`ID;alias`), or else one picked by searching `ID | alias | scope` or the storage location, which
+the list shows under each sample. The window edits, deletes, moves between Local and Global, and
+changes the type.
 
-- With no note open only Global samples are listed, and when the note's sample tracking is off it
-  only shows a notice.
+- With no note open only Global samples are listed. When sample tracking is off it only says
+  why: the plugin setting is off (Settings → Labnote Assistant → Samples → Sample tracking), or the
+  experiment's README sets `sample_tracking: 'no'`.
 - From a note at the vault root, a Global sample shows scope `global` with no move button, since
   that note has no Local registry of its own.
+- A sample from a product catalog (`{Type}_name.json`) shows that file and the scope
+  `Product catalog (read-only)`, and the window says to edit the file itself (or, if it was the
+  sample registry, to rename it back to `{Type}.json`).
 
 ### Sample view context menu
 
@@ -335,9 +385,18 @@ reference, view usages, edit, delete, move between Local and Global, or change i
 - **View usages** lists each line that refers to or defines the sample, with the note path and its
   section (`[UHW250 …] › Output · line 12`), and opens the note with the cursor on that reference.
   A Local sample is looked up in its experiment, a Global one in the whole vault, leaving out
-  experiments whose own Local sample has the same ID. A reference copied into an AI summary callout
-  (`> [!note] AI …`) is not a usage (deleting still counts it). A README that went into the
-  registry's usage record (`sources`) before this rule is not taken out by itself.
+  experiments whose own Local sample has the same ID. A Local sample is also looked up in notes
+  outside every experiment (a daily note, say) whose registries do not have its ID, for usages,
+  deleting, alias changes and type changes alike; when another experiment has a sample with the
+  same ID, those notes are counted but left unchanged, and the dialog says so. A reference copied
+  into an AI summary callout (`> [!note] AI …`) is not a usage (deleting still counts it). A
+  README that went into the registry's usage record (`sources`) before this rule is not taken out
+  by itself.
+- **Edit** asks before saving an alias another sample of the same type in the same registry
+  already has; for a Local sample whose alias only Global samples have, a notice says so.
+  **Change type** names the samples of the new type that already have its alias.
+- **Delete** shows the sample's alias, description, location, scope and discard date in the
+  confirmation, and the notice names it as `ID;alias`.
 - **Move to Global / Move to Local** asks first when notes outside the experiment use a Global
   sample being made Local, and when the destination already has another sample of the same type
   and alias; moving then shows two samples with the same text in autocomplete (they are not
@@ -365,6 +424,11 @@ too; a table whose header you changed, and every other row, are left alone. When
 first alias, the ID cell of these tables does not get `;alias` added, since the alias has its own
 column.
 
+A row of these tables lists a sample without using it. View usages leaves it out, it does not
+bring a deleted sample's record back or keep a Global sample in the next table, and it does not
+stop a delete: deleting a sample listed only there says so in the confirmation and removes its
+rows too.
+
 ### Sample aliases
 
 An alias cannot contain `;` or `:`, which end it in a note, nor `#`, `[[`, `]]`, `](`, `*`, `_` or a
@@ -383,7 +447,11 @@ it faded as `(discarded)` in the sample view.
 - Autocomplete lists discarded samples last, below `Generate new … ID` and `Enter info`, tagged
   `· Discarded`; Enter on a lone discarded match therefore makes a new ID.
 - Inserting one from autocomplete or the sample view, or typing its ID again, shows
-  "… was marked discarded on 2026-10-25."
+  "… was marked discarded on 2026-10-25." So do Search partbank and Send to labnoteo when they
+  reuse a discarded sample for the item picked.
+- When a new sample's alias is already taken, the question lists discarded samples of that alias
+  below `Create a new sample anyway`, marked `(discarded)`, so Enter does not reuse one, and says
+  when only discarded samples have it.
 - References to it are faded and struck through in editing and reading view, with
   `Marked discarded on <date>` on hover. A Local record in use hides a discarded Global one of
   the same ID.
@@ -437,7 +505,8 @@ location, registers it, and inserts `ID;alias`.
 - It registers where any other sample would (the experiment's Local registry, or Global outside an
   experiment). **An item already registered** is not registered twice: its existing ID is inserted
   instead, looked up in this experiment, then Global, then the product catalogs. A sample moved to
-  another type with Change type is found too, and the notice says which type it is registered as.
+  another type with Change type is found too, and the notice says which type it is registered as,
+  and when it was marked discarded.
   One found in a catalog is reported as "Used ID from the partbank catalog (folder)", adding that
   saving the note copies it into this experiment's registry when the reference went into a note of
   an experiment. The KID is kept with the link rather than as the sample ID, and shows in the
@@ -450,8 +519,10 @@ In the sample view's context menu and in the definition window. It reads the loc
 `storage / box / position` and stores it after showing the change once. When partbank shows no
 stock, the current location is kept without asking (empty it in Edit sample to clear it).
 **Refresh storage locations from partbank** (command palette) does every linked sample at once,
-listing only what changes as `old → new`. A sample partbank shows no stock for is left out of the
-list and keeps its location, so a hand-written one is not wiped; the closing notice counts those and
+in every experiment of the vault and the Global folder whichever note is open, listing only what
+changes as `old → new` with the experiment folder (or Global) it is in. A sample partbank shows no
+stock for is left out of the list and keeps its location, so a hand-written one is not wiped; the
+closing notice counts those and
 the samples that could not be read. Because the value is stored, it stays visible offline and
 in the sample list table and search.
 
@@ -481,7 +552,8 @@ when no global sample folder is set. This is not the workflow [Update catalogs](
 The detail screens in partbank have a **labnoteo로 보내기** button that opens Obsidian and asks
 whether to register that item, letting you switch the destination to Global there. Even with Global
 picked, an item this experiment already has is reused rather than registered again, and the notice
-says where that sample is. Links naming an
+says where that sample is (and, with the insert question, when it was marked discarded). Links
+naming an
 address that is not in the settings are refused. After registering, it asks whether to put
 `ID;alias` at the cursor of the open note (over the selected text, if any); `Cancel` does nothing.
 With no open note, or one whose samples are not tracked, it goes to the clipboard without asking.
@@ -500,14 +572,27 @@ Give a note without one a `labnote_id`. This is not a content change, so `last_u
 When another note has the same ID, a new one is given after asking. Front matter that cannot be
 read is left unchanged, with a notice.
 
+- Lab notes sharing an ID (usually a copy) are pointed out with an offer to give the newest one a
+  new ID. With three or more, you are asked again about the ones still sharing it. A set you
+  decline is not asked about again that session, unless another note joins it.
+- Only lab notes (`*.labnote.md`) count, and only they receive scans. A template or other Markdown
+  file carrying a lab note's ID is not offered a new ID; a warning names it and says to delete its
+  `labnote_id` line, since every note made from it would get that ID too.
+
 ### Print experiment worksheet
 
 Pick a workflow note's unit operations (lab ones preselected) and print them as worksheets with a
 QR code in two corners of every page; A4 or Letter. Method steps keep the numbers they have in the
-note, lines indented under a step print below it, and pipe tables print as tables. Notes written
+note, lines indented under a step print below it, and tables print as tables (also ones without
+`|` at the ends of their rows). Notes written
 between a unit operation's title and its first `####` section print at the top, as a section without
 a title. Sections with
-nothing in them are left as ruled writing space, Method and Results & Discussions widest. The
+nothing in them are left as ruled writing space, Method and Results & Discussions widest. Template
+hint lines such as `(samples from the previous step)` are left out even when you wrote below them.
+A fenced code block prints line by line as written, under the step above it without a step number
+of its own, and a ticked Method step (`- [x]`) prints with a ✓ in its box. Inline formatting prints
+as the reading view shows it: struck-through text struck (not dropped), highlights underlined,
+footnote references and `<sup>` raised, `<sub>` lowered, and math without its `$`. The
 dialog opens with focus on **Print**, so Enter prints; tabbing to a toggle shows a focus ring. When
 printing from Obsidian does not work, it opens in the browser. See the
 [printout scan guide](./SCAN.md#2-기록지-출력) (Korean).
@@ -531,6 +616,10 @@ not guessed: it goes to unmatched scans.
 Plugins before 0.123.0 do not read the new QR codes, so everyone sharing a vault should update
 before scanning new printouts.
 
+A page the note already has, but whose image was deleted, is filed again in place of the entry left
+behind, and the result says so. A new scan never takes the name of a missing image a note still
+links, so **delete earlier scan** removes the earlier image, not the new one.
+
 ### Process scan folder now
 
 Process the PC scan folder set in settings right away (desktop only).
@@ -548,6 +637,8 @@ with the reason for each, and file each by choosing the note, unit operation, an
 - A page filed into a block you chose is not reported as an old printout, and if that block's
   heading changes before it is filed, the page stays unmatched instead of going to its neighbour.
 - Pages sent to unmatched scans before 0.126.0 kept only the note ID, so only the note is offered.
+- A page filed from here is captioned with its original file name, not the name it was kept under
+  in `unmatched/`.
 
 ## AI
 
@@ -557,11 +648,17 @@ Draft an experimental method with the configured LLM.
 
 - Run inside a unit operation, it fills that unit operation's `#### Method`, asking first if it
   already has content. Run elsewhere, it asks which of the note's unit operations to fill.
-- In a note without unit operations, the front matter and heading lines the model added are dropped
-  and the draft goes after the cursor's line.
+- Without an AI provider configured, it says so before asking anything.
+- In a workflow note that has no unit operation yet, it stops and says to insert one first.
+- In another note without unit operations, the front matter and heading lines the model added are
+  dropped and the whole draft goes inside the AI draft callout after the cursor's line, so result
+  summaries do not read it as yours. With the cursor above the note body, it goes at the end of the
+  note, with a notice.
 - The draft starts with a `> [!note] AI draft (model, date) — review it, then delete this line`
   line. Delete it once you have checked the draft; left in place, it does not shift the step
   numbers of the printed worksheet.
+- Inserting the draft leaves the cursor where it was, so text typed while waiting stays where you
+  were writing.
 - It goes in only if that note is still open when the reply arrives; if you moved to another note,
   the reply opens in the answer dialog (return to the note and press `Insert into note`, or `Copy`).
   A note that was only renamed meanwhile is still the same note, so the reply goes in.
@@ -627,6 +724,10 @@ Extract samples from note text with the configured LLM.
   such as `;` and `:` are replaced), samples of the same type and description when neither has an
   alias, and IDs the note already refers to are skipped. The notice counts new and skipped samples
   separately.
+- A name the alias rules do not allow is registered changed (`_`, `:` and `;` become `-`, `#` and
+  `*` are dropped), and the notice lists each change (`pX330_lacZ → pX330-lacZ`). The note keeps the
+  name as written; the sample view search and autocomplete treat `_` and `-` alike, so that name
+  still finds the sample.
 
 ### AI: Ask assistant (uses tools)
 
@@ -658,15 +759,31 @@ Enter opens, and Shift+F10 or the menu key opens the right-click menu.
   the ones flagged for discussion or with at least one `@issue` marker (counted in the notes
   directly in the experiment folder, as the automation does) under **Something to discuss** and the
   rest under **Nothing to discuss**; the tooltip gives the marker count and the author.
-- **Search experiments** matches the folder name, title, project, author and status, the status also
-  by its name in the UI language (`검토 필요` for `needs-review` in Korean), and `discuss` for the
-  ones with something to discuss. An experiment whose status or discussion flag was changed from
-  the list stays listed until the search changes.
+- **By author** reads a list `author` or `[[name]]` links as the names, and puts an experiment of
+  several people in each one's group, so the group counts can add up to more than the experiments.
+- **By status**, an experiment whose README front matter cannot be read goes under
+  **(front matter unreadable)** with a warning icon, its tooltip giving the error, rather than among
+  the ones with no status.
+- **Search experiments** matches the folder name, title, project, author, status and the names of
+  the experiment's workflow notes (an alias such as `WTR-3`, or a catalog ID), the status also by
+  its name in the UI language (`검토 필요` for `needs-review` in Korean), and `discuss` for the ones
+  with something to discuss. When nothing matches, the view says so and what it searches. An
+  experiment whose status or discussion flag was changed from the list stays listed until the
+  search changes.
 
 ### Setup research automation
 
 Scaffold GitHub Actions and scripts into the current vault. See
 [Research automation](../README.en.md#research-automation).
+
+When Obsidian still saves new attachments at the vault root, it then offers to save them in an
+`images` folder next to each note (the experiment's `images/` for a lab note). Accepting sets
+Settings → Files and links → **Default location for new attachments** to **In subfolder under
+current folder**, with **Subfolder name** `images`; to do it later, set those two yourself.
+
+Once the automation is installed, renaming `AGENTS.md`, `CLAUDE.md` or `wiki-staging/` at the vault
+root warns that AI agents and the automation look for them only by that name, and offers the name
+back. Rerunning the command after one went missing names the files it had to create again.
 
 ### Open user guide
 
@@ -754,7 +871,8 @@ objective and summary, and every entry unchecked. Nothing is asked when the whol
 - A "Make a copy" duplicate (`….labnote 1.md`) asks for the copy's own alias in a box prefilled
   with the original's, then gives it the next number and updates its file name, note `title`, and
   `## [ID name]` heading together before listing it. Cancelling leaves the name, title, and
-  checklist as they are.
+  checklist as they are. The box refuses the same characters as Create workflow, except that the
+  original's alias passes when you keep it unchanged.
 - The copy's dates are reset then: created and last updated today, `end_date` and the unit
   operations' `Start_date`/`End_date` emptied. The same happens when you rename a copy into the
   format by hand; then the note's `title` and `## [ID name]` heading follow the new file name
@@ -764,6 +882,9 @@ objective and summary, and every entry unchecked. Nothing is asked when the whol
 - An experiment folder duplicated with "Make a copy" (`001_… 1`) asks for a title and becomes the
   next experiment: its README gets the new `title`, today's dates and status `planned`, its
   discussion flag is removed, and its notes get new `@issue` marker IDs and note IDs.
+- Cancelling that title box warns that the copy still has the original's number, title, status,
+  created date and discussion flag. Renaming the copy's folder to a new number by hand then (also
+  after Obsidian closed with the box open) asks again, keeping that number when it is free.
 - When the original is `failed` or `needs-repeat`, or is itself a retry, you are asked whether to
   mark the copy as a retry. **Mark as retry** points the copy's `retry_of` at the original (or, for a
   copy of a retry, at the experiment it retried); otherwise `retry_of` is removed, as it is without
@@ -777,7 +898,9 @@ objective and summary, and every entry unchecked. Nothing is asked when the whol
 
 ### Aliases with brackets
 
-Aliases may contain brackets such as `[re]`; the checklist link writes them as `\[re\]`.
+Aliases may contain brackets such as `[re]`; the checklist link writes them as `\[re\]`. Unlike
+brackets, `#`, `*` and `_` (other than between ASCII letters and digits) are refused; see
+[Create workflow](#create-workflow).
 
 ## Experiment folders
 
@@ -788,5 +911,10 @@ Aliases may contain brackets such as `[re]`; the checklist link writes them as `
 - Do not rename or move an experiment's `resources/labsamples/`: it is the Local sample registry, so
   every Local sample would read as unregistered and new ones would go to an empty registry. Renaming
   or moving `resources` or `labsamples` warns and offers to put it back.
+- The same goes for a registry file `{Type}.json` there or in the Global sample folder. Renaming or
+  moving one warns with its sample count and offers the old name back; a name such as
+  `{Type}_old.json` would also make it a read-only product catalog. Deleting one warns to restore it
+  from the trash before adding samples.
 - Experiment folders must sit directly under `labnote/`; moving one into a subfolder such as
-  `labnote/group/020_GFP` warns and offers to move it back under `labnote/`.
+  `labnote/group/020_GFP`, or out of `labnote/` altogether, warns and offers to move it back under
+  `labnote/`. Running a workflow command from a note of such a folder says the same.
