@@ -148,6 +148,8 @@ const obsidianKo: Record<string, string> = {
   '(no project)': '(과제 없음)',
   'Author': '담당자',
   '(no author)': '(담당자 없음)',
+  '(front matter unreadable)': '(머리말을 읽을 수 없음)',
+  'README front matter could not be read': 'README 머리말을 읽을 수 없음',
   'Search experiments': '실험 검색',
   'Group experiments by': '실험 묶는 기준',
   'By status': '상태별',

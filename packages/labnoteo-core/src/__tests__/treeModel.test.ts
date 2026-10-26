@@ -267,6 +267,21 @@ describe('buildExperimentTree', () => {
     ]);
   });
 
+  // #427: a broken README was shown as one with no status.
+  it('puts an experiment whose front matter is broken in a warning group of its own', () => {
+    const broken = buildExperimentTree(
+      [
+        { folder: 'labnote/001_Broken', frontMatterError: 'duplicated mapping key (7:1)\n 6 | status: x' },
+        { folder: 'labnote/002_None' },
+      ],
+      { noStatus: '(none)', unreadable: '(unreadable)', frontMatterError: 'Unreadable' }
+    );
+    expect(broken.children!.map(g => g.label)).toEqual(['(none) [1]', '(unreadable) [1]']);
+    const node = broken.children![1].children![0];
+    expect(node.icon).toBe('warning');
+    expect(node.tooltip).toBe('labnote/001_Broken\nUnreadable: duplicated mapping key (7:1)');
+  });
+
   // #143
   it('marks a status outside the allowed list', () => {
     const odd = tree.children!.find(g => g.label.startsWith('waiting'))!;

@@ -16,6 +16,7 @@ import {
   frontMatterNames,
   isDiscussFlagged,
   linkRetries,
+  parseFrontMatterYaml,
   type ExperimentEntry,
   type TreeNode,
   type UnitOperationItem,
@@ -67,7 +68,10 @@ export class WorkflowTreeView extends ItemView {
   private readonly kept = new Set<string>();
   private searchTimer: number | undefined;
   /** README checklist progress by path, valid while the file's mtime is unchanged. */
-  private readonly progress = new Map<string, { mtime: number; items: { done: boolean; fileName: string }[] }>();
+  private readonly progress = new Map<
+    string,
+    { mtime: number; items: { done: boolean; fileName: string }[]; frontMatterError?: string }
+  >();
   private readonly reading = new Set<string>();
   /** `@issue` markers of each note by path, valid while the file's mtime is unchanged (#337). */
   private readonly markers = new Map<string, { mtime: number; count: number }>();
@@ -216,6 +220,7 @@ export class WorkflowTreeView extends ItemView {
           workflowNames: this.workflowNames(folder),
           markers: this.markerCount(folder),
           retryOf: this.retryOf(f, fm?.retry_of),
+          frontMatterError: this.progress.get(f.path)?.frontMatterError,
         };
       });
     return linkRetries(entries);
@@ -289,7 +294,11 @@ export class WorkflowTreeView extends ItemView {
       void this.app.vault
         .cachedRead(file)
         .then(text => {
-          this.progress.set(file.path, { mtime: file.stat.mtime, items: parseWorkflowChecklistFromReadme(text) });
+          this.progress.set(file.path, {
+            mtime: file.stat.mtime,
+            items: parseWorkflowChecklistFromReadme(text),
+            frontMatterError: parseFrontMatterYaml(text.replace(/\r\n/g, '\n')).parseError,
+          });
           this.scheduleRender();
         })
         .catch(() => undefined)
@@ -369,6 +378,8 @@ export class WorkflowTreeView extends ItemView {
         noProject: this.plugin.t('(no project)'),
         author: this.plugin.t('Author'),
         noAuthor: this.plugin.t('(no author)'),
+        unreadable: this.plugin.t('(front matter unreadable)'),
+        frontMatterError: this.plugin.t('README front matter could not be read'),
       },
       this.plugin.settings.workflowViewGroupBy
     );

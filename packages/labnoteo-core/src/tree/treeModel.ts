@@ -78,6 +78,8 @@ export interface ExperimentEntry {
   retryOf?: string;
   /** The folders of the experiments that run this one again; see {@link linkRetries}. */
   retriedBy?: string[];
+  /** Why the README's front matter could not be read, when it could not (#427). */
+  frontMatterError?: string;
 }
 
 /** What {@link buildExperimentTree} groups experiments by (#204, #220). */
@@ -113,6 +115,10 @@ export interface ExperimentTreeLabels {
   author?: string;
   /** Group of experiments without an `author`. */
   noAuthor?: string;
+  /** Group, by status, of the experiments whose README front matter is broken (#427). */
+  unreadable?: string;
+  /** Tooltip line name for why the front matter could not be read. */
+  frontMatterError?: string;
 }
 
 /** `001` of `001_GFP`, or the whole name when it has no number. */
@@ -223,39 +229,53 @@ export function buildExperimentTree(
   }
 
   const groups = new Map<string, ExperimentEntry[]>();
+  // Its status is not known at all, which "(none)" would hide (#427).
+  const unreadable = experiments.filter(e => e.frontMatterError);
   for (const e of experiments) {
+    if (e.frontMatterError) continue;
     const status = e.status?.trim() ?? '';
     groups.set(status, [...(groups.get(status) ?? []), e]);
   }
   const known = EXPERIMENT_STATUSES as readonly string[];
   const unknown = [...groups.keys()].filter(s => s && !known.includes(s)).sort((a, b) => a.localeCompare(b));
   const order = [...known, ...unknown, ''].filter(s => groups.has(s));
+  const unreadableGroup: TreeNode[] =
+    unreadable.length > 0
+      ? [
+          {
+            id: 'experimentStatus:unreadable',
+            label: `${labels.unreadable ?? '(front matter unreadable)'} [${unreadable.length}]`,
+            kind: 'experimentStatus',
+            icon: 'warning',
+            payload: {},
+            children: sortByFolder(unreadable).map(e => experimentNode(e, labels)),
+          },
+        ]
+      : [];
 
-  return {
-    ...root,
-    children: order.map(status => {
-      const members = sortByFolder(groups.get(status)!);
-      const invalid = status !== '' && !known.includes(status);
-      return {
-        id: `experimentStatus:${status}`,
-        label: invalid
-          ? `${status} [${members.length}] ${labels.invalidStatus ?? '(not an allowed status)'}`
-          : `${status || noStatus} [${members.length}]`,
-        kind: 'experimentStatus' as const,
-        icon: invalid ? 'warning' : 'folder',
-        ...(invalid
-          ? {
-              tooltip: (labels.invalidStatusTooltip ?? 'Allowed statuses: {0}').replace(
-                '{0}',
-                EXPERIMENT_STATUSES.join(', ')
-              ),
-            }
-          : {}),
-        payload: { status: status || undefined },
-        children: members.map(e => experimentNode(e, labels)),
-      };
-    }),
-  };
+  const statusGroups: TreeNode[] = order.map(status => {
+    const members = sortByFolder(groups.get(status)!);
+    const invalid = status !== '' && !known.includes(status);
+    return {
+      id: `experimentStatus:${status}`,
+      label: invalid
+        ? `${status} [${members.length}] ${labels.invalidStatus ?? '(not an allowed status)'}`
+        : `${status || noStatus} [${members.length}]`,
+      kind: 'experimentStatus' as const,
+      icon: invalid ? 'warning' : 'folder',
+      ...(invalid
+        ? {
+            tooltip: (labels.invalidStatusTooltip ?? 'Allowed statuses: {0}').replace(
+              '{0}',
+              EXPERIMENT_STATUSES.join(', ')
+            ),
+          }
+        : {}),
+      payload: { status: status || undefined },
+      children: members.map(e => experimentNode(e, labels)),
+    };
+  });
+  return { ...root, children: [...statusGroups, ...unreadableGroup] };
 }
 
 /** An experiment's authors, trimmed, blank ones left out and each once. */
@@ -281,7 +301,9 @@ function experimentNode(e: ExperimentEntry, labels: ExperimentTreeLabels): TreeN
   const tooltip = [
     ...(title && title !== name ? [title] : []),
     e.folder,
-    `${labels.status ?? 'Status'}: ${status || noStatus}`,
+    ...(e.frontMatterError
+      ? [`${labels.frontMatterError ?? 'README front matter could not be read'}: ${e.frontMatterError.split('\n')[0]}`]
+      : [`${labels.status ?? 'Status'}: ${status || noStatus}`]),
     ...(project ? [`${labels.project ?? 'Project'}: ${project}`] : []),
     ...(author ? [`${labels.author ?? 'Author'}: ${author}`] : []),
     ...(e.progress && e.progress.total > 0
@@ -297,7 +319,7 @@ function experimentNode(e: ExperimentEntry, labels: ExperimentTreeLabels): TreeN
     id: `experiment:${e.folder}`,
     label: `${named}${progress}`,
     kind: 'experiment',
-    icon: hasDiscussion(e) ? 'comment-discussion' : 'file',
+    icon: e.frontMatterError ? 'warning' : hasDiscussion(e) ? 'comment-discussion' : 'file',
     tooltip,
     payload: { folder: e.folder, readmePath: path.join(e.folder, 'README.labnote.md'), status: status || undefined },
   };
