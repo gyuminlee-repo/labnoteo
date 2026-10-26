@@ -209,6 +209,45 @@ describe('createSampleInteractive', () => {
     expect(Object.keys(JSON.parse(await fs.read(REGISTRY)))).toEqual(['RNA-3', 'RNA-4', 'RNA-5']);
   });
 
+  // #419: a discarded twin was offered first, so Enter took the tube that was gone.
+  it('offers discarded samples with the alias below "Create a new sample anyway", marked', async () => {
+    await fs.write(
+      REGISTRY,
+      JSON.stringify({
+        'RNA-3': { type: 'RNA', alias: 'R1', descriptions: ['old'], sources: [], discarded: '2026-10-25' },
+        'RNA-4': { type: 'RNA', alias: 'R1', descriptions: ['new'], sources: [] },
+      })
+    );
+    answer('R1');
+    vi.mocked(pickModal).mockResolvedValueOnce(undefined);
+
+    await add();
+
+    const [, items, opts] = vi.mocked(pickModal).mock.calls[0];
+    expect(opts).toMatchObject({ title: '2 samples in this experiment already have the alias R1 (RNA-3 (discarded), RNA-4).' });
+    expect(items.map(i => i.value)).toEqual(['RNA-4', null, 'RNA-3']);
+    expect(items[2]).toEqual({
+      label: 'Use the existing sample RNA-3 (discarded)',
+      value: 'RNA-3',
+      description: 'Marked discarded on 2026-10-25 · old',
+    });
+  });
+
+  it('says when only discarded samples have the alias, offering a new one first', async () => {
+    await fs.write(
+      REGISTRY,
+      JSON.stringify({ 'RNA-3': { type: 'RNA', alias: 'R1', descriptions: [], sources: [], discarded: '2026-10-25' } })
+    );
+    answer('R1');
+    vi.mocked(pickModal).mockResolvedValueOnce(undefined);
+
+    await add();
+
+    const [, items, opts] = vi.mocked(pickModal).mock.calls[0];
+    expect(opts).toMatchObject({ title: 'Only discarded samples have the alias R1 (RNA-3).' });
+    expect(items[0]).toMatchObject({ label: 'Create a new sample anyway', value: null });
+  });
+
   it('names every Global sample with the alias when adding to Local', async () => {
     await fs.write(
       `${GLOBAL}/RNA.json`,
@@ -562,6 +601,42 @@ describe('editSampleInteractive alias rewrite', () => {
     expect(await sampleUsages(app, p, `${B}/resources/labsamples`, 'RNA', 'RNA-1')).toEqual([
       `${B}/001_WD010_C.labnote.md`,
     ]);
+  });
+
+  // #423: a daily note at the vault root naming a Local sample was not counted.
+  it('counts a note outside every experiment that uses a Local sample, unless its own registry has the ID', async () => {
+    await fs.write(`${FOLDER}/RNA.json`, JSON.stringify({ 'RNA-1': RECORD }));
+    await fs.write('2026-10-26.md', '- 로트1 RNA-1;si KIF\n');
+    await fs.write('Daily/2026-10-27.md', '- RNA-1;si KIF\n');
+    await fs.write('Daily/resources/labsamples/RNA.json', JSON.stringify({ 'RNA-1': RECORD }));
+    const { app, p } = editPlugin();
+
+    expect(await sampleUsages(app, p, FOLDER, 'RNA', 'RNA-1')).toEqual(['2026-10-26.md']);
+    expect(await deleteSampleInteractive(app, p, { folder: FOLDER, type: 'RNA', id: 'RNA-1' })).toBe(false);
+    expect(JSON.parse(await fs.read(`${FOLDER}/RNA.json`))).toHaveProperty('RNA-1');
+
+    await fs.write(`${GLOBAL}/RNA.json`, JSON.stringify({ 'RNA-1': RECORD }));
+    expect(await sampleUsages(app, p, FOLDER, 'RNA', 'RNA-1')).toEqual([]);
+  });
+
+  it('rewrites the alias in a note outside experiments, unless another experiment has the same ID', async () => {
+    await fs.write('2026-10-26.md', 'RNA-1;si KIF\n');
+    vi.mocked(confirmModal).mockResolvedValue(true);
+
+    await edit(FOLDER, 'siKIF');
+    expect(await fs.read('2026-10-26.md')).toBe('RNA-1;siKIF\n');
+
+    await fs.write('2026-10-26.md', 'RNA-1;si KIF\n');
+    await fs.write(`${A}/001_WD010_A.labnote.md`, 'RNA-1;si KIF\n');
+    await fs.write(`${B}/resources/labsamples/RNA.json`, JSON.stringify({ 'RNA-1': RECORD }));
+    vi.mocked(confirmModal).mockClear();
+    await edit(FOLDER, 'siKIF');
+
+    expect(vi.mocked(confirmModal).mock.calls[0][1]).toContain(
+      'Another experiment has a sample with the same ID, so 1 note(s) outside experiments are left as they are.'
+    );
+    expect(await fs.read(`${A}/001_WD010_A.labnote.md`)).toBe('RNA-1;siKIF\n');
+    expect(await fs.read('2026-10-26.md')).toBe('RNA-1;si KIF\n');
   });
 
   // #291: the list gave only paths and opened each note at its top.
