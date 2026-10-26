@@ -287,6 +287,12 @@ const obsidianKo: Record<string, string> = {
   'Rename it to "{0}"?': '"{0}"(으)로 이름을 바꿀까요?',
   '"{0}" no longer has resources/labsamples: its Local samples will show as unregistered, and new ones go to a new, empty registry.':
     '"{0}"에 resources/labsamples 폴더가 없어졌습니다. 이 실험의 Local 시료가 모두 등록되지 않은 것으로 보이고, 새 시료는 비어 있는 새 대장에 저장됩니다.',
+  '{0} was renamed to {1}: its {2} {3} sample(s) will show as unregistered, and the next {3} sample added starts a new, empty {0}.':
+    '{0}의 이름이 {1}(으)로 바뀌었습니다. 이 대장의 {3} 시료 {2}개가 등록되지 않은 것으로 보이고, 다음에 추가하는 {3} 시료는 비어 있는 새 {0}에 저장됩니다.',
+  'Under this name it is read as a read-only product catalog.':
+    '이 이름에서는 읽기 전용 제품 카탈로그로 읽힙니다.',
+  "The sample registry {0} was deleted: its {1} samples now show as unregistered, and the next {1} sample added starts a new, empty registry. Restore it from the trash (Obsidian's .trash folder or the system trash) before adding samples.":
+    '시료 대장 {0}이(가) 삭제되었습니다. 이 대장의 {1} 시료가 등록되지 않은 것으로 보이고, 다음에 추가하는 {1} 시료는 비어 있는 새 대장에 저장됩니다. 시료를 추가하기 전에 휴지통(Obsidian의 .trash 폴더 또는 시스템 휴지통)에서 복원하세요.',
   "The README.labnote.md of \"{0}\" was deleted: the experiment list and the workflow checklist no longer find this experiment. If you can, restore it from the trash (Obsidian's .trash folder or the system trash).":
     '"{0}"의 README.labnote.md가 삭제되었습니다. 실험 목록과 워크플로 체크리스트가 이 실험을 찾지 못합니다. 가능하면 휴지통(Obsidian의 .trash 폴더 또는 시스템 휴지통)에서 복원하세요.',
   'Or create a new README now, listing the workflow notes in the folder? Its status starts at planned, and the objective and summary start empty.':

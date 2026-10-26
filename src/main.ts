@@ -106,6 +106,7 @@ import {
   resetCopiedExperimentReadme,
   retryOfLink,
   retryOfLinkpath,
+  sampleLedgerLosing,
   sanitizeTitle,
   setExperimentReadmeId,
   setRetryOf,
@@ -919,6 +920,11 @@ export default class LabnotePlugin extends Plugin {
         if (readmeOf && this.app.vault.getAbstractFileByPath(readmeOf) instanceof TFolder) {
           this.run(() => this.offerExperimentReadmeBack(file, readmeOf, oldPath));
         }
+        const ledger = this.sampleLedgerLosing(oldPath, newPath);
+        // Not when its folder was renamed: the registry went along (#430).
+        if (ledger && this.app.vault.getAbstractFileByPath(ledger.folder) instanceof TFolder) {
+          this.run(() => this.offerSampleLedgerBack(file, ledger.type, oldPath));
+        }
         this.renameLocalSampleSources(oldPath, newPath);
         // Ahead of the copy branch, which returns early: a copy moved to
         // another experiment needs its samples and CSVs too.
@@ -990,6 +996,8 @@ export default class LabnotePlugin extends Plugin {
           const readmeDir = getExperimentDir(file.path);
           if (readmeDir === posix.dirname(file.path)) this.run(() => this.offerReadmeRebuild(readmeDir));
         }
+        const ledger = this.sampleLedgerLosing(file.path);
+        if (ledger) this.run(() => this.noticeSampleLedgerDeleted(file.path, ledger.folder, ledger.type));
         // A stray note's README entry and sample sources still use its original name.
         const origin = this.strayWorkflows.get(file.path);
         this.strayWorkflows.delete(file.path);
@@ -1156,6 +1164,83 @@ export default class LabnotePlugin extends Plugin {
     });
     if (!ok || file.path !== movedPath || this.app.vault.getAbstractFileByPath(oldPath)) return;
     await this.app.fileManager.renameFile(file, oldPath);
+  }
+
+  /**
+   * The sample registry `{Type}.json` of a tracked Local or Global registry,
+   * if `oldPath` is one and it no longer goes by that name (#430).
+   */
+  private sampleLedgerLosing(oldPath: string, newPath?: string): { folder: string; type: string } | undefined {
+    const types = getSampleDisplayMeta(this.settings.customSampleTypes).types;
+    const ledger = sampleLedgerLosing(oldPath, newPath, types, this.settings.globalSampleFolder);
+    return ledger && this.sampleTrackingFor(oldPath) ? ledger : undefined;
+  }
+
+  /**
+   * A sample registry `{Type}.json` was renamed or moved away (#430): its
+   * samples read as unregistered, and the next one added starts a new, empty
+   * registry under the old name. Offer the name back.
+   */
+  private async offerSampleLedgerBack(file: TFile, type: string, oldPath: string): Promise<void> {
+    const movedPath = file.path;
+    let count = 0;
+    try {
+      const parsed: unknown = JSON.parse(await this.app.vault.read(file));
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) count = Object.keys(parsed).length;
+    } catch {
+      // An unreadable registry still loses its name.
+    }
+    const parts = [
+      this.t(
+        '{0} was renamed to {1}: its {2} {3} sample(s) will show as unregistered, and the next {3} sample added starts a new, empty {0}.',
+        oldPath,
+        movedPath,
+        String(count),
+        type
+      ),
+    ];
+    if (
+      isCatalogSampleType(type) &&
+      posix.dirname(movedPath) === posix.dirname(oldPath) &&
+      file.name.startsWith(`${type}_`)
+    ) {
+      parts.push(this.t('Under this name it is read as a read-only product catalog.'));
+    }
+    const warning = parts.join(' ');
+    const settled = await this.waitForNoModal();
+    if (this.unloaded || file.path !== movedPath) return;
+    if (!settled || this.app.vault.getAbstractFileByPath(oldPath)) {
+      this.host.notify('warn', warning);
+      return;
+    }
+    const ok = await this.host.confirm(`${warning} ${this.t('Rename it back to "{0}"?', oldPath)}`, {
+      confirmLabel: this.t('Rename back'),
+    });
+    if (!ok || file.path !== movedPath || this.app.vault.getAbstractFileByPath(oldPath)) return;
+    await this.app.fileManager.renameFile(file, oldPath);
+    this.sampleSuggest?.clearCache();
+    this.refreshSampleViews();
+  }
+
+  /**
+   * A sample registry `{Type}.json` was deleted (#430): its samples read as
+   * unregistered, and the next one added starts a new, empty registry. Not
+   * when its whole folder went.
+   */
+  private async noticeSampleLedgerDeleted(filePath: string, folder: string, type: string): Promise<void> {
+    // A deleted folder reports its files first; give it a moment to go too.
+    await new Promise(resolve => window.setTimeout(resolve, 500));
+    if (this.unloaded) return;
+    if (!(this.app.vault.getAbstractFileByPath(folder) instanceof TFolder)) return;
+    if (this.app.vault.getAbstractFileByPath(filePath)) return;
+    this.host.notify(
+      'warn',
+      this.t(
+        'The sample registry {0} was deleted: its {1} samples now show as unregistered, and the next {1} sample added starts a new, empty registry. Restore it from the trash (Obsidian\'s .trash folder or the system trash) before adding samples.',
+        filePath,
+        type
+      )
+    );
   }
 
   /**

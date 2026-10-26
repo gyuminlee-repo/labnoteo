@@ -23,6 +23,7 @@ import {
   nextExperimentId,
   renamedExperimentCopyOrigin,
   resetCopiedExperimentReadme,
+  sampleLedgerLosing,
   setExperimentReadmeId,
   isSampleTrackingOff,
   isSampleTrackingOn,
@@ -153,6 +154,22 @@ describe('copied experiment folders (#223)', () => {
     expect(copiedExperimentOrigin('001_GFP')).toBeUndefined();
     expect(copiedExperimentOrigin('001_GFP_1')).toBeUndefined();
     expect(copiedExperimentOrigin('GFP 1')).toBeUndefined();
+  });
+
+  // #430
+  it('names the sample registry a rename or delete takes away', () => {
+    const types = ['Plasmid', 'Primer'];
+    const local = 'labnote/003_X/resources/labsamples';
+    expect(sampleLedgerLosing(`${local}/Primer.json`, `${local}/Primer 백업.json`, types)).toEqual({ folder: local, type: 'Primer' });
+    expect(sampleLedgerLosing(`${local}/Primer.json`, undefined, types)).toEqual({ folder: local, type: 'Primer' });
+    expect(sampleLedgerLosing('resources/labsamples/Plasmid.json', 'Plasmid.json', types, 'resources/labsamples')).toEqual({
+      folder: 'resources/labsamples',
+      type: 'Plasmid',
+    });
+    expect(sampleLedgerLosing(`${local}/Primer.json`, `${local}/Primer.json`, types)).toBeUndefined();
+    expect(sampleLedgerLosing(`${local}/Other.json`, undefined, types)).toBeUndefined();
+    expect(sampleLedgerLosing('labnote/003_X/Primer.json', undefined, types)).toBeUndefined();
+    expect(sampleLedgerLosing('Daily/Primer.json', undefined, types, 'resources/labsamples')).toBeUndefined();
   });
 
   // #393

@@ -52,6 +52,34 @@ export function experimentLosingReadme(oldPath: string, newPath: string): string
   return getExperimentDir(oldPath);
 }
 
+/**
+ * The sample registry file `oldPath` was, when a rename, move or delete took
+ * it from where it is read (#430): `{Type}.json` of a known type directly in
+ * an experiment's `resources/labsamples` or in the Global folder. Its samples
+ * then read as unregistered, and the next one added starts a new registry.
+ * Undefined for other files and when `newPath` is the same place (case and
+ * slashes aside); pass no `newPath` for a delete.
+ */
+export function sampleLedgerLosing(
+  oldPath: string,
+  newPath: string | undefined,
+  types: readonly string[],
+  globalFolder?: string
+): { folder: string; type: string } | undefined {
+  const folder = path.dirname(path.normalize(oldPath));
+  const type = /^(.+)\.json$/.exec(path.basename(oldPath))?.[1];
+  if (!type || !types.includes(type)) return undefined;
+  const same = (a: string, b: string): boolean =>
+    path.normalizeForCompare(a).toLowerCase() === path.normalizeForCompare(b).toLowerCase();
+  const dir = getExperimentDir(folder);
+  const isLedgerFolder =
+    (dir !== undefined && same(folder, path.join(dir, 'resources', 'labsamples'))) ||
+    (globalFolder !== undefined && globalFolder !== '' && same(folder, globalFolder));
+  if (!isLedgerFolder) return undefined;
+  if (newPath !== undefined && same(oldPath, newPath)) return undefined;
+  return { folder, type };
+}
+
 /** Whether folder `p` is `resources` or `resources/labsamples` of an experiment. */
 function isSampleRegistryFolder(p: string): boolean {
   const dir = getExperimentDir(p);
