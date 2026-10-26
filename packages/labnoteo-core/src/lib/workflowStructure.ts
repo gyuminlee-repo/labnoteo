@@ -1576,7 +1576,7 @@ export function relinkWorkflowChecklistEntries(
   if (links.length === 0) return readmeContent;
   const lines = readmeContent.split('\n');
   for (const { index, link } of checklistEntries(readmeContent)) {
-    const r = links.find(l => l.from === link);
+    const r = links.find(l => decodeChecklistLink(l.from) === decodeChecklistLink(link));
     if (!r) continue;
     const written = lines[index].includes(`](./${link})`) ? `](./${link})` : `](${link})`;
     lines[index] = lines[index].replace(written, () => `](./${encodeChecklistLink(r.to)})`);
@@ -1701,9 +1701,13 @@ export function removeWorkflowChecklistEntries(
   links: readonly string[]
 ): string {
   if (links.length === 0) return readmeContent;
-  const wanted = new Set(links);
+  const wanted = new Set(links.map(decodeChecklistLink));
   const lines = readmeContent.split('\n');
-  const drop = new Set(entriesInLines(lines).filter(e => wanted.has(e.link)).map(e => e.index));
+  const drop = new Set(
+    entriesInLines(lines)
+      .filter(e => wanted.has(decodeChecklistLink(e.link)))
+      .map(e => e.index)
+  );
   return drop.size === 0 ? readmeContent : lines.filter((_, i) => !drop.has(i)).join('\n');
 }
 

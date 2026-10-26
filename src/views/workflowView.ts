@@ -292,12 +292,7 @@ export class WorkflowTreeView extends ItemView {
     if (!cached) return undefined;
     const folder = posix.dirname(file.path);
     const present = cached.items.filter(item => {
-      let link = item.fileName;
-      try {
-        link = decodeURI(link);
-      } catch {
-        // Looked up as written.
-      }
+      const link = item.fileName;
       return [posix.join(folder, link), link].some(p => this.app.vault.getAbstractFileByPath(p) instanceof TFile);
     });
     return { done: present.filter(i => i.done).length, total: present.length };

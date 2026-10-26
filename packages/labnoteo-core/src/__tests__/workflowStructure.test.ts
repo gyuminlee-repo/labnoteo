@@ -1434,6 +1434,22 @@ describe('removeWorkflowChecklistEntries', () => {
       ].join('\n')
     );
   });
+
+  it('matches a %20 link by its file name (#412)', () => {
+    const md = ['## Related Workflows', '- [ ] [A B](./001_WT030_A%20B.labnote.md)', '- [ ] [C](./002_WT030_C.labnote.md)'].join('\n');
+    expect(removeWorkflowChecklistEntries(md, ['001_WT030_A B.labnote.md'])).toBe(
+      ['## Related Workflows', '- [ ] [C](./002_WT030_C.labnote.md)'].join('\n')
+    );
+  });
+});
+
+describe('relinkWorkflowChecklistEntries with a %20 link (#412)', () => {
+  it('relinks the entry written with %20 when given the decoded name', () => {
+    const md = ['## Related Workflows', '- [x] [A B](sub/001_WT030_A%20B.labnote.md)'].join('\n');
+    expect(
+      relinkWorkflowChecklistEntries(md, [{ from: 'sub/001_WT030_A B.labnote.md', to: '001_WT030_A B.labnote.md' }])
+    ).toBe(['## Related Workflows', '- [x] [A B](./001_WT030_A%20B.labnote.md)'].join('\n'));
+  });
 });
 
 // #95: an alias with brackets must not break the checklist line.
