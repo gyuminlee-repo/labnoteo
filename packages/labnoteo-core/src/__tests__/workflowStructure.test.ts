@@ -105,6 +105,18 @@ describe('parseExperimenterFromReadme', () => {
   it('returns empty string when there is no front matter', () => {
     expect(parseExperimenterFromReadme('# Just a note')).toBe('');
   });
+
+  // #394
+  it.each([
+    ['author:\n  - 이서연\n  - 박하늘', '이서연, 박하늘'],
+    ['author: [이서연, 박하늘]', '이서연, 박하늘'],
+    ['author: [[이서연]]', '이서연'],
+    ['author:\n  - [[이서연]]\n  - "[[박하늘|하늘]]"', '이서연, 하늘'],
+    ['author: "[[이서연#소속]]"', '이서연'],
+    ['author: 42', '42'],
+  ])('reads %j as names', (fm, names) => {
+    expect(parseExperimenterFromReadme(`---\n${fm}\n---\n`)).toBe(names);
+  });
 });
 
 // #160: a copy must not claim the original's dates.
@@ -149,48 +161,43 @@ describe('resetCopiedWorkflowDates', () => {
   });
 });
 
-// #83: the README author changed after the workflow notes were created.
+// #83: the README author fills in the workflow notes that name nobody.
 describe('planWorkflowExperimenterSync', () => {
   const note = (fm: string, body = '') => `---\ntitle: WD030 Design\n${fm}\n---\n\n## [WD030 Design]\n${body}`;
 
-  it('rewrites the front matter and unit-op lines with the old value or none', () => {
-    const body = '\n- Experimenter: 홍길동\n- Experimenter:\n- Experimenter: 김철수\n- Experimenter: 이영희\n';
-    expect(planWorkflowExperimenterSync(note('experimenter: 홍길동', body), '이영희')).toEqual({
-      from: '홍길동',
+  it('fills the empty front matter and the empty unit-op lines, keeping the named ones', () => {
+    const body = '\n- Experimenter: 홍길동\n- Experimenter:\n- Experimenter: 김철수\n';
+    expect(planWorkflowExperimenterSync(note("experimenter: ''", body), '이영희')).toEqual({
+      from: '',
       to: '이영희',
-      content: note(
-        'experimenter: 이영희',
-        '\n- Experimenter: 이영희\n- Experimenter: 이영희\n- Experimenter: 김철수\n- Experimenter: 이영희\n'
-      ),
-      unitOpLines: 2,
+      content: note('experimenter: 이영희', '\n- Experimenter: 홍길동\n- Experimenter: 이영희\n- Experimenter: 김철수\n'),
+      unitOpLines: 1,
       skippedLines: 0,
       skippedEmptyLines: 0,
     });
   });
 
-  // #155
-  it('keeps the experimenter of a unit op that has an End_date', () => {
-    const op = (end: string) =>
-      `\n- Experimenter: 홍길동\n- Start_date: '2026-10-01 09:00'\n- End_date: '${end}'\n`;
-    const body = `### [UHW010 PCR]${op('2026-10-02 18:00')}### [UHW020 Gel]${op('')}`;
-    const out = planWorkflowExperimenterSync(note('experimenter: 홍길동', body), '이영희');
-    expect(out?.content).toBe(
-      note(
-        'experimenter: 이영희',
-        `### [UHW010 PCR]${op('2026-10-02 18:00')}### [UHW020 Gel]${op('').replace('홍길동', '이영희')}`
-      )
-    );
-    expect(out).toMatchObject({ unitOpLines: 1, skippedLines: 1, skippedEmptyLines: 0 });
+  // #404: each note may be someone else's than the README author's.
+  it('leaves a note that names an experimenter alone', () => {
+    expect(planWorkflowExperimenterSync(note('experimenter: 홍길동', '\n- Experimenter:\n'), '이영희')).toBeUndefined();
+    expect(planWorkflowExperimenterSync(note('experimenter: [[홍길동]]'), '이영희')).toBeUndefined();
   });
 
-  // #193: an empty line kept in a finished unit op is counted apart.
-  it('counts the empty experimenter lines of finished unit ops apart', () => {
-    const op = (who: string) => `\n- Experimenter: ${who}\n- End_date: '2026-10-19 18:00'\n`;
-    const body = `### [UHW010 PCR]${op('')}### [UHW020 Gel]${op('홍길동')}`;
+  it('replaces an empty list under the key', () => {
+    expect(planWorkflowExperimenterSync(note('experimenter:\n  -\nstatus: planned'), '이영희')?.content).toBe(
+      note('experimenter: 이영희\nstatus: planned')
+    );
+  });
+
+  // #155, #193: an empty line kept in a finished unit op is counted apart.
+  it('keeps the empty experimenter lines of finished unit ops and counts them', () => {
+    const op = (who: string, end: string) => `\n- Experimenter: ${who}\n- End_date: '${end}'\n`;
+    const body = `### [UHW010 PCR]${op('', '2026-10-19 18:00')}### [UHW020 Gel]${op('', '')}`;
     const out = planWorkflowExperimenterSync(note("experimenter: ''", body), '이영희');
-    expect(out).toMatchObject({ unitOpLines: 0, skippedLines: 1, skippedEmptyLines: 1 });
-    const out2 = planWorkflowExperimenterSync(note('experimenter: 홍길동', body), '이영희');
-    expect(out2).toMatchObject({ unitOpLines: 0, skippedLines: 2, skippedEmptyLines: 1 });
+    expect(out?.content).toBe(
+      note('experimenter: 이영희', `### [UHW010 PCR]${op('', '2026-10-19 18:00')}### [UHW020 Gel]${op('이영희', '')}`)
+    );
+    expect(out).toMatchObject({ unitOpLines: 1, skippedLines: 1, skippedEmptyLines: 1 });
   });
 
   it('fills an empty experimenter and keeps CRLF', () => {
@@ -201,14 +208,14 @@ describe('planWorkflowExperimenterSync', () => {
   });
 
   it('leaves Experimenter lines in code blocks alone', () => {
-    const body = '\n```\n- Experimenter: 홍길동\n```\n';
-    expect(planWorkflowExperimenterSync(note('experimenter: 홍길동', body), '이영희')?.content).toBe(
+    const body = '\n```\n- Experimenter:\n```\n';
+    expect(planWorkflowExperimenterSync(note("experimenter: ''", body), '이영희')?.content).toBe(
       note('experimenter: 이영희', body)
     );
   });
 
   it('does nothing without an author, an experimenter key, or a difference', () => {
-    expect(planWorkflowExperimenterSync(note('experimenter: 홍길동'), '  ')).toBeUndefined();
+    expect(planWorkflowExperimenterSync(note("experimenter: ''"), '  ')).toBeUndefined();
     expect(planWorkflowExperimenterSync(note('status: planned'), '이영희')).toBeUndefined();
     expect(planWorkflowExperimenterSync(note("experimenter: '이영희'"), '이영희')).toBeUndefined();
   });

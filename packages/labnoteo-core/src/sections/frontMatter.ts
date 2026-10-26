@@ -100,6 +100,31 @@ export function serializeFrontMatterEntry(key: string, val: unknown): string {
   return dumped.replace(/\n+$/, '');
 }
 
+/**
+ * The names a front-matter value such as `author` or `experimenter` holds
+ * (#394): a string, a flow or block list, or the nested lists an unquoted
+ * `[[이서연]]` reads as, alone or as a list item. A wikilink gives its shown text (`[[a|b]]` → `b`,
+ * `[[a#h]]` → `a`); empty entries are dropped and repeats kept once.
+ */
+export function frontMatterNames(value: unknown): string[] {
+  const names: string[] = [];
+  const add = (v: unknown, depth: number): void => {
+    if (Array.isArray(v)) {
+      if (depth < 3) for (const item of v) add(item, depth + 1);
+      return;
+    }
+    if (typeof v !== 'string' && typeof v !== 'number') return;
+    const name = String(v)
+      .trim()
+      .replace(/^\[\[([^\]|#]*)(?:#[^\]|]*)?(?:\|([^\]]*))?\]\]$/, (_, target: string, shown?: string) =>
+        (shown ?? target).trim()
+      );
+    if (name && !names.includes(name)) names.push(name);
+  };
+  add(value, 0);
+  return names;
+}
+
 /** Where {@link planDateInsertion} puts the text: `[from, to)` becomes `text`. */
 export type DateInsertion =
   | { from: number; to: number; text: string }

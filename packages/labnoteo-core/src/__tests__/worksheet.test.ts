@@ -68,6 +68,36 @@ describe('listWorksheetUnitOps', () => {
     });
   });
 
+  // #400: a template line left above what was written printed as text or as step 1.
+  it('leaves out the template lines kept above what was written', () => {
+    const md = buildNote([hw('UHW010')])
+      .replace('#### Input\n- (samples from the previous step)', '#### Input\n- (samples from the previous step)\n- DNA-1')
+      .replace(
+        '#### Results & Discussions\n- (Any results and discussions. Link file path if needed)',
+        '#### Results & Discussions\n- (Any results and discussions. Link file path if needed)\n| A |\n| --- |\n| 1 |'
+      )
+      .replace('#### Method\n- (method used in this step)', '#### Method\n- (method used in this step)\n1. Thaw\n2. Spin');
+    const sections = listWorksheetUnitOps(md)[0].sections;
+    expect(sections.find(s => s.title === 'Input')).toEqual({
+      type: 'text',
+      title: 'Input',
+      blocks: [{ kind: 'item', level: 0, text: 'DNA-1' }],
+    });
+    expect(sections.find(s => s.title === 'Results & Discussions')).toEqual({
+      type: 'text',
+      title: 'Results & Discussions',
+      blocks: [{ kind: 'table', rows: [['A'], ['1']] }],
+    });
+    expect(sections.find(s => s.title === 'Method')).toEqual({
+      type: 'steps',
+      title: 'Method',
+      steps: [
+        { text: 'Thaw', sub: [] },
+        { text: 'Spin', sub: [] },
+      ],
+    });
+  });
+
   it('drops blank lines from written text', () => {
     const md = buildNote([hw('UHW010')]).replace(
       '#### Results & Discussions\n- (Any results and discussions. Link file path if needed)',

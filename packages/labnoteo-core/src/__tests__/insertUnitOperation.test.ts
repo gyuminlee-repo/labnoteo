@@ -265,6 +265,24 @@ describe('insertUnitOperation', () => {
     expect(inserted[0]).toContain('- Software: BWA');
   });
 
+  // #404
+  it("takes the note's own experimenter over the README author, and says so", async () => {
+    const fs = new MemFileSystem();
+    await fs.write('/vault/labnote/001_Exp/README.labnote.md', '---\nauthor: Dr. Kim\n---\n');
+    const { host, inserted, notes } = makeHost({
+      targetPath: VALID_WORKFLOW,
+      fs,
+      doc: `---\nexperimenter: Dr. Lee\n---\n${EMPTY_WORKFLOW}`,
+    });
+
+    await insertUnitOperation(host, { opId: 'USW010', opName: 'Alignment', opType: 'sw' });
+
+    expect(inserted[0]).toContain('- Experimenter: Dr. Lee');
+    expect(notes.at(-1)?.message).toContain(
+      'Experimenter: Dr. Lee, from the note front matter; the README author is Dr. Kim.'
+    );
+  });
+
   it('bails and warns when there is no active edit target', async () => {
     const { host, inserted, notes } = makeHost({});
 

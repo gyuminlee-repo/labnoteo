@@ -629,6 +629,15 @@ export async function confirmCompleted(
 }
 
 /**
+ * Whether `focused` sits in the Properties box or the inline title above a
+ * note (#405): the editor keeps its last cursor in the body then, and a date
+ * typed there lands on a line nobody is looking at.
+ */
+export function focusOnNoteHeader(focused: Element | null | undefined): boolean {
+  return Boolean(focused?.closest('.metadata-container, .inline-title'));
+}
+
+/**
  * Insert a date (or date and time) over the selection. In the front matter it
  * only fills a key with an empty value; elsewhere there it is refused with a
  * warning, since the text would break the YAML (#106).
@@ -1845,7 +1854,7 @@ export async function syncWorkflowChecklistCommand(
     }
   }
 
-  // The README author changed after the notes took it as their experimenter (#83).
+  // Notes naming no experimenter take the README author (#83); a named one stays (#404).
   const author = parseExperimenterFromReadme(readme);
   const experimenters = [...notes].flatMap(([name, content]) => {
     const sync = content === undefined ? undefined : planWorkflowExperimenterSync(content, author);
@@ -1867,7 +1876,7 @@ export async function syncWorkflowChecklistCommand(
       })
       .join('\n');
     const ok = await host.confirm(
-      `${host.t("These notes' experimenter differs from the README author. Update them?")}\n\n${list}`,
+      `${host.t('These notes name no experimenter. Fill in the README author?')}\n\n${list}`,
       { confirmLabel: host.t('Update notes') }
     );
     if (ok) {

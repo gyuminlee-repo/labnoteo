@@ -11,7 +11,7 @@ import {
   escapeRegExp,
   WORKFLOW_FILE_NAME_MAX,
 } from './regexUtils';
-import { parseFrontMatterYaml, serializeFrontMatterEntry } from '../sections/frontMatter';
+import { frontMatterNames, parseFrontMatterYaml, serializeFrontMatterEntry } from '../sections/frontMatter';
 import { normalizeHeadingText, stepFence, type OpenFence } from '../sections/sectionEdit';
 import { generateNoteId, NOTE_ID_KEY } from './noteId';
 import {
@@ -1755,15 +1755,16 @@ export interface WorkflowExperimenterSync {
 }
 
 /**
- * Make a workflow note's experimenter the README `author` again after the
- * author was changed (#83). The front-matter `experimenter` line is rewritten,
- * and so is each `- Experimenter:` line of a unit operation outside code
- * blocks that still reads the old value or nothing: a unit op inserted after
- * the change already has the new name, and another person's name was written
- * on purpose. A unit op (from its `### [` heading to the next) whose
- * `End_date` is filled in is finished work and keeps who did it (#155). The
- * label is the same in every locale. Undefined when `author` is empty, the
- * note has no `experimenter` key, or it already matches.
+ * Fill a workflow note's empty experimenter with the README `author` (#83).
+ * A note that names someone keeps them (#404): each note may be another
+ * person's, and the unit operations inserted into it take that name. The
+ * front-matter `experimenter` line (with any empty list items under it) is
+ * rewritten, and so is each empty `- Experimenter:` line of a unit operation
+ * outside code blocks; another person's name was written on purpose. A unit op
+ * (from its `### [` heading to the next) whose `End_date` is filled in is
+ * finished work and keeps who did it (#155). The label is the same in every
+ * locale. Undefined when `author` is empty, the note has no `experimenter`
+ * key, or it already names someone.
  */
 /**
  * Whether the workflow note `content` has unit operations and each has its
@@ -1798,16 +1799,20 @@ export function planWorkflowExperimenterSync(
   if (!to) return undefined;
   const { frontMatter, parseError } = parseFrontMatterYaml(content.replace(/\r\n/g, '\n'));
   if (parseError || !('experimenter' in frontMatter)) return undefined;
-  const value = frontMatter.experimenter;
-  const from = value === null || value === undefined ? '' : String(value).trim();
-  if (from === to) return undefined;
+  const from = frontMatterNames(frontMatter.experimenter).join(', ');
+  if (from !== '') return undefined;
 
   const newline = content.includes('\r\n') ? '\r\n' : '\n';
   const lines = content.split(/\r?\n/);
-  const fmEnd = lines.findIndex((l, i) => i > 0 && l.trim() === '---');
+  let fmEnd = lines.findIndex((l, i) => i > 0 && l.trim() === '---');
   if (lines[0]?.trim() !== '---' || fmEnd === -1) return undefined;
   for (let i = 1; i < fmEnd; i++) {
-    if (/^experimenter\s*:/.test(lines[i])) lines[i] = serializeFrontMatterEntry('experimenter', to);
+    if (!/^experimenter\s*:/.test(lines[i])) continue;
+    lines[i] = serializeFrontMatterEntry('experimenter', to);
+    let end = i + 1;
+    while (end < fmEnd && /^(?:\s+\S|-\s|-$)/.test(lines[end])) end++;
+    lines.splice(i + 1, end - i - 1);
+    fmEnd -= end - i - 1;
   }
   // Experimenter lines to rewrite, grouped by unit op, and which unit ops ended.
   const blocks: { lines: number[]; empty: number; ended: boolean }[] = [{ lines: [], empty: 0, ended: false }];
@@ -1826,9 +1831,9 @@ export function planWorkflowExperimenterSync(
     const date = findMetaDateFieldInLine(lines[i]);
     if (date?.field === 'End_date' && date.value.trim() !== '') block.ended = true;
     const m = /^(\s*-\s*Experimenter:)(.*)$/.exec(lines[i]);
-    if (m && (m[2].trim() === from || m[2].trim() === '')) {
+    if (m && m[2].trim() === '') {
       block.lines.push(i);
-      if (m[2].trim() === '') block.empty++;
+      block.empty++;
     }
   }
   let unitOpLines = 0;
@@ -1892,6 +1897,12 @@ export function parseExperimenterFromReadme(readmeContent: string): string {
   // author parses to null/'' rather than the following key. Input is
   // CRLF-normalized for parsing only.
   const { frontMatter } = parseFrontMatterYaml(readmeContent.replace(/\r\n/g, '\n'));
-  const author = frontMatter.author;
-  return typeof author === 'string' ? author.trim() : '';
+  // A list of authors (or `[[name]]` links) reads as their names (#394).
+  return frontMatterNames(frontMatter.author).join(', ');
+}
+
+/** The experimenter a workflow note's front matter names, as {@link parseExperimenterFromReadme} reads an author (#404). */
+export function parseExperimenterFromNote(content: string): string {
+  const { frontMatter } = parseFrontMatterYaml(content.replace(/\r\n/g, '\n'));
+  return frontMatterNames(frontMatter.experimenter).join(', ');
 }

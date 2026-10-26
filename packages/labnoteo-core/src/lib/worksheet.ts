@@ -201,9 +201,25 @@ const trimBlankEdges = (lines: string[]): string[] => {
   return lines.slice(a, b);
 };
 
+/**
+ * `lines` with each template hint line outside code blocks made blank (#400):
+ * one kept above what was written would print as text or as step 1. A blank
+ * line, not none, so the paragraphs around it stay apart.
+ */
+function blankPlaceholders(lines: readonly string[]): string[] {
+  let fence: OpenFence | null = null;
+  return lines.map(line => {
+    const next = stepFence(line, fence);
+    const inCode = fence !== null || next !== fence;
+    fence = next;
+    return !inCode && PLACEHOLDERS.has(line.trim()) ? '' : line;
+  });
+}
+
 function toSection(raw: RawSection): WorksheetSection {
   // The `> [!note] AI draft` line over a drafted Method would print as step 1 (#280).
-  const lines = raw.title === 'Method' ? stripAiCallouts(raw.lines.join('\n')).split('\n') : raw.lines;
+  const source = raw.title === 'Method' ? stripAiCallouts(raw.lines.join('\n')).split('\n') : raw.lines;
+  const lines = raw.title === 'Meta' ? source : blankPlaceholders(source);
   const body = trimBlankEdges(lines.map(l => l.trimEnd()));
   const text = body.join('\n').trim();
   if (raw.title === 'Meta') {
@@ -216,7 +232,7 @@ function toSection(raw: RawSection): WorksheetSection {
     }
     return { type: 'meta', title: raw.title, fields };
   }
-  if (text === '' || PLACEHOLDERS.has(text)) {
+  if (text === '') {
     return { type: 'blank', title: raw.title };
   }
   if (raw.title === 'Method') {

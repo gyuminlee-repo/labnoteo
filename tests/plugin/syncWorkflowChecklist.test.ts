@@ -233,25 +233,33 @@ describe('syncWorkflowChecklistCommand', () => {
     });
   });
 
-  // #83: the README author changed after the notes took it as their experimenter.
-  describe('notes whose experimenter differs from the README author', () => {
+  // #83, #404: a note naming no experimenter takes the README author; a named one stays.
+  describe('notes that name no experimenter', () => {
     const NOTE =
-      "---\ntitle: WD030 Design\nexperimenter: 홍길동\n---\n\n## [WD030 Design]\n\n- Experimenter: 홍길동\n- Experimenter: 김철수\n";
+      "---\ntitle: WD030 Design\nexperimenter: ''\n---\n\n## [WD030 Design]\n\n- Experimenter:\n- Experimenter: 김철수\n";
     const files = {
       [README]: `---\nauthor: 이영희\n---\n\n${readme([`- [ ] [WD030 Design](./${REGISTERED})`])}`,
       [`${DIR}/${REGISTERED}`]: NOTE,
     };
 
-    it('asks with old and new name, then updates the note', async () => {
+    it('asks, then fills the note in', async () => {
       const h = harness(files, true);
       await syncWorkflowChecklistCommand(h.app, h.host, h.sync, DIR);
       expect(h.prompts).toHaveLength(1);
-      expect(h.prompts[0]).toContain("These notes' experimenter differs from the README author.");
-      expect(h.prompts[0]).toContain(`- ${REGISTERED}: 홍길동 → 이영희`);
+      expect(h.prompts[0]).toContain('These notes name no experimenter. Fill in the README author?');
+      expect(h.prompts[0]).toContain(`- ${REGISTERED}: (empty) → 이영희`);
       expect(await h.fs.read(`${DIR}/${REGISTERED}`)).toBe(
         '---\ntitle: WD030 Design\nexperimenter: 이영희\n---\n\n## [WD030 Design]\n\n- Experimenter: 이영희\n- Experimenter: 김철수\n'
       );
       expect(h.calls.at(-1)).toBe('notify Workflow checklist updated: 0 added, 0 removed. 1 note(s) updated.');
+    });
+
+    it('does not ask about a note that names someone else', async () => {
+      const named = NOTE.replace("experimenter: ''", 'experimenter: 홍길동');
+      const h = harness({ ...files, [`${DIR}/${REGISTERED}`]: named }, true);
+      await syncWorkflowChecklistCommand(h.app, h.host, h.sync, DIR);
+      expect(h.prompts).toHaveLength(0);
+      expect(await h.fs.read(`${DIR}/${REGISTERED}`)).toBe(named);
     });
 
     it('changes nothing on no', async () => {

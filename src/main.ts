@@ -63,6 +63,7 @@ import {
   changeExperimentStatusCommand,
   insertIssueMarkerCommand,
   insertDateCommand,
+  focusOnNoteHeader,
   issueAutomationState,
   toggleDiscussionFlagCommand,
   createWorkflowCommand,
@@ -246,6 +247,7 @@ export default class LabnotePlugin extends Plugin {
       this.run(() => handleImportUri(this, params as Record<string, string>));
     });
     this.registerCommands();
+    this.registerFocusTracking();
     this.barcode = new BarcodeFeature(this, key => this.paletteName(key));
     this.barcode.register();
     this.registerSampleFeatures();
@@ -378,10 +380,30 @@ export default class LabnotePlugin extends Plugin {
     if (checking) return true;
     if (reading || !editor) {
       this.host.notify('info', this.t('Switch to the editing view and put the cursor where the date goes, then run this again.'));
+    } else if (!editor.hasFocus() && focusOnNoteHeader(this.focusBeforeModal())) {
+      this.host.notify(
+        'info',
+        this.t('A date cannot be typed into a property or the title from here. Click in the note body, then run this again.')
+      );
     } else {
       insertDateCommand(editor, this.host, now());
     }
     return true;
+  }
+
+  /** What had focus before the command palette or another dialog took it (#405). */
+  private lastFocus: Element | null = null;
+
+  private focusBeforeModal(): Element | null {
+    const now = activeDocument.activeElement;
+    return now && now !== activeDocument.body && !now.closest('.modal-container') ? now : this.lastFocus;
+  }
+
+  private registerFocusTracking(): void {
+    this.registerDomEvent(document, 'focusin', evt => {
+      const el = evt.target;
+      if (el instanceof Element && !el.closest('.modal-container')) this.lastFocus = el;
+    });
   }
 
   private paletteName(key: string): string {

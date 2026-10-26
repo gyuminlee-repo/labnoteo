@@ -8,7 +8,7 @@
  */
 import type { EditTarget, LabnoteHost } from '../host';
 import { findUnitOpInsertPointAt, type UnitOpInsertPoint } from '../sections/workflowSectionParser';
-import { diagnoseWorkflowPath, parseExperimenterFromReadme } from '../lib/workflowStructure';
+import { diagnoseWorkflowPath, parseExperimenterFromNote, parseExperimenterFromReadme } from '../lib/workflowStructure';
 import { getSeoulDateTimeString } from '../lib/dateUtils';
 import { buildSwUnitOpMarkdown, buildHwUnitOpMarkdown } from '../lib/unitOpTemplate';
 import * as posix from '../util/posixPath';
@@ -102,12 +102,12 @@ export async function insertUnitOperation(
     return false;
   }
 
-  // Experimenter comes from the sibling README front matter, if present.
+  // The note's own experimenter first: a note may be someone else's than the
+  // README author's (#404). The README author fills in for a note naming nobody.
   const readmePath = posix.join(posix.dirname(target.path), 'README.labnote.md');
-  let experimenter = '';
-  if (await host.fs.exists(readmePath)) {
-    experimenter = parseExperimenterFromReadme(await host.fs.read(readmePath));
-  }
+  const author = (await host.fs.exists(readmePath)) ? parseExperimenterFromReadme(await host.fs.read(readmePath)) : '';
+  const own = parseExperimenterFromNote(await target.getText());
+  const experimenter = own || author;
 
   const dateTime = getSeoulDateTimeString();
   const alias = input.alias?.trim();
@@ -131,7 +131,14 @@ export async function insertUnitOperation(
               ? host.t('(before the conclusions: no unit operation section was found, so the table of contents was not updated)')
               : host.t('(at the end of the note: no unit operation section was found, so the table of contents was not updated)')
             : '';
-  host.notify('info', [host.t('Unit operation inserted: {0} {1}', opId, opName), where].filter(Boolean).join(' '));
+  const who =
+    own && author && own !== author
+      ? host.t('Experimenter: {0}, from the note front matter; the README author is {1}.', own, author)
+      : '';
+  host.notify(
+    'info',
+    [host.t('Unit operation inserted: {0} {1}', opId, opName), where, who].filter(Boolean).join(' ')
+  );
   return true;
 }
 

@@ -97,6 +97,12 @@ const obsidianKo: Record<string, string> = {
   'Inserted the summary into {0}.': '요약을 {0}에 넣었습니다.',
   'AI summary ({0}, {1})': 'AI 요약 ({0}, {1})',
   'AI draft ({0}, {1}) — review it, then delete this line': 'AI 초안 ({0}, {1}) — 검토 후 이 줄을 지우세요',
+  'A date cannot be typed into a property or the title from here. Click in the note body, then run this again.':
+    '이 명령으로는 속성 칸이나 제목에 날짜를 넣을 수 없습니다. 노트 본문을 누른 뒤 다시 실행하세요.',
+  'This workflow note has no unit operation yet. Insert one first, then draft its Method.':
+    '이 워크플로 노트에는 아직 유닛 오퍼레이션이 없습니다. 먼저 유닛 오퍼레이션을 삽입한 뒤 Method 초안을 만드세요.',
+  'The cursor was above the note body, so the draft went to the end of the note.':
+    '커서가 노트 본문 위에 있어 초안을 노트 끝에 넣었습니다.',
   'AI workflow results summary ({0}, {1})': 'AI 워크플로 결과 요약 ({0}, {1})',
   'AI experiment results summary ({0}, {1})': 'AI 실험 결과 요약 ({0}, {1})',
   '"{0}" already has an AI summary. Replace it with a new one?': '"{0}"에 이미 AI 요약이 있습니다. 새 요약으로 바꿀까요?',
@@ -828,8 +834,10 @@ const obsidianKo: Record<string, string> = {
   "These notes' title and heading do not match their file names. Update them?":
     '아래 노트의 title과 제목이 파일 이름과 맞지 않습니다. 노트를 고칠까요?',
   'Update notes': '노트 고치기',
-  "These notes' experimenter differs from the README author. Update them?":
-    '아래 노트의 실험자(experimenter)가 README의 author와 다릅니다. 노트를 고칠까요?',
+  'These notes name no experimenter. Fill in the README author?':
+    '아래 노트에 실험자(experimenter)가 비어 있습니다. README의 author로 채울까요?',
+  'Experimenter: {0}, from the note front matter; the README author is {1}.':
+    '실험자: {0}(노트 머리말). README의 author는 {1}입니다.',
   '{0} unit operation line(s)': '유닛 오퍼레이션 {0}줄',
   '{0} kept because the unit operation has an End_date': '{0}줄은 End_date가 있는 유닛 오퍼레이션이라 유지',
   '{0} left empty because the unit operation is finished; fill it in yourself':
