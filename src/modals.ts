@@ -19,7 +19,9 @@ const t = createObsidianTranslator();
  * when it does not (#324): the label, a word of it or a short keyword (such
  * as a Korean name) equal to the query; the label containing it; a short
  * keyword or the description containing it; then only the detail or a long
- * keyword (an English description kept searchable).
+ * keyword (an English description kept searchable). Last (#401), in the
+ * label, a short keyword or the description: the query typed without its
+ * spaces (`효소활성` for `효소 활성`), or each of its words in any order.
  */
 function pickRank<T>(item: PickItem<T>, q: string): number | undefined {
   const label = item.label.toLowerCase();
@@ -29,7 +31,33 @@ function pickRank<T>(item: PickItem<T>, q: string): number | undefined {
   if (label.includes(q)) return 1;
   if (short.some(k => k.includes(q)) || item.description?.toLowerCase().includes(q)) return 2;
   if (item.detail?.toLowerCase().includes(q) || keywords.some(k => k.includes(q))) return 3;
+  const fields = [label, ...short, item.description?.toLowerCase() ?? ''];
+  if (fields.some(f => startsWordWithoutSpaces(f, q))) return 4;
+  const words = q.split(/\s+/).filter(Boolean);
+  if (words.length > 1 && words.every(w => fields.some(f => f.includes(w)))) return 5;
   return undefined;
+}
+
+/**
+ * Whether `q`, spaces removed, is in `field` with its spaces removed, starting
+ * where a word of `field` starts: `primerdesign` finds `primer design`, while
+ * `eac` does not find `the access`.
+ */
+function startsWordWithoutSpaces(field: string, q: string): boolean {
+  const compact = q.replace(/\s+/g, '');
+  if (compact.length < 2) return false;
+  const at: number[] = [];
+  let joined = '';
+  for (let i = 0; i < field.length; i++) {
+    if (/\s/.test(field[i])) continue;
+    at.push(i);
+    joined += field[i];
+  }
+  for (let i = joined.indexOf(compact); i !== -1; i = joined.indexOf(compact, i + 1)) {
+    const start = at[i];
+    if (start === 0 || /[\s:·|_\-/([]/.test(field[start - 1])) return true;
+  }
+  return false;
 }
 
 /** The items matching `query`, best match first and in their given order otherwise. */
@@ -51,13 +79,21 @@ class PickModal<T> extends SuggestModal<PickItem<T>> {
     app: App,
     private readonly items: PickItem<T>[],
     private readonly resolve: (value: T | undefined) => void,
-    opts?: { title?: string; placeholder?: string }
+    private readonly opts?: { title?: string; placeholder?: string; initialQuery?: string }
   ) {
     super(app);
     if (opts?.placeholder) this.setPlaceholder(opts.placeholder);
     // A SuggestModal has no title bar; without this the picker never says
     // what is being chosen or for which note (#141).
     if (opts?.title) this.modalEl.prepend(createDiv({ cls: 'labnote-pick-title', text: opts.title }));
+  }
+
+  onOpen(): void {
+    super.onOpen();
+    // What was typed before the picker opened is searched at once (#388).
+    if (!this.opts?.initialQuery) return;
+    this.inputEl.value = this.opts.initialQuery;
+    this.inputEl.dispatchEvent(new Event('input'));
   }
 
   getSuggestions(query: string): PickItem<T>[] {
@@ -96,7 +132,7 @@ class PickModal<T> extends SuggestModal<PickItem<T>> {
 export function pickModal<T>(
   app: App,
   items: PickItem<T>[],
-  opts?: { title?: string; placeholder?: string }
+  opts?: { title?: string; placeholder?: string; initialQuery?: string }
 ): Promise<T | undefined> {
   return new Promise(resolve => new PickModal(app, items, resolve, opts).open());
 }
@@ -406,6 +442,8 @@ export interface WorkflowAliasOpts {
   description?: string;
   /** A note under the input, worked out again on every change; never blocks the submit. */
   hint?: (value: string) => PromptHint | undefined;
+  /** Why the alias cannot be used, or null; shown under the input and blocks the submit. */
+  validate?: (value: string) => string | null;
 }
 
 /**
@@ -430,7 +468,13 @@ class WorkflowAliasModal extends Modal {
     const { contentEl } = this;
     this.setTitle(this.opts.title);
 
+    let errorEl: HTMLElement | undefined;
     const submit = () => {
+      const err = this.opts.validate?.(this.value);
+      if (err) {
+        errorEl?.setText(err);
+        return;
+      }
       this.resolved = true;
       this.resolve(this.value);
       this.close();
@@ -456,6 +500,7 @@ class WorkflowAliasModal extends Modal {
       input.value = this.opts.value;
       this.value = this.opts.value;
     }
+    errorEl = contentEl.createDiv({ cls: 'labnote-prompt-error' });
     const hintEl = this.opts.hint ? contentEl.createDiv({ cls: 'labnote-input-hint' }) : undefined;
     const showHint = () => {
       if (hintEl && this.opts.hint) renderHint(hintEl, this.opts.hint(this.value));
@@ -463,6 +508,7 @@ class WorkflowAliasModal extends Modal {
     showHint();
     input.addEventListener('input', () => {
       this.value = input.value;
+      errorEl?.setText('');
       showHint();
     });
     input.addEventListener('keydown', ev => {

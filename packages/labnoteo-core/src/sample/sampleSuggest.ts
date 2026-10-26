@@ -6,7 +6,7 @@
  * pure pieces live here (fully unit-tested) so each platform only writes the
  * thin UI adapter around them.
  */
-import { buildSampleIdPattern, escapeSamplePipes } from '../lib/sampleUtils';
+import { buildSampleIdPattern, escapeSamplePipes, normalizeSampleSearch } from '../lib/sampleUtils';
 import { findSampleReferenceSpans } from '../lib/sampleStorage';
 
 /** A resolved autocomplete trigger parsed from the text before the cursor. */
@@ -110,11 +110,13 @@ export function buildSampleCompletionEntries(
   recordsByType: Record<string, SampleCandidate[]>
 ): SampleCompletionEntry[] {
   const entries: SampleCompletionEntry[] = [];
+  // `_` and `-` alike, as the alias rules make them (#390).
+  const term = trigger.searchTerm.trim() ? normalizeSampleSearch(trigger.searchTerm) : '';
   for (const type of trigger.typesToSearch) {
     const records = recordsByType[type] ?? [];
     for (const candidate of records) {
       const label = buildSampleCompletionLabel(candidate);
-      if (trigger.searchTerm && !label.toLowerCase().includes(trigger.searchTerm)) {
+      if (term && !normalizeSampleSearch(label).includes(term)) {
         continue;
       }
       entries.push({

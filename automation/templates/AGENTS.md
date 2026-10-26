@@ -49,6 +49,8 @@ Claude Code, Codex, Cursor 등)는 아래 규칙을 따라 작업합니다.
   열쇠입니다. **고치거나 지우지 말고, 노트를 복제·템플릿화할 때 복사하지 마세요** — 두
   노트가 같은 ID를 가지면 스캔이 어느 쪽에 붙을지 정할 수 없고, 서버 `validate`가
   실패합니다. 새 노트에 ID가 필요하면 사람이 플러그인의 *Assign note ID*로 발급합니다.
+  템플릿 등 `*.labnote.md`가 아닌 파일에 실험 노트의 `labnote_id`가 남아 있으면 플러그인이 경고합니다.
+  그 파일에서 `labnote_id` 줄을 지우세요(그 템플릿으로 만든 노트가 같은 ID를 받음).
 - 유닛 오퍼레이션 끝(또는 노트 끝)의 `#### Worksheet scans` / `## Worksheet scans` 절은
   플러그인이 출력본 사진을 붙이는 곳입니다. 안의 `<!-- labnoteo-scan page=… sha=… -->`
   주석·이미지·캡션을 고치거나 지우거나 다른 노트로 옮기지 마세요(되돌리기와 중복 감지가
@@ -84,7 +86,8 @@ Claude Code, Codex, Cursor 등)는 아래 규칙을 따라 작업합니다.
   `get_sample`은 `documentPath` 없이 부르면 전역 대장 다음 모든 실험의 대장을 찾고, 결과의
   `scope`·`experiment`가 찾은 곳입니다.
 - MCP `create_workflow`의 `alias`는 앱에서 `Create workflow` 뒤에 넣는 별칭과 같습니다. 파일 이름·제목·체크리스트
-  라벨에서 카탈로그 이름 뒤에 붙습니다.
+  라벨에서 카탈로그 이름 뒤에 붙습니다. `#`(제목 링크가 끊김)와 `*`, 영문·숫자 사이가 아닌 `_`(읽기
+  화면에서 기울임으로 보임)는 거부되니 띄어쓰기로 바꾸세요(`pUC19_v2`처럼 영문·숫자 사이의 `_`는 됨).
 - MCP `update_section`은 절 본문 **전체를 바꿉니다**(하위 제목 포함). 바꾸지 않을 절은
   호출하지 마세요. 빈 `content`는 거부되며, 절을 일부러 비울 때만 `content: ""`와
   `clear: true`를 함께 보냅니다. 결과의 `removedLines`·`removedSubheadings`·`previousBody`로

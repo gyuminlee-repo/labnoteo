@@ -166,6 +166,34 @@ describe('buildSampleTree', () => {
   });
 });
 
+// #410: WTR-1, WTR-2, WTR-10 came out in creation (ID) order.
+describe('sample order', () => {
+  it('lists aliased samples by alias, numbers by size, then the rest by ID', async () => {
+    const fs = new MemFileSystem();
+    const rec = (alias: string | null) => ({ type: 'DNA', alias, descriptions: [], sources: [] });
+    await fs.write(
+      '/g/DNA.json',
+      JSON.stringify({
+        'DNA-1': rec('WTR-10'),
+        'DNA-2': rec(null),
+        'DNA-3': rec('wtr-2'),
+        'DNA-10': rec('WTR-1'),
+        'DNA-4': rec(null),
+        'DNA-5': rec('WTR-2'),
+      })
+    );
+    const [, global] = await buildSampleTree(fs, { local: '/g', global: '/g' }, ['DNA']);
+    expect(global.children![0].children!.map(s => s.label)).toEqual([
+      'DNA-10 | WTR-1',
+      'DNA-3 | wtr-2',
+      'DNA-5 | WTR-2',
+      'DNA-1 | WTR-10',
+      'DNA-2',
+      'DNA-4',
+    ]);
+  });
+});
+
 describe('filterSampleTree', () => {
   async function tree() {
     const fs = new MemFileSystem();
@@ -197,6 +225,9 @@ describe('filterSampleTree', () => {
 
     const byLocation = filterSampleTree(nodes, 'box-3');
     expect(byLocation[0].children![0].children!.map(s => s.label)).toEqual(['DNA-2 | vectorB']);
+    // #390: `_` and `-` alike.
+    expect(filterSampleTree(nodes, 'Box_3')[0].children![0].children!.map(s => s.label)).toEqual(['DNA-2 | vectorB']);
+    expect(filterSampleTree(nodes, '#')[0].children).toEqual([]);
 
     const byId = filterSampleTree(nodes, 'dna-1');
     expect(byId[0].children![0].children!.map(s => s.label)).toEqual(['DNA-1 | plasmidA']);
@@ -234,6 +265,21 @@ describe('buildExperimentTree', () => {
       'waiting [1] (not an allowed status)',
       '(none) [1]',
     ]);
+  });
+
+  // #427: a broken README was shown as one with no status.
+  it('puts an experiment whose front matter is broken in a warning group of its own', () => {
+    const broken = buildExperimentTree(
+      [
+        { folder: 'labnote/001_Broken', frontMatterError: 'duplicated mapping key (7:1)\n 6 | status: x' },
+        { folder: 'labnote/002_None' },
+      ],
+      { noStatus: '(none)', unreadable: '(unreadable)', frontMatterError: 'Unreadable' }
+    );
+    expect(broken.children!.map(g => g.label)).toEqual(['(none) [1]', '(unreadable) [1]']);
+    const node = broken.children![1].children![0];
+    expect(node.icon).toBe('warning');
+    expect(node.tooltip).toBe('labnote/001_Broken\nUnreadable: duplicated mapping key (7:1)');
   });
 
   // #143
@@ -346,9 +392,9 @@ describe('experiments by project', () => {
 // #365
 describe('experiments by author', () => {
   const entries: ExperimentEntry[] = [
-    { folder: 'labnote/076_A', title: 'MIC 1차', status: 'needs-review', author: '이서연' },
-    { folder: 'labnote/012_B', title: 'GFP', status: 'completed', author: '김민준' },
-    { folder: 'labnote/080_C', title: 'MIC 2차', status: 'planned', author: ' 이서연 ' },
+    { folder: 'labnote/076_A', title: 'MIC 1차', status: 'needs-review', authors: ['이서연'] },
+    { folder: 'labnote/012_B', title: 'GFP', status: 'completed', authors: ['김민준'] },
+    { folder: 'labnote/080_C', title: 'MIC 2차', status: 'planned', authors: [' 이서연 '] },
     { folder: 'labnote/003_D', title: 'Misc', status: 'planned' },
   ];
 
@@ -360,6 +406,24 @@ describe('experiments by author', () => {
     const t = buildExperimentTree(entries, { noAuthor: '(담당자 없음)' }, 'author');
     expect(t.children!.map(g => g.label)).toEqual(['김민준 [1]', '이서연 [2]', '(담당자 없음) [1]']);
     expect(t.children![1]).toMatchObject({ id: 'experimentAuthor:이서연', kind: 'experimentAuthor', payload: { author: '이서연' } });
+  });
+
+  // #395: "이서연, 박하늘" made a group of its own.
+  it('puts an experiment of two people in each one\'s group, the root counting it once', () => {
+    const shared: ExperimentEntry[] = [...entries, { folder: 'labnote/090_E', title: 'Joint', authors: ['박하늘', '이서연'] }];
+    const t = buildExperimentTree(shared, {}, 'author');
+    expect(t.label).toBe('Experiments [5]');
+    expect(t.children!.map(g => g.label)).toEqual(['김민준 [1]', '박하늘 [1]', '이서연 [3]', '(no author) [1]']);
+    expect(buildExperimentTree(shared.slice(-1), {}).children![0].children![0].tooltip).toContain('Author: 박하늘, 이서연');
+  });
+
+  // #409
+  it('finds an experiment by the name of one of its workflow notes', () => {
+    const withNotes: ExperimentEntry[] = [
+      ...entries,
+      { folder: 'labnote/091_F', title: 'Screen', workflowNames: ['001 WB030 Gibson Assembly'] },
+    ];
+    expect(filterExperiments(withNotes, 'gibson').map(e => e.folder)).toEqual(['labnote/091_F']);
   });
 
   it('names the author in the tooltip', () => {

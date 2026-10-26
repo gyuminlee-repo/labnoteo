@@ -14,6 +14,7 @@ import {
   findSampleListTables,
   hasSampleAliasSeparator,
   isCatalogSampleType,
+  maskSampleListTables,
 } from './sampleUtils';
 import { escapeRegExp } from './regexUtils';
 import { maskAiCallouts } from './aiCallout';
@@ -998,12 +999,14 @@ export async function hasReferenceCatalog(
 /**
  * Load reference DB: all JSON files matching {type}_{suffix}.json in labsamples folder.
  * Used for Reagent/Labware product catalog (read-only). Same record format as loadSamplesByType.
+ * `fileOf`, when given, receives the catalog file each id was read from.
  */
 export async function loadReferenceSamplesByType(
   fs: LabnoteFs,
   labsamplesFolder: string,
   type: string,
-  knownTypes?: readonly string[]
+  knownTypes?: readonly string[],
+  fileOf?: Record<string, string>
 ): Promise<Record<string, SampleRecord>> {
   const merged: Record<string, SampleRecord> = {};
   if (!(await fs.exists(labsamplesFolder))) {
@@ -1031,6 +1034,7 @@ export async function loadReferenceSamplesByType(
         // type is not this type's, whatever file it turned up in.
         if (normalized.type.toLowerCase() !== type.toLowerCase()) continue;
         merged[id] = normalized;
+        if (fileOf) fileOf[id] = filePath;
       }
     } catch (err) {
       console.warn(`[labnoteo] Failed to load reference ${filePath}:`, err);
@@ -1369,13 +1373,18 @@ export async function saveSamplesFromDocument(
   documentPath: string,
   documentText: string,
   globalLabsamplesFolder?: string,
-  additionalTypes?: string[]
+  additionalTypes?: string[],
+  sampleListHeaders: ReadonlyArray<readonly string[]> = []
 ): Promise<void> {
   const labsamplesFolder = noteLabsamplesFolder(documentPath, globalLabsamplesFolder);
   const sourceFile = path.basename(documentPath);
 
-  // Extract samples from document; a reference an AI answer copied is not a use (#318).
-  const samples = extractSampleInfoFromText(maskAiCallouts(documentText), additionalTypes);
+  // Extract samples from document; a reference an AI answer copied is not a
+  // use (#318), nor is a row of a sample list table (#385).
+  const samples = extractSampleInfoFromText(
+    maskSampleListTables(maskAiCallouts(documentText), sampleListHeaders),
+    additionalTypes
+  );
 
   if (samples.length === 0) {
     return;
@@ -1569,18 +1578,23 @@ export async function removeSourcesForDocument(
  * `includeAiCallouts`: the sidebar delete action counts it too, to refuse
  * deleting a sample the body still names (otherwise the next edit resurrects
  * a bare record, #54, and the registry would silently drift from the notes).
+ * A row of a sample list table under one of `sampleListHeaders` is not a use
+ * either (#385).
  */
 export function findSampleUsages(
   docs: ReadonlyArray<{ path: string; text: string }>,
   type: string,
   id: string,
   additionalTypes?: string[],
-  opts: { includeAiCallouts?: boolean } = {}
+  opts: { includeAiCallouts?: boolean; sampleListHeaders?: ReadonlyArray<readonly string[]> } = {}
 ): string[] {
   const idLower = id.toLowerCase();
   const hits: string[] = [];
   for (const doc of docs) {
-    const text = opts.includeAiCallouts ? doc.text : maskAiCallouts(doc.text);
+    const text = maskSampleListTables(
+      opts.includeAiCallouts ? doc.text : maskAiCallouts(doc.text),
+      opts.sampleListHeaders
+    );
     const samples = extractSampleInfoFromText(text, additionalTypes);
     if (samples.some((s) => s.type === type && s.id.toLowerCase() === idLower)) {
       hits.push(doc.path);
@@ -1607,12 +1621,14 @@ export interface SampleUsageSpot {
 export function findSampleUsageSpots(
   docs: ReadonlyArray<{ path: string; text: string }>,
   type: string,
-  id: string
+  id: string,
+  sampleListHeaders: ReadonlyArray<readonly string[]> = []
 ): SampleUsageSpot[] {
   const idLower = id.toLowerCase();
   const out: SampleUsageSpot[] = [];
   for (const doc of docs) {
-    const spans = findSampleReferenceSpans(maskAiCallouts(doc.text), [type]).filter(s => s.id.toLowerCase() === idLower);
+    const masked = maskSampleListTables(maskAiCallouts(doc.text), sampleListHeaders);
+    const spans = findSampleReferenceSpans(masked, [type]).filter(s => s.id.toLowerCase() === idLower);
     if (spans.length === 0) continue;
     const lineStarts = [0];
     for (let i = 0; i < doc.text.length; i++) if (doc.text[i] === '\n') lineStarts.push(i + 1);

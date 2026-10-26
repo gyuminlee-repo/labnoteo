@@ -1,6 +1,6 @@
 # Labnote Assistant for Obsidian (labnoteo)
 
-**Version 0.128.0**
+**Version 0.129.0**
 
 [한국어](README.md)
 
@@ -59,7 +59,7 @@ Under a Korean UI the command palette shows each name as `Korean (English)` (e.g
 | Insert issue marker | Drop an `@issue;<ID>;<topic>` marker at the cursor — each marker opens its own Issue |
 | Create workflow | Create a numbered workflow note from the catalog and list it in the checklist |
 | Renumber workflows | Renumber an experiment folder's workflows from 001 without gaps, in README checklist order |
-| Sync workflow checklist with folder | Match the checklist to the folder and fix labels, titles and experimenters that drifted, after asking |
+| Sync workflow checklist with folder | Match the checklist to the folder, fix labels and titles that drifted and fill in empty experimenters, after asking (an experimenter a note names is kept) |
 | Insert unit operation | Insert a unit operation from the catalog into a workflow note and refresh the TOC |
 | Update catalogs | Bring the vault's `resources/workflows/` catalogs up to this plugin version, keeping values the lab edited |
 | Export tables to CSV | Export the note's tables to `<note name>.labnote_tableN.csv` (Excel-compatible UTF-8 with BOM) |
@@ -115,7 +115,7 @@ Which template each file was matched to is recorded in `.labnoteo/installed.json
 
 Your lab's own rules in `QUICKSTART.md` survive updates when written **below** the managed block. A `QUICKSTART.md` created before 0.99.0 is switched to this form on startup if you never edited it; an edited one is only listed, and running *Setup research automation* again switches it after you confirm (the edits are lost then, so copy them out first).
 
-**Attachment location** — after *Setup research automation*, if Obsidian's default location for new attachments is still the vault root, you are asked whether to switch it to `./images` (an images folder next to the note, which for a lab note is the experiment's `images/`). It is the same as changing Obsidian's Settings → Files and links → Default location for new attachments.
+**Attachment location** — after *Setup research automation*, if Obsidian's default location for new attachments is still the vault root, you are asked whether to switch it to `./images` (an images folder next to the note, which for a lab note is the experiment's `images/`). It is the same as setting Obsidian's Settings → Files and links → "Default location for new attachments" to "In subfolder under current folder", with "Subfolder name" images.
 
 See the generated `.labnoteo/SETUP.md` (admins) for the full asset table, prerequisites, and backfill procedure, and `QUICKSTART.md` (researchers) for day-to-day usage. `AGENTS.md` is [shared with Copilot](docs/COPILOT.md).
 

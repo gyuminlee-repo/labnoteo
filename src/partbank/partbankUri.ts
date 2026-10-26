@@ -96,7 +96,11 @@ export async function handleImportUri(
   });
   if (!result) return;
   noticeForRegistration(plugin, result, target.chosen ? target.folder : undefined);
-  const insertedInto = await deliverReference(plugin, result.referenceText);
+  const insertedInto = await deliverReference(
+    plugin,
+    result.referenceText,
+    result.discarded ? { id: result.id, date: result.discarded } : undefined
+  );
   const seed = catalogSeedNote(plugin, result, insertedInto);
   if (seed) new Notice(seed);
 }
@@ -138,12 +142,17 @@ async function pickImportFolder(
  * agree, onto the clipboard only when there was no note to ask about. Declining
  * leaves both alone (#284). Returns the note it went into, if any.
  */
-export async function deliverReference(plugin: LabnotePlugin, referenceText: string): Promise<string | undefined> {
+export async function deliverReference(
+  plugin: LabnotePlugin,
+  referenceText: string,
+  discarded?: { id: string; date: string }
+): Promise<string | undefined> {
   const target = plugin.host.editTarget();
   if (target && plugin.sampleTrackingFor(target.path)) {
+    const used = discarded ? ` ${plugin.t('{0} was marked discarded on {1}.', discarded.id, discarded.date)}` : '';
     const ok = await confirmModal(
       plugin.app,
-      plugin.t('Insert {0} into the open note?', referenceText),
+      plugin.t('Insert {0} into the open note?', referenceText) + used,
       plugin.t('Insert')
     );
     if (!ok) return undefined;

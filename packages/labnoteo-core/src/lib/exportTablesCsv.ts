@@ -20,8 +20,17 @@ function stripEdgePipes(line: string): string {
   return s;
 }
 
-/** Splits a single pipe-table row into cells, honoring `\|` as an escaped literal pipe. */
+/** Splits a single pipe-table row into cells as CSV writes them: see {@link stripInlineFormatting}. */
 export function splitTableRow(line: string): string[] {
+  return splitTableCells(line).map(stripInlineFormatting);
+}
+
+/**
+ * Splits a single pipe-table row into its cells' Markdown, honoring `\|` as an
+ * escaped literal pipe; `<br>` becomes a newline. The worksheet renders the
+ * cells' inline Markdown itself.
+ */
+export function splitTableCells(line: string): string[] {
   const stripped = stripEdgePipes(line);
   const cells: string[] = [];
   let current = '';
@@ -40,42 +49,101 @@ export function splitTableRow(line: string): string[] {
     current += ch;
   }
   cells.push(current.trim());
-  return cells.map(cell => stripInlineFormatting(cell.replace(/<br\s*\/?>/gi, '\n')));
+  return cells.map(cell => cell.replace(/<br\s*\/?>/gi, '\n'));
 }
 
 /** A character that is part of a word for `_` emphasis, which may not open or close inside one. */
 const WORD = '[\\p{L}\\p{N}_]';
-const CODE_SPAN_RE = /(`+)(?!`)([\s\S]*?[^`])\1(?!`)/g;
+export const CODE_SPAN_RE = /(`+)(?!`)([\s\S]*?[^`])\1(?!`)/g;
+/** A code span's text: one space each side is dropped when both are there and it is not all spaces. */
+export const codeSpanText = (body: string): string => (/^ [\s\S]*[^ ][\s\S]* $/.test(body) ? body.slice(1, -1) : body);
+/** `$$…$$` math; group 1 is the formula. */
+export const MATH_BLOCK_RE = /\$\$(?=\S)([\s\S]*?\S)\$\$/g;
+/**
+ * `$…$` math as Obsidian and pandoc read it; group 2 is the formula. No space
+ * inside either `$` and no digit after the closing one, so `$5-$10` stays money.
+ */
+export const MATH_INLINE_RE = /(^|[^\\$])\$(?![\s$])((?:\\[\s\S]|[^\\$\n])*?[^\s\\$])\$(?![$\d])/g;
+/** An escaped ASCII punctuation mark; group 1 is the mark. */
+export const ESCAPED_MARK_RE = /\\([!-/:-@[-`{-~])/g;
+export const HIGHLIGHT_RE = /(?<!=)==(?=[^\s=])([\s\S]*?[^\s=])==(?!=)/g;
+export const FOOTNOTE_REF_RE = /\[\^([^\]\s]+)\](?!:)/g;
 const STRIKE_RE = /([ \t]*)~~(?=\S)[\s\S]*?\S~~([ \t]*)/g;
+const WIKILINK_RE = /!?\[\[([^\]|]+)(?:\|([^\]]*))?\]\]/g;
+const MD_LINK_RE = /!?\[([^\]]*)\]\([^)]*\)/g;
+
+/** Named entities a lab note uses; others are left as written. */
+const NAMED_ENTITIES: Readonly<Record<string, string>> = {
+  lt: '<',
+  gt: '>',
+  amp: '&',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+  deg: '°',
+  plusmn: '±',
+  micro: 'µ',
+  mu: 'μ',
+  times: '×',
+  le: '≤',
+  ge: '≥',
+  ndash: '–',
+  minus: '−',
+};
+
+/**
+ * HTML entities as the reading view shows them (#415): `&lt;0.1` → `<0.1`,
+ * `&nbsp;` a plain space. A code point that cannot be one (0, a surrogate,
+ * past U+10FFFF) becomes U+FFFD rather than throwing.
+ */
+export function decodeHtmlEntities(text: string): string {
+  return text.replace(/&(?:#(\d+)|#[xX]([\da-fA-F]+)|([A-Za-z]+));/g, (m, dec?: string, hex?: string, name?: string) => {
+    if (name !== undefined) return NAMED_ENTITIES[name] ?? m;
+    const cp = dec !== undefined ? Number(dec) : parseInt(hex ?? '', 16);
+    return cp === 0 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff) ? '\uFFFD' : String.fromCodePoint(cp);
+  });
+}
 const STRONG_STAR_RE = /\*\*(?=[^\s*])([\s\S]*?[^\s\\])\*\*/g;
 const STRONG_UNDERSCORE_RE = new RegExp(`(^|[^\\p{L}\\p{N}_\\\\])__(?=\\S)([\\s\\S]*?\\S)__(?!${WORD})`, 'gu');
-const EM_STAR_RE = /(^|[^*\\])\*(?=[^\s*])([^*]*?[^\s*\\])\*(?!\*)/g;
-const EM_UNDERSCORE_RE = new RegExp(`(^|[^\\p{L}\\p{N}_\\\\])_(?=[^\\s_])([^_]*?[^\\s_\\\\])_(?!${WORD})`, 'gu');
+/** `*italic*`; group 1 is the character before, group 2 the text. */
+export const EM_STAR_RE = /(^|[^*\\])\*(?=[^\s*])([^*]*?[^\s*\\])\*(?!\*)/g;
+/** `_italic_`, not inside a word; group 1 is the character before, group 2 the text. */
+export const EM_UNDERSCORE_RE = new RegExp(`(^|[^\\p{L}\\p{N}_\\\\])_(?=[^\\s_])([^_]*?[^\\s_\\\\])_(?!${WORD})`, 'gu');
 
 /**
  * A cell's text without the inline Markdown the reading view hides (#139):
- * bold and italic marks and code backticks go, struck-through text goes with
- * its marks (`~~0.10~~ 0.12` → `0.12`). Code contents and marks inside a
- * word (`2*3`, `sample_id_1`) are left as they are; an escaped mark loses its
- * backslash (`\*` → `*`, `\#B3` → `#B3`), as the reading view shows it (#331).
- * Links are not rewritten.
+ * bold, italic and highlight marks and code backticks go, struck-through text
+ * goes with its marks (`~~0.10~~ 0.12` → `0.12`), footnote numbers go, math
+ * loses its `$` (#435), links become the text they show, `<sup>6</sup>` is
+ * `^6` and HTML entities are decoded (#415, #416). Code and math contents and
+ * marks inside a word (`2*3`, `sample_id_1`) are left as they are; an escaped
+ * mark loses its backslash (`\*` → `*`, `\#B3` → `#B3`), as the reading view
+ * shows it (#331).
  */
 function stripInlineFormatting(cell: string): string {
-  if (!/[*_`~\\]/.test(cell)) return cell;
+  if (!/[*_`~\\=$[&<]/.test(cell)) return cell;
   const codes: string[] = [];
   const hold = (text: string) => `\u0000${codes.push(text) - 1}\u0000`;
-  let s = cell.replace(CODE_SPAN_RE, (_m, _ticks: string, body: string) =>
-    hold(/^ [\s\S]*[^ ][\s\S]* $/.test(body) ? body.slice(1, -1) : body)
-  );
-  s = s.replace(/\\([!-/:-@[-`{-~])/g, (_m, mark: string) => hold(mark));
+  let s = cell.replace(CODE_SPAN_RE, (_m, _ticks: string, body: string) => hold(codeSpanText(body)));
+  s = s
+    .replace(MATH_BLOCK_RE, (_m, tex: string) => hold(tex))
+    .replace(MATH_INLINE_RE, (_m, before: string, tex: string) => before + hold(tex));
+  s = s.replace(ESCAPED_MARK_RE, (_m, mark: string) => hold(mark));
   const struck = s.replace(STRIKE_RE, (_m, before: string, after: string) => (before || after ? ' ' : ''));
   if (struck !== s) s = struck.trim();
   s = s
+    .replace(HIGHLIGHT_RE, '$1')
+    .replace(FOOTNOTE_REF_RE, '')
+    .replace(WIKILINK_RE, (_m, target: string, alias?: string) => alias ?? target)
+    .replace(MD_LINK_RE, '$1')
     .replace(STRONG_STAR_RE, '$1')
     .replace(STRONG_UNDERSCORE_RE, '$1$2')
     .replace(EM_STAR_RE, '$1$2')
-    .replace(EM_UNDERSCORE_RE, '$1$2');
-  return s.replace(/\u0000(\d+)\u0000/g, (_m, i: string) => codes[Number(i)]);
+    .replace(EM_UNDERSCORE_RE, '$1$2')
+    .replace(/<sup>([\s\S]*?)<\/sup>/gi, '^$1')
+    .replace(/<sub>([\s\S]*?)<\/sub>/gi, '$1');
+  s = decodeHtmlEntities(s);
+  return s.replace(/\u0000(\d+)\u0000/g, (_m, i: string) => codes[Number(i)]).trim();
 }
 
 /** Fits a data row to the header width the way GFM renders it: extra cells are dropped, missing ones are empty. */
@@ -104,12 +172,45 @@ function unquote(line: string): QuotedLine {
   return { depth, text };
 }
 
-const isPipeRow = (l: QuotedLine | undefined, depth: number): boolean =>
-  !!l && l.depth === depth && l.text.trim().startsWith('|');
-
 const HEADING_RE = /^ {0,3}#{1,6}(?:\s|$)/;
 const THEMATIC_BREAK_RE = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
 const CALLOUT_TITLE_RE = /^ {0,3}\[![^\]\s]+\][+-]?(?:\s|$)/;
+const FENCE_OPEN_RE = /^ {0,3}(?:`{3,}|~{3,})/;
+const UNESCAPED_PIPE_RE = /(?:^|[^\\])\|/;
+
+/**
+ * Whether `l` can be a row of a table at quote depth `depth`: it has a `|`
+ * and is not a list item, heading, fence or rule, which start their own
+ * block (#417). A table needs no `|` at the ends of its rows.
+ */
+const isTableRow = (l: QuotedLine | undefined, depth: number): boolean =>
+  !!l &&
+  l.depth === depth &&
+  UNESCAPED_PIPE_RE.test(l.text) &&
+  !LIST_ITEM_RE.test(l.text) &&
+  !HEADING_RE.test(l.text) &&
+  !FENCE_OPEN_RE.test(l.text) &&
+  !THEMATIC_BREAK_RE.test(l.text);
+
+/**
+ * Whether the line at `i` is a table header: a `---` row follows it. Without
+ * a `|` at its start it must be a GFM header (#417): the `---` row has a `|`
+ * and as many cells, so text over a `---` heading underline is no table.
+ */
+function isTableHeader(lines: readonly QuotedLine[], i: number, depth: number): boolean {
+  const line = lines[i];
+  if (!isTableRow(line, depth) || !isSeparatorAfter(lines, i, depth)) return false;
+  if (line.text.trim().startsWith('|')) return true;
+  const separator = lines[i + 1].text;
+  return separator.includes('|') && splitTableCells(line.text).length === splitTableCells(separator).length;
+}
+
+/** {@link isTableHeader} for lines outside any quote, as the worksheet reads them. */
+export const isTableHeaderLine = (lines: readonly string[], i: number): boolean =>
+  isTableHeader(lines.slice(i, i + 2).map(text => ({ depth: 0, text })), 0, 0);
+
+/** {@link isTableRow} for a line outside any quote. */
+export const isTableRowLine = (line: string): boolean => isTableRow({ depth: 0, text: line }, 0);
 
 /**
  * Whether a table header on `line` starts a block, so the reading view draws
@@ -229,9 +330,9 @@ export function scanMarkdownTables(markdown: string): MarkdownTableScan {
       continue;
     }
     if (commented[i]) {
-      if (isPipeRow(line, line.depth) && isSeparatorAfter(lines, i, line.depth)) {
+      if (isTableHeader(lines, i, line.depth)) {
         hidden++;
-        for (i += 2; i < lines.length && isPipeRow(lines[i], line.depth); i++);
+        for (i += 2; i < lines.length && isTableRow(lines[i], line.depth); i++);
       } else i++;
       // The comment's last line ends the HTML block, so a table right under it
       // is a table: treat the line like a code block, not like paragraph text.
@@ -256,13 +357,13 @@ export function scanMarkdownTables(markdown: string): MarkdownTableScan {
       inList = LIST_ITEM_RE.test(line.text) || (inList && !prevBlank && /^\s/.test(line.text));
     }
 
-    if (isPipeRow(line, line.depth) && isSeparatorAfter(lines, i, line.depth)) {
+    if (isTableHeader(lines, i, line.depth)) {
       const rendered = startsBlock(prev, line, prevCode);
       const header = splitTableRow(line.text);
       const rows: string[][] = [header];
       const depth = line.depth;
       i += 2;
-      while (i < lines.length && isPipeRow(lines[i], depth)) {
+      while (i < lines.length && isTableRow(lines[i], depth)) {
         rows.push(fitRow(splitTableRow(lines[i].text), header.length));
         i++;
       }

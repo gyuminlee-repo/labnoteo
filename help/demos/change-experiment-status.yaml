@@ -32,6 +32,8 @@ steps:
     args: { selector: .menu-item, text: $t(Change experiment status) }
   - tool: modal_pick
     args: { text: completed }
+  - tool: modal_button
+    args: { text: $t(Mark completed) }
   - caption: { ko: completed 묶음으로 옮겨졌습니다, en: It moved to the completed group }
     tool: ui_wait
     args: { selector: .labnote-tree-row, text: "completed [2]" }

@@ -206,12 +206,16 @@ export class LabnoteSettingTab extends PluginSettingTab {
     const s = this.plugin.settings;
     const folder = value.trim() || DEFAULT_SETTINGS.globalSampleFolder;
     const reason = invalidVaultFolderReason(folder);
-    if (reason) {
+    // Inside an experiment it would be that experiment's own registry (#408).
+    const experiment = reason ? undefined : getExperimentDir(folder);
+    if (reason || experiment) {
       new Notice(
         this.plugin.t(
           '"{0}" cannot be the Global sample folder: {1} It is back to {2}.',
           folder,
-          invalidFolderText(this.plugin.t, reason),
+          reason
+            ? invalidFolderText(this.plugin.t, reason)
+            : this.plugin.t('It is inside the experiment {0}, whose own samples it holds.', experiment!),
           s.globalSampleFolder
         ),
         10000
@@ -320,7 +324,7 @@ export class LabnoteSettingTab extends PluginSettingTab {
         {
           name: t('Auto-sync unit operation TOC'),
           desc: t(
-            "Reorder a workflow note's Related Unit Operations list to match heading order after edits, and tidy the --- separators immediately when a block is moved. Off, the order is left as you arranged it but the names and links still follow the headings."
+            "Reorder a workflow note's Related Unit Operations list to match heading order after edits, and tidy the --- separators immediately when a block is moved. Off, the order is left as you arranged it but the names and links still follow the headings, and a deleted block's entry is removed."
           ),
           aliases: ['TOC'],
           render: setting =>

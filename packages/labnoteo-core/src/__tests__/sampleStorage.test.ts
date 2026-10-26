@@ -1304,6 +1304,18 @@ describe('hasReferenceCatalog (#99)', () => {
     expect(Object.keys(await loadReferenceSamplesByType(fs, FOLDER, 'DNA', types))).toEqual(['DNA-1']);
   });
 
+  // #431: the definition popup names the catalog file, not `{Type}.json`.
+  it('reports the catalog file each id came from', async () => {
+    const fs = new MemFileSystem();
+    await fs.write(
+      `${FOLDER}/DNA_backup.json`,
+      JSON.stringify({ 'DNA-1': { type: 'DNA', alias: 'gfp', descriptions: [], sources: [] } })
+    );
+    const fileOf: Record<string, string> = {};
+    await loadReferenceSamplesByType(fs, FOLDER, 'DNA', ['DNA'], fileOf);
+    expect(fileOf).toEqual({ 'DNA-1': `${FOLDER}/DNA_backup.json` });
+  });
+
   // A safety net behind the file-name rule.
   it('skips a catalog record that names another type', async () => {
     const fs = new MemFileSystem();

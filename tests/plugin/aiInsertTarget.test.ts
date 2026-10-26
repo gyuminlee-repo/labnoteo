@@ -14,6 +14,7 @@ import {
   summarizeResultsCommand,
 } from '../../src/llm/commands';
 import { aiAnswerModal, type AiAnswerOpts } from '../../src/modals';
+import { createLlmProvider } from '../../src/llm/provider';
 import type LabnotePlugin from '../../src/main';
 
 const chat = vi.fn();
@@ -308,6 +309,8 @@ describe('draftMethodCommand (#112)', () => {
     // #280: the draft is marked as the model's until someone removes the line.
     expect(start.text).toMatch(/#### Method\n\n> \[!note\] AI draft \(llama3\.1, [\d-]+\) — review it, then delete this line\n\n1\. 원심분리/);
     expect(Notice.shown).toContain('Inserted the Method draft into 001_WD010_A.labnote.md.');
+    // #420: what the user typed on while waiting must not land in the draft.
+    expect(start.revealOffset).not.toHaveBeenCalled();
   });
 
   it("does not overwrite a same-named unit operation's Method in another note", async () => {
@@ -330,6 +333,43 @@ describe('draftMethodCommand (#112)', () => {
     expect(await dialog().onInsert()).toBe(true);
     expect(back.text).toMatch(/#### Method\n\n> \[!note\] AI draft .*\n\n1\. 원심분리/);
     expect(plugin.markUserEdit).toHaveBeenCalledWith(NOTE);
+  });
+
+  // #399
+  it('tells about a missing provider before asking which Method', async () => {
+    vi.mocked(createLlmProvider).mockReturnValueOnce(null);
+    open = makeTarget(NOTE, 0);
+    await draftMethodCommand(plugin);
+
+    expect(Notice.shown).toEqual(['Configure an AI provider in settings first.']);
+    expect(chat).not.toHaveBeenCalled();
+  });
+
+  // #392
+  it('asks for a unit operation first in a workflow note that has none', async () => {
+    open = makeTarget(NOTE, 0);
+    open.text = '## [WD010 A]\n\n## 결론\n';
+    await draftMethodCommand(plugin);
+
+    expect(Notice.shown).toEqual([
+      'This workflow note has no unit operation yet. Insert one first, then draft its Method.',
+    ]);
+    expect(chat).not.toHaveBeenCalled();
+  });
+
+  it('keeps the whole draft inside the AI callout in a note without a Method, and says when it went to the end', async () => {
+    const free = makeTarget('notes/free.md', 0);
+    free.text = '# Free\n\nabc\n';
+    open = free;
+    files.set(free.path, { path: free.path });
+    replyAfterSwitch('1. 원심분리\n\n2. 세척');
+    await draftMethodCommand(plugin);
+
+    expect(free.text).toMatch(
+      /^# Free\n\nabc\n\n> \[!note\] AI draft \(llama3\.1, [\d-]+\) — review it, then delete this line\n> 1\. 원심분리\n>\n> 2\. 세척\n$/
+    );
+    expect(Notice.shown).toContain('The cursor was above the note body, so the draft went to the end of the note.');
+    expect(free.revealOffset).not.toHaveBeenCalled();
   });
 });
 

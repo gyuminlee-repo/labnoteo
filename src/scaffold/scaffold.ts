@@ -355,10 +355,14 @@ export async function setupResearchAutomationCommand(
   const result: ScaffoldResult = { written: 0, merged: 0, skipped: 0, removed: 0 };
   const record = await readInstallRecord(host);
 
+  // Files a reinstall had to create: missing because renamed or deleted (#413).
+  const recreated: string[] = [];
   for (const asset of SCAFFOLD_ASSETS) {
     const path = asset.vaultPath;
+    const existed = await host.fs.exists(path);
     const tally = await applyAsset(host, asset, record.files[path], LEGACY_TEMPLATE_HASHES, record.blocks?.[path]);
     if (tally) result[tally] += 1;
+    if (tally === 'written' && !existed && record.pluginVersion !== '') recreated.push(path);
   }
 
   // A declined overwrite is recorded too: the file then counts as edited, and
@@ -386,18 +390,28 @@ export async function setupResearchAutomationCommand(
 
   result.removed = await removeLegacyAssets(host);
 
+  const shown = recreated.slice(0, 5).join(', ');
   host.notify(
     'info',
-    host.t(
-      'Research automation set up ({0} written, {1} merged, {2} skipped, {3} removed). Researchers: see {4}. Admin setup: {5} (run "git config core.hooksPath {6}").',
-      String(result.written),
-      String(result.merged),
-      String(result.skipped),
-      String(result.removed),
-      QUICKSTART_DOC_PATH,
-      SETUP_DOC_PATH,
-      HOOKS_DIR_PATH
-    )
+    [
+      host.t(
+        'Research automation set up ({0} written, {1} merged, {2} skipped, {3} removed). Researchers: see {4}. Admin setup: {5} (run "git config core.hooksPath {6}").',
+        String(result.written),
+        String(result.merged),
+        String(result.skipped),
+        String(result.removed),
+        QUICKSTART_DOC_PATH,
+        SETUP_DOC_PATH,
+        HOOKS_DIR_PATH
+      ),
+      ...(recreated.length === 0
+        ? []
+        : [
+            recreated.length > 5
+              ? host.t('Created again, as they were missing: {0} and {1} more.', shown, String(recreated.length - 5))
+              : host.t('Created again, as they were missing: {0}.', shown),
+          ]),
+    ].join(' ')
   );
 
   // Without a repository neither the hooks setting nor any push can happen, so

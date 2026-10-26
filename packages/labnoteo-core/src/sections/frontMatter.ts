@@ -100,6 +100,146 @@ export function serializeFrontMatterEntry(key: string, val: unknown): string {
   return dumped.replace(/\n+$/, '');
 }
 
+/** The ` # comment` ending a single-line `key: value`, outside any quotes, or ''. */
+function trailingComment(line: string): string {
+  let quote: string | undefined;
+  for (let i = line.indexOf(':') + 1; i < line.length; i++) {
+    const c = line[i];
+    if (quote) {
+      if (c === quote) quote = undefined;
+    } else if (c === "'" || c === '"') {
+      quote = c;
+    } else if (c === '#' && /\s/.test(line[i - 1] ?? '')) {
+      return line.slice(i - 1);
+    }
+  }
+  return '';
+}
+
+/**
+ * `content` with the front-matter keys in `values` set line by line (#422):
+ * a value replaces that key's line (and its indented continuation lines),
+ * keeping a trailing ` # comment` when the new value fits on one line;
+ * `undefined` drops the key; a key not present is added before the closing
+ * `---` unless `add` is false. Every other line, comments included, stays as
+ * written. A note without front matter gets a new block.
+ */
+export function setFrontMatterKeys(
+  content: string,
+  values: Readonly<Record<string, unknown>>,
+  { add = true }: { add?: boolean } = {}
+): string {
+  const newline = content.includes('\r\n') ? '\r\n' : '\n';
+  const lines = content.split(/\r?\n/);
+  const fmEnd = lines[0]?.trim() === '---' ? lines.findIndex((l, i) => i > 0 && l.trim() === '---') : -1;
+  const added = (seen: ReadonlySet<string>): string[] =>
+    add
+      ? Object.entries(values)
+          .filter(([key, value]) => value !== undefined && !seen.has(key))
+          .map(([key, value]) => serializeFrontMatterEntry(key, value))
+      : [];
+  if (fmEnd < 0) {
+    const entries = added(new Set());
+    if (entries.length === 0) return content;
+    return ['---', ...entries, '---', '', content.replace(/^(\r?\n)+/, '')].join(newline);
+  }
+  const continues = (line: string): boolean => /^\s+[^\s#]/.test(line) || /^-(\s|$)/.test(line);
+  const out = [lines[0]];
+  const seen = new Set<string>();
+  for (let i = 1; i < fmEnd; i++) {
+    const key = /^([A-Za-z_][\w-]*)\s*:/.exec(lines[i])?.[1];
+    if (key === undefined || !Object.prototype.hasOwnProperty.call(values, key)) {
+      out.push(lines[i]);
+      continue;
+    }
+    seen.add(key);
+    const first = lines[i];
+    let multiline = false;
+    while (i + 1 < fmEnd && continues(lines[i + 1])) {
+      i++;
+      multiline = true;
+    }
+    const value = values[key];
+    if (value === undefined) continue;
+    const entry = serializeFrontMatterEntry(key, value);
+    const comment = !multiline && !entry.includes('\n') ? trailingComment(first) : '';
+    out.push(comment ? `${entry.replace(/\s+$/, '')}${comment}` : entry);
+  }
+  return [...out, ...added(seen), ...lines.slice(fmEnd)].join(newline);
+}
+
+/** The front-matter lines `[start, end)` of `key` with its continuation lines, if present. */
+function frontMatterKeyBlock(lines: readonly string[], key: string): { start: number; end: number } | undefined {
+  const fmEnd = lines[0]?.trim() === '---' ? lines.findIndex((l, i) => i > 0 && l.trim() === '---') : -1;
+  for (let i = 1; i < fmEnd; i++) {
+    if (/^([A-Za-z_][\w-]*)\s*:/.exec(lines[i])?.[1] !== key) continue;
+    let end = i + 1;
+    while (end < fmEnd && (/^\s+[^\s#]/.test(lines[end]) || /^-(\s|$)/.test(lines[end]))) end++;
+    return { start: i, end };
+  }
+  return undefined;
+}
+
+/**
+ * `content` with the front-matter lines of `keys` copied from `source` as
+ * written there (#429), so `author: [[이서연]]` stays a link rather than the
+ * nested list it parses as. A key `source` leaves empty, or a `source` whose
+ * front matter cannot be read, leaves `content` as it is; a key `content`
+ * lacks goes before its closing `---`.
+ */
+export function copyFrontMatterKeys(source: string, content: string, keys: readonly string[]): string {
+  const from = source.replace(/\r\n/g, '\n');
+  const parsed = parseFrontMatterYaml(from);
+  if (parsed.parseError) return content;
+  const newline = content.includes('\r\n') ? '\r\n' : '\n';
+  const fromLines = from.split('\n');
+  let lines = content.split(/\r?\n/);
+  for (const key of keys) {
+    const value = parsed.frontMatter[key];
+    const empty =
+      value === undefined ||
+      value === null ||
+      (typeof value === 'string' && !value.trim()) ||
+      (Array.isArray(value) && value.length === 0);
+    const block = frontMatterKeyBlock(fromLines, key);
+    if (empty || !block) continue;
+    const copied = fromLines.slice(block.start, block.end);
+    const target = frontMatterKeyBlock(lines, key);
+    if (target) {
+      lines = [...lines.slice(0, target.start), ...copied, ...lines.slice(target.end)];
+      continue;
+    }
+    const fmEnd = lines[0]?.trim() === '---' ? lines.findIndex((l, i) => i > 0 && l.trim() === '---') : -1;
+    if (fmEnd > 0) lines = [...lines.slice(0, fmEnd), ...copied, ...lines.slice(fmEnd)];
+  }
+  return lines.join(newline);
+}
+
+/**
+ * The names a front-matter value such as `author` or `experimenter` holds
+ * (#394): a string, a flow or block list, or the nested lists an unquoted
+ * `[[이서연]]` reads as, alone or as a list item. A wikilink gives its shown text (`[[a|b]]` → `b`,
+ * `[[a#h]]` → `a`); empty entries are dropped and repeats kept once.
+ */
+export function frontMatterNames(value: unknown): string[] {
+  const names: string[] = [];
+  const add = (v: unknown, depth: number): void => {
+    if (Array.isArray(v)) {
+      if (depth < 3) for (const item of v) add(item, depth + 1);
+      return;
+    }
+    if (typeof v !== 'string' && typeof v !== 'number') return;
+    const name = String(v)
+      .trim()
+      .replace(/^\[\[([^\]|#]*)(?:#[^\]|]*)?(?:\|([^\]]*))?\]\]$/, (_, target: string, shown?: string) =>
+        (shown ?? target).trim()
+      );
+    if (name && !names.includes(name)) names.push(name);
+  };
+  add(value, 0);
+  return names;
+}
+
 /** Where {@link planDateInsertion} puts the text: `[from, to)` becomes `text`. */
 export type DateInsertion =
   | { from: number; to: number; text: string }

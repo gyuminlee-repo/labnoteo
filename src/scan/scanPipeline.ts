@@ -11,7 +11,6 @@ import type { LabnoteHost, Translator } from '@labnoteo/core';
 import {
   insertScanEntries,
   listFiledScans,
-  listScanHashes,
   listUnitOpBlocks,
   removeScanEntry,
   resolveScanTarget,
@@ -30,6 +29,7 @@ import {
   scanFileName,
   sha256Hex,
   shortHash,
+  sourceNameFromUnmatched,
   timestamp,
   unmatchedFileName,
 } from './imageStore';
@@ -79,6 +79,8 @@ export interface ScanResult {
   matchedBy?: 'index' | 'opId' | 'fingerprint';
   /** The printout carries no block fingerprint (printed before 0.123.0). */
   legacy?: boolean;
+  /** The note already had this scan, but its image was gone, so it was filed again (#432). */
+  replacedMissing?: boolean;
 }
 
 /** One page image, decoded. */
@@ -231,15 +233,33 @@ export class ScanPipeline {
     if (target.kind === 'missing') return this.unmatched(page, base, 'no-unit-op');
     if (target.kind === 'ambiguous') return this.unmatched(page, base, 'ambiguous');
     if (target.kind === 'renamed') return this.unmatched(page, base, 'renamed');
-    if (batchHashes.has(page.hash) || listScanHashes(text).has(page.hash)) return { ...base, status: 'duplicate' };
+    if (batchHashes.has(page.hash)) return { ...base, status: 'duplicate' };
+    const filed = listFiledScans(text);
+    const same = filed.filter(s => s.hash === page.hash);
+    if (same.some(s => this.imageExists(s.embed, notePath))) return { ...base, status: 'duplicate' };
+    // Its image was deleted: file it again in place of the entry left behind (#432).
+    const replacesMissing = same.length > 0;
     batchHashes.add(page.hash);
 
     const unitOpIndex = target.kind === 'block' ? target.block.index : 0;
-    const previous = listFiledScans(text)
-      .filter(s => s.unitOpIndex === unitOpIndex && s.page === payload.page)
+    const previous = filed
+      .filter(s => s.unitOpIndex === unitOpIndex && s.page === payload.page && s.hash !== page.hash)
       .map(s => ({ hash: s.hash, embed: s.embed }));
-    const stored = await this.store(notePath, payload, unitOpIndex, await page.render());
-    const result: ScanResult = { ...base, status: 'filed', imagePath: stored.file.path, previous };
+    // A deleted image's name stays taken while an entry still links it (#433).
+    const linked = new Set(
+      filed
+        .filter(s => s.hash !== page.hash)
+        .map(s => posix.basename(embedLinkPath(s.embed) ?? '').toLowerCase())
+        .filter(Boolean)
+    );
+    const stored = await this.store(notePath, payload, unitOpIndex, await page.render(), linked);
+    const result: ScanResult = {
+      ...base,
+      status: 'filed',
+      imagePath: stored.file.path,
+      previous,
+      ...(replacesMissing ? { replacedMissing: true } : {}),
+    };
     if (target.kind === 'block') {
       const { opId, opName, alias } = target.block;
       result.block = `[${opId} ${opName}]${alias ? ` ${alias}` : ''}`;
@@ -262,11 +282,23 @@ export class ScanPipeline {
     return result;
   }
 
-  private async store(notePath: string, payload: PagePayload, unitOpIndex: number, jpeg: ArrayBuffer) {
+  /** Whether the image a filed scan embeds is still in the vault. */
+  private imageExists(embed: string, notePath: string): boolean {
+    const link = embedLinkPath(embed);
+    return !!link && this.deps.app.metadataCache.getFirstLinkpathDest(link, notePath) instanceof TFile;
+  }
+
+  private async store(
+    notePath: string,
+    payload: PagePayload,
+    unitOpIndex: number,
+    jpeg: ArrayBuffer,
+    avoid?: ReadonlySet<string>
+  ) {
     const { app, t } = this.deps;
     const dir = getExperimentDir(notePath) ?? posix.dirname(notePath);
     const name = scanFileName(payload.noteId, unitOpIndex, payload.page, getSeoulDateString());
-    const file = await saveBinary(app, posix.join(dir, SCANS_SUBFOLDER), name, jpeg);
+    const file = await saveBinary(app, posix.join(dir, SCANS_SUBFOLDER), name, jpeg, avoid);
     const width = this.deps.embedWidth();
     const alias = width > 0 ? String(width) : undefined;
     const link = app.fileManager.generateMarkdownLink(file, notePath, undefined, alias);
@@ -315,7 +347,11 @@ export class ScanPipeline {
         let out = content;
         for (const item of items) {
           const { unitOpIndex, opId, fingerprint } = item.payload;
-          const target = resolveScanTarget(listUnitOpBlocks(out), unitOpIndex, opId, fingerprint);
+          let target = resolveScanTarget(listUnitOpBlocks(out), unitOpIndex, opId, fingerprint);
+          if (item.result.replacedMissing && (target.kind === 'block' || target.kind === 'note')) {
+            out = removeScanEntry(out, item.entry.hash).md;
+            target = resolveScanTarget(listUnitOpBlocks(out), unitOpIndex, opId, fingerprint);
+          }
           if (target.kind === 'block') out = insertScanEntries(out, target.block, [item.entry]);
           else if (target.kind === 'note') out = insertScanEntries(out, null, [item.entry]);
           else missed.add(item);
@@ -368,7 +404,13 @@ export class ScanPipeline {
       printedOn: printedOn ?? '',
       ...(block ? { fingerprint: unitOpFingerprint(block.opName, block.alias) } : {}),
     };
-    const decoded: DecodedPage = { source: image.name, hash, blank: false, payload, render: async () => bytes };
+    const decoded: DecodedPage = {
+      source: sourceNameFromUnmatched(image.name),
+      hash,
+      blank: false,
+      payload,
+      render: async () => bytes,
+    };
     const pending: Pending[] = [];
     const result = await this.filePage(decoded, {}, pending, new Set(), new Map());
     await this.flush(pending);
@@ -406,7 +448,8 @@ export class ScanPipeline {
     const images = result.previous
       .map(p => embedLinkPath(p.embed))
       .map(link => (link ? app.metadataCache.getFirstLinkpathDest(link, notePath) : null))
-      .filter((f): f is TFile => f instanceof TFile);
+      // An earlier entry may link the name this scan's image took (#433).
+      .filter((f): f is TFile => f instanceof TFile && f.path !== result.imagePath);
     let count = 0;
     await processNoteThroughVault(app, host, notePath, content => {
       count = 0;

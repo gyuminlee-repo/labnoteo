@@ -2,9 +2,38 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { __setRequestUrlHandler, type RequestUrlParam, type RequestUrlResponse } from '../stubs/obsidian';
 import type { PcStore } from '../../src/scan/pcStore';
 import type { ScanInput, ScanResult } from '../../src/scan/scanPipeline';
-import { SlackInbox, findLinkMessage, messagesToProcess, newLinkCode, type SlackConfig } from '../../src/scan/slack';
+import {
+  SlackInbox,
+  describeSlackError,
+  findLinkMessage,
+  messagesToProcess,
+  newLinkCode,
+  slackChannelId,
+  type SlackConfig,
+} from '../../src/scan/slack';
 
 const file = (name: string) => ({ name, size: 10, url_private_download: `https://files.slack.com/${name}` });
+
+// #397
+describe('Slack errors and channel links', () => {
+  const t = (s: string, ...a: Array<string | number | boolean>) => s.replace(/\{(\d+)\}/g, (_, i: string) => String(a[Number(i)] ?? ''));
+
+  it('says what to fix, keeping the code', () => {
+    expect(describeSlackError(t, 'invalid_auth')).toMatch(/^The bot token is not valid\..*\(invalid_auth\)$/);
+    expect(describeSlackError(t, 'token_revoked')).toMatch(/revoked.*\(token_revoked\)$/);
+    expect(describeSlackError(t, 'missing_scope')).toMatch(/missing a permission.*\(missing_scope\)$/);
+    expect(describeSlackError(t, 'channel_not_found')).toBe('channel_not_found');
+    expect(describeSlackError(t, 'net::ERR_INTERNET_DISCONNECTED')).toMatch(/^Could not reach Slack/);
+  });
+
+  it('takes the channel ID from an ID or a link, trimmed', () => {
+    expect(slackChannelId(' C07FAKE123 ')).toBe('C07FAKE123');
+    expect(slackChannelId('https://app.slack.com/client/T01ABCDE/C07FAKE123')).toBe('C07FAKE123');
+    expect(slackChannelId('https://lab.slack.com/archives/G01FAKE123/p1700000000')).toBe('G01FAKE123');
+    expect(slackChannelId('https://app.slack.com/client/T01ABCDE')).toBeUndefined();
+    expect(slackChannelId('general')).toBeUndefined();
+  });
+});
 
 describe('Slack message selection', () => {
   const cfg = { token: 't', mode: 'dm' as const, userId: 'U1', lastTs: '100.0' };

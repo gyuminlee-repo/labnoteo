@@ -71,7 +71,9 @@ class SampleDefinitionModal extends Modal {
     const { contentEl } = this;
     const t = this.plugin.t;
     const { scope, folder, record } = this.resolved;
-    const jsonPath = posix.join(folder, `${this.type}.json`);
+    const jsonPath = this.resolved.file ?? posix.join(folder, `${this.type}.json`);
+    const scopeLabel =
+      scope === 'local' ? t('Local') : scope === 'global' ? t('Global') : t('Product catalog (read-only)');
 
     this.setTitle(t('Sample definition'));
 
@@ -84,7 +86,7 @@ class SampleDefinitionModal extends Modal {
       // The partbank id is the one key that makes the link usable by hand.
       ...(record.source ? [[t('partbank'), record.source.kid ?? record.source.id] as [string, string]] : []),
       ...(record.discarded ? [[t('Discarded'), record.discarded] as [string, string]] : []),
-      [t('Scope'), scope],
+      [t('Scope'), scopeLabel],
       [t('File'), jsonPath],
     ];
     for (const [name, value] of rows) {
@@ -107,6 +109,15 @@ class SampleDefinitionModal extends Modal {
 
     const isEditable = scope !== 'catalog';
     const canOpenFile = isEditable && Platform.isDesktopApp;
+    if (!isEditable) {
+      contentEl.createEl('p', {
+        cls: 'setting-item-description',
+        text: t(
+          'Samples in a product catalog file ({Type}_name.json) are read-only here. To change one, edit that file, or rename it back to {0} if it was the sample registry.',
+          `${this.type}.json`
+        ),
+      });
+    }
 
     // Up to eight buttons ran off the side of the window in one row (#283).
     const buttons = new Setting(contentEl).setClass('labnote-sample-def-buttons');

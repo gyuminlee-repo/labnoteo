@@ -186,6 +186,8 @@ export function extractMethodBody(output: string): string {
 export interface BlockInsert {
   offset: number;
   text: string;
+  /** Set when a cursor above the body sent the block to the end of the document (#392). */
+  atEnd?: true;
 }
 
 /**
@@ -213,7 +215,7 @@ export function planBlockInsert(text: string, cursor: number, block: string): Bl
   }
   if (isBeforeBody(scanDocumentHead(lines), lineStarts, lineIdx, pos)) {
     const sep = text.endsWith('\n\n') ? '' : text.endsWith('\n') ? '\n' : '\n\n';
-    return { offset: text.length, text: `${sep}${body}\n` };
+    return { offset: text.length, text: `${sep}${body}\n`, atEnd: true };
   }
 
   const lineStart = lineStarts[lineIdx];

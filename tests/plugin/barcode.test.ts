@@ -14,6 +14,7 @@ import {
   scanFileName,
   unmatchedFileName,
   noteIdFromUnmatchedName,
+  sourceNameFromUnmatched,
   unmatchedInfoFromName,
 } from '../../src/scan/imageStore';
 
@@ -133,6 +134,13 @@ describe('scan file names', () => {
     expect(unmatchedInfoFromName('20261016-093012_LN-7K3M9QX2_renamed_x.jpg')).toEqual({ noteId: 'LN-7K3M9QX2', reason: 'renamed' });
     expect(unmatchedInfoFromName('20261016-093012_unknown_no-qr_a.jpg')).toEqual({ reason: 'no-qr' });
     expect(unmatchedInfoFromName('20261016-093012_LN-7K3M9QX2_IMG_1234_p2.jpg')).toEqual({ noteId: 'LN-7K3M9QX2' });
+  });
+
+  // #396
+  it('gives back the source name at the end of a queue file name', () => {
+    expect(sourceNameFromUnmatched('20261025-073505_LN-7K3M9QX2_q2-UHW290-1o3-261025-K7QD_renamed_IMG_9.jpg')).toBe('IMG_9.jpg');
+    expect(sourceNameFromUnmatched('20261016-093012_unknown_photo1.jpg')).toBe('photo1.jpg');
+    expect(sourceNameFromUnmatched('IMG_9.jpg')).toBe('IMG_9.jpg');
   });
 });
 
@@ -259,5 +267,54 @@ describe('NoteIdService', () => {
     expect(readNoteId(files.get('copy.labnote.md')!.text)).not.toBe('LN-AAAAAAAA');
     files.get('copy.labnote.md')!.text = note('LN-AAAAAAAA');
     expect(svc.unreportedDuplicates()).toEqual([]);
+  });
+
+  // #425
+  it('asks again about the notes still sharing an ID, and about a note joining them', async () => {
+    const { svc, files } = service({
+      'a.labnote.md': { text: note('LN-AAAAAAAA'), ctime: 1 },
+      'b.labnote.md': { text: note('LN-AAAAAAAA'), ctime: 2 },
+      'c.labnote.md': { text: note('LN-AAAAAAAA'), ctime: 3 },
+    });
+    await svc.offerDuplicateFixes();
+    const ids = ['a', 'b', 'c'].map(n => readNoteId(files.get(`${n}.labnote.md`)!.text));
+    expect(ids[0]).toBe('LN-AAAAAAAA');
+    expect(new Set(ids).size).toBe(3);
+
+    files.set('d.labnote.md', { text: note('LN-AAAAAAAA'), ctime: 4 });
+    expect(svc.unreportedDuplicates().map(d => d.newest.path)).toEqual(['d.labnote.md']);
+    expect(svc.unreportedDuplicates()).toEqual([]);
+  });
+
+  it('does not ask again about notes left sharing an ID after a cancel', async () => {
+    const { svc, files } = service({
+      'a.labnote.md': { text: note('LN-AAAAAAAA'), ctime: 1 },
+      'b.labnote.md': { text: note('LN-AAAAAAAA'), ctime: 2 },
+    });
+    let asked = 0;
+    (svc as unknown as { host: { confirm: () => Promise<boolean> } }).host.confirm = async () => (asked++, false);
+    await svc.offerDuplicateFixes();
+    await svc.offerDuplicateFixes();
+    expect(asked).toBe(1);
+    files.set('c.labnote.md', { text: note('LN-AAAAAAAA'), ctime: 3 });
+    await svc.offerDuplicateFixes();
+    expect(asked).toBe(2);
+  });
+
+  // #426
+  it('leaves a template carrying an ID out, and warns about it once', async () => {
+    const { svc, files, notices } = service({
+      'labnote/101/001_WD010.labnote.md': { text: note('LN-AAAAAAAA'), ctime: 1 },
+      'labnote/102/001_WT010.labnote.md': { text: note('LN-AAAAAAAA'), ctime: 2 },
+      'templates/block.md': { text: note('LN-AAAAAAAA'), ctime: 3 },
+    });
+    expect(svc.filesWithId('LN-AAAAAAAA')).toHaveLength(2);
+    await svc.offerDuplicateFixes();
+    expect(readNoteId(files.get('templates/block.md')!.text)).toBe('LN-AAAAAAAA');
+    expect(readNoteId(files.get('labnote/101/001_WD010.labnote.md')!.text)).toBe('LN-AAAAAAAA');
+    expect(readNoteId(files.get('labnote/102/001_WT010.labnote.md')!.text)).not.toBe('LN-AAAAAAAA');
+    expect(notices.filter(n => n.includes('not a lab note'))).toHaveLength(1);
+    await svc.offerDuplicateFixes();
+    expect(notices.filter(n => n.includes('not a lab note'))).toHaveLength(1);
   });
 });

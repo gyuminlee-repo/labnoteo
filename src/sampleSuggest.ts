@@ -26,6 +26,7 @@ import {
   type LabnoteFs,
 } from '@labnoteo/core';
 import {
+  compareSamples,
   getSampleDisplayMeta,
   isCatalogSampleType,
   sampleSuggestActions,
@@ -163,13 +164,16 @@ export class SampleEditorSuggest extends EditorSuggest<SuggestEntry> {
       const merged: Record<string, { rec: SampleRecord; scope: 'local' | 'global' }> = {};
       for (const [id, rec] of Object.entries(global)) merged[id] = { rec, scope: 'global' };
       for (const [id, rec] of Object.entries(local)) merged[id] = { rec, scope: localScope };
-      recordsByType[type] = Object.entries(merged).map(([id, { rec, scope }]) => ({
-        id,
-        alias: rec.alias,
-        description: rec.descriptions?.[0],
-        scope,
-        discarded: rec.discarded,
-      }));
+      // One order for Local and Global, Local first on a tie (#410).
+      recordsByType[type] = Object.entries(merged)
+        .map(([id, { rec, scope }]) => ({
+          id,
+          alias: rec.alias,
+          description: rec.descriptions?.[0],
+          scope,
+          discarded: rec.discarded,
+        }))
+        .sort((a, b) => compareSamples(a, b) || (a.scope === b.scope ? 0 : a.scope === 'local' ? -1 : 1));
     }
 
     const entries = buildSampleCompletionEntries(trigger, recordsByType);
@@ -311,6 +315,7 @@ export class SampleEditorSuggest extends EditorSuggest<SuggestEntry> {
         referenceText = await pickCatalogReference(plugin.app, plugin, {
           type: action.type,
           docPath: filePath,
+          initialQuery: typed?.trim(),
         });
       } else {
         const created = await createSampleInteractive(plugin.app, plugin, {

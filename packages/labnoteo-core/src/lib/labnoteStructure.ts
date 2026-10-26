@@ -5,7 +5,7 @@
 import * as path from '../util/posixPath';
 import { getSeoulDateString } from './dateUtils';
 import { sanitizePathSegment, capPathSegment, EXPERIMENT_FOLDER_TITLE_MAX } from './regexUtils';
-import { serializeFrontMatterEntry } from '../sections/frontMatter';
+import { serializeFrontMatterEntry, setFrontMatterKeys } from '../sections/frontMatter';
 
 /**
  * Structure returned by createLabnoteStructure
@@ -50,6 +50,34 @@ function isExperimentReadme(p: string): boolean {
 export function experimentLosingReadme(oldPath: string, newPath: string): string | undefined {
   if (!isExperimentReadme(oldPath) || isExperimentReadme(newPath)) return undefined;
   return getExperimentDir(oldPath);
+}
+
+/**
+ * The sample registry file `oldPath` was, when a rename, move or delete took
+ * it from where it is read (#430): `{Type}.json` of a known type directly in
+ * an experiment's `resources/labsamples` or in the Global folder. Its samples
+ * then read as unregistered, and the next one added starts a new registry.
+ * Undefined for other files and when `newPath` is the same place (case and
+ * slashes aside); pass no `newPath` for a delete.
+ */
+export function sampleLedgerLosing(
+  oldPath: string,
+  newPath: string | undefined,
+  types: readonly string[],
+  globalFolder?: string
+): { folder: string; type: string } | undefined {
+  const folder = path.dirname(path.normalize(oldPath));
+  const type = /^(.+)\.json$/.exec(path.basename(oldPath))?.[1];
+  if (!type || !types.includes(type)) return undefined;
+  const same = (a: string, b: string): boolean =>
+    path.normalizeForCompare(a).toLowerCase() === path.normalizeForCompare(b).toLowerCase();
+  const dir = getExperimentDir(folder);
+  const isLedgerFolder =
+    (dir !== undefined && same(folder, path.join(dir, 'resources', 'labsamples'))) ||
+    (globalFolder !== undefined && globalFolder !== '' && same(folder, globalFolder));
+  if (!isLedgerFolder) return undefined;
+  if (newPath !== undefined && same(oldPath, newPath)) return undefined;
+  return { folder, type };
 }
 
 /** Whether folder `p` is `resources` or `resources/labsamples` of an experiment. */
@@ -302,27 +330,24 @@ export function copiedExperimentOrigin(name: string): string | undefined {
 }
 
 /**
+ * The experiment folder an experiment copy renamed by hand copies (#393):
+ * `labnote/011_X 1` → `labnote/119_Y` gives `011_X`. Undefined unless the
+ * folder kept its parent and the old name was a copy's and the new one is not.
+ */
+export function renamedExperimentCopyOrigin(oldPath: string, newPath: string): string | undefined {
+  if (path.dirname(oldPath) !== path.dirname(newPath)) return undefined;
+  if (copiedExperimentOrigin(path.basename(newPath))) return undefined;
+  return copiedExperimentOrigin(path.basename(oldPath));
+}
+
+/**
  * `content` with the front-matter keys in `values` rewritten in place:
  * a string replaces the value, `null` drops the key (with any indented
  * continuation lines). Keys not already present are not added.
  */
 function rewriteFrontMatterKeys(content: string, values: Readonly<Record<string, string | null>>): string {
-  const newline = content.includes('\r\n') ? '\r\n' : '\n';
-  const lines = content.split(/\r?\n/);
-  const fmEnd = lines[0]?.trim() === '---' ? lines.findIndex((l, i) => i > 0 && l.trim() === '---') : -1;
-  if (fmEnd < 0) return content;
-  const out = [lines[0]];
-  for (let i = 1; i < fmEnd; i++) {
-    const key = /^([A-Za-z_][\w-]*)\s*:/.exec(lines[i])?.[1];
-    if (key === undefined || !Object.prototype.hasOwnProperty.call(values, key)) {
-      out.push(lines[i]);
-      continue;
-    }
-    while (i + 1 < fmEnd && /^\s+\S/.test(lines[i + 1])) i++;
-    const value = values[key];
-    if (value !== null) out.push(serializeFrontMatterEntry(key, value));
-  }
-  return [...out, ...lines.slice(fmEnd)].join(newline);
+  const set = Object.fromEntries(Object.entries(values).map(([key, value]) => [key, value ?? undefined]));
+  return setFrontMatterKeys(content, set, { add: false });
 }
 
 /**

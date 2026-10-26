@@ -20,6 +20,8 @@ export {
   type UnitOpInsertPoint,
   minimalReplacement,
   computeUnitOpSyncEdits,
+  pruneUnitOpTocEntries,
+  isUnitOpSectionTitle,
   applyTextEdits,
   type TextEdit,
 } from './sections/workflowSectionParser';
@@ -98,8 +100,11 @@ export {
 // Front-matter primitives (YAML parse + per-entry serialize). Shared by plugin
 // commands that read/rewrite README frontmatter (e.g. the status command).
 export {
+  copyFrontMatterKeys,
+  frontMatterNames,
   parseFrontMatterYaml,
   serializeFrontMatterEntry,
+  setFrontMatterKeys,
   stripFrontMatter,
   planDateInsertion,
   type DateInsertion,

@@ -41,8 +41,9 @@ import {
   planDateInsertion,
   issueSentenceRange,
   lineHasSampleReference,
-  serializeFrontMatterEntry,
-  setDiscussFlag,
+  DISCUSS_FLAG_KEY,
+  copyFrontMatterKeys,
+  setFrontMatterKeys,
 } from '@labnoteo/core';
 import { ISSUE_SYNC_WORKFLOW_PATH, SETUP_DOC_PATH } from './scaffold/assets';
 import * as posix from '@labnoteo/core/posix';
@@ -106,13 +107,14 @@ import {
   type WorkflowRename,
   type WorkflowRelabel,
   type WorkflowSubfolderNotes,
+  workflowAliasProblem,
 } from '@labnoteo/core/lib/workflowStructure';
 import { removeWorkflowFromReadme } from '@labnoteo/core/lib/workflowDelete';
 // Re-exported so command registration in main.ts imports every command from one
 // place; the implementation lives under src/scaffold with its asset registry.
 export { setupResearchAutomationCommand } from './scaffold/scaffold';
 import { tableCellHostView } from './tableCellTarget';
-import { experimentMarkerSpots, formatMarkerSpots } from './issueMarkerIndex';
+import { experimentMarkerSpots, formatMarkerSpots, markerExperimentDir } from './issueMarkerIndex';
 import { isVaultGitRepository } from './scaffold/scaffold';
 import { removeSourcesForDocument } from '@labnoteo/core/lib/sampleStorage';
 
@@ -132,12 +134,18 @@ async function resolveLabnoteDir(app: App, host: LabnoteHost): Promise<string | 
   const active = app.workspace.getActiveFile()?.path;
   const found = active ? diagnoseExperimentPath(active) : ({ kind: 'outside' } as const);
   if (found.kind === 'ok') return found.folder;
+  // A lab note in a numbered folder outside labnote/ is an experiment moved out of it (#424).
+  const movedOut =
+    found.kind === 'outside' && active && /\.labnote\.md$/i.test(active) && /^\d{3}_/.test(posix.basename(posix.dirname(active)))
+      ? posix.dirname(active)
+      : undefined;
+  const misplaced = found.kind === 'nested' ? found.folder : movedOut;
   host.notify(
     'warn',
-    found.kind === 'nested'
+    misplaced
       ? host.t(
           '"{0}" is not recognized as an experiment: experiment folders must be directly under labnote/. Move it back to labnote/.',
-          posix.basename(found.folder)
+          posix.basename(misplaced)
         )
       : found.kind === 'noPrefix'
         ? host.t(
@@ -227,6 +235,28 @@ export function experimentTitleHint(host: Pick<LabnoteHost, 't'>): (value: strin
 }
 
 /**
+ * The alias modal's check (#411): a `#` breaks links to the heading, and a
+ * `*` or `_` turns part of it italic (#421). `keep` is an alias already in
+ * use (a copy's original), passed through unchanged.
+ */
+export function workflowAliasValidator(
+  host: Pick<LabnoteHost, 't'>,
+  keep?: string
+): (value: string) => string | null {
+  return value => {
+    if (value.trim() === (keep ?? '').trim()) return null;
+    const problem = workflowAliasProblem(value);
+    if (problem === 'hash') return host.t('An alias cannot contain "#": links to its heading would break.');
+    if (problem === 'markdown') {
+      return host.t(
+        'An alias cannot contain "*", or "_" next to anything but ASCII letters and digits: the reading view shows part of it in italics. Use a space; the file name gets "_" for it anyway.'
+      );
+    }
+    return null;
+  };
+}
+
+/**
  * How much of a workflow alias fits in the file name after `ID_name_` (#213);
  * the room differs per workflow. Never blocks: past it only the file name is cut.
  */
@@ -307,12 +337,13 @@ export function catalogDescription(id: string, description: string): string {
 
 /**
  * Create a new experiment folder (labnote/###_Title) + README scaffold. With
- * `retryOf`, the README's `retry_of` links to that experiment's (#327).
+ * `retryOf`, the README's `retry_of` links to that experiment's (#327), and
+ * `author` and `project` come from `retryReadme`, that experiment's README (#429).
  */
 export async function createExperimentCommand(
   app: App,
   host: LabnoteHost,
-  opts: { title?: string; retryOf?: string } = {}
+  opts: { title?: string; retryOf?: string; retryReadme?: string } = {}
 ): Promise<void> {
   const title = await host.prompt({
     title: opts.retryOf
@@ -339,10 +370,10 @@ export async function createExperimentCommand(
   await host.fs.mkdir(structure.labnoteFolder);
   await host.fs.mkdir(structure.imagesFolder);
   await host.fs.mkdir(structure.resourcesFolder);
-  await host.fs.write(
-    structure.readmePath,
-    opts.retryOf ? setRetryOf(structure.readmeContent, retryOfLink(opts.retryOf)) : structure.readmeContent
-  );
+  let readme = structure.readmeContent;
+  if (opts.retryOf) readme = setRetryOf(readme, retryOfLink(opts.retryOf));
+  if (opts.retryReadme !== undefined) readme = copyFrontMatterKeys(opts.retryReadme, readme, ['author', 'project']);
+  await host.fs.write(structure.readmePath, readme);
 
   await host.openFile(structure.readmePath);
   host.notify('info', host.t('Experiment created: {0}', posix.basename(structure.labnoteFolder)));
@@ -383,6 +414,7 @@ export async function retryExperimentCommand(app: App, host: LabnoteHost, folder
   await createExperimentCommand(app, host, {
     title: retryTitle(host, original, await experimentFolderNames(host)),
     retryOf: folder,
+    retryReadme: text,
   });
 }
 
@@ -445,9 +477,8 @@ export function statusNames(host: LabnoteHost): Record<ExperimentStatus, string>
  * Thin Obsidian wiring over core domain functions: the experiment folder is
  * resolved with `getExperimentDir`, the README front matter parsed with
  * `parseFrontMatterYaml`, the value chosen from the shared `EXPERIMENT_STATUSES`
- * vocabulary, and the block re-emitted with `serializeFrontMatterEntry`. The
- * `status` key is inserted when a pre-existing note lacks it, and the original
- * body is preserved verbatim (only the front-matter block is rewritten).
+ * vocabulary, and only the `status` line rewritten with `setFrontMatterKeys`.
+ * The `status` key is appended when a pre-existing note lacks it.
  */
 export async function changeExperimentStatusCommand(
   app: App,
@@ -492,19 +523,18 @@ export async function changeExperimentStatusCommand(
   );
   if (!chosen || chosen === current) return;
 
-  // Set (or insert, when absent) `status`. Spreading keeps the order of the
-  // existing keys and appends `status` for notes that predate the field.
-  let next: Record<string, unknown> = { ...frontMatter, status: chosen };
+  // Set (or append, when absent) `status`; the other lines stay as written (#422).
+  const changes: Record<string, unknown> = { status: chosen };
   let cleared = false;
   if (chosen === 'completed') {
     const choice = await confirmCompleted(host, labnoteDir, body, isDiscussFlagged(frontMatter));
     if (!choice) return;
     if (choice === 'clear') {
-      next = setDiscussFlag(next, false);
+      changes[DISCUSS_FLAG_KEY] = undefined;
       cleared = true;
     }
   }
-  const updated = renderNote(next, body);
+  const updated = setFrontMatterKeys(parsed.text, changes);
 
   await writeNoteThroughVault(app, host, readmePath, stamp(updated));
   let message = host.t('Experiment status changed ({0}): {1} → {2}.', folderName, current ?? host.t('(none)'), chosen);
@@ -587,6 +617,13 @@ export async function confirmCompleted(
   const spots = await experimentMarkerSpots(host.fs, labnoteDir);
 
   const found: string[] = [];
+  // Nothing in the checklist or the folder: no work was recorded (#398).
+  if (items.length === 0) {
+    const names = (await host.fs.exists(labnoteDir)) ? await host.fs.list(labnoteDir) : [];
+    if (!names.some(n => n !== 'README.labnote.md' && parseWorkflowFileName(n))) {
+      found.push(host.t('This experiment has no workflows.'));
+    }
+  }
   if (unchecked > 0) found.push(host.t('{0} workflow(s) in the checklist are not checked.', String(unchecked)));
   if (noEndDate.length > 0) {
     const names =
@@ -611,6 +648,15 @@ export async function confirmCompleted(
     { title: message }
   );
   return choice === 'cancel' ? undefined : choice;
+}
+
+/**
+ * Whether `focused` sits in the Properties box or the inline title above a
+ * note (#405): the editor keeps its last cursor in the body then, and a date
+ * typed there lands on a line nobody is looking at.
+ */
+export function focusOnNoteHeader(focused: Element | null | undefined): boolean {
+  return Boolean(focused?.closest('.metadata-container, .inline-title'));
 }
 
 /**
@@ -669,7 +715,7 @@ export function insertDateCommand(editor: Editor, host: LabnoteHost, text: strin
  * The ID exists so the topic can be reworded later without orphaning the issue
  * it opened, which is also why it is generated rather than typed.
  */
-export async function insertIssueMarkerCommand(editor: Editor, host: LabnoteHost): Promise<boolean> {
+export async function insertIssueMarkerCommand(editor: Editor, host: LabnoteHost, notePath?: string): Promise<boolean> {
   // IDs are a timestamp plus a counter, so generating a duplicate is not
   // actually possible; this scan is kept only because it costs nothing.
   //
@@ -683,10 +729,14 @@ export async function insertIssueMarkerCommand(editor: Editor, host: LabnoteHost
     while (used.has(id)) id = generateIssueMarkerId();
     return id;
   };
-  const refuse = (reason: 'conflict' | 'table' | 'frontMatter' | 'codeBlock' | 'comment'): false => {
+  const refuse = (reason: 'conflict' | 'table' | 'frontMatter' | 'codeBlock' | 'comment' | 'notLabnote'): false => {
     host.notify(
       'warn',
-      reason === 'table'
+      reason === 'notLabnote'
+        ? host.t(
+            'Markers in this note open no issue: only the README and workflow notes (.labnote.md) directly in an experiment folder are read. Put the marker in one of those.'
+          )
+        : reason === 'table'
         ? host.t('Issue markers cannot go inside a table. Run this on a line below the table.')
         : reason === 'frontMatter'
           ? host.t('Issue markers cannot go in the front matter. Run this in the note body.')
@@ -698,6 +748,9 @@ export async function insertIssueMarkerCommand(editor: Editor, host: LabnoteHost
     );
     return false;
   };
+
+  // issue-sync and validate read only these notes (#428).
+  if (notePath !== undefined && !markerExperimentDir(notePath)) return refuse('notLabnote');
 
   // A README workflow entry whose link became the marker would no longer be an
   // entry (#293): there the marker always goes after the link.
@@ -775,18 +828,17 @@ export async function issueAutomationState(host: LabnoteHost): Promise<'none' | 
  * Read an experiment README for a front-matter edit, refusing to continue when
  * the YAML cannot be parsed.
  *
- * Both callers re-serialize the parsed front matter through {@link renderNote}.
- * A failed parse yields an empty object, so writing it back replaced the whole
- * block with the single field the command sets and erased `title`, `author`,
- * `created_date` and everything else. One unquoted colon in a value
- * (`title: EXP: 3rd try`) is enough to break the parse, which makes this a
- * realistic way to lose the metadata of the note that is the single source of
- * truth. Leave the note alone and say which line to fix instead.
+ * Both callers change single keys with `setFrontMatterKeys`, which leaves the
+ * other lines and their comments alone (#422), but they decide from the parsed
+ * values. A failed parse yields an empty object, which would read as "no
+ * status" or "not flagged". One unquoted colon in a value
+ * (`title: EXP: 3rd try`) is enough to break the parse. Leave the note alone
+ * and say which file and line to fix instead (#427).
  */
 async function readNoteForFrontMatterEdit(
   host: LabnoteHost,
   readmePath: string
-): Promise<{ frontMatter: Record<string, unknown>; body: string } | undefined> {
+): Promise<{ frontMatter: Record<string, unknown>; body: string; text: string } | undefined> {
   // `parseFrontMatterYaml` requires LF-normalised text (a bare `\n` after the
   // opening `---`); normalise CRLF so Windows-authored notes parse correctly.
   const original = (await host.fs.read(readmePath)).replace(/\r\n/g, '\n');
@@ -795,22 +847,14 @@ async function readNoteForFrontMatterEdit(
     host.notify(
       'warn',
       host.t(
-        'Front matter of this note could not be read, so it was left unchanged. ' +
-          'Fix the YAML and try again: {0}',
+        'Front matter of {0} could not be read, so it was left unchanged. Fix the YAML and try again: {1}',
+        readmePath,
         parseError
       )
     );
     return undefined;
   }
-  return { frontMatter, body };
-}
-
-/** Re-emit a note from front matter plus an untouched body. */
-function renderNote(frontMatter: Record<string, unknown>, body: string): string {
-  const fmBlock = Object.entries(frontMatter)
-    .map(([key, value]) => serializeFrontMatterEntry(key, value))
-    .join('\n');
-  return `---\n${fmBlock}\n---\n\n${body}`;
+  return { frontMatter, body, text: original };
 }
 
 /**
@@ -840,14 +884,13 @@ export async function toggleDiscussionFlagCommand(
 
   const parsed = await readNoteForFrontMatterEdit(host, readmePath);
   if (!parsed) return;
-  const { frontMatter, body } = parsed;
 
-  const next = !isDiscussFlagged(frontMatter);
+  const next = !isDiscussFlagged(parsed.frontMatter);
   await writeNoteThroughVault(
     app,
     host,
     readmePath,
-    stamp(renderNote(setDiscussFlag(frontMatter, next), body))
+    stamp(setFrontMatterKeys(parsed.text, { [DISCUSS_FLAG_KEY]: next ? true : undefined }))
   );
 
   const state = await issueAutomationState(host);
@@ -959,6 +1002,7 @@ async function createWorkflowFile(
     about: workflowConcept(host),
     description: chosen.description ? catalogDescription(chosen.id, chosen.description) : undefined,
     hint: workflowAliasHint(host, chosen.id, chosen.name, existingFiles),
+    validate: workflowAliasValidator(host),
   });
   if (alias === undefined) return undefined; // cancelled
   const cleanAlias = alias.trim();
@@ -1261,6 +1305,7 @@ export function unitOpAliasPrompt(
       ),
       description: input.opDescription ? catalogDescription(input.opId, input.opDescription) : undefined,
       hint: unitOpAliasHint(host, { id: input.opId, name: input.opName }, blocks),
+      validate: workflowAliasValidator(host),
     });
   };
 }
@@ -1828,7 +1873,7 @@ export async function syncWorkflowChecklistCommand(
     }
   }
 
-  // The README author changed after the notes took it as their experimenter (#83).
+  // Notes naming no experimenter take the README author (#83); a named one stays (#404).
   const author = parseExperimenterFromReadme(readme);
   const experimenters = [...notes].flatMap(([name, content]) => {
     const sync = content === undefined ? undefined : planWorkflowExperimenterSync(content, author);
@@ -1850,7 +1895,7 @@ export async function syncWorkflowChecklistCommand(
       })
       .join('\n');
     const ok = await host.confirm(
-      `${host.t("These notes' experimenter differs from the README author. Update them?")}\n\n${list}`,
+      `${host.t('These notes name no experimenter. Fill in the README author?')}\n\n${list}`,
       { confirmLabel: host.t('Update notes') }
     );
     if (ok) {

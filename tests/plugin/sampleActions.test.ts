@@ -11,6 +11,7 @@ import { MemFileSystem } from '../../packages/labnoteo-core/src/fs/memFileSystem
 import {
   changeSampleTypeInteractive,
   createSampleInteractive,
+  deleteSampleInteractive,
   editSampleInteractive,
   insertSampleReference,
   listSampleDefinitions,
@@ -206,6 +207,45 @@ describe('createSampleInteractive', () => {
     ]);
     expect(created).toMatchObject({ id: 'RNA-4', referenceText: 'RNA-4;r1', reused: true });
     expect(Object.keys(JSON.parse(await fs.read(REGISTRY)))).toEqual(['RNA-3', 'RNA-4', 'RNA-5']);
+  });
+
+  // #419: a discarded twin was offered first, so Enter took the tube that was gone.
+  it('offers discarded samples with the alias below "Create a new sample anyway", marked', async () => {
+    await fs.write(
+      REGISTRY,
+      JSON.stringify({
+        'RNA-3': { type: 'RNA', alias: 'R1', descriptions: ['old'], sources: [], discarded: '2026-10-25' },
+        'RNA-4': { type: 'RNA', alias: 'R1', descriptions: ['new'], sources: [] },
+      })
+    );
+    answer('R1');
+    vi.mocked(pickModal).mockResolvedValueOnce(undefined);
+
+    await add();
+
+    const [, items, opts] = vi.mocked(pickModal).mock.calls[0];
+    expect(opts).toMatchObject({ title: '2 samples in this experiment already have the alias R1 (RNA-3 (discarded), RNA-4).' });
+    expect(items.map(i => i.value)).toEqual(['RNA-4', null, 'RNA-3']);
+    expect(items[2]).toEqual({
+      label: 'Use the existing sample RNA-3 (discarded)',
+      value: 'RNA-3',
+      description: 'Marked discarded on 2026-10-25 · old',
+    });
+  });
+
+  it('says when only discarded samples have the alias, offering a new one first', async () => {
+    await fs.write(
+      REGISTRY,
+      JSON.stringify({ 'RNA-3': { type: 'RNA', alias: 'R1', descriptions: [], sources: [], discarded: '2026-10-25' } })
+    );
+    answer('R1');
+    vi.mocked(pickModal).mockResolvedValueOnce(undefined);
+
+    await add();
+
+    const [, items, opts] = vi.mocked(pickModal).mock.calls[0];
+    expect(opts).toMatchObject({ title: 'Only discarded samples have the alias R1 (RNA-3).' });
+    expect(items[0]).toMatchObject({ label: 'Create a new sample anyway', value: null });
   });
 
   it('names every Global sample with the alias when adding to Local', async () => {
@@ -489,6 +529,66 @@ describe('editSampleInteractive alias rewrite', () => {
     expect(Notice.shown.at(-1)).toBe('Sample updated: RNA-1');
   });
 
+  // #403
+  it('asks before taking the alias of another sample of the experiment, and saves nothing when declined', async () => {
+    await fs.write(`${FOLDER}/RNA.json`, JSON.stringify({ 'RNA-1': RECORD, 'RNA-2': { ...RECORD, alias: 'siKIF' } }));
+    vi.mocked(confirmModal).mockResolvedValueOnce(false);
+
+    expect(await edit(FOLDER, 'SIKIF ')).toBe(false);
+
+    expect(vi.mocked(confirmModal).mock.calls[0][1]).toBe(
+      'This experiment already has the alias SIKIF (RNA-2). Save RNA-1 anyway?'
+    );
+    expect(JSON.parse(await fs.read(`${FOLDER}/RNA.json`))['RNA-1'].alias).toBe('si KIF');
+  });
+
+  it('saves the shared alias on "Save anyway", and does not ask when only the case changed', async () => {
+    await fs.write(`${FOLDER}/RNA.json`, JSON.stringify({ 'RNA-1': RECORD, 'RNA-2': { ...RECORD, alias: 'siKIF' } }));
+    vi.mocked(confirmModal).mockResolvedValueOnce(true);
+
+    expect(await edit(FOLDER, 'siKIF')).toBe(true);
+    expect(JSON.parse(await fs.read(`${FOLDER}/RNA.json`))['RNA-1'].alias).toBe('siKIF');
+
+    vi.mocked(confirmModal).mockReset();
+    await fs.write(`${FOLDER}/RNA.json`, JSON.stringify({ 'RNA-1': RECORD, 'RNA-2': { ...RECORD } }));
+    expect(await edit(FOLDER, 'SI KIF')).toBe(true);
+    expect(confirmModal).not.toHaveBeenCalled();
+  });
+
+  // #385
+  it('deletes a sample only a sample list table names, with its rows', async () => {
+    const table = [
+      '| ID | Alias | Description | Location | Scope | Discarded |',
+      '| --- | --- | --- | --- | --- | --- |',
+      '| RNA-1 | si KIF | kd |  | Local |  |',
+      '| RNA-2 | other |  |  | Local |  |',
+      '',
+    ].join('\n');
+    await fs.write(`${FOLDER}/RNA.json`, JSON.stringify({ 'RNA-1': RECORD, 'RNA-2': { ...RECORD, alias: 'other' } }));
+    await fs.write(`${A}/README.labnote.md`, table);
+    vi.mocked(confirmModal).mockResolvedValueOnce(true);
+    const { app, p } = editPlugin();
+
+    expect(await deleteSampleInteractive(app, p, { folder: FOLDER, type: 'RNA', id: 'RNA-1' })).toBe(true);
+
+    expect(vi.mocked(confirmModal).mock.calls[0][1]).toContain('RNA-1 is only listed in the sample list tables');
+    // #391: what is deleted, beyond its ID.
+    expect(vi.mocked(confirmModal).mock.calls[0][1]).toContain('Alias: si KIF\nDescription: kd\nScope: Local');
+    expect(Notice.shown.at(-1)).toBe('Sample deleted: RNA-1;si KIF');
+    expect(JSON.parse(await fs.read(`${FOLDER}/RNA.json`))).not.toHaveProperty('RNA-1');
+    expect(await fs.read(`${A}/README.labnote.md`)).not.toContain('RNA-1');
+    expect(await fs.read(`${A}/README.labnote.md`)).toContain('| RNA-2 | other |');
+  });
+
+  it('still refuses to delete a sample a note uses outside the table', async () => {
+    await fs.write(`${FOLDER}/RNA.json`, JSON.stringify({ 'RNA-1': RECORD }));
+    await fs.write(`${A}/001_WD010_A.labnote.md`, 'RNA-1;si KIF\n');
+    const { app, p } = editPlugin();
+
+    expect(await deleteSampleInteractive(app, p, { folder: FOLDER, type: 'RNA', id: 'RNA-1' })).toBe(false);
+    expect(JSON.parse(await fs.read(`${FOLDER}/RNA.json`))).toHaveProperty('RNA-1');
+  });
+
   // #130, #131
   it('lists the usages of a Global sample without the experiments a Local record shadows', async () => {
     await fs.write(`${A}/001_WD010_A.labnote.md`, 'RNA-1;si KIF\n');
@@ -501,6 +601,42 @@ describe('editSampleInteractive alias rewrite', () => {
     expect(await sampleUsages(app, p, `${B}/resources/labsamples`, 'RNA', 'RNA-1')).toEqual([
       `${B}/001_WD010_C.labnote.md`,
     ]);
+  });
+
+  // #423: a daily note at the vault root naming a Local sample was not counted.
+  it('counts a note outside every experiment that uses a Local sample, unless its own registry has the ID', async () => {
+    await fs.write(`${FOLDER}/RNA.json`, JSON.stringify({ 'RNA-1': RECORD }));
+    await fs.write('2026-10-26.md', '- 로트1 RNA-1;si KIF\n');
+    await fs.write('Daily/2026-10-27.md', '- RNA-1;si KIF\n');
+    await fs.write('Daily/resources/labsamples/RNA.json', JSON.stringify({ 'RNA-1': RECORD }));
+    const { app, p } = editPlugin();
+
+    expect(await sampleUsages(app, p, FOLDER, 'RNA', 'RNA-1')).toEqual(['2026-10-26.md']);
+    expect(await deleteSampleInteractive(app, p, { folder: FOLDER, type: 'RNA', id: 'RNA-1' })).toBe(false);
+    expect(JSON.parse(await fs.read(`${FOLDER}/RNA.json`))).toHaveProperty('RNA-1');
+
+    await fs.write(`${GLOBAL}/RNA.json`, JSON.stringify({ 'RNA-1': RECORD }));
+    expect(await sampleUsages(app, p, FOLDER, 'RNA', 'RNA-1')).toEqual([]);
+  });
+
+  it('rewrites the alias in a note outside experiments, unless another experiment has the same ID', async () => {
+    await fs.write('2026-10-26.md', 'RNA-1;si KIF\n');
+    vi.mocked(confirmModal).mockResolvedValue(true);
+
+    await edit(FOLDER, 'siKIF');
+    expect(await fs.read('2026-10-26.md')).toBe('RNA-1;siKIF\n');
+
+    await fs.write('2026-10-26.md', 'RNA-1;si KIF\n');
+    await fs.write(`${A}/001_WD010_A.labnote.md`, 'RNA-1;si KIF\n');
+    await fs.write(`${B}/resources/labsamples/RNA.json`, JSON.stringify({ 'RNA-1': RECORD }));
+    vi.mocked(confirmModal).mockClear();
+    await edit(FOLDER, 'siKIF');
+
+    expect(vi.mocked(confirmModal).mock.calls[0][1]).toContain(
+      'Another experiment has a sample with the same ID, so 1 note(s) outside experiments are left as they are.'
+    );
+    expect(await fs.read(`${A}/001_WD010_A.labnote.md`)).toBe('RNA-1;siKIF\n');
+    expect(await fs.read('2026-10-26.md')).toBe('RNA-1;si KIF\n');
   });
 
   // #291: the list gave only paths and opened each note at its top.
@@ -633,7 +769,7 @@ describe('listSampleDefinitions', () => {
   beforeEach(async () => {
     await fs.write(
       REGISTRY,
-      JSON.stringify({ 'RNA-1': { type: 'RNA', alias: 'siKIF', descriptions: ['kd'], sources: [] } })
+      JSON.stringify({ 'RNA-1': { type: 'RNA', alias: 'siKIF', descriptions: ['kd'], sources: [], location: 'Freezer-2' } })
     );
     await fs.write(
       `${GLOBAL}/DNA.json`,
@@ -646,6 +782,9 @@ describe('listSampleDefinitions', () => {
 
     expect(items.map(i => i.label)).toEqual(['RNA-1 | siKIF | Local RNA sample', 'DNA-2 | - | Global DNA sample']);
     expect(items[0].detail).toBe('kd');
+    // #386: the location is searched ahead of the description.
+    expect(items[0].description).toBe('Freezer-2');
+    expect(items[1].description).toBeUndefined();
     expect(items[0].value).toMatchObject({ type: 'RNA', id: 'RNA-1', resolved: { scope: 'local', folder: FOLDER } });
   });
 

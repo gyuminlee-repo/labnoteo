@@ -9,7 +9,7 @@
  */
 import { listUnitOpBlocks, WORKSHEET_SCANS_HEADING } from '../sections/scanInsert';
 import { stepFence, type OpenFence } from '../sections/sectionEdit';
-import { fitRow, SEPARATOR_ROW_RE, splitTableRow } from './exportTablesCsv';
+import { fitRow, isTableHeaderLine, isTableRowLine, splitTableCells } from './exportTablesCsv';
 import { HW_PLACEHOLDERS, SW_PLACEHOLDERS } from './unitOpTemplate';
 import { stripAiCallouts } from './aiCallout';
 
@@ -17,16 +17,27 @@ export type UnitOpKind = 'hw' | 'sw';
 
 /** A piece of a section's body, as the printed sheet lays it out. */
 export type WorksheetBlock =
-  /** A list item; `level` is how deeply it is nested (0 = outermost). */
-  | { kind: 'item'; level: number; text: string }
-  | { kind: 'para'; text: string }
-  | { kind: 'table'; rows: string[][] };
+  /** A list item; `level` is how deeply it is nested (0 = outermost), `checked` for a ticked `[x]`. */
+  | { kind: 'item'; level: number; text: string; checked?: true }
+  /** A paragraph; `footnote` for a footnote definition (`[^1]: …`). */
+  | { kind: 'para'; text: string; footnote?: true }
+  | { kind: 'table'; rows: string[][] }
+  /** A fenced code block's lines, without the fences (#418). */
+  | { kind: 'code'; lines: string[] };
 
-/** One Method step: its own line, the lines nested under it, and a table written below it. */
+/**
+ * One Method step: its own line, the lines nested under it, and a table and
+ * code blocks written below it. `done` for a ticked step (#436); `preface`
+ * for a table or code block above the first step, printed without a box or
+ * number so the steps keep the note's numbers.
+ */
 export interface WorksheetStep {
   text: string;
   sub: string[];
   table?: string[][];
+  code?: string[][];
+  done?: true;
+  preface?: true;
 }
 
 export type WorksheetSection =
@@ -105,8 +116,8 @@ function splitSections(lines: readonly string[]): { description: string; section
   return { description, sections };
 }
 
-const LIST_ITEM_RE = /^[ \t]*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?(.*)$/;
-const PIPE_ROW_RE = /^\s*\|/;
+const LIST_ITEM_RE = /^[ \t]*(?:[-*+]|\d+[.)])\s+(?:\[([ xX])\]\s+)?(.*)$/;
+const FOOTNOTE_DEF_RE = /^\s*\[\^[^\]\s]+\]:/;
 
 /** Width of a line's indent in columns, a tab counting as four. */
 function indentWidth(line: string): number {
@@ -127,24 +138,41 @@ function levelOf(indent: number, open: number[]): number {
 
 /**
  * A section's lines as blocks to print. List items keep their nesting, pipe
- * tables stay tables instead of printing their `|` marks (#253, #254), and a
- * line that is neither continues the item or paragraph above it.
+ * tables stay tables instead of printing their `|` marks (#253, #254), a
+ * fenced code block keeps its lines as written (#418), and a line that is
+ * none of these continues the item or paragraph above it. A footnote
+ * definition starts a paragraph of its own.
  */
 export function parseWorksheetBlocks(lines: readonly string[]): WorksheetBlock[] {
   const blocks: WorksheetBlock[] = [];
   const open: number[] = [];
   let afterBlank = false;
+  let fence: OpenFence | null = null;
+  let code: string[] | null = null;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    const next = stepFence(line, fence);
+    if (next !== fence || fence) {
+      if (!fence) {
+        code = [];
+        blocks.push({ kind: 'code', lines: code });
+      } else if (next === fence) {
+        code?.push(line);
+      }
+      fence = next;
+      open.length = 0;
+      afterBlank = false;
+      continue;
+    }
     if (line.trim() === '') {
       afterBlank = true;
       continue;
     }
-    if (PIPE_ROW_RE.test(line) && lines[i + 1] !== undefined && SEPARATOR_ROW_RE.test(lines[i + 1])) {
-      const header = splitTableRow(line);
+    if (isTableHeaderLine(lines, i)) {
+      const header = splitTableCells(line);
       const rows = [header];
-      for (i += 2; i < lines.length && PIPE_ROW_RE.test(lines[i]); i++) {
-        rows.push(fitRow(splitTableRow(lines[i]), header.length));
+      for (i += 2; i < lines.length && isTableRowLine(lines[i]); i++) {
+        rows.push(fitRow(splitTableCells(lines[i]), header.length));
       }
       i--;
       blocks.push({ kind: 'table', rows });
@@ -154,16 +182,22 @@ export function parseWorksheetBlocks(lines: readonly string[]): WorksheetBlock[]
     }
     const item = LIST_ITEM_RE.exec(line);
     if (item) {
-      blocks.push({ kind: 'item', level: levelOf(indentWidth(line), open), text: item[1].trim() });
+      blocks.push({
+        kind: 'item',
+        level: levelOf(indentWidth(line), open),
+        text: item[2].trim(),
+        ...(item[1] !== undefined && item[1] !== ' ' && { checked: true as const }),
+      });
       afterBlank = false;
       continue;
     }
+    const footnote = FOOTNOTE_DEF_RE.test(line);
     const last = blocks[blocks.length - 1];
-    if (!afterBlank && last && last.kind !== 'table') {
+    if (!afterBlank && !footnote && last && (last.kind === 'item' || last.kind === 'para')) {
       last.text += ` ${line.trim()}`;
       continue;
     }
-    blocks.push({ kind: 'para', text: line.trim() });
+    blocks.push({ kind: 'para', text: line.trim(), ...(footnote && { footnote: true as const }) });
     open.length = 0;
     afterBlank = false;
   }
@@ -177,18 +211,31 @@ export function parseWorksheetBlocks(lines: readonly string[]): WorksheetBlock[]
  */
 function toSteps(blocks: readonly WorksheetBlock[]): WorksheetStep[] {
   const steps: WorksheetStep[] = [];
+  const above = (): WorksheetStep => {
+    if (steps.length === 0) steps.push({ text: '', sub: [], preface: true });
+    return steps[steps.length - 1];
+  };
   for (const block of blocks) {
-    const last = steps[steps.length - 1];
+    // A code block or footnote belongs to the step above, as a table does, so
+    // no step number is spent on it (#418).
     if (block.kind === 'table') {
-      if (last) last.table = block.rows;
-      else steps.push({ text: '', sub: [], table: block.rows });
+      above().table = block.rows;
       continue;
     }
+    if (block.kind === 'code') {
+      (above().code ??= []).push(block.lines);
+      continue;
+    }
+    if (block.kind === 'para' && block.footnote) {
+      above().sub.push(block.text);
+      continue;
+    }
+    const last = steps[steps.length - 1];
     if (last && block.kind === 'item' && block.level > 0) {
       last.sub.push(block.text);
       continue;
     }
-    steps.push({ text: block.text, sub: [] });
+    steps.push({ text: block.text, sub: [], ...(block.kind === 'item' && block.checked && { done: true as const }) });
   }
   return steps;
 }
@@ -201,9 +248,25 @@ const trimBlankEdges = (lines: string[]): string[] => {
   return lines.slice(a, b);
 };
 
+/**
+ * `lines` with each template hint line outside code blocks made blank (#400):
+ * one kept above what was written would print as text or as step 1. A blank
+ * line, not none, so the paragraphs around it stay apart.
+ */
+function blankPlaceholders(lines: readonly string[]): string[] {
+  let fence: OpenFence | null = null;
+  return lines.map(line => {
+    const next = stepFence(line, fence);
+    const inCode = fence !== null || next !== fence;
+    fence = next;
+    return !inCode && PLACEHOLDERS.has(line.trim()) ? '' : line;
+  });
+}
+
 function toSection(raw: RawSection): WorksheetSection {
   // The `> [!note] AI draft` line over a drafted Method would print as step 1 (#280).
-  const lines = raw.title === 'Method' ? stripAiCallouts(raw.lines.join('\n')).split('\n') : raw.lines;
+  const source = raw.title === 'Method' ? stripAiCallouts(raw.lines.join('\n')).split('\n') : raw.lines;
+  const lines = raw.title === 'Meta' ? source : blankPlaceholders(source);
   const body = trimBlankEdges(lines.map(l => l.trimEnd()));
   const text = body.join('\n').trim();
   if (raw.title === 'Meta') {
@@ -216,7 +279,7 @@ function toSection(raw: RawSection): WorksheetSection {
     }
     return { type: 'meta', title: raw.title, fields };
   }
-  if (text === '' || PLACEHOLDERS.has(text)) {
+  if (text === '') {
     return { type: 'blank', title: raw.title };
   }
   if (raw.title === 'Method') {
@@ -263,10 +326,14 @@ const wrapped = (text: string): number => Math.max(1, Math.ceil(text.length / CH
 /** A table prints one line per row plus the rule under its header. */
 const tableLines = (rows: readonly string[][]): number => rows.length + 1;
 
+/** A code block prints each line, a long one wrapping. */
+const codeLines = (lines: readonly string[]): number => lines.reduce((n, line) => n + wrapped(line), 0);
+
 const stepWeight = (step: WorksheetStep): number =>
-  wrapped(step.text) +
+  (step.preface && !step.text ? 0 : wrapped(step.text)) +
   step.sub.reduce((n, line) => n + wrapped(line), 0) +
-  (step.table ? tableLines(step.table) : 0);
+  (step.table ? tableLines(step.table) : 0) +
+  (step.code ?? []).reduce((n, lines) => n + codeLines(lines), 0);
 
 /** Estimated printed height of a section, in text lines (heading included). */
 export function sectionWeight(section: WorksheetSection): number {
@@ -277,7 +344,13 @@ export function sectionWeight(section: WorksheetSection): number {
     case 'steps':
       return heading + section.steps.reduce((n, s) => n + stepWeight(s), 0);
     case 'text':
-      return heading + section.blocks.reduce((n, b) => n + (b.kind === 'table' ? tableLines(b.rows) : wrapped(b.text)), 0);
+      return (
+        heading +
+        section.blocks.reduce(
+          (n, b) => n + (b.kind === 'table' ? tableLines(b.rows) : b.kind === 'code' ? codeLines(b.lines) : wrapped(b.text)),
+          0
+        )
+      );
     case 'blank':
       return heading + BLANK_WRITING_LINES;
   }

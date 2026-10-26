@@ -14,6 +14,7 @@ import {
   findUnitOpMethodAt,
   findUnitOpMethodByIndex,
   listUnitOpMethods,
+  listUnitOpBlocks,
   cleanMethodDraft,
   extractMethodBody,
   planBlockInsert,
@@ -193,19 +194,30 @@ async function complete(
  * Insert a model reply as its own block after the cursor's line, never
  * splitting the line (#48), then reveal it and mark the note edited so
  * `last_updated_date` refreshes. Reads text and cursor now, after the reply
- * arrived, since the user may have kept typing meanwhile.
+ * arrived, since the user may have kept typing meanwhile. True when a cursor
+ * above the body sent the block to the end of the note. `reveal: false` for
+ * replies that arrive while the user writes on, which must leave the cursor
+ * where it is (#357, #420).
  */
-async function insertBlock(plugin: LabnotePlugin, target: EditTarget, answer: string): Promise<void> {
+async function insertBlock(
+  plugin: LabnotePlugin,
+  target: EditTarget,
+  answer: string,
+  { reveal = true }: { reveal?: boolean } = {}
+): Promise<boolean> {
   // Whatever the model wrote, nothing it inserts opens an issue (#354).
   const block = neutralizeIssueMarkers(answer);
+  let atEnd = false;
   if (!target.getCursorOffset) {
     await target.insertAtCursor(`\n${block}\n`);
   } else {
     const plan = planBlockInsert(await target.getText(), await target.getCursorOffset(), block);
     await target.replaceRange(plan.offset, plan.offset, plan.text);
-    await target.revealOffset?.(plan.offset + plan.text.length);
+    if (reveal) await target.revealOffset?.(plan.offset + plan.text.length);
+    atEnd = plan.atEnd === true;
   }
   plugin.markUserEdit(target.path);
+  return atEnd;
 }
 
 /** A note followed by reference, so a rename does not lose track of it (#260). */
@@ -258,30 +270,27 @@ async function deliverToNote(
 /**
  * Put a Method draft in: over the unit operation's `#### Method` body when
  * the command started inside one (`loc`), else as a block after the cursor.
+ * True when the block went to the end of the note instead (#392).
  */
 async function writeMethodDraft(
   plugin: LabnotePlugin,
   target: EditTarget,
   loc: UnitOpMethodLocation | null,
   body: string
-): Promise<void> {
-  if (!loc) {
-    await insertBlock(plugin, target, body);
-    return;
-  }
+): Promise<boolean> {
+  // The draft takes long enough to write on meanwhile, so the cursor stays put (#420).
+  if (!loc) return insertBlock(plugin, target, body, { reveal: false });
   const latest = await target.getText();
   const again = findUnitOpMethodByIndex(latest, loc.unitOpIndex, loc.unitOpHeading);
   if (!again) {
     new Notice(plugin.t('The unit operation changed while the AI was writing, so the draft was inserted after the cursor line instead.'));
-    await insertBlock(plugin, target, body);
-    return;
+    await insertBlock(plugin, target, body, { reveal: false });
+    return false;
   }
   const edit = minimalReplacement(latest, replaceSectionBodyAt(latest, again.methodLine, body).md);
-  if (edit) {
-    await target.replaceRange(edit.start, edit.end, edit.text);
-    await target.revealOffset?.(edit.start);
-  }
+  if (edit) await target.replaceRange(edit.start, edit.end, edit.text);
   plugin.markUserEdit(target.path);
+  return false;
 }
 
 /** The model context for one unit operation: the note's head plus that block. */
@@ -304,8 +313,17 @@ export async function draftMethodCommand(plugin: LabnotePlugin): Promise<void> {
     new Notice(plugin.t('Open a note to insert into.'));
     return;
   }
+  // Before any question: without a provider the answers would go nowhere (#399).
+  if (!createLlmProvider(plugin.settings)) {
+    new Notice(plugin.t('Configure an AI provider in settings first.'));
+    return;
+  }
   const note = noteRef(plugin, target.path);
   const text = await target.getText();
+  if (diagnoseWorkflowPath(target.path).kind === 'ok' && listUnitOpBlocks(text).length === 0) {
+    new Notice(plugin.t('This workflow note has no unit operation yet. Insert one first, then draft its Method.'), 8000);
+    return;
+  }
   let loc = target.getCursorOffset ? findUnitOpMethodAt(text, await target.getCursorOffset()) : null;
   if (!loc) {
     // Outside a unit operation of a note that has some: ask which Method (#164).
@@ -326,10 +344,6 @@ export async function draftMethodCommand(plugin: LabnotePlugin): Promise<void> {
 
   if (loc && !loc.isPlaceholder) {
     // Ask before the request, not after: the reply can take minutes.
-    if (!createLlmProvider(plugin.settings)) {
-      new Notice(plugin.t('Configure an AI provider in settings first.'));
-      return;
-    }
     const ok = await plugin.host.confirm(
       plugin.t('This Method section already has content. Replace it with the AI draft?'),
       { confirmLabel: plugin.t('Replace'), destructive: true }
@@ -348,9 +362,21 @@ export async function draftMethodCommand(plugin: LabnotePlugin): Promise<void> {
       { role: 'user', content: `Draft a Method subsection for this note.\n\nContext:\n${text.slice(0, 6000)}` },
     ]);
     const cleaned = out ? cleanMethodDraft(out) : '';
-    const draft = cleaned ? withDraftHeader(plugin, cleaned) : '';
+    // No Method section to hold it: the whole draft stays in the AI callout,
+    // so result summaries do not read it as the researcher's (#392).
+    const draft = cleaned ? toNoteCallout(cleaned, draftHeader(plugin)) : '';
     if (draft) {
-      await deliverToNote(plugin, note, draft, t => writeMethodDraft(plugin, t, null, draft), 'Inserted the Method draft into {0}.');
+      await deliverToNote(
+        plugin,
+        note,
+        draft,
+        async t => {
+          if (await writeMethodDraft(plugin, t, null, draft)) {
+            new Notice(plugin.t('The cursor was above the note body, so the draft went to the end of the note.'));
+          }
+        },
+        'Inserted the Method draft into {0}.'
+      );
     }
     return;
   }
@@ -369,7 +395,24 @@ export async function draftMethodCommand(plugin: LabnotePlugin): Promise<void> {
   ]);
   if (!out) return;
   const body = withDraftHeader(plugin, extractMethodBody(out) || out.trim());
-  await deliverToNote(plugin, note, body, t => writeMethodDraft(plugin, t, loc, body), 'Inserted the Method draft into {0}.');
+  await deliverToNote(
+    plugin,
+    note,
+    body,
+    async t => {
+      await writeMethodDraft(plugin, t, loc, body);
+    },
+    'Inserted the Method draft into {0}.'
+  );
+}
+
+/** The title of the callout over an AI Method draft. */
+function draftHeader(plugin: LabnotePlugin): string {
+  return plugin.t(
+    'AI draft ({0}, {1}) — review it, then delete this line',
+    plugin.settings.llmModel || plugin.settings.llmProvider,
+    getSeoulDateString()
+  );
 }
 
 /**
@@ -378,12 +421,7 @@ export async function draftMethodCommand(plugin: LabnotePlugin): Promise<void> {
  * Summaries and the worksheet leave the line out.
  */
 function withDraftHeader(plugin: LabnotePlugin, draft: string): string {
-  const header = plugin.t(
-    'AI draft ({0}, {1}) — review it, then delete this line',
-    plugin.settings.llmModel || plugin.settings.llmProvider,
-    getSeoulDateString()
-  );
-  return `> [!note] ${header}\n\n${neutralizeIssueMarkers(draft)}`;
+  return `> [!note] ${draftHeader(plugin)}\n\n${neutralizeIssueMarkers(draft)}`;
 }
 
 /** Where a workflow note's result summary goes (#279). */
@@ -518,7 +556,15 @@ export async function summarizeResultsCommand(plugin: LabnotePlugin): Promise<vo
   const model = plugin.settings.llmModel || plugin.settings.llmProvider;
   if (!workflow) {
     const block = toNoteCallout(out, plugin.t('AI summary ({0}, {1})', model, getSeoulDateString()));
-    await deliverToNote(plugin, note, block, t => insertBlock(plugin, t, block), 'Inserted the summary into {0}.');
+    await deliverToNote(
+      plugin,
+      note,
+      block,
+      async t => {
+        await insertBlock(plugin, t, block, { reveal: false });
+      },
+      'Inserted the summary into {0}.'
+    );
     return;
   }
   const block = toNoteCallout(out, plugin.t('AI workflow results summary ({0}, {1})', model, getSeoulDateString()));
@@ -667,7 +713,15 @@ export function parseJsonArray(raw: string): ExtractedSample[] {
 
 /** {@link prepareExtractedSamples} output: what to create, and what was fixed. */
 export interface PreparedSamples {
-  samples: Array<{ type: string; id?: string; alias?: string; description?: string; location?: string }>;
+  samples: Array<{
+    type: string;
+    id?: string;
+    alias?: string;
+    description?: string;
+    location?: string;
+    /** The name as the note wrote it, when the alias rules changed it (#390). Not passed to the tool. */
+    originalAlias?: string;
+  }>;
   /** Samples whose model-given id broke the `<Type>-<number>` rule and gets a new one. */
   regenerated: number;
   /** Samples dropped because their type is not a known sample type. */
@@ -694,15 +748,20 @@ export function prepareExtractedSamples(
     }
     const rawId = typeof s.id === 'string' && s.id.trim() ? s.id.trim() : undefined;
     const id = rawId === undefined ? undefined : normalizeSampleId(type, rawId);
-    const alias = typeof s.alias === 'string' && s.alias.trim() ? toAlias(s.alias) : undefined;
+    const rawAlias = typeof s.alias === 'string' && s.alias.trim() ? s.alias.trim() : undefined;
+    const alias = rawAlias === undefined ? undefined : toAlias(rawAlias);
     const description = typeof s.description === 'string' ? s.description.replace(/;/g, ',') : undefined;
     // Free text in the registry, so it goes in as written (#190).
     const location = typeof s.location === 'string' && s.location.trim() ? s.location.trim() : undefined;
+    const renamed = (from: string | undefined, to: string | undefined) =>
+      from !== undefined && to !== undefined && from !== to ? { originalAlias: from } : {};
     if (rawId !== undefined && !id) {
       out.regenerated++;
-      out.samples.push({ type, alias: alias ?? toAlias(rawId), description, location });
+      const fromId = alias === undefined;
+      const kept = alias ?? toAlias(rawId);
+      out.samples.push({ type, alias: kept, description, location, ...renamed(fromId ? rawId : rawAlias, kept) });
     } else {
-      out.samples.push({ type, id, alias, description, location });
+      out.samples.push({ type, id, alias, description, location, ...renamed(rawAlias, alias) });
     }
   }
   return out;
@@ -829,12 +888,14 @@ export async function extractSamplesCommand(plugin: LabnotePlugin): Promise<void
   let created = 0;
   let noLocation = 0;
   let inGlobal = false;
-  for (const s of fresh) {
+  const renamed: string[] = [];
+  for (const { originalAlias, ...s } of fresh) {
     const res = await runTool(tools, 'create_sample', ctx, { ...s, documentPath: target.path });
     if (res.ok) {
       created++;
       if (!s.location) noLocation++;
       if ((res.data as { scope?: string } | undefined)?.scope === 'global') inGlobal = true;
+      if (originalAlias !== undefined) renamed.push(`${originalAlias} → ${s.alias}`);
     }
   }
   const parts = [
@@ -854,7 +915,17 @@ export async function extractSamplesCommand(plugin: LabnotePlugin): Promise<void
   if (inGlobal) {
     parts.push(plugin.t('This note is outside an experiment folder, so they were added to Global samples.'));
   }
-  new Notice(parts.join(' '));
+  if (renamed.length > 0) {
+    // The note keeps the name as written; say what it is registered as (#390).
+    const shown = renamed.slice(0, 5).join(', ');
+    parts.push(
+      plugin.t(
+        'Aliases changed to fit the alias rules (_ : ; # * become - or go): {0}',
+        renamed.length > 5 ? plugin.t('{0} (+{1} more)', shown, String(renamed.length - 5)) : shown
+      )
+    );
+  }
+  new Notice(parts.join(' '), renamed.length > 0 ? 15000 : undefined);
 }
 
 /**

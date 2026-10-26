@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { Editor, EditorPosition, EditorTransaction } from 'obsidian';
 import { EditorView } from '@codemirror/view';
 import type { LabnoteHost } from '../../packages/labnoteo-core/src';
-import { insertDateCommand } from '../../src/commands';
+import { focusOnNoteHeader, insertDateCommand } from '../../src/commands';
 
 /** A plain-text editor recording how it was edited. */
 function fakeEditor(text: string, cursor: number, cell?: { cm: unknown }) {
@@ -70,5 +70,18 @@ describe('insertDateCommand', () => {
       EditorView.findFromDOM = original;
       if (!hadElement) delete g.HTMLElement;
     }
+  });
+});
+
+// #405: with a property focused, the date went to the body's last cursor line.
+describe('focusOnNoteHeader', () => {
+  const el = (inside: string | null) =>
+    ({ closest: (sel: string) => (inside && sel.includes(inside) ? {} : null) }) as unknown as Element;
+
+  it('tells the Properties box and the inline title from the body', () => {
+    expect(focusOnNoteHeader(el('.metadata-container'))).toBe(true);
+    expect(focusOnNoteHeader(el('.inline-title'))).toBe(true);
+    expect(focusOnNoteHeader(el(null))).toBe(false);
+    expect(focusOnNoteHeader(null)).toBe(false);
   });
 });

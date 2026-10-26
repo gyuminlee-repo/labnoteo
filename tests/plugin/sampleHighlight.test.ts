@@ -40,6 +40,18 @@ describe('needsHighlightRebuild', () => {
   });
 });
 
+// #428: a marker in a note the automation does not read stays plain.
+describe('markers of a note that is not read for markers', () => {
+  it('draws the samples but not the marker', () => {
+    const text = '@issue;ISS-1;RNA-1 확인';
+    expect(collectTokenRanges(text, on.types, on.colors).map(r => r.cls)).toEqual(['labnote-issue-marker']);
+    expect(collectTokenRanges(text, on.types, on.colors, { noMarkers: true }).map(r => r.cls)).toEqual([
+      'labnote-sample-id',
+    ]);
+    expect(highlightStateKey({ ...on, markersUnread: true })).not.toBe(highlightStateKey(on));
+  });
+});
+
 // #210: a sample ID the note cannot resolve is underlined with a tooltip.
 describe('sample IDs missing from the registry', () => {
   const types = ['DNA', 'RNA'];

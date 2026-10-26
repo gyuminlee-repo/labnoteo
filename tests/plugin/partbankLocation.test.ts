@@ -16,6 +16,7 @@ import {
   refreshLocationsIn,
   refreshOneLocation,
   storableChanges,
+  vaultSampleFolders,
   type LocationChange,
 } from '../../src/partbank/partbankLocation';
 import { PartbankFeature } from '../../src/partbank/partbankFeature';
@@ -149,6 +150,22 @@ describe('linkedSamplesIn', () => {
     const linked = await linkedSamplesIn(plugin, [LOCAL, GLOBAL, '']);
     expect(linked.map(l => l.id).sort()).toEqual(['DNA-1', 'Primer-1']);
     expect(linked.find(l => l.id === 'Primer-1')?.folder).toBe(GLOBAL);
+  });
+});
+
+// #437: the bulk refresh reads every experiment, whichever note is open.
+describe('vaultSampleFolders', () => {
+  it('lists every experiment registry, then the Global one once', async () => {
+    const fs = new MemFileSystem();
+    const plugin = fakePlugin(fs);
+    const other = 'labnote/002_Other/resources/labsamples';
+    await upsertSampleRecord(fs, LOCAL, 'DNA', 'DNA-1', { alias: 'a', description: null });
+    await upsertSampleRecord(fs, other, 'DNA', 'DNA-2', { alias: 'b', description: null });
+    expect(await vaultSampleFolders(plugin)).toEqual([LOCAL, other, GLOBAL]);
+
+    // An experiment registry set as Global (#408) is read once.
+    plugin.settings.globalSampleFolder = other;
+    expect(await vaultSampleFolders(plugin)).toEqual([LOCAL, other]);
   });
 });
 

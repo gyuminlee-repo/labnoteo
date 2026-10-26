@@ -68,6 +68,36 @@ describe('listWorksheetUnitOps', () => {
     });
   });
 
+  // #400: a template line left above what was written printed as text or as step 1.
+  it('leaves out the template lines kept above what was written', () => {
+    const md = buildNote([hw('UHW010')])
+      .replace('#### Input\n- (samples from the previous step)', '#### Input\n- (samples from the previous step)\n- DNA-1')
+      .replace(
+        '#### Results & Discussions\n- (Any results and discussions. Link file path if needed)',
+        '#### Results & Discussions\n- (Any results and discussions. Link file path if needed)\n| A |\n| --- |\n| 1 |'
+      )
+      .replace('#### Method\n- (method used in this step)', '#### Method\n- (method used in this step)\n1. Thaw\n2. Spin');
+    const sections = listWorksheetUnitOps(md)[0].sections;
+    expect(sections.find(s => s.title === 'Input')).toEqual({
+      type: 'text',
+      title: 'Input',
+      blocks: [{ kind: 'item', level: 0, text: 'DNA-1' }],
+    });
+    expect(sections.find(s => s.title === 'Results & Discussions')).toEqual({
+      type: 'text',
+      title: 'Results & Discussions',
+      blocks: [{ kind: 'table', rows: [['A'], ['1']] }],
+    });
+    expect(sections.find(s => s.title === 'Method')).toEqual({
+      type: 'steps',
+      title: 'Method',
+      steps: [
+        { text: 'Thaw', sub: [] },
+        { text: 'Spin', sub: [] },
+      ],
+    });
+  });
+
   it('drops blank lines from written text', () => {
     const md = buildNote([hw('UHW010')]).replace(
       '#### Results & Discussions\n- (Any results and discussions. Link file path if needed)',
@@ -131,6 +161,35 @@ describe('listWorksheetUnitOps', () => {
         },
         { text: '회복 배양 1시간', sub: [] },
       ],
+    });
+  });
+
+  // #418: `1.` lines in a code block were read as steps; #436: a ticked step printed an empty box.
+  it('keeps a code block with the step above it, a footnote under its step, and marks ticked steps', () => {
+    const md = buildNote([hw('UHW010')]).replace(
+      '#### Method\n- (method used in this step)',
+      ['#### Method', '- [x] 준비', '```bash', '1. echo a', '', '2. echo b', '```', '- [ ] 측정 [^1]', '[^1]: 장비 A'].join('\n')
+    );
+    expect(listWorksheetUnitOps(md)[0].sections.find(s => s.title === 'Method')).toEqual({
+      type: 'steps',
+      title: 'Method',
+      steps: [
+        { text: '준비', sub: [], done: true, code: [['1. echo a', '', '2. echo b']] },
+        { text: '측정 [^1]', sub: ['[^1]: 장비 A'] },
+      ],
+    });
+  });
+
+  // #417
+  it('reads a table without pipes at the ends of its rows', () => {
+    const md = buildNote([hw('UHW010')]).replace(
+      '#### Equipment\n- (e.g. centrifuge, spectrophotometer, etc.)',
+      '#### Equipment\n장비 | 설정\n--- | ---\n원심기 | 4 °C'
+    );
+    expect(listWorksheetUnitOps(md)[0].sections.find(s => s.title === 'Equipment')).toEqual({
+      type: 'text',
+      title: 'Equipment',
+      blocks: [{ kind: 'table', rows: [['장비', '설정'], ['원심기', '4 °C']] }],
     });
   });
 

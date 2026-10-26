@@ -291,6 +291,18 @@ describe('setup command and refresh together', () => {
     expect(result.pending).toEqual([]);
     expect(await fs.read(QUICKSTART_DOC_PATH)).toContain('New section');
   });
+
+  // #413: a renamed AGENTS.md came back as a bare one, the notice said "1 written".
+  it('names the files a re-run had to create, but not on the first setup', async () => {
+    const { fs, host, asHost } = makeHost();
+    await setupResearchAutomationCommand(asHost, '1.0.0');
+    expect(host.notify.mock.calls.map(c => String(c[1])).join('\n')).not.toContain('Created again');
+
+    await fs.remove('AGENTS.md');
+    host.notify.mockClear();
+    await setupResearchAutomationCommand(asHost, '1.0.0');
+    expect(host.notify).toHaveBeenCalledWith('info', expect.stringMatching(/Created again, as they were missing: AGENTS\.md\.$/));
+  });
 });
 
 // #127: the lab's own text in QUICKSTART.md survives updates.

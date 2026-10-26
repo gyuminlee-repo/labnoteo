@@ -251,3 +251,42 @@ describe('createUnitOpReorderFilter', () => {
     });
   });
 });
+
+// #406: with sorting off, a deleted block still takes its entry with it.
+describe('createUnitOpReorderFilter with sorting off', () => {
+  function offState(doc: string) {
+    return EditorState.create({
+      doc,
+      extensions: [history(), createUnitOpReorderFilter({ isEnabled: () => false, getFilePath: () => WORKFLOW_PATH })],
+    });
+  }
+  const tocOf = (s: EditorState): string[] => [...s.doc.toString().matchAll(/^- \[(UHW\d+) /gm)].map(m => m[1]);
+  const blockRange = (doc: string) => ({ from: doc.indexOf('### [UHW020 Beta]'), to: doc.indexOf('### [UHW030 Gamma]') });
+
+  it('drops the entry of a deleted block in the same undo step', () => {
+    const doc = buildNote();
+    let state = offState(doc).update({ changes: blockRange(doc), userEvent: 'delete.backward' }).state;
+    expect(tocOf(state)).toEqual(['UHW010', 'UHW030']);
+    undo({ state, dispatch: tr => (state = tr.state) });
+    expect(state.doc.toString()).toBe(doc);
+  });
+
+  it('keeps the entry of a cut block, which is usually pasted back', () => {
+    const doc = buildNote();
+    const state = offState(doc).update({ changes: blockRange(doc), userEvent: 'delete.cut' }).state;
+    expect(tocOf(state)).toEqual(['UHW010', 'UHW020', 'UHW030']);
+  });
+
+  it('keeps the entry while a heading is deleted character by character', () => {
+    const doc = buildNote();
+    const at = doc.indexOf('### [UHW020 Beta]') + '### [UHW020 Bet'.length;
+    const state = offState(doc).update({ changes: { from: at, to: at + 1 }, userEvent: 'delete.backward' }).state;
+    expect(tocOf(state)).toEqual(['UHW010', 'UHW020', 'UHW030']);
+  });
+
+  it('does not reorder the TOC after a drag', () => {
+    const doc = buildNote();
+    const state = offState(doc).update(dragGammaBeforeAlpha(doc)).state;
+    expect(tocOf(state)).toEqual(['UHW010', 'UHW020', 'UHW030']);
+  });
+});

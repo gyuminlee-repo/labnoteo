@@ -66,10 +66,21 @@ async function ensureFolder(app: App, folder: string): Promise<void> {
 }
 
 /** Write `bytes` as `folder/name` (renamed when taken) and return the file. */
-export async function saveBinary(app: App, folder: string, name: string, bytes: ArrayBuffer): Promise<TFile> {
+export async function saveBinary(
+  app: App,
+  folder: string,
+  name: string,
+  bytes: ArrayBuffer,
+  avoid?: ReadonlySet<string>
+): Promise<TFile> {
   const dir = normalizePath(folder);
   await ensureFolder(app, dir);
-  const finalName = freeName(name, candidate => app.vault.getAbstractFileByPath(posix.join(dir, candidate)) !== null);
+  // `avoid`: lower-case names still linked from a note though their file is gone.
+  const finalName = freeName(
+    name,
+    candidate =>
+      app.vault.getAbstractFileByPath(posix.join(dir, candidate)) !== null || !!avoid?.has(candidate.toLowerCase())
+  );
   return app.vault.createBinary(posix.join(dir, finalName), bytes);
 }
 
@@ -111,6 +122,16 @@ const UNMATCHED_NAME_RE = new RegExp(
     '(?:_q(\\d{1,3})-([A-Z]+\\d+|-)-(\\d{1,3})o(\\d{1,3})-(\\d{2})(\\d{2})(\\d{2})(?:-([0-9A-HJKMNP-TV-Z]{4}))?)?' +
     `(?:_(${UNMATCHED_REASONS.join('|')}))?_`
 );
+
+/**
+ * The source file name an unmatched page's `name` ends in, without the
+ * stamp, note ID, QR fields and reason {@link unmatchedFileName} put before
+ * it (#396); `name` itself when it is not such a name.
+ */
+export function sourceNameFromUnmatched(name: string): string {
+  const m = UNMATCHED_NAME_RE.exec(name);
+  return m && name.length > m[0].length ? name.slice(m[0].length) : name;
+}
 
 /** What {@link unmatchedFileName} kept in `name`; older names give the note ID only. */
 export function unmatchedInfoFromName(name: string): UnmatchedInfo {

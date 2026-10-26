@@ -13,7 +13,7 @@ import {
   type WorkflowItem,
   type UnitOperationItem,
 } from '../lib/workflowDataLoader';
-import { sampleTypeColors } from '../lib/sampleUtils';
+import { compareSamples, normalizeSampleSearch, sampleTypeColors } from '../lib/sampleUtils';
 import { EXPERIMENT_STATUSES } from '../lib/experimentStatus';
 import * as path from '../util/posixPath';
 
@@ -68,14 +68,18 @@ export interface ExperimentEntry {
   progress?: { done: number; total: number };
   /** The README's `project`: the larger project the experiment belongs to (#204). */
   project?: string;
-  /** The README's `author`: who runs the experiment (#365). */
-  author?: string;
+  /** The names in the README's `author`: who runs the experiment (#365), each on its own (#395). */
+  authors?: string[];
+  /** Names of the workflow notes in the folder, for search (#409): `001 WD010 Design` of `001_WD010_Design.labnote.md`. */
+  workflowNames?: string[];
   /** `@issue` markers in the experiment's notes (#337). */
   markers?: number;
   /** The folder of the experiment this one runs again, from the README's `retry_of` (#327). */
   retryOf?: string;
   /** The folders of the experiments that run this one again; see {@link linkRetries}. */
   retriedBy?: string[];
+  /** Why the README's front matter could not be read, when it could not (#427). */
+  frontMatterError?: string;
 }
 
 /** What {@link buildExperimentTree} groups experiments by (#204, #220). */
@@ -111,6 +115,10 @@ export interface ExperimentTreeLabels {
   author?: string;
   /** Group of experiments without an `author`. */
   noAuthor?: string;
+  /** Group, by status, of the experiments whose README front matter is broken (#427). */
+  unreadable?: string;
+  /** Tooltip line name for why the front matter could not be read. */
+  frontMatterError?: string;
 }
 
 /** `001` of `001_GFP`, or the whole name when it has no number. */
@@ -176,8 +184,9 @@ export function buildExperimentTree(
   if (groupBy === 'project' || groupBy === 'author') {
     const byKey = new Map<string, ExperimentEntry[]>();
     for (const e of experiments) {
-      const key = e[groupBy]?.trim() ?? '';
-      byKey.set(key, [...(byKey.get(key) ?? []), e]);
+      // An experiment of several people is in each one's group (#395).
+      const keys = groupBy === 'project' ? [e.project?.trim() ?? ''] : authorsOf(e);
+      for (const key of keys.length > 0 ? keys : ['']) byKey.set(key, [...(byKey.get(key) ?? []), e]);
     }
     const keys = [...byKey.keys()].filter(Boolean).sort((a, b) => a.localeCompare(b));
     if (byKey.has('')) keys.push('');
@@ -220,39 +229,58 @@ export function buildExperimentTree(
   }
 
   const groups = new Map<string, ExperimentEntry[]>();
+  // Its status is not known at all, which "(none)" would hide (#427).
+  const unreadable = experiments.filter(e => e.frontMatterError);
   for (const e of experiments) {
+    if (e.frontMatterError) continue;
     const status = e.status?.trim() ?? '';
     groups.set(status, [...(groups.get(status) ?? []), e]);
   }
   const known = EXPERIMENT_STATUSES as readonly string[];
   const unknown = [...groups.keys()].filter(s => s && !known.includes(s)).sort((a, b) => a.localeCompare(b));
   const order = [...known, ...unknown, ''].filter(s => groups.has(s));
+  const unreadableGroup: TreeNode[] =
+    unreadable.length > 0
+      ? [
+          {
+            id: 'experimentStatus:unreadable',
+            label: `${labels.unreadable ?? '(front matter unreadable)'} [${unreadable.length}]`,
+            kind: 'experimentStatus',
+            icon: 'warning',
+            payload: {},
+            children: sortByFolder(unreadable).map(e => experimentNode(e, labels)),
+          },
+        ]
+      : [];
 
-  return {
-    ...root,
-    children: order.map(status => {
-      const members = sortByFolder(groups.get(status)!);
-      const invalid = status !== '' && !known.includes(status);
-      return {
-        id: `experimentStatus:${status}`,
-        label: invalid
-          ? `${status} [${members.length}] ${labels.invalidStatus ?? '(not an allowed status)'}`
-          : `${status || noStatus} [${members.length}]`,
-        kind: 'experimentStatus' as const,
-        icon: invalid ? 'warning' : 'folder',
-        ...(invalid
-          ? {
-              tooltip: (labels.invalidStatusTooltip ?? 'Allowed statuses: {0}').replace(
-                '{0}',
-                EXPERIMENT_STATUSES.join(', ')
-              ),
-            }
-          : {}),
-        payload: { status: status || undefined },
-        children: members.map(e => experimentNode(e, labels)),
-      };
-    }),
-  };
+  const statusGroups: TreeNode[] = order.map(status => {
+    const members = sortByFolder(groups.get(status)!);
+    const invalid = status !== '' && !known.includes(status);
+    return {
+      id: `experimentStatus:${status}`,
+      label: invalid
+        ? `${status} [${members.length}] ${labels.invalidStatus ?? '(not an allowed status)'}`
+        : `${status || noStatus} [${members.length}]`,
+      kind: 'experimentStatus' as const,
+      icon: invalid ? 'warning' : 'folder',
+      ...(invalid
+        ? {
+            tooltip: (labels.invalidStatusTooltip ?? 'Allowed statuses: {0}').replace(
+              '{0}',
+              EXPERIMENT_STATUSES.join(', ')
+            ),
+          }
+        : {}),
+      payload: { status: status || undefined },
+      children: members.map(e => experimentNode(e, labels)),
+    };
+  });
+  return { ...root, children: [...statusGroups, ...unreadableGroup] };
+}
+
+/** An experiment's authors, trimmed, blank ones left out and each once. */
+function authorsOf(e: ExperimentEntry): string[] {
+  return [...new Set((e.authors ?? []).map(a => a.trim()).filter(Boolean))];
 }
 
 function sortByFolder(entries: ExperimentEntry[]): ExperimentEntry[] {
@@ -265,7 +293,7 @@ function experimentNode(e: ExperimentEntry, labels: ExperimentTreeLabels): TreeN
   const noStatus = labels.noStatus ?? '(none)';
   const status = e.status?.trim() ?? '';
   const project = e.project?.trim();
-  const author = e.author?.trim();
+  const author = authorsOf(e).join(', ');
   const name = path.basename(e.folder);
   const title = e.title?.trim();
   const named = title && title !== name ? `${experimentNumber(name)} · ${title}` : name;
@@ -273,7 +301,9 @@ function experimentNode(e: ExperimentEntry, labels: ExperimentTreeLabels): TreeN
   const tooltip = [
     ...(title && title !== name ? [title] : []),
     e.folder,
-    `${labels.status ?? 'Status'}: ${status || noStatus}`,
+    ...(e.frontMatterError
+      ? [`${labels.frontMatterError ?? 'README front matter could not be read'}: ${e.frontMatterError.split('\n')[0]}`]
+      : [`${labels.status ?? 'Status'}: ${status || noStatus}`]),
     ...(project ? [`${labels.project ?? 'Project'}: ${project}`] : []),
     ...(author ? [`${labels.author ?? 'Author'}: ${author}`] : []),
     ...(e.progress && e.progress.total > 0
@@ -289,15 +319,16 @@ function experimentNode(e: ExperimentEntry, labels: ExperimentTreeLabels): TreeN
     id: `experiment:${e.folder}`,
     label: `${named}${progress}`,
     kind: 'experiment',
-    icon: hasDiscussion(e) ? 'comment-discussion' : 'file',
+    icon: e.frontMatterError ? 'warning' : hasDiscussion(e) ? 'comment-discussion' : 'file',
     tooltip,
     payload: { folder: e.folder, readmePath: path.join(e.folder, 'README.labnote.md'), status: status || undefined },
   };
 }
 
 /**
- * The experiments whose folder name, title, project, author or status
- * contains every word of `query`, ignoring case (#204, #365). A blank query returns the input.
+ * The experiments whose folder name, title, project, author, status or one of
+ * its workflow note names (#409) contains every word of `query`, ignoring case
+ * (#204, #365). A blank query returns the input.
  * One with something to discuss also matches `discuss` and the words of
  * `discussLabel`, e.g. the UI's group name (#220, #337); a status also
  * matches its name in `statusWords`, e.g. 검토 필요 for `needs-review`
@@ -318,7 +349,8 @@ export function filterExperiments(
       path.basename(e.folder),
       e.title ?? '',
       e.project ?? '',
-      e.author ?? '',
+      ...authorsOf(e),
+      ...(e.workflowNames ?? []),
       status,
       ...(Object.prototype.hasOwnProperty.call(statusWords, status) ? [statusWords[status]] : []),
       ...(hasDiscussion(e) ? ['discuss', discussLabel ?? ''] : []),
@@ -477,7 +509,9 @@ async function buildScopeNode(
   const typeNodes: TreeNode[] = [];
   for (const type of types) {
     const records = skipRead ? {} : await loadSamplesByType(fs, folder, type);
-    const ids = Object.keys(records);
+    const ids = Object.keys(records).sort((a, b) =>
+      compareSamples({ id: a, alias: records[a].alias }, { id: b, alias: records[b].alias })
+    );
     const sampleNodes: TreeNode[] = ids.map(id => {
       const rec = records[id];
       const name = rec.alias ? `${id} | ${rec.alias}` : id;
@@ -546,19 +580,14 @@ export async function buildSampleTree(
   ];
 }
 
-/** True when a `sample` node matches a lower-cased free-text query. */
-function sampleMatchesQuery(node: TreeNode, lowerQuery: string): boolean {
+/** True when a `sample` node matches a query made by {@link normalizeSampleSearch}. */
+function sampleMatchesQuery(node: TreeNode, query: string): boolean {
   const payload = node.payload as { id?: string; record?: SampleRecord } | undefined;
   const rec = payload?.record;
-  const haystack = [
-    payload?.id ?? '',
-    rec?.alias ?? '',
-    rec?.descriptions?.[0] ?? '',
-    rec?.location ?? '',
-  ]
+  return [payload?.id ?? '', rec?.alias ?? '', rec?.descriptions?.[0] ?? '', rec?.location ?? '']
+    .map(normalizeSampleSearch)
     .join('\u0000')
-    .toLowerCase();
-  return haystack.includes(lowerQuery);
+    .includes(query);
 }
 
 /**
@@ -570,8 +599,8 @@ function sampleMatchesQuery(node: TreeNode, lowerQuery: string): boolean {
  * input unchanged (reference-equal), so callers can skip re-rendering work.
  */
 export function filterSampleTree(nodes: TreeNode[], query: string): TreeNode[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return nodes;
+  if (!query.trim()) return nodes;
+  const q = normalizeSampleSearch(query.trim());
   return nodes.map(root => {
     const typeNodes = (root.children ?? []).flatMap(typeNode => {
       const matches = (typeNode.children ?? []).filter(

@@ -43,4 +43,30 @@ describe('rankPickItems', () => {
     expect(rankPickItems(ITEMS, '  ').map(i => i.value)).toEqual(['UHW060', 'UHW130', 'UHW180', 'UHW190']);
     expect(rankPickItems(ITEMS, '원심')).toEqual([]);
   });
+
+  // #401: spaces left out, or words in another order, found nothing.
+  it('finds a query typed without spaces or with its words reordered, last', () => {
+    const items = [
+      op('UHW100', 'Enzyme Activity Assay', '효소 활성 측정', ''),
+      op('UHW200', 'Primer Design', '프라이머 설계', ''),
+      op('USW300', 'Data Analysis', '데이터 분석', ''),
+      op('UHW400', 'The Access Check', '접근 확인', ''),
+    ];
+    const found = (q: string) => rankPickItems(items, q).map(i => i.value);
+    expect(found('효소활성')).toEqual(['UHW100']);
+    expect(found('프라이머설계')).toEqual(['UHW200']);
+    expect(found('데이터분석')).toEqual(['USW300']);
+    expect(found('primerdesign')).toEqual(['UHW200']);
+    expect(found('activity enzyme')).toEqual(['UHW100']);
+    expect(found('측정 효소')).toEqual(['UHW100']);
+    expect(found('eac')).toEqual([]);
+  });
+
+  it('keeps those matches after the ones found as typed', () => {
+    const items = [
+      op('UHW100', 'Enzyme Activity Assay', '효소 활성 측정', ''),
+      op('UHW110', 'Enzymeactivity Prep', '효소활성 준비', ''),
+    ];
+    expect(rankPickItems(items, '효소활성').map(i => i.value)).toEqual(['UHW110', 'UHW100']);
+  });
 });

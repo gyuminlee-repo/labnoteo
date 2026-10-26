@@ -63,6 +63,7 @@ import {
   changeExperimentStatusCommand,
   insertIssueMarkerCommand,
   insertDateCommand,
+  focusOnNoteHeader,
   issueAutomationState,
   toggleDiscussionFlagCommand,
   createWorkflowCommand,
@@ -81,6 +82,7 @@ import {
   catalogDescription,
   experimentTitleHint,
   workflowAliasHint,
+  workflowAliasValidator,
   workflowConcept,
   rebuildExperimentReadmeFile,
   unlinkableWorkflowNotice,
@@ -100,9 +102,11 @@ import {
   getNextLabnoteNumber,
   isSampleTrackingOn,
   nextExperimentId,
+  renamedExperimentCopyOrigin,
   resetCopiedExperimentReadme,
   retryOfLink,
   retryOfLinkpath,
+  sampleLedgerLosing,
   sanitizeTitle,
   setExperimentReadmeId,
   setRetryOf,
@@ -117,6 +121,7 @@ import {
   insertSampleReference,
   listSampleDefinitions,
   insertExperimentSamplesTable,
+  sampleListHeaders,
 } from './sampleActions';
 import {
   offerSamplesAfterMove,
@@ -132,7 +137,7 @@ import {
 import { createMetaDatePickerExtension } from './dateFieldPicker';
 import { createUnitOpReorderFilter } from './unitOpReorderFilter';
 import { LastUpdatedTracker } from './lastUpdatedTracker';
-import { IssueMarkerIndex } from './issueMarkerIndex';
+import { IssueMarkerIndex, markerExperimentDir } from './issueMarkerIndex';
 import { SampleIdIndex } from './sampleIdIndex';
 import { isLabNotePath, stampNoteAndReadme, writeNoteStamped } from './lastUpdatedStamp';
 import { createOutlineDropTidy, type OutlineDropSnapshot } from './outlineDropTidy';
@@ -149,6 +154,7 @@ import { catalogUpdateNotice, updateCatalogsCommand } from './catalogUpdate';
 import { LabnoteSettingTab } from './settingsTab';
 import { SETUP_DOC_PATH } from './scaffold/assets';
 import { refreshAutomationFiles } from './scaffold/scaffold';
+import { readInstallRecord } from './scaffold/installRecord';
 import {
   draftMethodCommand,
   summarizeResultsCommand,
@@ -161,9 +167,22 @@ import { LabnoteMcpServer } from './llm/mcpServer';
 import { CURRENT_SCHEMA_VERSION, migrateSettings, type LabnoteSettings } from './settings';
 import { BarcodeFeature } from './barcode/barcodeFeature';
 import { PartbankFeature } from './partbank/partbankFeature';
-import { refreshLocationsIn } from './partbank/partbankLocation';
+import { refreshLocationsIn, vaultSampleFolders } from './partbank/partbankLocation';
 import { downloadPartbankCatalog } from './partbank/partbankCatalog';
 import { handleImportUri, IMPORT_ACTION } from './partbank/partbankUri';
+
+/** Vault-root names of the installed automation that agents and wiki-sync find only by name (#413). */
+const AUTOMATION_ROOT_NAMES = ['AGENTS.md', 'CLAUDE.md', 'wiki-staging'];
+
+/** The front matter of a copied experiment's README that making it a new experiment reads or resets. */
+interface CopiedReadme {
+  title?: string;
+  discussed: boolean;
+  status?: string;
+  id?: string;
+  retryOf?: string;
+  created?: string;
+}
 
 export default class LabnotePlugin extends Plugin {
   // `Plugin` already declares `settings?: unknown`; re-type it concretely.
@@ -244,6 +263,7 @@ export default class LabnotePlugin extends Plugin {
       this.run(() => handleImportUri(this, params as Record<string, string>));
     });
     this.registerCommands();
+    this.registerFocusTracking();
     this.barcode = new BarcodeFeature(this, key => this.paletteName(key));
     this.barcode.register();
     this.registerSampleFeatures();
@@ -376,10 +396,30 @@ export default class LabnotePlugin extends Plugin {
     if (checking) return true;
     if (reading || !editor) {
       this.host.notify('info', this.t('Switch to the editing view and put the cursor where the date goes, then run this again.'));
+    } else if (!editor.hasFocus() && focusOnNoteHeader(this.focusBeforeModal())) {
+      this.host.notify(
+        'info',
+        this.t('A date cannot be typed into a property or the title from here. Click in the note body, then run this again.')
+      );
     } else {
       insertDateCommand(editor, this.host, now());
     }
     return true;
+  }
+
+  /** What had focus before the command palette or another dialog took it (#405). */
+  private lastFocus: Element | null = null;
+
+  private focusBeforeModal(): Element | null {
+    const now = activeDocument.activeElement;
+    return now && now !== activeDocument.body && !now.closest('.modal-container') ? now : this.lastFocus;
+  }
+
+  private registerFocusTracking(): void {
+    this.registerDomEvent(document, 'focusin', evt => {
+      const el = evt.target;
+      if (el instanceof Element && !el.closest('.modal-container')) this.lastFocus = el;
+    });
   }
 
   private paletteName(key: string): string {
@@ -415,9 +455,10 @@ export default class LabnotePlugin extends Plugin {
     this.addCommand({
       id: 'insert-issue-marker',
       name: this.paletteName('Insert issue marker'),
-      editorCallback: editor =>
+      editorCallback: (editor, ctx) =>
         this.run(async () => {
-          if (!(await insertIssueMarkerCommand(editor, this.host)) || this.issueAutomationHintShown) return;
+          const inserted = await insertIssueMarkerCommand(editor, this.host, ctx.file?.path ?? '');
+          if (!inserted || this.issueAutomationHintShown) return;
           const state = await issueAutomationState(this.host);
           if (state === 'ready') return;
           this.issueAutomationHintShown = true;
@@ -520,9 +561,7 @@ export default class LabnotePlugin extends Plugin {
       checkCallback: checking => {
         if (!this.partbank.configured) return false;
         if (!checking) {
-          this.run(() =>
-            refreshLocationsIn(this, [this.localSampleFolder(), this.settings.globalSampleFolder])
-          );
+          this.run(async () => refreshLocationsIn(this, await vaultSampleFolders(this)));
         }
         return true;
       },
@@ -673,7 +712,7 @@ export default class LabnotePlugin extends Plugin {
   }
 
   private sampleRelocationDeps(): SampleRelocationDeps {
-    return { app: this.app, host: this.host, ...this.sampleCleanupOpts() };
+    return { app: this.app, host: this.host, ...this.sampleCleanupOpts(), sampleListHeaders: sampleListHeaders(this) };
   }
 
   /** Right-click in a lab-note editor → create a workflow + insert a link at the cursor. */
@@ -758,7 +797,13 @@ export default class LabnotePlugin extends Plugin {
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
     const path = view?.file?.path ?? this.app.workspace.getActiveFile()?.path;
     if (!this.sampleTrackingFor(path)) {
-      new Notice(this.t('Sample tracking is off for this note.'));
+      // Name the cause: the setting, or this experiment's README (#407).
+      const where = [this.t('Settings'), 'Labnote Assistant', this.t('Samples'), this.t('Sample tracking')].join(' → ');
+      new Notice(
+        this.settings.sampleTracking
+          ? this.t("Sample tracking is off for this experiment: its README sets sample_tracking: 'no'.")
+          : this.t('Sample tracking is turned off in {0}.', where)
+      );
       return;
     }
     const types = getSampleDisplayMeta(this.settings.customSampleTypes).types;
@@ -778,7 +823,7 @@ export default class LabnotePlugin extends Plugin {
     }
     const chosen = await pickModal(this.app, items, {
       title: this.t('Open sample definition'),
-      placeholder: this.t('Search by ID or alias'),
+      placeholder: this.t('Search by ID, alias or location'),
     });
     if (!chosen) return;
     await openSampleDefinition(this.app, this, { ...chosen, docPath: path ?? '' });
@@ -866,12 +911,18 @@ export default class LabnotePlugin extends Plugin {
         }
         if (!(file instanceof TFile)) return;
         const newPath = file.path;
+        if (AUTOMATION_ROOT_NAMES.includes(oldPath)) this.run(() => this.offerAutomationNameBack(file, oldPath));
         const readmeOf = experimentLosingReadme(oldPath, newPath);
         // Not when the experiment folder itself was renamed: the README went
         // along with it and the folder listener handles the name (#67, #166,
         // #259). Then the old folder is no longer there.
         if (readmeOf && this.app.vault.getAbstractFileByPath(readmeOf) instanceof TFolder) {
           this.run(() => this.offerExperimentReadmeBack(file, readmeOf, oldPath));
+        }
+        const ledger = this.sampleLedgerLosing(oldPath, newPath);
+        // Not when its folder was renamed: the registry went along (#430).
+        if (ledger && this.app.vault.getAbstractFileByPath(ledger.folder) instanceof TFolder) {
+          this.run(() => this.offerSampleLedgerBack(file, ledger.type, oldPath));
         }
         this.renameLocalSampleSources(oldPath, newPath);
         // Ahead of the copy branch, which returns early: a copy moved to
@@ -944,6 +995,8 @@ export default class LabnotePlugin extends Plugin {
           const readmeDir = getExperimentDir(file.path);
           if (readmeDir === posix.dirname(file.path)) this.run(() => this.offerReadmeRebuild(readmeDir));
         }
+        const ledger = this.sampleLedgerLosing(file.path);
+        if (ledger) this.run(() => this.noticeSampleLedgerDeleted(file.path, ledger.folder, ledger.type));
         // A stray note's README entry and sample sources still use its original name.
         const origin = this.strayWorkflows.get(file.path);
         this.strayWorkflows.delete(file.path);
@@ -1014,8 +1067,30 @@ export default class LabnotePlugin extends Plugin {
 
     const before = diagnoseExperimentPath(oldPath, { isFolder: true });
     const after = diagnoseExperimentPath(newPath, { isFolder: true });
+    // Ahead of the check below, which only lets experiment folders through.
+    if (AUTOMATION_ROOT_NAMES.includes(oldPath)) this.run(() => this.offerAutomationNameBack(folder, oldPath));
+    // `001_GFP 1` → `005_X` is renamed by hand, not by Make a copy (#393).
+    const copyOrigin = this.copiedExperiments.has(oldPath) ? undefined : renamedExperimentCopyOrigin(oldPath, newPath);
+    if (
+      copyOrigin &&
+      after.kind === 'ok' &&
+      after.folder === newPath &&
+      this.app.vault.getAbstractFileByPath(posix.join(posix.dirname(newPath), copyOrigin)) instanceof TFolder
+    ) {
+      this.run(() => this.offerRenamedCopyFix(folder, copyOrigin));
+    }
     if (before.kind !== 'ok' || before.folder !== oldPath) return;
     if (after.kind === 'nested' && after.folder === newPath) {
+      this.run(() => this.offerExperimentFolderMoveBack(folder, posix.dirname(oldPath)));
+      return;
+    }
+    // Moved out of labnote/ altogether (#424). Not when labnote/ itself was
+    // renamed: then its old path is gone and every experiment went along.
+    if (
+      after.kind === 'outside' &&
+      folder.children.some(c => c instanceof TFile && c.name === 'README.labnote.md') &&
+      this.app.vault.getAbstractFileByPath(posix.dirname(oldPath)) instanceof TFolder
+    ) {
       this.run(() => this.offerExperimentFolderMoveBack(folder, posix.dirname(oldPath)));
       return;
     }
@@ -1072,6 +1147,109 @@ export default class LabnotePlugin extends Plugin {
     });
     if (!ok || file.path !== movedPath || !free()) return;
     await this.app.fileManager.renameFile(file, oldPath);
+  }
+
+  /**
+   * `AGENTS.md`, `CLAUDE.md` or `wiki-staging/` of an installed automation was
+   * renamed (#413): agents and wiki-sync look for them only by that name, and
+   * "Setup research automation" would make an empty one. Offer the name back.
+   */
+  private async offerAutomationNameBack(file: TFile | TFolder, oldPath: string): Promise<void> {
+    const movedPath = file.path;
+    if ((await readInstallRecord(this.host)).pluginVersion === '') return;
+    const warning = this.t(
+      '{0} was renamed to {1}, but AI agents and the research automation look for it only as {0} at the vault root.',
+      oldPath,
+      movedPath
+    );
+    const settled = await this.waitForNoModal();
+    if (this.unloaded || file.path !== movedPath) return;
+    if (!settled || this.app.vault.getAbstractFileByPath(oldPath)) {
+      this.host.notify('warn', warning);
+      return;
+    }
+    const ok = await this.host.confirm(`${warning} ${this.t('Rename it back to "{0}"?', oldPath)}`, {
+      confirmLabel: this.t('Rename back'),
+    });
+    if (!ok || file.path !== movedPath || this.app.vault.getAbstractFileByPath(oldPath)) return;
+    await this.app.fileManager.renameFile(file, oldPath);
+  }
+
+  /**
+   * The sample registry `{Type}.json` of a tracked Local or Global registry,
+   * if `oldPath` is one and it no longer goes by that name (#430).
+   */
+  private sampleLedgerLosing(oldPath: string, newPath?: string): { folder: string; type: string } | undefined {
+    const types = getSampleDisplayMeta(this.settings.customSampleTypes).types;
+    const ledger = sampleLedgerLosing(oldPath, newPath, types, this.settings.globalSampleFolder);
+    return ledger && this.sampleTrackingFor(oldPath) ? ledger : undefined;
+  }
+
+  /**
+   * A sample registry `{Type}.json` was renamed or moved away (#430): its
+   * samples read as unregistered, and the next one added starts a new, empty
+   * registry under the old name. Offer the name back.
+   */
+  private async offerSampleLedgerBack(file: TFile, type: string, oldPath: string): Promise<void> {
+    const movedPath = file.path;
+    let count = 0;
+    try {
+      const parsed: unknown = JSON.parse(await this.app.vault.read(file));
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) count = Object.keys(parsed).length;
+    } catch {
+      // An unreadable registry still loses its name.
+    }
+    const parts = [
+      this.t(
+        '{0} was renamed to {1}: its {2} {3} sample(s) will show as unregistered, and the next {3} sample added starts a new, empty {0}.',
+        oldPath,
+        movedPath,
+        String(count),
+        type
+      ),
+    ];
+    if (
+      isCatalogSampleType(type) &&
+      posix.dirname(movedPath) === posix.dirname(oldPath) &&
+      file.name.startsWith(`${type}_`)
+    ) {
+      parts.push(this.t('Under this name it is read as a read-only product catalog.'));
+    }
+    const warning = parts.join(' ');
+    const settled = await this.waitForNoModal();
+    if (this.unloaded || file.path !== movedPath) return;
+    if (!settled || this.app.vault.getAbstractFileByPath(oldPath)) {
+      this.host.notify('warn', warning);
+      return;
+    }
+    const ok = await this.host.confirm(`${warning} ${this.t('Rename it back to "{0}"?', oldPath)}`, {
+      confirmLabel: this.t('Rename back'),
+    });
+    if (!ok || file.path !== movedPath || this.app.vault.getAbstractFileByPath(oldPath)) return;
+    await this.app.fileManager.renameFile(file, oldPath);
+    this.sampleSuggest?.clearCache();
+    this.refreshSampleViews();
+  }
+
+  /**
+   * A sample registry `{Type}.json` was deleted (#430): its samples read as
+   * unregistered, and the next one added starts a new, empty registry. Not
+   * when its whole folder went.
+   */
+  private async noticeSampleLedgerDeleted(filePath: string, folder: string, type: string): Promise<void> {
+    // A deleted folder reports its files first; give it a moment to go too.
+    await new Promise(resolve => window.setTimeout(resolve, 500));
+    if (this.unloaded) return;
+    if (!(this.app.vault.getAbstractFileByPath(folder) instanceof TFolder)) return;
+    if (this.app.vault.getAbstractFileByPath(filePath)) return;
+    this.host.notify(
+      'warn',
+      this.t(
+        'The sample registry {0} was deleted: its {1} samples now show as unregistered, and the next {1} sample added starts a new, empty registry. Restore it from the trash (Obsidian\'s .trash folder or the system trash) before adding samples.',
+        filePath,
+        type
+      )
+    );
   }
 
   /**
@@ -1530,7 +1708,7 @@ export default class LabnotePlugin extends Plugin {
       this.host.notify(
         'warn',
         this.t(
-          '"{0}" is a copy of the experiment {1} with its number, title and discussion flag, so the workflow view lists the two alike. Rename the folder to a new number and change its README title to tell them apart.',
+          '"{0}" is a copy of the experiment {1} with its number, title, status, created date and discussion flag, so the workflow view lists the two alike. Rename the folder to a new number and you will be asked again to make it a new experiment.',
           folder.name,
           origin
         )
@@ -1566,22 +1744,8 @@ export default class LabnotePlugin extends Plugin {
       warn();
       return;
     }
-    let title: unknown;
-    let discussed = false;
-    let status: string | undefined;
-    let id: string | undefined;
-    let retryOf: string | undefined;
-    try {
-      const { frontMatter } = parseFrontMatterYaml((await this.app.vault.read(readme)).replace(/\r\n/g, '\n'));
-      title = frontMatter.title;
-      discussed = isDiscussFlagged(frontMatter);
-      if (typeof frontMatter.status === 'string') status = frontMatter.status.trim();
-      const linkpath = retryOfLinkpath(frontMatter.retry_of);
-      if (linkpath) retryOf = posix.dirname(linkpath);
-      if (typeof frontMatter.id === 'string' || typeof frontMatter.id === 'number') id = String(frontMatter.id).trim() || undefined;
-    } catch {
-      title = undefined;
-    }
+    const facts = await this.readCopiedReadme(readme);
+    const { id } = facts;
     // Like the note IDs above, before any prompt: a copy keeping the
     // original's `id` fails the automation's validate as a duplicate (#353).
     if (id) {
@@ -1604,6 +1768,77 @@ export default class LabnotePlugin extends Plugin {
       warn();
       return;
     }
+    await this.makeCopyNewExperiment(folder, origin, readme, facts, warn);
+  }
+
+  /** What a copied experiment's README holds that making it a new experiment changes. */
+  private async readCopiedReadme(readme: TFile): Promise<CopiedReadme> {
+    const facts: CopiedReadme = { discussed: false };
+    try {
+      const { frontMatter } = parseFrontMatterYaml((await this.app.vault.read(readme)).replace(/\r\n/g, '\n'));
+      if (typeof frontMatter.title === 'string') facts.title = frontMatter.title;
+      facts.discussed = isDiscussFlagged(frontMatter);
+      if (typeof frontMatter.status === 'string') facts.status = frontMatter.status.trim();
+      const linkpath = retryOfLinkpath(frontMatter.retry_of);
+      if (linkpath) facts.retryOf = posix.dirname(linkpath);
+      if (typeof frontMatter.id === 'string' || typeof frontMatter.id === 'number') {
+        facts.id = String(frontMatter.id).trim() || undefined;
+      }
+      if (frontMatter.created_date !== undefined) facts.created = String(frontMatter.created_date);
+    } catch {
+      // Unreadable front matter: ask with an empty title.
+    }
+    return facts;
+  }
+
+  /**
+   * A copied experiment folder renamed by hand to a new name (#393): the
+   * title prompt was cancelled or the app closed under it, so the copy still
+   * has the original's status and created date. Ask again.
+   */
+  private async offerRenamedCopyFix(folder: TFolder, origin: string): Promise<void> {
+    const renamedPath = folder.path;
+    const settled = await this.waitForNoModal();
+    if (this.unloaded || folder.path !== renamedPath) return;
+    const readme = this.app.vault.getAbstractFileByPath(posix.join(renamedPath, 'README.labnote.md'));
+    const original = this.app.vault.getAbstractFileByPath(posix.join(posix.dirname(renamedPath), origin, 'README.labnote.md'));
+    if (!(readme instanceof TFile) || !(original instanceof TFile)) return;
+    const facts = await this.readCopiedReadme(readme);
+    const originalCreated = this.app.metadataCache.getFileCache(original)?.frontmatter?.created_date;
+    if (!settled || facts.created === undefined || facts.created !== String(originalCreated)) {
+      await this.relinkCopiedChecklist(renamedPath);
+      return;
+    }
+    const warn = (): void =>
+      this.host.notify(
+        'warn',
+        this.t(
+          '"{0}" still has the status and created date of the experiment {1} it copies. Change them in its README.',
+          folder.name,
+          origin
+        )
+      );
+    const number = /^(\d{3})_/.exec(folder.name)?.[1];
+    const named = folder.name.replace(/^\d{3}_/, '').replace(/_/g, ' ').trim();
+    await this.makeCopyNewExperiment(folder, origin, readme, { ...facts, title: named || facts.title }, warn, number);
+  }
+
+  /**
+   * Ask the copy's title, then make it a new experiment: titled, dated today,
+   * planned, without the discussion flag, renamed to `number` (if no sibling
+   * has it) or the next number. Cancelling calls `warn`.
+   */
+  private async makeCopyNewExperiment(
+    folder: TFolder,
+    origin: string,
+    readme: TFile,
+    facts: CopiedReadme,
+    warn: () => void,
+    number?: string
+  ): Promise<void> {
+    const copyPath = folder.path;
+    const labnoteDir = posix.dirname(copyPath);
+    const { title, discussed, status, retryOf } = facts;
     const newTitle = (
       await this.host.prompt({
         title: this.t('Name this copy of the experiment'),
@@ -1612,7 +1847,7 @@ export default class LabnotePlugin extends Plugin {
           folder.name,
           origin
         ),
-        value: typeof title === 'string' ? title : '',
+        value: title ?? '',
         validate: v => {
           if (!v.trim()) return this.t('Title is required.');
           if (!sanitizeTitle(v.trim())) {
@@ -1625,8 +1860,10 @@ export default class LabnotePlugin extends Plugin {
     )?.trim();
     if (this.unloaded || folder.path !== copyPath) return;
     const siblings = (await this.fs.list(labnoteDir)).filter(n => n !== folder.name);
-    const target = newTitle ? posix.join(labnoteDir, experimentFolderName(getNextLabnoteNumber(siblings), newTitle)) : '';
-    if (!newTitle || this.app.vault.getAbstractFileByPath(target)) {
+    const free = number && !siblings.some(n => n.startsWith(`${number}_`)) ? number : getNextLabnoteNumber(siblings);
+    const target = newTitle ? posix.join(labnoteDir, experimentFolderName(free, newTitle)) : '';
+    const existing = target ? this.app.vault.getAbstractFileByPath(target) : null;
+    if (!newTitle || (existing && existing !== folder)) {
       warn();
       await this.relinkCopiedChecklist(copyPath);
       return;
@@ -1650,7 +1887,7 @@ export default class LabnotePlugin extends Plugin {
       const reset = resetCopiedExperimentReadme(data, newTitle, getSeoulDateString());
       return markRetry ? setRetryOf(reset, retryOfLink(retryTarget)) : reset;
     });
-    await this.app.fileManager.renameFile(folder, target);
+    if (target !== folder.path) await this.app.fileManager.renameFile(folder, target);
     const done = [
       this.t('Made the copy the experiment {0}, created today.', posix.basename(target)),
       ...(status && status !== 'planned' ? [this.t('Its status went from {0} back to planned.', status)] : []),
@@ -1720,7 +1957,7 @@ export default class LabnotePlugin extends Plugin {
     if (current !== undefined && current !== null && current !== '' && current !== '/') return;
     const ok = await this.host.confirm(
       this.t(
-        'With the current setting, a pasted image is saved at the top of the vault. Save them in an images folder next to the note instead (for a lab note, the experiment\'s images folder)? This changes Settings → Files and links → Default location for new attachments to "./images".'
+        'With the current setting, a pasted image is saved at the top of the vault. Save them in an images folder next to the note instead (for a lab note, the experiment\'s images folder)? This sets Settings → Files and links → "Default location for new attachments" to "In subfolder under current folder", with "Subfolder name" images.'
       ),
       { confirmLabel: this.t('Use ./images') }
     );
@@ -1811,6 +2048,7 @@ export default class LabnotePlugin extends Plugin {
       about: workflowConcept(this.host),
       description,
       hint: workflowAliasHint(this.host, heading.id, heading.name, await this.fs.list(posix.dirname(copyPath))),
+      validate: workflowAliasValidator(this.host, originalAlias),
     });
     if (alias === undefined || this.unloaded) return;
     if (!this.copiedWorkflows.has(copyPath) || file.path !== copyPath) return;
@@ -2440,9 +2678,10 @@ export default class LabnotePlugin extends Plugin {
           }
         : base;
       const others = markers.othersFor(path);
-      return others
+      const withMarkers = others
         ? { ...samples, otherMarkerIds: others.ids, markerVersion: others.version, duplicateTitle }
         : samples;
+      return path !== undefined && !markerExperimentDir(path) ? { ...withMarkers, markersUnread: true } : withMarkers;
     };
     this.registerIssueMarkerIndex(markers);
     // Sample JSON written by the plugin arrives through `refreshSampleViews`;
@@ -2537,7 +2776,8 @@ export default class LabnotePlugin extends Plugin {
         file.path,
         content,
         this.settings.globalSampleFolder,
-        this.settings.customSampleTypes
+        this.settings.customSampleTypes,
+        sampleListHeaders(this)
       );
       // Freshly-written definitions should show up in autocomplete right away.
       this.sampleSuggest?.clearCache();
@@ -2600,6 +2840,19 @@ export default class LabnotePlugin extends Plugin {
       const types = getSampleDisplayMeta(this.settings.customSampleTypes).types;
       const left = await inventorySampleFolder(this.fs, from, types);
       if (left.records === 0 && left.catalogs.length === 0) return;
+      // An experiment's own registry, set as Global by mistake, stays put (#408).
+      const experiment = getExperimentDir(from);
+      if (experiment) {
+        new Notice(
+          this.t(
+            'The old folder {0} is the Local registry of the experiment {1}, so its samples were not moved. To use one of them everywhere, move it with "Move to Global" in the sample view.',
+            from,
+            experiment
+          ),
+          10000
+        );
+        return;
+      }
       const message = [
         this.t(
           'The old Global sample folder {0} still has {1} sample(s). Move them to the new folder {2}?',

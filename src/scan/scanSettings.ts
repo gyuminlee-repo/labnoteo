@@ -9,7 +9,7 @@ import {
 } from '../settings';
 import { commitOnChange, type SettingSection } from '../settingRows';
 import { isInsideFolder, type ScanFolderMode } from './scanFolderWatcher';
-import type { SlackMode } from './slack';
+import { describeSlackError, slackChannelId, type SlackMode } from './slack';
 
 /** What the settings tab lends the sections it draws. */
 export interface SettingsContext {
@@ -253,7 +253,9 @@ function slackSettingSection(plugin: LabnotePlugin, ctx: SettingsContext): Setti
               ? t('Linked. Files you send to the bot ({0}) are filed every 90 seconds.', cfg.mode === 'dm' ? t('direct message') : cfg.channelId ?? '')
               : t('Waiting for the link code. Send {0} to the bot as a direct message (or post it in the channel).', cfg.linkCode ?? '');
           setting
-            .setDesc(slack.lastError ? `${statusDesc} ${t('Last check failed: {0}', slack.lastError)}` : statusDesc)
+            .setDesc(
+              slack.lastError ? `${statusDesc} ${t('Last check failed: {0}', describeSlackError(t, slack.lastError))}` : statusDesc
+            )
             .addButton(b =>
               b
                 .setButtonText(t('Disconnect'))
@@ -282,16 +284,26 @@ function slackSettingSection(plugin: LabnotePlugin, ctx: SettingsContext): Setti
       {
         name: t('Where you send scans'),
         visible: unlinked,
-        render: setting =>
+        render: setting => {
+          let channelInput: HTMLInputElement | undefined;
           setting
             .addDropdown(d =>
               d
                 .addOption('dm', t('Direct message to the bot'))
                 .addOption('channel', t('Private channel'))
                 .setValue(mode)
-                .onChange(v => (mode = v as SlackMode))
+                .onChange(v => {
+                  mode = v as SlackMode;
+                  // Shown in place: a redraw would clear the token typed above.
+                  channelInput?.toggle(mode === 'channel');
+                })
             )
-            .addText(text => text.setPlaceholder(t('Channel ID (C…)')).onChange(v => (channelId = v))),
+            .addText(text => {
+              text.setPlaceholder(t('Channel ID (C…) or link')).onChange(v => (channelId = v));
+              channelInput = text.inputEl;
+              channelInput.toggle(mode === 'channel');
+            });
+        },
       },
       {
         name: '',
@@ -306,8 +318,13 @@ function slackSettingSection(plugin: LabnotePlugin, ctx: SettingsContext): Setti
                   new Notice(t('Enter the bot token (it starts with xoxb-).'));
                   return;
                 }
-                if (mode === 'channel' && !/^[CG][A-Z0-9]+$/.test(channelId.trim())) {
-                  new Notice(t('Enter the channel ID (it starts with C).'));
+                const channel = mode === 'channel' ? slackChannelId(channelId) : undefined;
+                if (mode === 'channel' && !channel) {
+                  new Notice(
+                    channelId.trim()
+                      ? t('No channel ID in "{0}". Paste the channel ID (it starts with C) or a link to the channel.', channelId.trim())
+                      : t('Enter the channel ID (it starts with C).')
+                  );
                   return;
                 }
                 // Check the token, its permissions and (for a channel) the invite
@@ -315,7 +332,7 @@ function slackSettingSection(plugin: LabnotePlugin, ctx: SettingsContext): Setti
                 // as a silent "waiting" state.
                 b.setDisabled(true);
                 try {
-                  const check = await slack.verify(token.trim(), mode, channelId.trim());
+                  const check = await slack.verify(token.trim(), mode, channel);
                   if (check.missingScopes.length) {
                     new Notice(t('The Slack token is missing permissions: {0}. Add them under OAuth & Permissions and reinstall the app.', check.missingScopes.join(', ')), 15000);
                     return;
@@ -327,12 +344,15 @@ function slackSettingSection(plugin: LabnotePlugin, ctx: SettingsContext): Setti
                   if (check.missingRecommended) {
                     new Notice(t('Tip: the {0} permission lets the bot mark messages with 👀 so two PCs never file the same photo.', 'reactions:write'), 15000);
                   }
-                  const code = slack.beginLink(token, mode, channelId);
+                  const code = slack.beginLink(token.trim(), mode, channel);
                   new Notice(t('Connected to the bot {0}. Send {1} to it in Slack to link this PC.', check.botName, code), 15000);
                   slack.start();
                   ctx.redraw();
                 } catch (err) {
-                  new Notice(t('Could not verify the Slack token: {0}', err instanceof Error ? err.message : String(err)), 15000);
+                  new Notice(
+                    t('Could not verify the Slack token: {0}', describeSlackError(t, err instanceof Error ? err.message : String(err))),
+                    15000
+                  );
                 } finally {
                   b.setDisabled(false);
                 }
