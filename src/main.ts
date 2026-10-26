@@ -1083,6 +1083,16 @@ export default class LabnotePlugin extends Plugin {
       this.run(() => this.offerExperimentFolderMoveBack(folder, posix.dirname(oldPath)));
       return;
     }
+    // Moved out of labnote/ altogether (#424). Not when labnote/ itself was
+    // renamed: then its old path is gone and every experiment went along.
+    if (
+      after.kind === 'outside' &&
+      folder.children.some(c => c instanceof TFile && c.name === 'README.labnote.md') &&
+      this.app.vault.getAbstractFileByPath(posix.dirname(oldPath)) instanceof TFolder
+    ) {
+      this.run(() => this.offerExperimentFolderMoveBack(folder, posix.dirname(oldPath)));
+      return;
+    }
     if (after.kind !== 'noPrefix' || after.folder !== newPath) return;
     this.run(() => this.offerExperimentFolderNameFix(folder, posix.basename(oldPath)));
   }

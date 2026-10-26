@@ -434,4 +434,15 @@ describe('syncWorkflowChecklistCommand', () => {
     expect(await h.fs.read(README)).toBe('# Target\n');
     expect(h.calls.at(-1)).toBe('notify README.labnote.md has no "Related Workflows" section.');
   });
+
+  // #424: "Open a lab note first" on the README of an experiment moved out of labnote/.
+  it('says why a lab note in a numbered folder outside labnote/ is not an experiment', async () => {
+    const h = harness({}, true);
+    const outside = { getActiveFile: () => new TFile('wiki-staging/126_E/README.labnote.md') };
+    Object.assign(h.app, { workspace: outside });
+    await syncWorkflowChecklistCommand(h.app, h.host, h.sync);
+    expect(h.calls).toEqual([
+      'notify "126_E" is not recognized as an experiment: experiment folders must be directly under labnote/. Move it back to labnote/.',
+    ]);
+  });
 });

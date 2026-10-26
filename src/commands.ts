@@ -133,12 +133,18 @@ async function resolveLabnoteDir(app: App, host: LabnoteHost): Promise<string | 
   const active = app.workspace.getActiveFile()?.path;
   const found = active ? diagnoseExperimentPath(active) : ({ kind: 'outside' } as const);
   if (found.kind === 'ok') return found.folder;
+  // A lab note in a numbered folder outside labnote/ is an experiment moved out of it (#424).
+  const movedOut =
+    found.kind === 'outside' && active && /\.labnote\.md$/i.test(active) && /^\d{3}_/.test(posix.basename(posix.dirname(active)))
+      ? posix.dirname(active)
+      : undefined;
+  const misplaced = found.kind === 'nested' ? found.folder : movedOut;
   host.notify(
     'warn',
-    found.kind === 'nested'
+    misplaced
       ? host.t(
           '"{0}" is not recognized as an experiment: experiment folders must be directly under labnote/. Move it back to labnote/.',
-          posix.basename(found.folder)
+          posix.basename(misplaced)
         )
       : found.kind === 'noPrefix'
         ? host.t(
