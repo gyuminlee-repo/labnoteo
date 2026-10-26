@@ -14,6 +14,7 @@ import {
 import { frontMatterNames, parseFrontMatterYaml, serializeFrontMatterEntry } from '../sections/frontMatter';
 import { normalizeHeadingText, stepFence, type OpenFence } from '../sections/sectionEdit';
 import { generateNoteId, NOTE_ID_KEY } from './noteId';
+import { underscoreTurnsItalic } from './sampleUtils';
 import {
   commandName,
   diagnoseExperimentPath,
@@ -246,10 +247,13 @@ export function sanitizeWorkflowName(name: string): string {
 /**
  * Why `alias` cannot name a workflow or unit operation, or undefined (#411).
  * A `#` anywhere in the heading makes a link to it (`[[note#heading]]`, the
- * TOC's `(#anchor)`) end early, as a sample alias's does.
+ * TOC's `(#anchor)`) end early, as a sample alias's does. A `*`, or a `_`
+ * not between ASCII letters and digits, turns part of the heading, TOC entry
+ * and README checklist label italic in the reading view (#421).
  */
-export function workflowAliasProblem(alias: string): 'hash' | undefined {
-  return alias.includes('#') ? 'hash' : undefined;
+export function workflowAliasProblem(alias: string): 'hash' | 'markdown' | undefined {
+  if (alias.includes('#')) return 'hash';
+  return alias.includes('*') || underscoreTurnsItalic(alias) ? 'markdown' : undefined;
 }
 
 /**

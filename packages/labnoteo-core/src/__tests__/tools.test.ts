@@ -832,16 +832,32 @@ describe('create_workflow', () => {
     const symbols = await tool('create_workflow').handler(ctx, {
       documentPath: `${NOTE_DIR}/README.labnote.md`,
       workflowId: wf.id,
-      alias: '***',
+      alias: '///',
     });
-    expect((symbols.data as { fileName: string }).fileName).not.toContain('*');
-    expect(await fs.read((symbols.data as { path: string }).path)).not.toContain('***');
+    expect((symbols.data as { fileName: string }).fileName).not.toContain('/');
+    expect(await fs.read((symbols.data as { path: string }).path)).not.toContain('///');
     const multi = await tool('create_workflow').handler(ctx, {
       documentPath: `${NOTE_DIR}/README.labnote.md`,
       workflowId: wf.id,
       alias: 'a\nb',
     });
     expect(multi.ok).toBe(false);
+  });
+
+  // #421
+  it('refuses an alias the reading view would show in italics', async () => {
+    const { loadWorkflows, ensureWorkflowResources } = await import('../lib/workflowDataLoader');
+    await ensureWorkflowResources(fs, '.');
+    const wf = (await loadWorkflows(fs, '.')).workflows[0];
+    for (const alias of ['***', '블록_경계_설계']) {
+      const res = await tool('create_workflow').handler(ctx, {
+        documentPath: `${NOTE_DIR}/README.labnote.md`,
+        workflowId: wf.id,
+        alias,
+      });
+      expect(res.ok).toBe(false);
+      expect(res.error).toContain('italics');
+    }
   });
 
   it('fails for an unknown workflow id', async () => {

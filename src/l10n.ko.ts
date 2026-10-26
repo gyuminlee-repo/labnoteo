@@ -461,6 +461,8 @@ const obsidianKo: Record<string, string> = {
     '{0}은(는) 노트({1})의 시료 목록 표에만 있습니다. 표의 그 줄도 함께 지웁니다.',
   'An alias cannot contain "#": links to its heading would break.':
     '별칭에는 "#"를 쓸 수 없습니다. 제목으로 가는 링크가 끊어집니다.',
+  'An alias cannot contain "*", or "_" next to anything but ASCII letters and digits: the reading view shows part of it in italics. Use a space; the file name gets "_" for it anyway.':
+    '별칭에는 "*"와, 영문·숫자 사이가 아닌 "_"를 쓸 수 없습니다. 읽기 화면에서 일부가 기울임으로 보입니다. 공백을 쓰세요. 파일 이름에는 어차피 "_"로 들어갑니다.',
   '(before the conclusions: no unit operation section was found, so the table of contents was not updated)':
     '(결론 절 앞: 유닛 오퍼레이션 절을 찾지 못해 목차는 갱신하지 않았습니다)',
   '(at the end of the note: no unit operation section was found, so the table of contents was not updated)':

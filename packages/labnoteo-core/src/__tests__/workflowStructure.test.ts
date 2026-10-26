@@ -1817,6 +1817,15 @@ describe('workflowAliasProblem', () => {
     expect(workflowAliasProblem('#1')).toBe('hash');
     expect(workflowAliasProblem('1차 37도')).toBeUndefined();
   });
+
+  // #421
+  it('refuses a "*" and a "_" the reading view takes for italics', () => {
+    expect(workflowAliasProblem('블록_경계_설계')).toBe('markdown');
+    expect(workflowAliasProblem('AF_구조_예측')).toBe('markdown');
+    expect(workflowAliasProblem('WT*')).toBe('markdown');
+    expect(workflowAliasProblem('pUC19_v2 run')).toBeUndefined();
+    expect(workflowAliasProblem('블록 경계 설계')).toBeUndefined();
+  });
 });
 
 // #412: a file name with a space is linked as `%20`.

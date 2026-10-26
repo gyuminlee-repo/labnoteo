@@ -235,17 +235,25 @@ export function experimentTitleHint(host: Pick<LabnoteHost, 't'>): (value: strin
 }
 
 /**
- * The alias modal's check (#411): a `#` breaks links to the heading. `keep` is
- * an alias already in use (a copy's original), passed through unchanged.
+ * The alias modal's check (#411): a `#` breaks links to the heading, and a
+ * `*` or `_` turns part of it italic (#421). `keep` is an alias already in
+ * use (a copy's original), passed through unchanged.
  */
 export function workflowAliasValidator(
   host: Pick<LabnoteHost, 't'>,
   keep?: string
 ): (value: string) => string | null {
-  return value =>
-    value.trim() !== (keep ?? '').trim() && workflowAliasProblem(value)
-      ? host.t('An alias cannot contain "#": links to its heading would break.')
-      : null;
+  return value => {
+    if (value.trim() === (keep ?? '').trim()) return null;
+    const problem = workflowAliasProblem(value);
+    if (problem === 'hash') return host.t('An alias cannot contain "#": links to its heading would break.');
+    if (problem === 'markdown') {
+      return host.t(
+        'An alias cannot contain "*", or "_" next to anything but ASCII letters and digits: the reading view shows part of it in italics. Use a space; the file name gets "_" for it anyway.'
+      );
+    }
+    return null;
+  };
 }
 
 /**
