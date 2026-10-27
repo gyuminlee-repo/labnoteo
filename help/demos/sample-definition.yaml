@@ -20,10 +20,19 @@ steps:
     hold: 1200
   - tool: ui_press
     args: { keys: Escape }
-  - caption: { ko: 샘플 뷰에서 우클릭 → 사용처 보기, en: "In the Samples view, right-click → View usages" }
+  - caption: { ko: 샘플 뷰에서 우클릭 → 샘플 정의 보기, en: "In the Samples view, right-click → Show sample definition" }
     tool: ribbon_click
     args: { label: $t(Samples) }
   - tool: labnoteo_sample_menu
+    args: { sample: DNA-1001, item: $t(Show sample definition) }
+    hold: 1000
+  - caption: { ko: 설명의 출처와 실험별 사용처가 함께 보입니다, en: "The window shows where each description came from and the usages by experiment" }
+    highlight: { selector: .labnote-sample-def-usage-group }
+    hold: 1500
+  - tool: ui_press
+    args: { keys: Escape }
+  - caption: { ko: 샘플 뷰에서 우클릭 → 사용처 보기, en: "In the Samples view, right-click → View usages" }
+    tool: labnoteo_sample_menu
     args: { sample: DNA-1001, item: $t(View usages) }
     hold: 1200
   - caption: { ko: 쓰인 줄을 절과 함께 보여 주고, 고르면 그 참조 위로 엽니다, en: "Each use is listed with its section; pick one to open the note at that reference" }

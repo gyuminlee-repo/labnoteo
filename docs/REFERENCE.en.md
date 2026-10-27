@@ -372,8 +372,16 @@ changes the type.
 
 ### Sample view context menu
 
-Right-click a sample in the sample view (Shift+F10 from the keyboard) to copy its ID, insert a
-reference, view usages, edit, delete, move between Local and Global, or change its type.
+Right-click a sample in the sample view (Shift+F10 from the keyboard) to show its definition, copy
+its ID, insert a reference, view usages, edit, delete, move between Local and Global, or change its
+type.
+
+- **Show sample definition** opens the same window as Go to definition. It lists each description
+  separately with the notes it came from (`From`), the notes that define the sample, and the
+  partbank link (KID, connection, address), and below them the **Usages** grouped by experiment
+  folder (`001_GFP_expression (3 note(s))`, with notes outside every experiment last under
+  `Outside experiments`). The usages load after the window opens; clicking one opens the note with
+  the cursor on that reference. They are counted like View usages below.
 
 - **Insert reference** follows the cursor: at the end of the note from the front matter or above
   the title, on the next line from a heading or a `@type;ID;…` definition line, at the end of the
@@ -463,7 +471,8 @@ it faded as `(discarded)` in the sample view.
 Register parts, devices, plasmids, primers, molecules and strains kept in
 [partbank](https://partbank.kbiofoundry.kr) as samples, read where they are stored, and open them
 in partbank. Nothing below appears until a connection is set up in the plugin settings, so a vault
-that does not use partbank keeps the menus it always had.
+that does not use partbank keeps the menus it always had. Once samples come from partbank, the
+notes that use them are reported to partbank (see [Send note usages](#send-note-usages)).
 
 ### Connections
 
@@ -489,8 +498,10 @@ or in a link. A server address on plain `http://` warns that the key travels in 
 Typing `@dna`, `@plasmid`, `@primer` (or `@sample`) puts **Search partbank** at the bottom of the
 autocomplete menu, which opens a search window prefilled with whatever was typed after `;`. From
 two characters on it searches after a short pause and lists each hit with its name, KID, kind and
-whether it is yours, shared with you, or public. Picking one reads the item and its storage
-location, registers it, and inserts `ID;alias`.
+whether it is yours or shared with you. **Only your own items and items shared with your groups**
+are searched, not public ones; a sample already linked to a public item still refreshes and opens,
+but its usages are not sent. Picking one reads the item and its storage location, registers it,
+and inserts `ID;alias`.
 
 - **Each typed type searches its own kinds.** `@dna` searches parts, devices and molecules,
   `@plasmid` plasmids, `@primer` primers, `@protein`, `@reagent` and `@rna` molecules only, a strain
@@ -533,7 +544,23 @@ different values depending on who refreshed.
 
 In the same two places. A server link opens in the browser; a desktop link opens the desktop app
 (starting it if it is closed) through its own `partbank://` scheme. A sample linked to the app on
-another PC says so instead.
+another PC says so instead. When the link cannot be opened (no browser, or the desktop app's
+`partbank://` links are not registered on this PC) a notice says so and the link is copied to the
+clipboard; the desktop app registers its links the first time it runs after being installed. A
+browser that is not signed in to the server returns to the item after signing in.
+
+### Send note usages
+
+The lab notes (`*.labnote.md`) that use a sample from partbank are listed on that item's partbank
+page, **visible to you only**. A few seconds after a note is saved only the notes that changed are
+sent; the first time, every lab note in the vault is sent once. What is sent is the vault name, the
+note path and title, the experiment folder name and the titles of the sections the sample appears
+in — never the note text. Notes that are not `.labnote.md` (daily notes, templates), references
+inside an AI summary callout and rows of a sample list table are not sent. Clicking a note on the
+partbank page opens it in Obsidian at that section. When partbank is closed or offline the notes
+are sent on the next save or start; an older partbank without this feature is skipped quietly.
+Turn off **Send note usages to partbank** in the `partbank` settings to stop and to delete what
+this PC sent. The usages are stored on the partbank server, so its administrators can see them.
 
 ### Download partbank catalog
 

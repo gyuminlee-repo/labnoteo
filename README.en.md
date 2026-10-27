@@ -1,6 +1,6 @@
 # Labnote Assistant for Obsidian (labnoteo)
 
-**Version 0.129.0**
+**Version 0.130.0**
 
 [한국어](README.md)
 
@@ -24,7 +24,7 @@ This repository is the Obsidian port of the Labnote Assistant. It shares its pla
 - **Sample suggestions & CSV export**: Inline suggestions and highlighting for sample references while editing, plus CSV export of note tables (Excel-compatible UTF-8 with BOM). → [Export tables to CSV](docs/REFERENCE.en.md#export-tables-to-csv)
 - **Experiment status, discussion flag, issue markers**: Track each experiment's lifecycle (`planned` → `in-progress` → … → `completed`/`failed`) in frontmatter, and flag a note for team discussion either whole (*Toggle discussion flag*) or at a specific line (`@issue;<ID>;<topic>` marker). The next push opens a GitHub Issue.
 - **Note IDs, QR worksheets, scan filing (desktop)**: Every lab note gets a unique ID (`labnote_id: LN-7K3M9QX2`), and a workflow note's unit operations print as **experiment worksheets** with a QR code on every page. Write on them, then put phone photos or scanner output (images, PDF, zip) in a **PC scan folder** or drop them on a window: the QR code is read and the image is filed in a `#### Worksheet scans` section at the end of that unit operation. Sending them to your own Slack bot by DM works too (optional). → [printout scan guide](docs/SCAN.md) (Korean)
-- **partbank integration (optional)**: Search partbank's parts, plasmids, primers and strains from the `@` autocomplete and register them as samples, read their storage location, and open them in partbank. A whole catalog can be downloaded to pick from offline. The API key is kept on the PC, never in the vault. → [partbank](docs/REFERENCE.en.md#partbank)
+- **partbank integration (optional)**: Search partbank's parts, plasmids, primers and strains from the `@` autocomplete and register them as samples, read their storage location, and open them in partbank. A whole catalog can be downloaded to pick from offline. The lab notes that use such a sample are listed on its partbank page, visible to you only, and open in Obsidian when clicked. The API key is kept on the PC, never in the vault. → [partbank](docs/REFERENCE.en.md#partbank)
 - **LLM assistance (optional)**: Draft methods, summarize results, and extract samples via Ollama or OpenAI. The *Ask assistant* command lets the model call Labnote's own tools to reach a goal, confirming before any write. The same tools are available to external MCP clients. → [AI](docs/REFERENCE.en.md#ai)
 - **Research automation (optional)**: One command scaffolds GitHub Actions, zero-dependency scripts, and AI-agent rules (`AGENTS.md`) into your vault to validate notes, open Experiment ↔ Issue links, and draft a Living-Manuscript Wiki — all opt-in and human-reviewed. → [below](#research-automation)
 
@@ -133,6 +133,7 @@ On Obsidian 1.13 or later, the settings search finds this plugin's items too. Nu
 
 - **partbank server** / **partbank desktop app**: an address, an API key and a `Test connection` button for each. The key is kept on this PC only, never in the vault, so enter it once per PC. The desktop connection is hidden on mobile.
 - **Connection to search**: which connection the autocomplete search and the catalog download use (default `partbank server`). A link made through the desktop app only means something on that PC, so a vault shared with the lab should use the server.
+- **Send note usages to partbank**: send the path, experiment folder name and section titles of the lab notes that use a sample from partbank (on by default). Turning it off deletes what this PC sent.
 
 See [partbank](docs/REFERENCE.en.md#partbank) for the details.
 
