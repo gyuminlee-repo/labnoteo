@@ -41,6 +41,20 @@ export function partbankSettingSection(plugin: LabnotePlugin): SettingSection {
         ),
     });
   }
+  rows.push({
+    name: t('Send note usages to partbank'),
+    desc: t(
+      'Lists the lab notes that use a sample from partbank on its partbank page. Note paths, experiment folder names and section titles are stored on the partbank server and shown to you only. Turning this off deletes what this PC sent.'
+    ),
+    render: setting =>
+      setting.addToggle(toggle =>
+        toggle.setValue(s.partbankSendUsages).onChange(on => {
+          s.partbankSendUsages = on;
+          save();
+          void (on ? plugin.partbankUsages.syncAll() : plugin.partbankUsages.disable());
+        })
+      ),
+  });
   return { heading: t('partbank'), rows };
 }
 

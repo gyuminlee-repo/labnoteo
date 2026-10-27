@@ -86,6 +86,11 @@ export interface LabnoteSettings {
    * since `data.json` travels with the vault.
    */
   partbankDefaultConnection: PartbankConnection;
+  /**
+   * Report which lab notes use partbank-linked samples to partbank, which
+   * lists them on the item's page to the key owner only.
+   */
+  partbankSendUsages: boolean;
 }
 
 export type WorksheetPaperSize = 'a4' | 'letter';
@@ -115,6 +120,7 @@ export const DEFAULT_SETTINGS: LabnoteSettings = {
   partbankDesktopUrl: 'http://127.0.0.1:47830',
   partbankWebUrl: 'https://partbank.kbiofoundry.kr',
   partbankDefaultConnection: 'web',
+  partbankSendUsages: true,
 };
 
 /**
@@ -333,6 +339,7 @@ export function migrateSettings(raw: unknown): LabnoteSettings {
   if (data.partbankDefaultConnection === 'desktop' || data.partbankDefaultConnection === 'web') {
     out.partbankDefaultConnection = data.partbankDefaultConnection;
   }
+  if (typeof data.partbankSendUsages === 'boolean') out.partbankSendUsages = data.partbankSendUsages;
 
   // Provider-specific endpoints (new shape) win when present…
   if (typeof data.llmEndpointOllama === 'string') out.llmEndpointOllama = data.llmEndpointOllama;

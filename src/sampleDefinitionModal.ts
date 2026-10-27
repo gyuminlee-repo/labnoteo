@@ -5,29 +5,43 @@
  * in the document. This modal shows the resolved record (local/global registry
  * or the read-only catalog) and offers edit/delete/open-file actions.
  */
-import { App, Modal, Notice, Platform, Setting } from 'obsidian';
+import { App, Modal, Notice, Platform, Setting, TFile } from 'obsidian';
 import * as posix from '@labnoteo/core/posix';
 import type LabnotePlugin from './main';
-import { isSameSampleFolder, noteLocalSampleFolder } from '@labnoteo/core/lib/sampleStorage';
+import { isSameSampleFolder, noteLocalSampleFolder, type SampleUsageSpot } from '@labnoteo/core/lib/sampleStorage';
+import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
 import {
   editSampleInteractive,
   deleteSampleInteractive,
   changeSampleTypeInteractive,
   moveSampleInteractive,
   resolveSampleDefinition,
+  sampleUsageSpots,
+  usageSpotLabel,
   type ResolvedSampleDefinition,
 } from './sampleActions';
 import { openInPartbank } from './partbank/partbankActions';
 import { refreshOneLocation } from './partbank/partbankLocation';
 
+/** Experiment groups shown open in the usage list; the rest start folded. */
+const OPEN_USAGE_GROUPS = 5;
+
 /**
  * Resolve `(type, id)` then show the definition popup (or a Notice if absent).
  * `resolved` skips the lookup when the caller already knows the record.
+ * `localFolder` stands in for `docPath` when there is no note to derive the
+ * Local folder from, as when the Samples sidebar opens the window.
  */
 export async function openSampleDefinition(
   app: App,
   plugin: LabnotePlugin,
-  opts: { type: string; id: string; docPath: string; resolved?: ResolvedSampleDefinition }
+  opts: {
+    type: string;
+    id: string;
+    docPath: string;
+    resolved?: ResolvedSampleDefinition;
+    localFolder?: string;
+  }
 ): Promise<void> {
   const resolved = opts.resolved ?? (await resolveSampleDefinition(plugin, opts));
   if (!resolved) {
@@ -39,17 +53,35 @@ export async function openSampleDefinition(
     );
     return;
   }
-  new SampleDefinitionModal(app, plugin, opts.type, opts.id, opts.docPath, resolved).open();
+  new SampleDefinitionModal(app, plugin, opts.type, opts.id, opts.docPath, resolved, opts.localFolder).open();
+}
+
+/**
+ * The note a stored basename (`sources`, `descriptionSources`) stands for:
+ * the one in the sample's own experiment, else the only one in the vault.
+ * Undefined when the name is ambiguous or gone.
+ */
+function noteForBasename(app: App, basename: string, folder: string): TFile | undefined {
+  const matches = app.vault.getMarkdownFiles().filter(f => f.name === basename);
+  const expDir = getExperimentDir(folder);
+  if (expDir) {
+    const inside = matches.filter(f => f.path.startsWith(`${expDir}/`));
+    if (inside.length === 1) return inside[0];
+  }
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 class SampleDefinitionModal extends Modal {
+  private closed = false;
+
   constructor(
     app: App,
     private readonly plugin: LabnotePlugin,
     private readonly type: string,
     private readonly id: string,
     private readonly docPath: string,
-    private readonly resolved: ResolvedSampleDefinition
+    private readonly resolved: ResolvedSampleDefinition,
+    private readonly localFolder?: string
   ) {
     super(app);
   }
@@ -62,7 +94,7 @@ class SampleDefinitionModal extends Modal {
       if (!globalFolder || isSameSampleFolder(folder, globalFolder)) return undefined;
       return { toFolder: globalFolder, label: this.plugin.t('Move to Global') };
     }
-    const local = this.docPath ? noteLocalSampleFolder(this.docPath, globalFolder) : undefined;
+    const local = this.docPath ? noteLocalSampleFolder(this.docPath, globalFolder) : this.localFolder || undefined;
     if (!local || isSameSampleFolder(local, folder)) return undefined;
     return { toFolder: local, label: this.plugin.t('Move to Local') };
   }
@@ -77,14 +109,26 @@ class SampleDefinitionModal extends Modal {
 
     this.setTitle(t('Sample definition'));
 
+    const source = record.source;
     const rows: Array<[string, string]> = [
       [t('Type'), this.type],
       [t('ID'), this.id],
       [t('Alias'), record.alias ?? '-'],
-      [t('Description'), record.descriptions?.[0] ?? '-'],
       [t('Location'), record.location ?? '-'],
       // The partbank id is the one key that makes the link usable by hand.
-      ...(record.source ? [[t('partbank'), record.source.kid ?? record.source.id] as [string, string]] : []),
+      ...(source
+        ? [
+            [
+              t('partbank'),
+              [
+                source.kid ?? source.id,
+                t(source.type),
+                source.connection === 'desktop' ? t('partbank desktop app') : t('partbank server'),
+                source.origin,
+              ].join(' · '),
+            ] as [string, string],
+          ]
+        : []),
       ...(record.discarded ? [[t('Discarded'), record.discarded] as [string, string]] : []),
       [t('Scope'), scopeLabel],
       [t('File'), jsonPath],
@@ -93,19 +137,18 @@ class SampleDefinitionModal extends Modal {
       // `labnote-sample-def-row` widens the value column; the labels are short
       // but the values (the JSON path above all) are not. Scoped to these rows
       // so the button row below keeps Obsidian's default right alignment.
-      const row = new Setting(contentEl).setClass('labnote-sample-def-row').setName(name);
-      // A partbank description runs to 1000 characters (#300); one line shows a sliver of it.
-      if (name === t('Description')) {
-        row.addTextArea(area => {
-          area.setValue(value).setDisabled(true);
-          area.inputEl.rows = Math.min(8, Math.max(1, Math.ceil(value.length / 60)));
-        });
-      } else {
-        row.addText(text => {
+      new Setting(contentEl)
+        .setClass('labnote-sample-def-row')
+        .setName(name)
+        .addText(text => {
           text.setValue(value).setDisabled(true);
         });
-      }
     }
+    this.renderDescriptions(contentEl, folder);
+    this.renderDefinedIn(contentEl, folder);
+    const usagesEl = contentEl.createDiv({ cls: 'labnote-sample-def-section' });
+    usagesEl.createEl('h4', { text: t('Usages') });
+    void this.renderUsages(usagesEl.createDiv({ cls: 'labnote-sample-def-usages' }), folder);
 
     const isEditable = scope !== 'catalog';
     const canOpenFile = isEditable && Platform.isDesktopApp;
@@ -179,7 +222,7 @@ class SampleDefinitionModal extends Modal {
         buttons.addButton(btn =>
           btn
             .setButtonText(t('Open in partbank'))
-            .onClick(() => openInPartbank(this.plugin, source))
+            .onClick(() => void openInPartbank(this.plugin, source))
         );
       }
       buttons.addButton(btn =>
@@ -208,6 +251,120 @@ class SampleDefinitionModal extends Modal {
   }
 
   onClose(): void {
+    this.closed = true;
     this.contentEl.empty();
+  }
+
+  /** A link to a note that closes this window and opens it, at `at` when given. */
+  private noteLink(parent: HTMLElement, file: TFile, text: string, at?: { line: number; ch?: number }): void {
+    const link = parent.createEl('a', { text, href: '#', cls: 'labnote-sample-def-link' });
+    link.addEventListener('click', evt => {
+      evt.preventDefault();
+      this.close();
+      void this.plugin.host.openFile(file.path, at);
+    });
+  }
+
+  /** A stored note basename as a link when it names one note, else as text. */
+  private basenameLink(parent: HTMLElement, basename: string, folder: string): void {
+    const file = noteForBasename(this.app, basename, folder);
+    if (file) this.noteLink(parent, file, file.basename);
+    else parent.createSpan({ text: basename });
+  }
+
+  /**
+   * Every description, each with the notes whose `@type;` definition put it
+   * in (#172). A partbank description runs to 1000 characters (#300), so each
+   * gets a textarea sized to it.
+   */
+  private renderDescriptions(contentEl: HTMLElement, folder: string): void {
+    const t = this.plugin.t;
+    const descriptions = this.resolved.record.descriptions ?? [];
+    const bySource = this.resolved.record.descriptionSources ?? {};
+    if (descriptions.length === 0) {
+      new Setting(contentEl)
+        .setClass('labnote-sample-def-row')
+        .setName(t('Description'))
+        .addText(text => {
+          text.setValue('-').setDisabled(true);
+        });
+      return;
+    }
+    descriptions.forEach((value, i) => {
+      const row = new Setting(contentEl)
+        .setClass('labnote-sample-def-row')
+        .setName(descriptions.length > 1 ? t('Description {0}', String(i + 1)) : t('Description'))
+        .addTextArea(area => {
+          area.setValue(value).setDisabled(true);
+          area.inputEl.rows = Math.min(8, Math.max(1, Math.ceil(value.length / 60)));
+        });
+      const notes = Object.keys(bySource).filter(note => bySource[note] === value);
+      if (notes.length === 0) return;
+      const desc = row.descEl.createSpan({ text: `${t('From')} ` });
+      notes.forEach((note, j) => {
+        if (j > 0) desc.appendText(', ');
+        this.basenameLink(desc, note, folder);
+      });
+    });
+  }
+
+  /** The notes the registry records as defining the sample (`sources`). */
+  private renderDefinedIn(contentEl: HTMLElement, folder: string): void {
+    const sources = this.resolved.record.sources ?? [];
+    if (sources.length === 0) return;
+    const row = new Setting(contentEl).setClass('labnote-sample-def-row').setName(this.plugin.t('Defined in'));
+    const list = row.controlEl.createDiv({ cls: 'labnote-sample-def-notes' });
+    sources.forEach((note, i) => {
+      if (i > 0) list.appendText(', ');
+      this.basenameLink(list, note, folder);
+    });
+  }
+
+  /**
+   * The lines that use the sample, grouped by experiment folder (#130, #291).
+   * Loaded after the window opens: it reads every note in the sample's scope.
+   */
+  private async renderUsages(el: HTMLElement, folder: string): Promise<void> {
+    const t = this.plugin.t;
+    el.setText(t('Loading…'));
+    let spots: SampleUsageSpot[];
+    try {
+      spots = await sampleUsageSpots(this.app, this.plugin, folder, this.type, this.id);
+    } catch (err) {
+      console.warn('[labnoteo] sample usages failed:', err);
+      if (!this.closed) el.setText(t('Could not list the usages.'));
+      return;
+    }
+    if (this.closed) return;
+    el.empty();
+    if (spots.length === 0) {
+      el.setText(t('{0} is not used in any note.', this.id));
+      return;
+    }
+    const groups = new Map<string, SampleUsageSpot[]>();
+    for (const spot of spots) {
+      const key = getExperimentDir(spot.path) ?? '';
+      groups.set(key, [...(groups.get(key) ?? []), spot]);
+    }
+    // Experiments in folder order, notes outside any experiment last.
+    const keys = [...groups.keys()].sort((a, b) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b)));
+    keys.forEach((key, i) => {
+      const list = groups.get(key)!;
+      const details = el.createEl('details', { cls: 'labnote-sample-def-usage-group' });
+      if (i < OPEN_USAGE_GROUPS) details.open = true;
+      const notes = new Set(list.map(s => s.path)).size;
+      details.createEl('summary', {
+        text: `${key ? posix.basename(key) : t('Outside experiments')} (${t('{0} note(s)', String(notes))})`,
+      });
+      const ul = details.createEl('ul');
+      for (const spot of list) {
+        const file = this.app.vault.getAbstractFileByPath(spot.path);
+        const li = ul.createEl('li');
+        const name = file instanceof TFile ? file.basename : posix.basename(spot.path);
+        const text = `${name} · ${usageSpotLabel(t, spot)}`;
+        if (file instanceof TFile) this.noteLink(li, file, text, { line: spot.line, ch: spot.ch });
+        else li.setText(text);
+      }
+    });
   }
 }

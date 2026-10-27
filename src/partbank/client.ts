@@ -69,8 +69,26 @@ const WEB_CALL_GAP_MS = 1_000;
 /** Page size of the catalog download; the endpoint allows up to 1000. */
 const LIST_PAGE_SIZE = 200;
 
+/** One reference of a note, as `PUT /labnoteo/usages/notes` takes it. */
+export interface NoteUsageRef {
+  type: PartbankType;
+  id: string;
+  sample_type: string;
+  sample_id: string;
+  alias?: string;
+  headings: string[];
+}
+
+/** A note's whole set of references; no refs removes the note's rows. */
+export interface NoteUsage {
+  note_path: string;
+  note_title: string;
+  experiment: string | null;
+  refs: NoteUsageRef[];
+}
+
 interface RequestOpts {
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'PUT';
   body?: unknown;
   /** Query string parameters, already decoded. */
   query?: Record<string, string | number | boolean>;
@@ -101,7 +119,9 @@ export class PartbankClient {
   }
 
   /**
-   * Substring search across partbank, the same call its own web app makes.
+   * Substring search across partbank, the same call its own web app makes,
+   * narrowed to the key owner's own items and those shared with their groups:
+   * a public item from another lab is not something they keep a tube of.
    * `limit` is per entity, so asking for three entities can return three times
    * as many rows.
    */
@@ -113,11 +133,12 @@ export class PartbankClient {
     if (!query.trim() || entities.length === 0) return [];
     const res = await this.request<{ results?: unknown[] }>('/search/global', {
       method: 'POST',
-      body: { query: query.trim(), types: [...entities], limit },
+      body: { query: query.trim(), types: [...entities], limit, exclude_public: true },
     });
     return (res.results ?? []).flatMap(row => {
       const hit = toSearchHit(row);
-      return hit ? [hit] : [];
+      // A server older than `exclude_public` ignores it and still sends public items.
+      return hit && (hit.ownedByMe || hit.sharingLevel !== 'public') ? [hit] : [];
     });
   }
 
@@ -158,6 +179,25 @@ export class PartbankClient {
       // A server that ignores `skip` would loop forever otherwise.
       if (typeof res.total === 'number' && out.length >= res.total) return out;
     }
+  }
+
+  /**
+   * Replace this labnoteo client's rows of each note on the server, which
+   * shows them on the item pages to the key owner only. Items the owner
+   * neither owns nor has shared with their groups come back as skipped.
+   */
+  async putNoteUsages(body: {
+    client_id: string;
+    generation: string;
+    vault_name: string;
+    notes: NoteUsage[];
+  }): Promise<{ stored: number; skipped: unknown[] }> {
+    return this.request('/labnoteo/usages/notes', { method: 'PUT', body });
+  }
+
+  /** Drop this client's rows sent under any other generation. */
+  async pruneNoteUsages(body: { client_id: string; generation: string }): Promise<{ deleted: number }> {
+    return this.request('/labnoteo/usages/prune', { method: 'POST', body });
   }
 
   private async request<T>(path: string, opts: RequestOpts = {}): Promise<T> {

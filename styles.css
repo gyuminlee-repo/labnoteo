@@ -314,6 +314,31 @@ body > input.labnote-datetime-picker {
   resize: vertical;
 }
 
+.labnote-sample-def-section h4 {
+  margin: var(--size-4-3) 0 var(--size-4-1);
+}
+
+.labnote-sample-def-usages {
+  max-height: 16em;
+  overflow-y: auto;
+  font-size: var(--font-ui-small);
+}
+
+.labnote-sample-def-usage-group ul {
+  margin: var(--size-4-1) 0 var(--size-4-2);
+  padding-left: var(--size-4-5);
+}
+
+.labnote-sample-def-usage-group summary {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.labnote-sample-def-notes {
+  width: 100%;
+  font-size: var(--font-ui-small);
+}
+
 /* The button row has no label; its empty info column would take half the width. */
 .labnote-sample-def-buttons .setting-item-info {
   display: none;

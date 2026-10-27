@@ -556,6 +556,15 @@ const obsidianKo: Record<string, string> = {
   'Product catalog (read-only)': '제품 카탈로그(읽기 전용)',
   'Samples in a product catalog file ({Type}_name.json) are read-only here. To change one, edit that file, or rename it back to {0} if it was the sample registry.':
     '제품 카탈로그 파일({Type}_이름.json)의 시료는 여기서 고칠 수 없습니다. 바꾸려면 그 파일을 직접 고치거나, 원래 시료 대장이었다면 이름을 {0}(으)로 되돌리세요.',
+  'Description {0}': '설명 {0}',
+  'From': '출처:',
+  'Defined in': '정의한 노트',
+  'Usages': '사용처',
+  'Loading…': '불러오는 중…',
+  'Could not list the usages.': '사용처를 불러오지 못했습니다.',
+  'Outside experiments': '실험 밖',
+  '{0} note(s)': '노트 {0}개',
+  'Show sample definition': '샘플 정의 보기',
   'Open JSON file': 'JSON 파일 열기',
   'Could not open {0}': '{0}을(를) 열 수 없습니다',
   'No definition found for {0}. It is not in the sample registry: it may have been deleted or moved to another experiment, or the Global sample folder setting changed.':
@@ -1213,7 +1222,16 @@ const obsidianKo: Record<string, string> = {
   'shared': '공유됨',
   'Refresh storage location from partbank': 'partbank에서 보관 위치 갱신',
   'Refresh storage locations from partbank': 'partbank에서 보관 위치 일괄 갱신',
+  'Only your own items and items shared with your groups are searched, not public ones.':
+    '내 항목과 내 그룹에 공유된 항목만 찾고 공개(public) 항목은 찾지 않습니다.',
   'Open in partbank': 'partbank에서 열기',
+  'Send note usages to partbank': '노트 사용처를 partbank에 보내기',
+  'Lists the lab notes that use a sample from partbank on its partbank page. Note paths, experiment folder names and section titles are stored on the partbank server and shown to you only. Turning this off deletes what this PC sent.':
+    'partbank에서 가져온 샘플을 쓰는 랩노트를 그 항목의 partbank 페이지에 보여 줍니다. 노트 경로·실험 폴더 이름·절 제목이 partbank 서버에 저장되며 본인에게만 보입니다. 끄면 이 PC가 보낸 기록을 지웁니다.',
+  'Could not open partbank in the browser.': '브라우저로 partbank를 열지 못했습니다.',
+  'Could not open the partbank app. If it is installed, start it once so that it registers its links.':
+    'partbank 앱을 열지 못했습니다. 설치돼 있다면 한 번 실행해 링크를 등록하세요.',
+  'The link was copied to the clipboard: {0}': '링크를 클립보드에 복사했습니다: {0}',
   'This sample is not linked to partbank.': 'partbank와 연결되지 않은 시료입니다.',
   'This sample is linked to the partbank app on another PC.':
     '다른 PC의 partbank 앱에 연결된 시료입니다.',
@@ -1241,6 +1259,8 @@ const obsidianKo: Record<string, string> = {
   'Downloaded the partbank catalog: {0}.': 'partbank 카탈로그를 내려받았습니다: {0}.',
   '{0} strain(s) were left out.': '균주 {0}개는 제외했습니다.',
   'That partbank link is not something labnoteo can read.': 'labnoteo가 읽을 수 없는 partbank 링크입니다.',
+  'That note link is not something labnoteo can read.': 'labnoteo가 읽을 수 없는 노트 링크입니다.',
+  'Could not find the note: {0}': '노트를 찾을 수 없습니다: {0}',
   'That link points at a partbank that is not set up here ({0}).':
     '이 보관함에 설정되지 않은 partbank를 가리키는 링크입니다({0}).',
   'Register "{0}" from partbank as a {1} sample in {2}?':
