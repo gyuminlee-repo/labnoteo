@@ -31,6 +31,7 @@ import {
   type SampleScope,
 } from '../sampleActions';
 import { pickModal } from '../modals';
+import { openSampleDefinition } from '../sampleDefinitionModal';
 
 export const SAMPLE_VIEW_TYPE = 'labnote-sample-view';
 
@@ -292,6 +293,20 @@ export class SampleTreeView extends ItemView {
     const folder = this.scopeFolder(sample.scope);
     const menu = new Menu();
 
+    menu.addItem(item =>
+      item
+        .setTitle(this.plugin.t('Show sample definition'))
+        .setIcon('info')
+        .onClick(() => {
+          this.plugin.run(() => openSampleDefinition(this.app, this.plugin, {
+            type: sample.type,
+            id: sample.id,
+            docPath: '',
+            resolved: { scope: sample.scope, folder, record: sample.record },
+            localFolder: this.lastRenderedLocal,
+          }));
+        })
+    );
     menu.addItem(item =>
       item
         .setTitle(this.plugin.t('Copy sample ID'))

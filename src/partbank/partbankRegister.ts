@@ -217,7 +217,9 @@ export async function pickPartbankReference(
   if (entities.length === 0) return undefined;
 
   const hint = searchScopeHint(entities, plugin.t);
-  const notFound = plugin.t('Nothing found among partbank {0}.', searchScopeLabel(entities, plugin.t));
+  const notFound = `${plugin.t('Nothing found among partbank {0}.', searchScopeLabel(entities, plugin.t))} ${plugin.t(
+    'Only your own items and items shared with your groups are searched, not public ones.'
+  )}`;
   const hit = await searchPartbankModal(plugin.app, client, entities, {
     initialQuery: opts.initialQuery,
     placeholder: plugin.t('Search partbank'),

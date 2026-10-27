@@ -10,6 +10,7 @@ import { desktopAppLink, webAppPath, type SampleSource } from '@labnoteo/core';
 import type { SampleRecord } from '@labnoteo/core/lib/sampleStorage';
 import type LabnotePlugin from '../main';
 import { refreshOneLocation } from './partbankLocation';
+import { openExternalLink } from '../externalLink';
 
 /** The sample a partbank action works on. */
 export interface PartbankSampleRef {
@@ -37,7 +38,7 @@ export function addPartbankMenuItems(
     item
       .setTitle(plugin.t('Open in partbank'))
       .setIcon('external-link')
-      .onClick(() => openInPartbank(plugin, source))
+      .onClick(() => void openInPartbank(plugin, source))
   );
 }
 
@@ -49,32 +50,23 @@ export function addPartbankMenuItems(
  * a browser would land on a login screen — so it is asked through its own
  * `partbank://` scheme, which also starts the app when it is closed.
  */
-export function openInPartbank(plugin: LabnotePlugin, source: SampleSource): void {
+export async function openInPartbank(plugin: LabnotePlugin, source: SampleSource): Promise<void> {
   if (source.connection === 'web') {
     const origin = plugin.partbank.url('web') || source.origin;
-    window.open(`${origin.replace(/\/+$/, '')}${webAppPath(source)}`);
+    await openExternalLink(
+      `${origin.replace(/\/+$/, '')}${webAppPath(source)}`,
+      plugin.t('Could not open partbank in the browser.'),
+      plugin.t
+    );
     return;
   }
   if (!Platform.isDesktopApp) {
     new Notice(plugin.t('This sample is linked to the partbank app on another PC.'));
     return;
   }
-  openCustomScheme(desktopAppLink(source));
-}
-
-/** Electron's shell, when the plugin runs in the desktop app. */
-interface ElectronShell {
-  shell?: { openExternal(url: string): Promise<void> };
-}
-
-/**
- * Hand a link Obsidian does not route itself (a scheme other than http) to the
- * operating system. Electron's shell takes it directly; `window.open` is the
- * fallback for builds where `require` is not exposed.
- */
-function openCustomScheme(url: string): void {
-  const load = (window as Window & { require?: (module: string) => ElectronShell }).require;
-  const shell = load?.('electron').shell;
-  if (shell) void shell.openExternal(url);
-  else window.open(url);
+  await openExternalLink(
+    desktopAppLink(source),
+    plugin.t('Could not open the partbank app. If it is installed, start it once so that it registers its links.'),
+    plugin.t
+  );
 }

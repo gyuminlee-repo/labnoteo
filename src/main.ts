@@ -170,6 +170,8 @@ import { PartbankFeature } from './partbank/partbankFeature';
 import { refreshLocationsIn, vaultSampleFolders } from './partbank/partbankLocation';
 import { downloadPartbankCatalog } from './partbank/partbankCatalog';
 import { handleImportUri, IMPORT_ACTION } from './partbank/partbankUri';
+import { handleOpenUri, OPEN_ACTION } from './labnoteOpenUri';
+import { PartbankUsageSync } from './partbank/partbankUsageSync';
 
 /** Vault-root names of the installed automation that agents and wiki-sync find only by name (#413). */
 const AUTOMATION_ROOT_NAMES = ['AGENTS.md', 'CLAUDE.md', 'wiki-staging'];
@@ -193,6 +195,7 @@ export default class LabnotePlugin extends Plugin {
   mcpServer!: LabnoteMcpServer;
   barcode!: BarcodeFeature;
   partbank!: PartbankFeature;
+  partbankUsages!: PartbankUsageSync;
   private sampleSuggest?: SampleEditorSuggest;
   private sampleIds?: SampleIdIndex;
   // Last experiment folder (`labnote/###_*`) resolved from an active note, kept
@@ -257,10 +260,16 @@ export default class LabnotePlugin extends Plugin {
     this.mcpServer = new LabnoteMcpServer(this);
 
     this.partbank = new PartbankFeature(this);
+    this.partbankUsages = new PartbankUsageSync(this);
+    this.partbankUsages.register();
     // "Send to labnoteo" in partbank. Any web page can open an `obsidian://`
     // URI, so the handler validates everything and confirms before writing.
     this.registerObsidianProtocolHandler(IMPORT_ACTION, params => {
       this.run(() => handleImportUri(this, params as Record<string, string>));
+    });
+    // The note links on partbank's detail pages. Opens an existing note, writes nothing.
+    this.registerObsidianProtocolHandler(OPEN_ACTION, params => {
+      this.run(() => handleOpenUri(this, params as Record<string, string>));
     });
     this.registerCommands();
     this.registerFocusTracking();
@@ -2781,7 +2790,8 @@ export default class LabnotePlugin extends Plugin {
       );
       // Freshly-written definitions should show up in autocomplete right away.
       this.sampleSuggest?.clearCache();
-      this.refreshSampleViews();
+      // The note itself goes to partbank through its own modify listener.
+      this.refreshSampleViews({ fromNoteSync: true });
     } catch (err) {
       console.warn('[labnoteo] sample sync failed:', err);
     }
@@ -2793,11 +2803,13 @@ export default class LabnotePlugin extends Plugin {
    * ([VaultFileSystem](./vaultFileSystem.ts)), which bypasses the Vault event
    * pipeline — so `vault.on('modify')` cannot be relied on for `{Type}.json`.
    */
-  refreshSampleViews(): void {
+  refreshSampleViews(opts: { fromNoteSync?: boolean } = {}): void {
     for (const leaf of this.app.workspace.getLeavesOfType(SAMPLE_VIEW_TYPE)) {
       if (leaf.view instanceof SampleTreeView) void leaf.view.refresh();
     }
     this.sampleIds?.invalidate();
+    // A registry change can change what a note's references resolve to.
+    if (!opts.fromNoteSync) this.partbankUsages?.scheduleReconcile();
   }
 
   /**

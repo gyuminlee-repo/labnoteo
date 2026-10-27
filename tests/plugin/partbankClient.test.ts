@@ -98,6 +98,7 @@ describe('searchGlobal', () => {
       query: 'gfp',
       types: ['vector', 'part'],
       limit: 10,
+      exclude_public: true,
     });
     // `vector` is partbank's name for an as-built plasmid.
     expect(hits).toEqual([
@@ -112,6 +113,21 @@ describe('searchGlobal', () => {
         sharingLevel: 'private',
       },
     ]);
+  });
+
+  // A server older than `exclude_public` ignores the flag.
+  it('drops public items of other people, keeping own and group-shared ones', async () => {
+    stub([
+      json({
+        results: [
+          { id: 'mine', type: 'part', owner_is_me: true, sharing_level: 'public' },
+          { id: 'group', type: 'part', owner_is_me: false, sharing_level: 'group' },
+          { id: 'stranger', type: 'part', owner_is_me: false, sharing_level: 'public' },
+        ],
+      }),
+    ]);
+    const hits = await desktopClient().searchGlobal('x', ['part']);
+    expect(hits.map(h => h.id)).toEqual(['mine', 'group']);
   });
 
   it('skips rows without a usable id or type', async () => {

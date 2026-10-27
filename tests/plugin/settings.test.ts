@@ -185,6 +185,12 @@ describe('migrateSettings', () => {
     expect(migrateSettings({ partbankDefaultConnection: 'lan' }).partbankDefaultConnection).toBe('web');
   });
 
+  it('defaults sending note usages to partbank to on and keeps a stored boolean', () => {
+    expect(migrateSettings({}).partbankSendUsages).toBe(true);
+    expect(migrateSettings({ partbankSendUsages: false }).partbankSendUsages).toBe(false);
+    expect(migrateSettings({ partbankSendUsages: 'no' }).partbankSendUsages).toBe(true);
+  });
+
   it('defaults autoUpdateLastUpdated to on and keeps a stored boolean', () => {
     expect(migrateSettings({}).autoUpdateLastUpdated).toBe(true);
     expect(migrateSettings({ autoUpdateLastUpdated: false }).autoUpdateLastUpdated).toBe(false);
