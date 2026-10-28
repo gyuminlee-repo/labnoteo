@@ -233,10 +233,18 @@
   <article class="feature" id="partbank-samples">
     <h3>partbank 부품을 샘플로</h3>
     <p>설정 → Labnote Assistant의 <code>partbank</code>에 <code>partbank 서버</code>(팀이 함께 쓰는 보관함이면 이쪽)나 이 PC의 <code>partbank 데스크톱 앱</code> 주소와 API 키를 넣고 <code>연결 확인</code>을 누릅니다. 키는 보관함이 아니라 이 PC에만 저장되어 보관함을 함께 쓰는 사람에게 넘어가지 않습니다. 연결 전에는 partbank 메뉴와 명령이 보이지 않습니다.</p>
-    <p>본문에서 <code>@DNA;</code>처럼 치면 자동완성 맨 아래에 <code>partbank에서 검색</code>이 생깁니다. 검색은 내 항목과 내 그룹에 공유된 항목만 찾고, 고른 항목은 상세와 보관 위치까지 읽어 샘플로 등록한 뒤 본문에 참조를 넣습니다. 이미 등록한 항목이면 새로 만들지 않고 그 ID를 씁니다. 샘플 뷰 우클릭이나 샘플 정의 창의 <code>partbank에서 보관 위치 갱신</code>으로 위치를 다시 읽고, 팔레트의 <code>partbank에서 보관 위치 일괄 갱신</code>으로 보관함 전체를 한 번에 맞춥니다. <code>partbank에서 열기</code>는 그 항목을 브라우저나 데스크톱 앱으로 열고, 열지 못하면 링크를 클립보드에 복사합니다.</p>
+    <p>본문에서 <code>@DNA;</code>처럼 치면 자동완성 맨 아래에 <code>partbank에서 검색</code>이 생깁니다. 검색은 내 항목과 내 그룹에 공유된 항목만 찾고, 고른 항목은 상세와 보관 위치까지 읽어 샘플로 등록한 뒤 본문에 참조를 넣습니다. 이미 등록한 항목이면 새로 만들지 않고 그 ID를 씁니다. 샘플 뷰 우클릭이나 샘플 정의 창의 <code>partbank에서 보관 위치 갱신</code>으로 위치를 다시 읽고, 팔레트의 <code>partbank에서 보관 위치 일괄 갱신</code>으로 보관함 전체를 한 번에 맞춥니다. <code>partbank에서 열기</code>는 그 항목을 브라우저나 데스크톱 앱으로 열고, 열지 못하면 링크를 클립보드에 복사합니다. 데스크톱 앱과 오가는 모습은 <a href="#partbank-desktop">partbank 데스크톱 앱과 함께</a>에 있습니다.</p>
     <p>partbank에서 가져온 샘플을 쓴 랩노트는 그 항목의 partbank 화면에 본인에게만 보입니다. 보내는 것은 보관함 이름, 노트 경로·제목, 실험 폴더 이름, 그 샘플이 나오는 절 제목이고 노트 본문은 보내지 않습니다. partbank 화면에서 노트를 누르면 Obsidian에서 그 절 위치로 열립니다(<code>obsidian://labnoteo-open</code>). partbank의 <code>labnoteo로 보내기</code>는 반대로 Obsidian을 띄워 그 항목을 등록합니다(<code>obsidian://labnoteo-import</code>). 사용처를 보내기 싫으면 설정 <code>partbank</code> 절의 <code>노트 사용처를 partbank에 보내기</code>를 끄면 되고, 끄면 이 PC가 보낸 기록을 partbank에서 지웁니다.</p>
     <figure class="clip" data-clip="partbank-samples"><figcaption>@DNA; → partbank에서 검색 → 샘플 등록 → 샘플 정의 보기의 partbank 연결</figcaption></figure>
     <p class="hint">설정 화면에는 계정 이름이 보여서 영상은 연결을 마친 상태에서 시작합니다.</p>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#partbank에서-부품-가져오기">QUICKSTART · partbank에서 부품 가져오기</a></p>
+  </article>
+  <article class="feature" id="partbank-desktop">
+    <h3>partbank 데스크톱 앱과 함께</h3>
+    <p>이 PC에서 partbank 데스크톱 앱을 쓰면, 앱의 Profile → API Keys에서 키를 발급해 설정 → Labnote Assistant의 <code>partbank 데스크톱 앱 주소</code>(기본 <code>http://127.0.0.1:47830</code>)와 <code>partbank 데스크톱 앱 API 키</code>에 넣고 <code>연결 확인</code>을 누릅니다. 서버와 데스크톱 앱을 둘 다 연결했다면 <code>검색에 쓸 연결</code>에서 검색할 곳을 고릅니다.</p>
+    <p>앱의 부품 상세에서 <code>labnoteo로 보내기</code>를 누르면 Obsidian이 열려 어디에 등록할지 묻고, 열려 있는 노트의 커서 자리에 참조를 넣습니다. 노트를 저장하고 몇 초 지나면 그 상세 화면에 <code>전자노트 사용처 (나만 보임)</code>가 생기고, 절 제목을 누르면 Obsidian에서 그 절이 열립니다. 반대로 샘플 뷰에서 우클릭 → <code>partbank에서 열기</code>를 고르면 데스크톱 앱이 그 항목의 상세를 엽니다.</p>
+    <figure class="clip" data-clip="partbank-desktop"><figcaption>데스크톱 앱 labnoteo로 보내기 → 커서 자리에 참조 → 전자노트 사용처 → 그 절 열기 → partbank에서 열기</figcaption></figure>
+    <p class="hint">무엇을 보내는지와 사용처 보내기를 끄는 방법은 <a href="#partbank-samples">partbank 부품을 샘플로</a>에 있습니다.</p>
     <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#partbank에서-부품-가져오기">QUICKSTART · partbank에서 부품 가져오기</a></p>
   </article>
 </section>
@@ -322,7 +330,7 @@
   <ul class="plain">
     <li><strong>샘플 추적·전역 샘플 폴더</strong>: 설정 → Labnote Assistant의 <code>샘플 추적</code>은 자동완성·하이라이트·대장 기록을 켜고 끕니다(다시 불러와야 적용). <code>전역 샘플 폴더</code>를 바꾸고 설정을 닫으면 옛 폴더의 샘플을 옮길지 묻습니다. <a href="https://github.com/sblabkribb/labnoteo/blob/main/README.md#설정">README · 설정</a></li>
     <li><strong>MCP 서버</strong>: 설정의 <code>MCP 서버</code> 항목에서 <code>MCP 서버 활성화</code>로 외부 MCP 클라이언트에 Labnote 도구를 내놓습니다. <a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/COPILOT.md">Copilot 에이전트 가이드</a></li>
-    <li><strong>partbank 연결</strong>: 연결 방법과 검색·보관 위치·사용처 보내기는 <a href="#partbank-samples">partbank 부품을 샘플로</a>에 있습니다. 내 workspace 항목을 미리 받아 두려면 <code>partbank 카탈로그 내려받기 (Download partbank catalog)</code>를 씁니다.</li>
+    <li><strong>partbank 연결</strong>: 연결 방법과 검색·보관 위치·사용처 보내기는 <a href="#partbank-samples">partbank 부품을 샘플로</a>에, 데스크톱 앱 연결은 <a href="#partbank-desktop">partbank 데스크톱 앱과 함께</a>에 있습니다. 내 workspace 항목을 미리 받아 두려면 <code>partbank 카탈로그 내려받기 (Download partbank catalog)</code>를 씁니다.</li>
     <li><strong>설정 화면</strong>: Obsidian 1.13 이상에서는 설정 창 검색으로 이 플러그인의 항목도 찾습니다. 숫자·폴더 칸은 칸을 벗어나거나 Enter를 누를 때 검사해 저장하고, 범위를 벗어난 숫자나 Windows에서 만들 수 없는 폴더 이름은 이유를 알리고 저장하지 않습니다. <a href="https://github.com/sblabkribb/labnoteo/blob/main/README.md#설정">README · 설정</a></li>
     <li><strong>노트를 다른 실험으로 옮길 때</strong>: 옮긴 노트가 원래 실험의 로컬 샘플을 쓰면 새 실험으로 가져올지 묻습니다. <a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#노트를-다른-실험으로-옮길-때">QUICKSTART · 노트를 다른 실험으로 옮길 때</a></li>
   </ul>

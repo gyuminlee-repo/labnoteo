@@ -4,7 +4,7 @@ section: start
 title: { ko: 연구노트 자동화 설정, en: Setup research automation }
 seed: basic
 steps:
-  - caption: { ko: 팔레트에서 연구노트 자동화 설정을 실행합니다, en: Run Setup research automation from the palette }
+  - caption: { ko: 팔레트(Ctrl+P)에서 연구노트 자동화 설정을 실행합니다, en: Run Setup research automation from the palette (Ctrl+P) }
     palette: setup-research-automation
   - caption: { ko: 첨부 파일 위치를 묻습니다. ./images를 고릅니다, en: It asks where attachments go; choose ./images }
     tool: modal_button

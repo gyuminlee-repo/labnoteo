@@ -1,0 +1,78 @@
+id: partbank-desktop
+order: 35
+section: samples
+title: { ko: partbank 데스크톱 앱과 함께, en: With the partbank desktop app }
+seed: samples
+setup:
+  - tool: partbank_desktop_launch
+  - tool: partbank_desktop_prepare
+  - tool: labnoteo_partbank_connect
+    args: { connection: desktop }
+  # usages an earlier recording left on the desktop app
+  - tool: settings_open
+    args: { tab: Labnote Assistant }
+  - tool: settings_set
+    args: { name: $t(Send note usages to partbank), value: false }
+  - wait: 1500
+  - tool: settings_set
+    args: { name: $t(Send note usages to partbank), value: true }
+  - tool: settings_close
+  - tool: partbank_desktop_open
+    args: { part: BBa_I20270 }
+  - tool: open_file
+    args: { path: { ko: labnote/001_GFP_발현/001_WB030_DNA_Assembly_1차.labnote.md, en: labnote/001_GFP_expression/001_WB030_DNA_Assembly_run1.labnote.md } }
+  - tool: editor_move
+    args: { text: DNA-1001, ch: end }
+  - tool: ui_press
+    args: { keys: Enter }
+steps:
+  - app: partbank
+  - caption: { ko: partbank 데스크톱 앱에서 부품 상세를 엽니다, en: A part's detail page in the partbank desktop app }
+    hold: 600
+  - caption: { ko: labnoteo로 보내기를 누르면 Obsidian이 열립니다, en: "labnoteo로 보내기 (Send to labnoteo) opens Obsidian" }
+    tool: partbank_desktop_click
+    args: { text: labnoteo로 보내기 }
+  - app: obsidian
+  - tool: ui_wait
+    args: { selector: .prompt, timeoutMs: 20000 }
+  - caption: { ko: 이 실험의 샘플로 등록합니다, en: Register it as a sample of this experiment }
+    tool: modal_pick
+    args: { text: 'Local:', timeoutMs: 15000 }
+    hold: 600
+  - caption: { ko: 열린 노트의 커서 자리에 참조를 넣습니다, en: The reference goes in at the cursor of the open note }
+    tool: modal_button
+    args: { text: $t(Insert) }
+  - highlight: { selector: .cm-line, text: BBa-I20270 }
+    hold: 800
+  - caption: { ko: 저장하면 몇 초 뒤 사용처가 partbank로 갑니다, en: "A few seconds after the save, the usage reaches partbank" }
+    app: partbank
+  - tool: partbank_desktop_open
+    args: { part: BBa_I20270, waitText: 전자노트 사용처, timeoutMs: 45000 }
+    fastForward: true
+  - caption: { ko: 전자노트 사용처에 이 노트가 보입니다(나만 보임), en: "전자노트 사용처 (Note usages) lists this note, for you only" }
+    highlight: { selector: .bg-card, text: 전자노트 사용처 }
+    poster: true
+    hold: 1500
+  - caption: { ko: 절 제목을 누르면 Obsidian에서 그 절이 열립니다, en: Click a section to open it in Obsidian }
+    tool: partbank_desktop_click
+    args: { selector: 'a[title]', text: { ko: GFP 증폭, en: GFP amplification } }
+  - app: obsidian
+    hold: 1500
+  - caption: { ko: 샘플 뷰 우클릭 → partbank에서 열기, en: "In the Samples view, right-click → Open in partbank" }
+    tool: ribbon_click
+    args: { label: $t(Samples) }
+  - tool: labnoteo_sample_menu
+    args: { sample: BBa-I20270, item: $t(Open in partbank) }
+  - tool: partbank_desktop_follow_link
+  - caption: { ko: 데스크톱 앱이 그 부품을 보여 줍니다, en: The desktop app shows that part }
+    app: partbank
+    hold: 2000
+teardown:
+  # turned off, labnoteo clears what it sent; the next recording starts from the seed again
+  - tool: settings_open
+    args: { tab: Labnote Assistant }
+  - tool: settings_set
+    args: { name: $t(Send note usages to partbank), value: false }
+  - wait: 2000
+  - tool: settings_close
+  - tool: partbank_desktop_restore
