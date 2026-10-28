@@ -1,5 +1,5 @@
 id: sample-view
-order: 18
+order: 20
 section: samples
 title: { ko: 샘플 뷰, en: Samples view }
 seed: basic

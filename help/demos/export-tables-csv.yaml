@@ -1,5 +1,5 @@
 id: export-tables-csv
-order: 16
+order: 17
 section: record
 title: { ko: 표를 CSV로 내보내기, en: Export tables to CSV }
 seed: basic

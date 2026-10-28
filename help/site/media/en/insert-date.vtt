@@ -1,17 +1,21 @@
 WEBVTT
 
 1
-00:00:00.019 --> 00:00:02.525
+00:00:00.173 --> 00:00:02.683
 Insert date
 
 2
-00:00:02.525 --> 00:00:18.197
+00:00:02.683 --> 00:00:18.896
 Insert today's date at the cursor
 
 3
-00:00:18.197 --> 00:00:27.530
+00:00:18.896 --> 00:00:28.380
 On an empty End_date line it fills in date and time
 
 4
-00:00:27.530 --> 00:00:36.004
+00:00:28.380 --> 00:00:39.685
+While editing a table cell it goes into that cell
+
+5
+00:00:39.685 --> 00:00:48.195
 To change a value, click 📅 and edit it in the field

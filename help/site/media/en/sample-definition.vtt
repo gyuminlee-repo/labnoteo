@@ -1,21 +1,29 @@
 WEBVTT
 
 1
-00:00:00.016 --> 00:00:02.521
+00:00:00.018 --> 00:00:02.527
 Go to definition and View usages
 
 2
-00:00:02.521 --> 00:00:11.923
+00:00:02.527 --> 00:00:12.048
 Right-click a sample reference in the note
 
 3
-00:00:11.923 --> 00:00:18.820
+00:00:12.048 --> 00:00:19.078
 Go to definition opens the definition window
 
 4
-00:00:18.820 --> 00:00:25.168
-In the Samples view, right-click → View usages
+00:00:19.078 --> 00:00:25.009
+In the Samples view, right-click → Show sample definition
 
 5
-00:00:25.168 --> 00:00:31.477
-Pick a note from the list to open it
+00:00:25.009 --> 00:00:29.627
+Shows where each description came from and its usages by experiment
+
+6
+00:00:29.627 --> 00:00:33.760
+In the Samples view, right-click → View usages
+
+7
+00:00:33.760 --> 00:00:40.096
+Each use is listed with its section; pick one to open it there

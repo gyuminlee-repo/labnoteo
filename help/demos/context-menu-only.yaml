@@ -1,5 +1,5 @@
 id: context-menu-only
-order: 12
+order: 13
 section: record
 title: { ko: 우클릭 메뉴로만 하기, en: Doing it from right-click menus }
 seed: basic

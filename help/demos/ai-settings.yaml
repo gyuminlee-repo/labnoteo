@@ -1,5 +1,5 @@
 id: ai-settings
-order: 25
+order: 29
 section: ai
 title: { ko: AI 프로바이더 설정, en: AI provider settings }
 seed: basic

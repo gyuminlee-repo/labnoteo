@@ -1,5 +1,5 @@
 id: ai-summarize-results
-order: 27
+order: 31
 section: ai
 title: { ko: "AI: 워크플로 결과 요약", en: "AI: Summarize workflow results" }
 seed: basic
@@ -13,7 +13,10 @@ steps:
   - tool: ui_wait
     args: { notice: '', timeoutMs: 300000 }
     fastForward: true
-  - caption: { ko: Conclusions and Discussion 끝에 요약 콜아웃이 들어갔습니다, en: A summary callout goes in at the end of Conclusions and Discussion }
-    highlight: { selector: .cm-line, text: { ko: AI 워크플로 결과 요약, en: AI workflow results summary } }
+  - tool: eval
+    args:
+      expression: "(() => { const e = app.workspace.activeEditor.editor; const end = { line: e.lastLine(), ch: 0 }; e.scrollIntoView({ from: end, to: end }, true); return true; })()"
+  - caption: { ko: Conclusions and Discussion 끝에 요약이 붙습니다, en: A summary callout goes in at the end of Conclusions and Discussion }
+    highlight: { selector: '.cm-callout, .cm-line', text: { ko: AI 워크플로 결과 요약, en: AI workflow results summary } }
     poster: true
     hold: 2500

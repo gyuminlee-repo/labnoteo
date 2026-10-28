@@ -1,0 +1,14 @@
+# multi에서 실험 두 개의 담당자만 바꾼다. 워크플로 뷰의 담당자별 묶음이 둘로 나뉘어 보이고,
+# 006 형질전환 효율 비교(failed)는 그대로라 이 실험 다시 하기를 고를 수 있다.
+id: retry
+from: multi
+steps:
+  - quit: true
+  - fs.patch:
+      path: { ko: labnote/004_라이코펜_생산_균주/README.labnote.md, en: labnote/004_Lycopene_strain/README.labnote.md }
+      find: "author: Demo Researcher"
+      replace: "author: Minji Park"
+  - fs.patch:
+      path: { ko: labnote/006_형질전환_효율_비교/README.labnote.md, en: labnote/006_Transformation_efficiency/README.labnote.md }
+      find: "author: Demo Researcher"
+      replace: "author: Minji Park"

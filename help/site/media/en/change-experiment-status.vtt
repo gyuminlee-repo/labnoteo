@@ -1,37 +1,41 @@
 WEBVTT
 
 1
-00:00:00.008 --> 00:00:02.510
+00:00:00.006 --> 00:00:02.514
 Change experiment status
 
 2
-00:00:02.510 --> 00:00:09.290
+00:00:02.514 --> 00:00:09.581
 Open the experiment README; it is planned now
 
 3
-00:00:09.290 --> 00:00:13.087
+00:00:09.581 --> 00:00:13.498
 The workflow view lists it under planned
 
 4
-00:00:13.087 --> 00:00:18.519
+00:00:13.498 --> 00:00:19.302
 Run Change experiment status from the palette
 
 5
-00:00:18.519 --> 00:00:22.142
-Pick in-progress from the list
+00:00:19.302 --> 00:00:22.904
+The list says what each status means; pick in-progress
 
 6
-00:00:22.142 --> 00:00:24.224
+00:00:22.904 --> 00:00:24.981
 The README status has changed
 
 7
-00:00:24.224 --> 00:00:27.165
+00:00:24.981 --> 00:00:27.915
 In the workflow view it moved to in-progress
 
 8
-00:00:27.165 --> 00:00:35.050
+00:00:27.915 --> 00:00:35.879
 Or right-click it in the workflow view
 
 9
-00:00:35.050 --> 00:00:40.575
+00:00:35.879 --> 00:00:41.081
+If the work looks unfinished, it asks once more
+
+10
+00:00:41.081 --> 00:00:46.558
 It moved to the completed group

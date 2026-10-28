@@ -1,5 +1,5 @@
 id: workflow-rename-copy
-order: 9
+order: 10
 section: record
 title: { ko: 워크플로 이름 바꾸기·복사, en: Rename and copy a workflow }
 seed: basic

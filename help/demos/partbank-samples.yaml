@@ -1,0 +1,41 @@
+id: partbank-samples
+order: 26
+section: samples
+title: { ko: partbank 부품을 샘플로, en: partbank parts as samples }
+seed: samples
+setup:
+  - tool: labnoteo_partbank_connect
+steps:
+  - caption: { ko: 시약 줄에서 @DNA;를 칩니다, en: "Type @DNA; on a reagent line" }
+    tool: open_file
+    args: { path: { ko: labnote/001_GFP_발현/001_WB030_DNA_Assembly_1차.labnote.md, en: labnote/001_GFP_expression/001_WB030_DNA_Assembly_run1.labnote.md } }
+  - tool: editor_move
+    args: { text: '(e.g. enzyme, buffer, etc.)', ch: 2 }
+  - tool: editor_move
+    args: { ch: end, extend: true }
+  - tool: ui_type
+    args: { text: '@DNA;' }
+    hold: 800
+  - caption: { ko: 맨 아래 partbank에서 검색을 고릅니다, en: Pick Search partbank at the bottom }
+    tool: ui_click
+    args: { selector: .suggestion-item, text: $t(Search partbank) }
+    hold: 800
+  - caption: { ko: 내 항목과 내 그룹에 공유된 항목에서 찾습니다, en: It searches your own items and those shared with your groups }
+    tool: modal_pick
+    args: { filter: BBa_I20270, text: KBp_aa0630, timeoutMs: 15000 }
+    fastForward: true
+  - caption: { ko: 샘플로 등록되고 본문에는 참조가 들어갑니다, en: It is registered as a sample and referenced in the note }
+    highlight: { selector: .cm-line, text: BBa-I20270 }
+    hold: 1500
+  - caption: { ko: 샘플 뷰 우클릭 → 샘플 정의 보기, en: "In the Samples view, right-click → Show sample definition" }
+    tool: ribbon_click
+    args: { label: $t(Samples) }
+  - tool: labnoteo_sample_menu
+    args: { sample: BBa-I20270, item: $t(Show sample definition) }
+    hold: 1000
+  - caption: { ko: partbank 연결 정보가 함께 보입니다, en: The window shows its partbank link }
+    highlight: { selector: .modal }
+    poster: true
+    hold: 2500
+  - tool: ui_press
+    args: { keys: Escape }
