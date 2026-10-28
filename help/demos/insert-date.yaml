@@ -1,5 +1,5 @@
 id: insert-date
-order: 15
+order: 16
 section: record
 title: { ko: 날짜 삽입, en: Insert date }
 seed: basic
@@ -24,7 +24,10 @@ steps:
     poster: true
     hold: 1500
   - caption: { ko: 표 칸을 편집하는 중에도 그 칸에 넣습니다, en: While editing a table cell it goes into that cell }
-    tool: ui_click
+    tool: eval
+    args:
+      expression: "(() => { const e = app.workspace.activeEditor.editor; e.setCursor({ line: 51, ch: 0 }); e.scrollIntoView({ from: { line: 51, ch: 0 }, to: { line: 60, ch: 0 } }, true); return true; })()"
+  - tool: ui_click
     args: { selector: .cm-table-widget td, nth: 1 }
   - tool: ui_press
     args: { keys: End }

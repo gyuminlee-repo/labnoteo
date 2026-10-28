@@ -92,15 +92,23 @@
   </article>
   <article class="feature" id="workflow-view">
     <h3>워크플로 뷰에서 실험 보기</h3>
-    <p>리본의 상자 아이콘으로 여는 <strong>워크플로 뷰</strong> 맨 위 <code>실험</code> 칸에 보관함의 실험이 묶여 보입니다. <code>실험 검색</code> 칸으로 거르고, 옆의 전환으로 <code>상태별</code>·<code>과제별</code>(README의 <code>project</code>)·<code>담당자별</code>(README의 <code>author</code>)·<code>논의 여부별</code>을 오갑니다. <code>논의 여부별</code>은 논의 표시가 켜졌거나 <code>@issue</code> 마커가 있는 실험을 <code>논의할 것 있음</code>에 모읍니다. <code>failed</code>·<code>needs-repeat</code> 실험은 우클릭 → <code>이 실험 다시 하기</code>로 원래 실험과 이어진 재시도 실험을 만듭니다.</p>
+    <p>리본의 상자 아이콘으로 여는 <strong>워크플로 뷰</strong> 맨 위 <code>실험</code> 칸에 보관함의 실험이 묶여 보입니다. <code>실험 검색</code> 칸으로 거르고, 옆의 전환으로 <code>상태별</code>·<code>과제별</code>(README의 <code>project</code>)·<code>담당자별</code>(README의 <code>author</code>)·<code>논의 여부별</code>을 오갑니다. <code>논의 여부별</code>은 논의 표시가 켜졌거나 <code>@issue</code> 마커가 있는 실험을 <code>논의할 것 있음</code>에 모읍니다. 검색으로 거른 목록에서 우클릭으로 상태나 논의 표시를 바꾼 실험은 검색에 더 맞지 않아도 검색어를 바꿀 때까지 남아 있어, 다시 우클릭해 되돌릴 수 있습니다. <code>failed</code>·<code>needs-repeat</code> 실험은 우클릭 → <code>이 실험 다시 하기</code>로 원래 실험과 이어진 재시도 실험을 만듭니다(<a href="#experiment-retry">실험 다시 하기</a>).</p>
     <figure class="clip" data-clip="workflow-view"><figcaption>상태별 묶음 → 실험 검색 → 과제별 묶음</figcaption></figure>
     <p class="hint">묶음 전환은 운영체제의 목록 상자라 영상에는 펼쳐진 목록이 찍히지 않습니다. 자막으로 고른 항목을 알려 줍니다.</p>
   </article>
   <article class="feature" id="change-experiment-status">
     <h3>진행 상태 바꾸기</h3>
-    <p>명령 팔레트 → <code>실험 상태 변경 (Change experiment status)</code> → 상태 선택. 상태는 어느 실험 노트에서 실행해도 그 실험의 README에 들어갑니다. 워크플로 뷰에서 실험을 우클릭 → <code>실험 상태 변경</code>으로도 바꿀 수 있고, 바뀐 상태는 워크플로 뷰의 묶음에 바로 나타납니다.</p>
-    <figure class="clip" data-clip="change-experiment-status"><figcaption>팔레트로 planned → in-progress, 우클릭으로 in-progress → completed</figcaption></figure>
+    <p>명령 팔레트 → <code>실험 상태 변경 (Change experiment status)</code> → 상태 선택. 목록에는 상태마다 뜻(<code>진행 중 — 지금 하고 있음</code>)이 함께 나오고, 저장되는 값은 영어 그대로입니다. 상태는 어느 실험 노트에서 실행해도 그 실험의 README에 들어갑니다. 워크플로 뷰에서 실험을 우클릭 → <code>실험 상태 변경</code>으로도 바꿀 수 있고, 바뀐 상태는 워크플로 뷰의 묶음에 바로 나타납니다.</p>
+    <p><code>completed</code>로 바꿀 때 워크플로가 없거나, 체크하지 않은 워크플로, 머리말 <code>end_date</code>가 빈 워크플로 노트, 켜진 논의 표시, 남은 <code>@issue</code> 마커가 있으면 알려 주고 한 번 더 묻습니다. 논의 표시가 켜져 있으면 끄고 바꿀지 둔 채 바꿀지 고릅니다.</p>
+    <figure class="clip" data-clip="change-experiment-status"><figcaption>팔레트로 planned → in-progress, 우클릭으로 in-progress → completed와 확인 창</figcaption></figure>
     <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#2-진행-상태-바꾸기">QUICKSTART · 2. 진행 상태 바꾸기</a></p>
+  </article>
+  <article class="feature" id="experiment-retry">
+    <h3>실험 다시 하기</h3>
+    <p>워크플로 뷰에서 <code>failed</code>·<code>needs-repeat</code> 실험을 우클릭 → <code>이 실험 다시 하기</code>를 고르면 다음 번호로 <code>planned</code> 실험을 만듭니다. 제목은 원래 제목에 차수를 붙여 미리 채워지고(<code>… 1차</code> → <code>… 2차</code>, 그 차수의 실험이 이미 있으면 다음 차수) 고칠 수 있습니다. 새 README는 원래 실험의 <code>author</code>·<code>project</code>를 그대로 가져와 <code>담당자별</code>·<code>과제별</code>에서 같은 묶음에 들어가고, 머리말의 <code>retry_of</code>에 원래 실험 README로 가는 링크가 들어갑니다. 워크플로 노트는 복사하지 않습니다.</p>
+    <p>워크플로 뷰에서 마우스를 올리면 두 실험의 재시도 관계가 보이고, 검색 칸에 원래 실험 번호를 치면 둘이 함께 남습니다. 탐색기에서 <code>failed</code>·<code>needs-repeat</code> 실험 폴더를 복제할 때도 <code>재실험으로 표시</code>할지 묻습니다.</p>
+    <figure class="clip" data-clip="experiment-retry"><figcaption>담당자별 묶음 → 우클릭 이 실험 다시 하기 → 새 README의 retry_of</figcaption></figure>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#2-진행-상태-바꾸기">QUICKSTART · 2. 진행 상태 바꾸기</a> (재시도 실험)</p>
   </article>
   <article class="feature" id="issue-marker-discussion">
     <h3>논의가 필요한 곳 표시하기</h3>
@@ -162,14 +170,22 @@
   <article class="feature" id="insert-date">
     <h3>날짜 넣기</h3>
     <p><code>날짜 삽입 (Insert date)</code>과 <code>날짜 및 시간 삽입 (Insert date and time)</code>은 커서 위치(표 칸 안도 됨)에 오늘 날짜와 시각을 넣습니다. 읽기 화면에서는 편집 화면으로 바꾸라고 안내합니다. 유닛 오퍼레이션 <code>#### Meta</code>의 날짜 줄 끝 📅 아이콘을 누르면 날짜 칸이 열립니다.</p>
-    <figure class="clip" data-clip="insert-date"><figcaption>날짜 삽입과 📅 날짜 칸</figcaption></figure>
+    <figure class="clip" data-clip="insert-date"><figcaption>표 칸 안에 날짜 삽입과 📅 날짜 칸</figcaption></figure>
     <p class="hint">달력 팝업은 운영체제가 그리는 창이라 영상에 찍히지 않아, 입력 칸에서 값을 바꾸는 장면으로 보여 줍니다.</p>
   </article>
   <article class="feature" id="export-tables-csv">
     <h3>표를 CSV로 내보내기</h3>
-    <p><code>표를 CSV로 내보내기 (Export tables to CSV)</code>는 노트 안의 표를 각각 <code>노트이름.labnote_table1.csv</code>로 같은 폴더에 저장합니다. 실험 전체는 <code>이 실험의 표를 모두 CSV로 내보내기 (Export all tables of this experiment to CSV)</code>로 한 번에 내보냅니다(탐색기에서 실험 폴더나 README 우클릭도 가능).</p>
+    <p><code>표를 CSV로 내보내기 (Export tables to CSV)</code>는 노트 안의 표를 각각 <code>노트이름.labnote_table1.csv</code>로 같은 폴더에 저장합니다. 실험 전체를 한 번에 내보내는 방법은 <a href="#csv-excel-warning">엑셀 경고와 실험 전체 CSV</a>에 있습니다.</p>
     <figure class="clip" data-clip="export-tables-csv"><figcaption>완료 알림 → 탐색기의 CSV 파일</figcaption></figure>
     <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#날짜--표">QUICKSTART · 날짜 · 표</a> (덮어쓰기 조건)</p>
+  </article>
+  <article class="feature" id="csv-excel-warning">
+    <h3>엑셀 경고와 실험 전체 CSV</h3>
+    <p><code>이 실험의 표를 모두 CSV로 내보내기 (Export all tables of this experiment to CSV)</code>는 README부터 실험 폴더 바로 안의 노트마다 표를 CSV로 내보냅니다. 탐색기에서 실험 폴더나 README를 우클릭해도 됩니다. 덮어쓸 CSV가 있으면 노트마다 묻지 않고 한 번에 모아 묻습니다.</p>
+    <p>CSV를 엑셀에서 더블클릭으로 열면 <code>1/2</code>는 날짜로, <code>007</code>은 앞자리 0이 빠진 숫자로, <code>2E4</code>는 <code>20000</code>으로 바뀝니다. 이런 칸이 있으면 완료 알림이 CSV마다 그 칸과 열 이름을 알려 주니, 엑셀에서 <code>데이터 → 텍스트/CSV에서</code>로 열고 그 열의 형식을 텍스트로 지정하세요. CSV 파일 자체에는 적은 글자가 그대로 들어 있습니다. 경로가 엑셀이 열 수 있는 길이(218자)를 넘는 CSV도 알려 줍니다. 짝이 되는 노트가 없는 CSV는 목록을 보여 주고 휴지통으로 옮길지 묻습니다.</p>
+    <figure class="clip" data-clip="csv-excel-warning"><figcaption>1/2 · 007 · 2E4가 든 표 → 엑셀 경고 알림 → README와 워크플로의 CSV</figcaption></figure>
+    <p class="hint">알림은 잠시 뒤 사라지므로 영상에서는 자막으로 내용을 짚습니다.</p>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#날짜--표">QUICKSTART · 날짜 · 표</a> (엑셀이 바꾸는 칸 전체 목록)</p>
   </article>
 </section>
 
@@ -187,10 +203,17 @@
     <figure class="clip" data-clip="sample-view"><figcaption>추가 · 편집 · 검색 · 폐기로 표시</figcaption></figure>
     <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#샘플-뷰">QUICKSTART · 샘플 뷰</a></p>
   </article>
+  <article class="feature" id="sample-search-delete">
+    <h3>샘플 찾기와 지우기</h3>
+    <p>샘플 뷰 맨 위 <code>샘플 검색</code> 칸은 ID·별칭뿐 아니라 설명과 보관 위치로도 거릅니다. <code>냉동고</code>를 치면 냉동고에 둔 샘플만 남습니다. <code>_</code>·<code>:</code>·<code>;</code>는 <code>-</code>처럼 보므로 노트에 적은 이름 그대로 쳐도 찾아집니다.</p>
+    <p>우클릭 → <code>샘플 삭제</code>는 지우기 전에 별칭·설명·보관 위치를 보여 주고 확인을 받습니다. 아직 본문에서 쓰는 샘플이면 지우지 않고 어느 노트에서 쓰는지 알려 주니, 노트의 기록을 남기려면 대신 <code>폐기로 표시</code>를 쓰세요. 샘플 추적이 꺼져 있으면 팔레트의 <code>샘플 정의 열기 (편집·이동·삭제)</code>가 설정 때문인지 README의 <code>sample_tracking: 'no'</code> 때문인지 알려 줍니다.</p>
+    <figure class="clip" data-clip="sample-search-delete"><figcaption>보관 위치로 검색 → 샘플 삭제 → 쓰는 노트 안내</figcaption></figure>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#샘플-뷰">QUICKSTART · 샘플 뷰</a> (삭제 규칙)</p>
+  </article>
   <article class="feature" id="sample-definition">
     <h3>정의 보기와 사용처</h3>
     <p>본문의 참조 위에서 우클릭 → <code>정의로 이동</code>으로 그 샘플의 정의 창을 엽니다. 샘플 뷰에서는 우클릭 → <code>샘플 정의 보기</code>로 같은 창을 엽니다. 창에는 설명과 그 출처 노트, partbank 연결 정보, 실험별로 묶인 사용처가 보이고, 사용처를 누르면 그 노트가 열립니다. 샘플 뷰에서 우클릭 → <code>사용처 보기</code>는 그 샘플을 쓰는 줄을 노트와 절로 보여 주고, 고르면 그 노트를 열어 커서를 참조 위에 둡니다.</p>
-    <figure class="clip" data-clip="sample-definition"><figcaption>정의로 이동 → 사용처 보기 → 노트 열기</figcaption></figure>
+    <figure class="clip" data-clip="sample-definition"><figcaption>정의로 이동 → 샘플 정의 보기 → 사용처 보기 → 노트 열기</figcaption></figure>
   </article>
   <article class="feature" id="sample-type-scope">
     <h3>타입 변경과 전역으로 이동</h3>
@@ -206,6 +229,15 @@
     <h3>사용자 정의 샘플 타입</h3>
     <p>설정 → Labnote Assistant → <code>사용자 정의 샘플 타입</code>에 <code>배지</code> 같은 타입을 더하면 바로 <code>@배지</code>로 자동완성됩니다. 타입 이름에는 글자·숫자·<code>_</code>만 씁니다. <code>_</code>는 영문자·숫자 사이에서만 쓸 수 있고(<code>Cell_Line</code>), 한글 옆에 두면 읽기 화면에서 기울임으로 보이니 붙여 씁니다(<code>무세포용해물</code>).</p>
     <figure class="clip" data-clip="custom-sample-type"><figcaption>설정에서 타입 추가 → @배지 자동완성</figcaption></figure>
+  </article>
+  <article class="feature" id="partbank-samples">
+    <h3>partbank 부품을 샘플로</h3>
+    <p>설정 → Labnote Assistant의 <code>partbank</code>에 <code>partbank 서버</code>(팀이 함께 쓰는 보관함이면 이쪽)나 이 PC의 <code>partbank 데스크톱 앱</code> 주소와 API 키를 넣고 <code>연결 확인</code>을 누릅니다. 키는 보관함이 아니라 이 PC에만 저장되어 보관함을 함께 쓰는 사람에게 넘어가지 않습니다. 연결 전에는 partbank 메뉴와 명령이 보이지 않습니다.</p>
+    <p>본문에서 <code>@DNA;</code>처럼 치면 자동완성 맨 아래에 <code>partbank에서 검색</code>이 생깁니다. 검색은 내 항목과 내 그룹에 공유된 항목만 찾고, 고른 항목은 상세와 보관 위치까지 읽어 샘플로 등록한 뒤 본문에 참조를 넣습니다. 이미 등록한 항목이면 새로 만들지 않고 그 ID를 씁니다. 샘플 뷰 우클릭이나 샘플 정의 창의 <code>partbank에서 보관 위치 갱신</code>으로 위치를 다시 읽고, 팔레트의 <code>partbank에서 보관 위치 일괄 갱신</code>으로 보관함 전체를 한 번에 맞춥니다. <code>partbank에서 열기</code>는 그 항목을 브라우저나 데스크톱 앱으로 열고, 열지 못하면 링크를 클립보드에 복사합니다.</p>
+    <p>partbank에서 가져온 샘플을 쓴 랩노트는 그 항목의 partbank 화면에 본인에게만 보입니다. 보내는 것은 보관함 이름, 노트 경로·제목, 실험 폴더 이름, 그 샘플이 나오는 절 제목이고 노트 본문은 보내지 않습니다. partbank 화면에서 노트를 누르면 Obsidian에서 그 절 위치로 열립니다(<code>obsidian://labnoteo-open</code>). partbank의 <code>labnoteo로 보내기</code>는 반대로 Obsidian을 띄워 그 항목을 등록합니다(<code>obsidian://labnoteo-import</code>). 사용처를 보내기 싫으면 설정 <code>partbank</code> 절의 <code>노트 사용처를 partbank에 보내기</code>를 끄면 되고, 끄면 이 PC가 보낸 기록을 partbank에서 지웁니다.</p>
+    <figure class="clip" data-clip="partbank-samples"><figcaption>@DNA; → partbank에서 검색 → 샘플 등록 → 샘플 정의 보기의 partbank 연결</figcaption></figure>
+    <p class="hint">설정 화면에는 계정 이름이 보여서 영상은 연결을 마친 상태에서 시작합니다.</p>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#partbank에서-부품-가져오기">QUICKSTART · partbank에서 부품 가져오기</a></p>
   </article>
 </section>
 
@@ -259,7 +291,7 @@
   </article>
   <article class="feature" id="ai-draft-method">
     <h3>Method 초안</h3>
-    <p>유닛 오퍼레이션 안에서 <code>AI: Method 섹션 초안 작성 (AI: Draft Method section)</code>을 실행하면 그 블록의 <code>#### Method</code> 절이 채워집니다.</p>
+    <p>유닛 오퍼레이션 안에서 <code>AI: Method 섹션 초안 작성 (AI: Draft Method section)</code>을 실행하면 그 블록의 <code>#### Method</code> 절이 채워집니다. 초안 맨 위에는 <code>AI 초안 (모델, 날짜) — 검토 후 이 줄을 지우세요</code> 한 줄이 붙으니, 검토를 마치면 지우세요.</p>
     <figure class="clip" data-clip="ai-draft-method"><figcaption>Method 절 채우기</figcaption></figure>
   </article>
   <article class="feature" id="ai-summarize-results">
@@ -289,8 +321,9 @@
   <h2>그 밖의 설정</h2>
   <ul class="plain">
     <li><strong>샘플 추적·전역 샘플 폴더</strong>: 설정 → Labnote Assistant의 <code>샘플 추적</code>은 자동완성·하이라이트·대장 기록을 켜고 끕니다(다시 불러와야 적용). <code>전역 샘플 폴더</code>를 바꾸고 설정을 닫으면 옛 폴더의 샘플을 옮길지 묻습니다. <a href="https://github.com/sblabkribb/labnoteo/blob/main/README.md#설정">README · 설정</a></li>
-    <li><strong>MCP 서버</strong>: <code>MCP 서버 활성화</code>로 외부 MCP 클라이언트에 Labnote 도구를 내놓습니다. <a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/COPILOT.md">Copilot 에이전트 가이드</a></li>
-    <li><strong>partbank 연결</strong>: 설정 → Labnote Assistant의 <code>partbank</code>에 <code>partbank 서버</code>나 <code>partbank 데스크톱 앱</code>의 주소와 API 키를 넣으면 자동완성의 <code>partbank에서 검색 (Search partbank)</code>, <code>partbank에서 보관 위치 갱신 (Refresh storage location from partbank)</code>, <code>partbank 카탈로그 내려받기 (Download partbank catalog)</code>가 생깁니다. 키는 보관함이 아니라 이 PC에만 저장됩니다. <a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#partbank에서-부품-가져오기">QUICKSTART · partbank에서 부품 가져오기</a></li>
+    <li><strong>MCP 서버</strong>: 설정의 <code>MCP 서버</code> 항목에서 <code>MCP 서버 활성화</code>로 외부 MCP 클라이언트에 Labnote 도구를 내놓습니다. <a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/COPILOT.md">Copilot 에이전트 가이드</a></li>
+    <li><strong>partbank 연결</strong>: 연결 방법과 검색·보관 위치·사용처 보내기는 <a href="#partbank-samples">partbank 부품을 샘플로</a>에 있습니다. 내 workspace 항목을 미리 받아 두려면 <code>partbank 카탈로그 내려받기 (Download partbank catalog)</code>를 씁니다.</li>
+    <li><strong>설정 화면</strong>: Obsidian 1.13 이상에서는 설정 창 검색으로 이 플러그인의 항목도 찾습니다. 숫자·폴더 칸은 칸을 벗어나거나 Enter를 누를 때 검사해 저장하고, 범위를 벗어난 숫자나 Windows에서 만들 수 없는 폴더 이름은 이유를 알리고 저장하지 않습니다. <a href="https://github.com/sblabkribb/labnoteo/blob/main/README.md#설정">README · 설정</a></li>
     <li><strong>노트를 다른 실험으로 옮길 때</strong>: 옮긴 노트가 원래 실험의 로컬 샘플을 쓰면 새 실험으로 가져올지 묻습니다. <a href="https://github.com/sblabkribb/labnoteo/blob/main/automation/templates/QUICKSTART.md#노트를-다른-실험으로-옮길-때">QUICKSTART · 노트를 다른 실험으로 옮길 때</a></li>
   </ul>
 </section>

@@ -92,14 +92,22 @@
   </article>
   <article class="feature" id="workflow-view">
     <h3>Experiments in the workflow view</h3>
-    <p>The <strong>workflow view</strong>, opened with the box icon in the ribbon, groups the vault's experiments under <code>Experiments</code> at the top. Filter them with <code>Search experiments</code> and switch between <code>By status</code>, <code>By project</code> (the README's <code>project</code>), <code>By author</code> (the README's <code>author</code>) and <code>By discussion</code>. <code>By discussion</code> puts the experiments flagged for discussion or with an <code>@issue</code> marker under <code>Something to discuss</code>. Right-click a <code>failed</code> or <code>needs-repeat</code> experiment → <code>Retry this experiment</code> to create a retry linked to it.</p>
+    <p>The <strong>workflow view</strong>, opened with the box icon in the ribbon, groups the vault's experiments under <code>Experiments</code> at the top. Filter them with <code>Search experiments</code> and switch between <code>By status</code>, <code>By project</code> (the README's <code>project</code>), <code>By author</code> (the README's <code>author</code>) and <code>By discussion</code>. <code>By discussion</code> puts the experiments flagged for discussion or with an <code>@issue</code> marker under <code>Something to discuss</code>. In a filtered list, an experiment whose status or discussion flag you change by right-click stays listed until you change the search, even if it no longer matches, so you can right-click it again to undo. Right-click a <code>failed</code> or <code>needs-repeat</code> experiment → <code>Retry this experiment</code> to create a retry linked to it (<a href="#experiment-retry">Retry an experiment</a>).</p>
     <figure class="clip" data-clip="workflow-view"><figcaption>By status → Search experiments → By project</figcaption></figure>
     <p class="hint">The grouping switch is a system list box, so its open list does not show in the clip; the caption says which item is picked.</p>
   </article>
   <article class="feature" id="change-experiment-status">
     <h3>Change the status</h3>
-    <p>Command palette → <code>Change experiment status</code> → pick a status. Run from any note of an experiment, it updates that experiment's README. You can also right-click an experiment in the workflow view and choose <code>Change experiment status</code>; the new status shows in the view's groups at once.</p>
-    <figure class="clip" data-clip="change-experiment-status"><figcaption>planned → in-progress from the palette, in-progress → completed by right-click</figcaption></figure>
+    <p>Command palette → <code>Change experiment status</code> → pick a status. The list says what each status means. Run from any note of an experiment, it updates that experiment's README. You can also right-click an experiment in the workflow view and choose <code>Change experiment status</code>; the new status shows in the view's groups at once.</p>
+    <p>When you mark an experiment <code>completed</code>, it tells you if there are no workflows, unchecked workflows, workflow notes with an empty <code>end_date</code>, a discussion flag that is on or <code>@issue</code> markers left, and asks once more. With the discussion flag on, you choose whether to clear it or keep it.</p>
+    <figure class="clip" data-clip="change-experiment-status"><figcaption>planned → in-progress from the palette, in-progress → completed by right-click, and the confirmation</figcaption></figure>
+  </article>
+  <article class="feature" id="experiment-retry">
+    <h3>Retry an experiment</h3>
+    <p>In the workflow view, right-click a <code>failed</code> or <code>needs-repeat</code> experiment → <code>Retry this experiment</code> to create a <code>planned</code> experiment with the next number. The title is filled in from the original's and can be edited. The new README takes the original's <code>author</code> and <code>project</code> as they are, so it lands in the same <code>By author</code> and <code>By project</code> group, and its <code>retry_of</code> property links to the original README. Workflow notes are not copied.</p>
+    <p>Hover in the workflow view to see how the two experiments are linked; typing the original's number in the search keeps both. Duplicating a <code>failed</code> or <code>needs-repeat</code> experiment folder in the file explorer also asks whether to <code>Mark as retry</code>.</p>
+    <figure class="clip" data-clip="experiment-retry"><figcaption>By author → right-click Retry this experiment → retry_of in the new README</figcaption></figure>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/REFERENCE.en.md#retry-this-experiment">Command reference · Retry this experiment</a></p>
   </article>
   <article class="feature" id="issue-marker-discussion">
     <h3>Flag what needs discussion</h3>
@@ -160,14 +168,22 @@
   <article class="feature" id="insert-date">
     <h3>Insert dates</h3>
     <p><code>Insert date</code> and <code>Insert date and time</code> put today's date and time at the cursor, also inside a table cell. In reading view they say to switch to the editing view. The 📅 icon at the end of a date line in a unit operation's <code>#### Meta</code> opens a date field.</p>
-    <figure class="clip" data-clip="insert-date"><figcaption>Insert date and the 📅 date field</figcaption></figure>
+    <figure class="clip" data-clip="insert-date"><figcaption>Insert date in a table cell and the 📅 date field</figcaption></figure>
     <p class="hint">The calendar popup is drawn by the operating system and does not show in recordings, so the clip changes the value in the field instead.</p>
   </article>
   <article class="feature" id="export-tables-csv">
     <h3>Export tables to CSV</h3>
-    <p><code>Export tables to CSV</code> saves each table of the note as <code>note name.labnote_table1.csv</code> next to it. <code>Export all tables of this experiment to CSV</code> does a whole experiment at once (also on the right-click menu of an experiment folder or its README in the file explorer).</p>
+    <p><code>Export tables to CSV</code> saves each table of the note as <code>note name.labnote_table1.csv</code> next to it. To export a whole experiment at once, see <a href="#csv-excel-warning">Excel warning and the whole experiment as CSV</a>.</p>
     <figure class="clip" data-clip="export-tables-csv"><figcaption>Completion notice → CSV files in the explorer</figcaption></figure>
     <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/REFERENCE.en.md#export-tables-to-csv">Command reference · Export tables to CSV</a> (when files are overwritten)</p>
+  </article>
+  <article class="feature" id="csv-excel-warning">
+    <h3>Excel warning and the whole experiment as CSV</h3>
+    <p><code>Export all tables of this experiment to CSV</code> exports the tables of every note directly in the experiment folder, starting with the README. It is also on the right-click menu of an experiment folder or its README in the file explorer. If CSV files would be overwritten, it asks once for all of them instead of note by note.</p>
+    <p>Double-click a CSV to open it in Excel and <code>1/2</code> becomes a date, <code>007</code> loses its leading zero and <code>2E4</code> becomes <code>20000</code>. When a table has such cells, the completion notice names them and their columns for each CSV; open the file in Excel with <code>Data → From Text/CSV</code> and set those columns to Text. The CSV itself keeps what you wrote. It also names any CSV whose path is longer than Excel can open (218 characters). CSV files left without a matching note are listed, and you are asked whether to move them to the trash.</p>
+    <figure class="clip" data-clip="csv-excel-warning"><figcaption>A table with 1/2 · 007 · 2E4 → Excel warning → CSV files of the README and the workflow</figcaption></figure>
+    <p class="hint">The notice goes away after a while, so the clip's caption points out what it says.</p>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/REFERENCE.en.md#export-all-tables-of-this-experiment-to-csv">Command reference · Export all tables of this experiment to CSV</a></p>
   </article>
 </section>
 
@@ -183,10 +199,17 @@
     <p>In the Samples view, opened with the test-tube icon in the ribbon, add, edit (including the storage location) and search samples; mark a used-up sample with <code>Mark as discarded</code> instead of deleting it.</p>
     <figure class="clip" data-clip="sample-view"><figcaption>Add · edit · search · mark as discarded</figcaption></figure>
   </article>
+  <article class="feature" id="sample-search-delete">
+    <h3>Find and delete samples</h3>
+    <p>The <code>Search samples</code> box at the top of the Samples view matches descriptions and storage locations as well as IDs and aliases: type <code>freezer</code> and only the samples kept in a freezer remain. It reads <code>_</code>, <code>:</code> and <code>;</code> as <code>-</code>, so the name as written in a note finds the sample.</p>
+    <p>Right-click → <code>Delete sample</code> shows the alias, description and location and asks before deleting. A sample still used in the text is not deleted; the window says which notes use it, and to keep their record use <code>Mark as discarded</code> instead. When sample tracking is off, <code>Open sample definition</code> in the palette says whether the setting or the README's <code>sample_tracking: 'no'</code> turned it off.</p>
+    <figure class="clip" data-clip="sample-search-delete"><figcaption>Search by location → Delete sample → the notes that use it</figcaption></figure>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/REFERENCE.en.md#sample-view-context-menu">Command reference · Sample view context menu</a></p>
+  </article>
   <article class="feature" id="sample-definition">
     <h3>Definitions and usages</h3>
     <p>Right-click a reference in the text → <code>Go to definition</code> opens that sample's definition. In the Samples view, right-click → <code>Show sample definition</code> opens the same window. It shows the descriptions with the notes they came from, the partbank link, and the usages grouped by experiment; click a usage to open that note. In the Samples view, right-click → <code>View usages</code> lists each line that uses the sample with its note and section; pick one to open the note with the cursor on that reference.</p>
-    <figure class="clip" data-clip="sample-definition"><figcaption>Go to definition → View usages → open a note</figcaption></figure>
+    <figure class="clip" data-clip="sample-definition"><figcaption>Go to definition → Show sample definition → View usages → open a note</figcaption></figure>
   </article>
   <article class="feature" id="sample-type-scope">
     <h3>Change type and move to Global</h3>
@@ -202,6 +225,15 @@
     <h3>Custom sample types</h3>
     <p>Add a type such as <code>Media</code> under Settings → Labnote Assistant → <code>Custom sample types</code> and <code>@Media</code> autocompletes right away. Use letters, digits and <code>_</code> only. A <code>_</code> works between ASCII letters and digits (<code>Cell_Line</code>); next to other letters it turns the name italic in the reading view, so write those together (<code>무세포용해물</code>).</p>
     <figure class="clip" data-clip="custom-sample-type"><figcaption>Add a type in settings → @Media autocomplete</figcaption></figure>
+  </article>
+  <article class="feature" id="partbank-samples">
+    <h3>partbank parts as samples</h3>
+    <p>Under <code>partbank</code> in Settings → Labnote Assistant, enter the address and API key of a <code>partbank server</code> (use this for a vault the team shares) or of the <code>partbank desktop app</code> on this PC, and press <code>Test connection</code>. The key is kept on this PC only, not in the vault, so it does not reach the people you share the vault with. The partbank menus and commands appear only after a connection is set up.</p>
+    <p>Type <code>@DNA;</code> in a note and the autocomplete ends with <code>Search partbank</code>. The search finds only your own items and those shared with your groups; the one you pick is registered as a sample with its details and storage location, and a reference goes into the text. An item you already registered is reused instead of added again. <code>Refresh storage location from partbank</code>, on the Samples view right-click menu and in the definition window, reads the location again, and <code>Refresh storage locations from partbank</code> in the palette updates the whole vault at once. <code>Open in partbank</code> opens the item in the browser or the desktop app, and copies the link to the clipboard if it cannot.</p>
+    <p>Lab notes that use samples taken from partbank are listed on that item's partbank page, visible only to you. What is sent is the vault name, the note path and title, the experiment folder name and the headings of the sections where the sample appears, never the note text. Clicking a note on the partbank page opens it in Obsidian at that section (<code>obsidian://labnoteo-open</code>). partbank's <code>Send to labnoteo</code> works the other way, bringing up Obsidian to register the item (<code>obsidian://labnoteo-import</code>). To stop sending usages, turn off <code>Send note usages to partbank</code> under <code>partbank</code> in settings; this also deletes what this PC sent from partbank.</p>
+    <figure class="clip" data-clip="partbank-samples"><figcaption>@DNA; → Search partbank → registered as a sample → its partbank link in Show sample definition</figcaption></figure>
+    <p class="hint">The settings screen shows the account name, so the clip starts with the connection already made.</p>
+    <p class="more"><a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/REFERENCE.en.md#partbank">Command reference · partbank</a></p>
   </article>
 </section>
 
@@ -255,7 +287,7 @@
   </article>
   <article class="feature" id="ai-draft-method">
     <h3>Draft the Method</h3>
-    <p>Run <code>AI: Draft Method section</code> inside a unit operation and it fills that block's <code>#### Method</code> section.</p>
+    <p>Run <code>AI: Draft Method section</code> inside a unit operation and it fills that block's <code>#### Method</code> section. The draft starts with the line <code>AI draft (model, date) — review it, then delete this line</code>; delete it once you have reviewed the draft.</p>
     <figure class="clip" data-clip="ai-draft-method"><figcaption>Filling the Method section</figcaption></figure>
   </article>
   <article class="feature" id="ai-summarize-results">
@@ -285,8 +317,9 @@
   <h2>Other settings</h2>
   <ul class="plain">
     <li><strong>Sample tracking and Global sample folder</strong>: <code>Sample tracking</code> under Settings → Labnote Assistant turns autocomplete, highlighting and registry sync on or off (reload to apply). After you change the <code>Global sample folder</code> and close settings, you are asked whether to move the samples in the old folder. <a href="https://github.com/sblabkribb/labnoteo/blob/main/README.en.md#settings">README · Settings</a></li>
-    <li><strong>MCP server</strong>: <code>Enable MCP server</code> exposes Labnote's tools to an external MCP client. <a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/COPILOT.md">Copilot agents guide</a> (Korean)</li>
-    <li><strong>partbank connection</strong>: fill in the address and API key of a <code>partbank server</code> or the <code>partbank desktop app</code> under <code>partbank</code> in Settings → Labnote Assistant, and the autocomplete gains <code>Search partbank</code> along with the <code>Refresh storage location from partbank</code> and <code>Download partbank catalog</code> commands. The key is kept on this PC only, not in the vault. <a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/REFERENCE.en.md#partbank">Command reference · partbank</a></li>
+    <li><strong>MCP server</strong>: in the <code>MCP server</code> section of settings, <code>Enable MCP server</code> exposes Labnote's tools to an external MCP client. <a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/COPILOT.md">Copilot agents guide</a> (Korean)</li>
+    <li><strong>partbank connection</strong>: connecting, searching, storage locations and sending usages are under <a href="#partbank-samples">partbank parts as samples</a>. To keep your workspace items at hand ahead of time, use <code>Download partbank catalog</code>.</li>
+    <li><strong>The settings screen</strong>: from Obsidian 1.13, the settings search also finds this plugin's options. Number and folder fields are checked and saved when you leave the field or press Enter; a number out of range or a folder name Windows cannot create is refused with the reason. <a href="https://github.com/sblabkribb/labnoteo/blob/main/README.en.md#settings">README · Settings</a></li>
     <li><strong>Moving a note to another experiment</strong>: when the moved note uses Local samples of its old experiment, you are asked whether to bring them along. <a href="https://github.com/sblabkribb/labnoteo/blob/main/docs/REFERENCE.en.md#moving-to-another-folder">Command reference · Moving to another folder</a></li>
   </ul>
 </section>

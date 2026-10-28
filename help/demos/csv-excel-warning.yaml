@@ -1,0 +1,25 @@
+id: csv-excel-warning
+order: 18
+section: record
+title: { ko: 엑셀 경고와 실험 전체 CSV, en: Excel warning and the whole experiment as CSV }
+seed: tables
+steps:
+  - caption: { ko: "1/2, 007, 2E4가 든 결과 표입니다", en: "A results table with 1/2, 007 and 2E4 in it" }
+    tool: open_file
+    args: { path: { ko: labnote/001_GFP_발현/001_WB030_DNA_Assembly_1차.labnote.md, en: labnote/001_GFP_expression/001_WB030_DNA_Assembly_run1.labnote.md } }
+  - tool: eval
+    args:
+      expression: "(() => { const e = app.workspace.activeEditor.editor; e.setCursor({ line: 51, ch: 0 }); e.scrollIntoView({ from: { line: 51, ch: 0 }, to: { line: 60, ch: 0 } }, true); return true; })()"
+  - highlight: { selector: .cm-table-widget }
+    hold: 1200
+  - caption: { ko: 팔레트에서 이 실험의 표를 모두 CSV로 내보내기, en: Run Export all tables of this experiment to CSV }
+    palette: export-experiment-tables-csv
+    hold: 0
+  - caption: { ko: 엑셀이 바꿀 칸과 그 열 이름을 알려 줍니다, en: The notice names the cells Excel would change and their columns }
+    tool: ui_hover
+    args: { selector: .notice }
+    hold: 4500
+  - caption: { ko: README와 워크플로 노트의 표가 모두 CSV가 됐습니다, en: The tables of the README and the workflow note are now CSV files }
+    highlight: { selector: .nav-file-title, text: README.labnote_table1 }
+    poster: true
+    hold: 1500

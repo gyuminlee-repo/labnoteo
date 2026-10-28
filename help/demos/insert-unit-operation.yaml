@@ -1,5 +1,5 @@
 id: insert-unit-operation
-order: 13
+order: 14
 section: record
 title: { ko: 유닛 오퍼레이션 삽입, en: Insert unit operation }
 seed: basic

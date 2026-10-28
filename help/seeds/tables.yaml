@@ -1,0 +1,48 @@
+# basic의 결과 표에 엑셀이 바꿔 버리는 칸(날짜가 되는 1/2, 앞자리 0이 사라지는 007, 지수 표기 2E4)을 넣고,
+# README에도 평범한 표를 하나 둔다. 실험 전체 내보내기가 노트 두 개의 CSV를 만드는 것이 보이게 한다.
+id: tables
+from: basic
+steps:
+  - quit: true
+  - fs.patch:
+      path: { ko: labnote/001_GFP_발현/001_WB030_DNA_Assembly_1차.labnote.md, en: labnote/001_GFP_expression/001_WB030_DNA_Assembly_run1.labnote.md }
+      find:
+        ko: |-
+          | 시료 | 농도 (ng/µL) | A260/280 |
+          | --- | --- | --- |
+          | GFP 증폭산물 | 86.4 | 1.86 |
+          | 음성 대조군 | 2.1 | - |
+        en: |-
+          | Sample | Conc. (ng/µL) | A260/280 |
+          | --- | --- | --- |
+          | GFP amplicon | 86.4 | 1.86 |
+          | Negative control | 2.1 | - |
+      replace:
+        ko: |-
+          | 시료 | 희석비 | 플레이트 번호 | 세포 수 | 농도 (ng/µL) |
+          | --- | --- | --- | --- | --- |
+          | GFP 증폭산물 | 1/2 | 007 | 2E4 | 86.4 |
+          | 음성 대조군 | 1/10 | 008 | 0 | 2.1 |
+        en: |-
+          | Sample | Dilution | Plate no. | Cell count | Conc. (ng/µL) |
+          | --- | --- | --- | --- | --- |
+          | GFP amplicon | 1/2 | 007 | 2E4 | 86.4 |
+          | Negative control | 1/10 | 008 | 0 | 2.1 |
+  - fs.patch:
+      path: { ko: labnote/001_GFP_발현/README.labnote.md, en: labnote/001_GFP_expression/README.labnote.md }
+      find: "## Summary and Discussion\n"
+      replace:
+        ko: |
+          ## Summary and Discussion
+
+          | 클론 | 형광 | 판정 |
+          | --- | --- | --- |
+          | pGFP-c1 | 강함 | 사용 |
+          | pGFP-c2 | 약함 | 보관 |
+        en: |
+          ## Summary and Discussion
+
+          | Clone | Fluorescence | Call |
+          | --- | --- | --- |
+          | pGFP-c1 | Strong | Use |
+          | pGFP-c2 | Weak | Keep |

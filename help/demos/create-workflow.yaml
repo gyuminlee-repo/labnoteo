@@ -1,5 +1,5 @@
 id: create-workflow
-order: 8
+order: 9
 section: record
 title: { ko: 워크플로 생성, en: Create workflow }
 seed: basic

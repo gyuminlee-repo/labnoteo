@@ -1,5 +1,5 @@
 id: ai-summarize-experiment
-order: 28
+order: 32
 section: ai
 title: { ko: "AI: 실험 결과 요약", en: "AI: Summarize experiment results" }
 seed: basic
@@ -13,7 +13,10 @@ steps:
   - tool: ui_wait
     args: { notice: '', timeoutMs: 300000 }
     fastForward: true
-  - caption: { ko: 모든 워크플로 노트의 결과가 Summary and Discussion 끝에 요약됩니다, en: The results of every workflow note are summarized at the end of Summary and Discussion }
-    highlight: { selector: .cm-line, text: { ko: AI 실험 결과 요약, en: AI experiment results summary } }
+  - tool: eval
+    args:
+      expression: "(() => { const e = app.workspace.activeEditor.editor; const end = { line: e.lastLine(), ch: 0 }; e.scrollIntoView({ from: end, to: end }, true); return true; })()"
+  - caption: { ko: 모든 워크플로 결과를 README 끝에 요약합니다, en: All workflow results are summarized at the end of the README }
+    highlight: { selector: '.cm-callout, .cm-line', text: { ko: AI 실험 결과 요약, en: AI experiment results summary } }
     poster: true
     hold: 2500

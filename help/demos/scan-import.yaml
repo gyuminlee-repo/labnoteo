@@ -1,5 +1,5 @@
 id: scan-import
-order: 24
+order: 28
 section: scan
 title: { ko: 스캔 붙이기, en: File scans in notes }
 seed: scans
@@ -13,7 +13,7 @@ steps:
   - tool: labnoteo_scan_import
     args: { files: [worksheet-scan.jpg] }
     hold: 800
-  - caption: { ko: QR을 읽어 그 유닛 오퍼레이션 블록에 붙이고 블록 이름을 보여 줍니다, en: The QR code was read and the page filed in its unit operation block, named in the result }
+  - caption: { ko: QR을 읽어 그 유닛 오퍼레이션 블록에 붙이고 블록 이름을 보여 줍니다, en: "The QR code sends it to its unit operation block, named here" }
     highlight: { selector: .modal .setting-item, text: worksheet-scan.jpg }
   - caption: { ko: 잘못 붙었으면 되돌리기로 뺍니다, en: Undo takes it out again }
     highlight: { selector: .modal button, text: $t(Undo) }

@@ -19,18 +19,18 @@
     {
       "id": "ai-draft-method",
       "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 24.9,
-      "bytes": 412465,
-      "recordedAt": "2026-10-20T16:51:27.737Z"
+      "version": "0.130.0",
+      "durationSec": 24.2,
+      "bytes": 361947,
+      "recordedAt": "2026-10-28T02:41:28.589Z"
     },
     {
       "id": "ai-draft-method",
       "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 23.9,
-      "bytes": 414418,
-      "recordedAt": "2026-10-20T16:49:59.467Z"
+      "version": "0.130.0",
+      "durationSec": 23.6,
+      "bytes": 399233,
+      "recordedAt": "2026-10-28T02:37:18.968Z"
     },
     {
       "id": "ai-extract-samples",
@@ -65,36 +65,52 @@
       "recordedAt": "2026-10-20T16:50:03.379Z"
     },
     {
+      "id": "ai-summarize-experiment",
+      "lang": "en",
+      "version": "0.130.0",
+      "durationSec": 23.9,
+      "bytes": 357051,
+      "recordedAt": "2026-10-28T02:44:28.686Z"
+    },
+    {
+      "id": "ai-summarize-experiment",
+      "lang": "ko",
+      "version": "0.130.0",
+      "durationSec": 22.2,
+      "bytes": 340454,
+      "recordedAt": "2026-10-28T02:39:29.261Z"
+    },
+    {
       "id": "ai-summarize-results",
       "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 22.8,
-      "bytes": 381348,
-      "recordedAt": "2026-10-20T16:51:36.373Z"
+      "version": "0.130.0",
+      "durationSec": 24.2,
+      "bytes": 413621,
+      "recordedAt": "2026-10-28T02:34:53.950Z"
     },
     {
       "id": "ai-summarize-results",
       "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 21.8,
-      "bytes": 429986,
-      "recordedAt": "2026-10-20T16:50:04.869Z"
+      "version": "0.130.0",
+      "durationSec": 23.2,
+      "bytes": 392510,
+      "recordedAt": "2026-10-28T00:42:30.309Z"
     },
     {
       "id": "change-experiment-status",
       "lang": "en",
-      "version": "0.111.0",
-      "durationSec": 40.6,
-      "bytes": 850241,
-      "recordedAt": "2026-10-21T09:59:04.902Z"
+      "version": "0.130.0",
+      "durationSec": 46.6,
+      "bytes": 927163,
+      "recordedAt": "2026-10-28T00:19:01.173Z"
     },
     {
       "id": "change-experiment-status",
       "lang": "ko",
-      "version": "0.111.0",
-      "durationSec": 40.2,
-      "bytes": 811836,
-      "recordedAt": "2026-10-21T09:51:07.793Z"
+      "version": "0.130.0",
+      "durationSec": 46.7,
+      "bytes": 945890,
+      "recordedAt": "2026-10-28T00:00:52.762Z"
     },
     {
       "id": "context-menu-only",
@@ -145,6 +161,22 @@
       "recordedAt": "2026-10-20T16:50:13.239Z"
     },
     {
+      "id": "csv-excel-warning",
+      "lang": "en",
+      "version": "0.130.0",
+      "durationSec": 31.6,
+      "bytes": 478429,
+      "recordedAt": "2026-10-27T23:57:32.914Z"
+    },
+    {
+      "id": "csv-excel-warning",
+      "lang": "ko",
+      "version": "0.130.0",
+      "durationSec": 29.9,
+      "bytes": 415341,
+      "recordedAt": "2026-10-27T23:56:50.628Z"
+    },
+    {
       "id": "custom-sample-type",
       "lang": "en",
       "version": "0.105.0",
@@ -159,6 +191,22 @@
       "durationSec": 41.6,
       "bytes": 511541,
       "recordedAt": "2026-10-20T16:50:15.824Z"
+    },
+    {
+      "id": "experiment-retry",
+      "lang": "en",
+      "version": "0.130.0",
+      "durationSec": 29.1,
+      "bytes": 414047,
+      "recordedAt": "2026-10-27T23:46:36.073Z"
+    },
+    {
+      "id": "experiment-retry",
+      "lang": "ko",
+      "version": "0.130.0",
+      "durationSec": 29.5,
+      "bytes": 391863,
+      "recordedAt": "2026-10-27T23:44:38.024Z"
     },
     {
       "id": "export-tables-csv",
@@ -179,18 +227,18 @@
     {
       "id": "insert-date",
       "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 36,
-      "bytes": 559273,
-      "recordedAt": "2026-10-20T16:51:57.982Z"
+      "version": "0.130.0",
+      "durationSec": 48.2,
+      "bytes": 773300,
+      "recordedAt": "2026-10-28T02:31:54.996Z"
     },
     {
       "id": "insert-date",
       "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 34.2,
-      "bytes": 550666,
-      "recordedAt": "2026-10-20T16:50:20.539Z"
+      "version": "0.130.0",
+      "durationSec": 46.2,
+      "bytes": 765819,
+      "recordedAt": "2026-10-28T00:39:42.602Z"
     },
     {
       "id": "insert-experiment-samples-table",
@@ -273,6 +321,22 @@
       "recordedAt": "2026-10-20T16:50:44.953Z"
     },
     {
+      "id": "partbank-samples",
+      "lang": "en",
+      "version": "0.130.0",
+      "durationSec": 38.7,
+      "bytes": 647678,
+      "recordedAt": "2026-10-28T00:17:20.080Z"
+    },
+    {
+      "id": "partbank-samples",
+      "lang": "ko",
+      "version": "0.130.0",
+      "durationSec": 38,
+      "bytes": 635784,
+      "recordedAt": "2026-10-27T23:59:10.469Z"
+    },
+    {
       "id": "sample-autocomplete",
       "lang": "en",
       "version": "0.105.0",
@@ -291,18 +355,34 @@
     {
       "id": "sample-definition",
       "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 31.5,
-      "bytes": 703838,
-      "recordedAt": "2026-10-20T16:52:23.524Z"
+      "version": "0.130.0",
+      "durationSec": 40.1,
+      "bytes": 812801,
+      "recordedAt": "2026-10-28T00:18:07.103Z"
     },
     {
       "id": "sample-definition",
       "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 32.3,
-      "bytes": 570750,
-      "recordedAt": "2026-10-20T16:50:51.086Z"
+      "version": "0.130.0",
+      "durationSec": 41.4,
+      "bytes": 867741,
+      "recordedAt": "2026-10-27T23:59:59.120Z"
+    },
+    {
+      "id": "sample-search-delete",
+      "lang": "en",
+      "version": "0.130.0",
+      "durationSec": 32.9,
+      "bytes": 525024,
+      "recordedAt": "2026-10-28T02:32:34.926Z"
+    },
+    {
+      "id": "sample-search-delete",
+      "lang": "ko",
+      "version": "0.130.0",
+      "durationSec": 32.9,
+      "bytes": 472064,
+      "recordedAt": "2026-10-28T00:40:21.290Z"
     },
     {
       "id": "sample-type-scope",
@@ -339,18 +419,18 @@
     {
       "id": "scan-import",
       "lang": "en",
-      "version": "0.111.0",
-      "durationSec": 32.9,
-      "bytes": 326640,
-      "recordedAt": "2026-10-21T10:00:28.929Z"
+      "version": "0.130.0",
+      "durationSec": 32.7,
+      "bytes": 332454,
+      "recordedAt": "2026-10-28T00:20:18.277Z"
     },
     {
       "id": "scan-import",
       "lang": "ko",
-      "version": "0.111.0",
-      "durationSec": 32.5,
-      "bytes": 352653,
-      "recordedAt": "2026-10-21T09:55:13.822Z"
+      "version": "0.130.0",
+      "durationSec": 33.5,
+      "bytes": 369467,
+      "recordedAt": "2026-10-28T00:02:07.445Z"
     },
     {
       "id": "setup-research-automation",

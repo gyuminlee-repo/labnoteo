@@ -1,5 +1,5 @@
 id: ai-draft-method
-order: 26
+order: 30
 section: ai
 title: { ko: "AI: Method 초안", en: "AI: Draft Method" }
 seed: basic
@@ -16,8 +16,6 @@ steps:
     args: { notice: '', timeoutMs: 300000 }
     fastForward: true
   - caption: { ko: 그 유닛 오퍼레이션의 Method가 채워졌습니다, en: That unit operation's Method is filled in }
-    tool: editor_move
-    args: { line: 88, ch: 0 }
-  - highlight: { selector: .cm-line.cm-active }
+    highlight: { selector: '.cm-callout, .cm-line', text: { ko: AI 초안, en: AI draft } }
     poster: true
     hold: 2500

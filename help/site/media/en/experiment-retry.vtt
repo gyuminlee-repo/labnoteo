@@ -1,0 +1,33 @@
+WEBVTT
+
+1
+00:00:00.026 --> 00:00:02.535
+Retry an experiment
+
+2
+00:00:02.535 --> 00:00:04.653
+Open the workflow view
+
+3
+00:00:04.653 --> 00:00:09.066
+Switch grouping to By author (the drop-down is not shown in video)
+
+4
+00:00:09.066 --> 00:00:12.002
+Experiments are split by the README's author
+
+5
+00:00:12.002 --> 00:00:16.684
+Right-click the failed experiment → Retry this experiment
+
+6
+00:00:16.684 --> 00:00:20.864
+The title is filled in as a retry; keep it
+
+7
+00:00:20.864 --> 00:00:24.069
+The new README's retry_of points to the original
+
+8
+00:00:24.069 --> 00:00:29.120
+The author comes from the original too

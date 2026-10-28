@@ -1,5 +1,5 @@
 id: worksheet-print
-order: 23
+order: 27
 section: scan
 title: { ko: 실험 기록지 출력, en: Print experiment worksheet }
 seed: scans

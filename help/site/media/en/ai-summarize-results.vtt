@@ -1,21 +1,25 @@
 WEBVTT
 
 1
-00:00:00.015 --> 00:00:02.529
-AI: Summarize results
+00:00:00.025 --> 00:00:02.528
+AI: Summarize workflow results
 
 2
-00:00:02.529 --> 00:00:09.940
-Put the cursor where the summary should go
+00:00:02.528 --> 00:00:09.126
+Open a workflow note with results written in
 
 3
-00:00:09.940 --> 00:00:14.407
-Run AI: Summarize results from the palette
+00:00:09.126 --> 00:00:14.744
+Run AI: Summarize workflow results from the palette
 
 4
-00:00:14.407 --> 00:00:16.765
+00:00:14.744 --> 00:00:16.744
 Waiting for the AI (fast-forward)
 
 5
-00:00:16.765 --> 00:00:22.833
-An AI summary callout is inserted
+00:00:16.744 --> 00:00:17.974
+Run AI: Summarize workflow results from the palette
+
+6
+00:00:17.974 --> 00:00:24.219
+A summary callout goes in at the end of Conclusions and Discussion
