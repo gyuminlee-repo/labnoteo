@@ -321,6 +321,22 @@
       "recordedAt": "2026-10-20T16:50:44.953Z"
     },
     {
+      "id": "partbank-desktop",
+      "lang": "en",
+      "version": "0.130.0",
+      "durationSec": 43.2,
+      "bytes": 936864,
+      "recordedAt": "2026-10-28T13:23:04.355Z"
+    },
+    {
+      "id": "partbank-desktop",
+      "lang": "ko",
+      "version": "0.130.0",
+      "durationSec": 44.9,
+      "bytes": 894955,
+      "recordedAt": "2026-10-28T13:17:00.725Z"
+    },
+    {
       "id": "partbank-samples",
       "lang": "en",
       "version": "0.130.0",
@@ -435,18 +451,18 @@
     {
       "id": "setup-research-automation",
       "lang": "en",
-      "version": "0.105.0",
-      "durationSec": 25.2,
-      "bytes": 237407,
-      "recordedAt": "2026-10-20T16:52:34.587Z"
+      "version": "0.130.0",
+      "durationSec": 26.1,
+      "bytes": 263920,
+      "recordedAt": "2026-10-28T09:57:16.134Z"
     },
     {
       "id": "setup-research-automation",
       "lang": "ko",
-      "version": "0.105.0",
-      "durationSec": 24.9,
-      "bytes": 212440,
-      "recordedAt": "2026-10-20T16:51:08.625Z"
+      "version": "0.130.0",
+      "durationSec": 25.9,
+      "bytes": 242339,
+      "recordedAt": "2026-10-28T09:56:39.411Z"
     },
     {
       "id": "uo-reorder",
