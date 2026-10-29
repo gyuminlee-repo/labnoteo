@@ -1,5 +1,6 @@
 // Globals convention (no `import ... from 'vitest'`) — see sampleDefinition.test.ts.
 import { removeWorkflowFromReadme } from '../lib/workflowDelete';
+import { insertWorkflowChecklistEntries } from '../lib/workflowStructure';
 
 describe('workflow deletion section boundaries', () => {
   const entry = '- [ ] [Design](./001_WD010_Design.labnote.md)';
@@ -63,6 +64,13 @@ describe('workflow deletion under translated or renamed sections', () => {
       changed: true,
       content: [...head, ...tail].join(newline),
     });
+  });
+
+  it.each(['\n', '\r\n'])('removes the entry from the #298 fallback section the add path writes to with %j', newline => {
+    const md = ['# T', '## Notes', entry, ''].join(newline);
+    const added = insertWorkflowChecklistEntries(md, [{ done: true, title: 'Assay', fileName: '002_WS010_Assay.labnote.md' }]);
+    expect(added).toBe(['# T', '## Notes', entry, sibling, ''].join(newline));
+    expect(removeWorkflowFromReadme(md, file)).toEqual({ changed: true, content: ['# T', '## Notes', ''].join(newline) });
   });
 
   it.each(['\n', '\r\n'])('keeps the link in other sections and fences under a renamed heading with %j', newline => {
