@@ -52,9 +52,10 @@ export function stepFence(line: string, open: OpenFence | null): OpenFence | nul
   if (!match) return open;
 
   const run = match[1];
-  if (open === null) return { char: run[0], length: run.length };
-
   const afterRun = line.slice(line.indexOf(run) + run.length);
+  // CommonMark: a backtick fence's info string has no backtick (```` ```a``` ```` is inline code).
+  if (open === null) return run[0] === '`' && afterRun.includes('`') ? null : { char: run[0], length: run.length };
+
   const closes = run[0] === open.char && run.length >= open.length && afterRun.trim() === '';
   return closes ? null : open;
 }

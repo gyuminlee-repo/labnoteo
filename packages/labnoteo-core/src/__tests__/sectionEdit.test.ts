@@ -6,6 +6,7 @@ import {
   normalizeHeadingText,
   stripRepeatedHeading,
   diffBodyLines,
+  stepFence,
 } from '../sections/sectionEdit';
 
 describe('replacement body line endings', () => {
@@ -301,5 +302,23 @@ describe('diffBodyLines', () => {
       removed: ['> guide', 'memo', 'DNA-1;a'],
       added: ['> new'],
     });
+  });
+});
+
+// CommonMark: a backtick run whose info string has a backtick opens no fence (#442 follow-up).
+describe('backtick runs that open no fence', () => {
+  it.each(['```example```', '``` a`b', '```js `x`'])('%s opens no fence', line => {
+    expect(stepFence(line, null)).toBeNull();
+  });
+
+  it('still opens ```md and a ~~~ fence whose info has a backtick, and closes as before', () => {
+    expect(stepFence('```md', null)).toEqual({ char: '`', length: 3 });
+    expect(stepFence('~~~ a`b', null)).toEqual({ char: '~', length: 3 });
+    expect(stepFence('```', { char: '`', length: 3 })).toBeNull();
+  });
+
+  it.each(['\n', '\r\n'])('finds a heading after such a line with %j', newline => {
+    const md = ['```example```', '## Related Workflows', 'body', ''].join(newline);
+    expect(findSectionMatches(md, 'Related Workflows').map(m => m.line)).toEqual([1]);
   });
 });
