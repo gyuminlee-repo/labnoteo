@@ -206,7 +206,7 @@ export function replaceSectionBodyAt(md: string, line: number, newBody: string):
   if (!m) return { ok: false, md };
   const bodyEnd = sectionBodyEnd(lines, headingIdx, m[1].length);
 
-  const bodyLines = newBody === '' ? [''] : ['', ...newBody.split('\n'), ''];
+  const bodyLines = newBody === '' ? [''] : ['', ...newBody.split(/\r?\n/), ''];
   const next: string[] = [
     ...lines.slice(0, headingIdx + 1),
     ...bodyLines,

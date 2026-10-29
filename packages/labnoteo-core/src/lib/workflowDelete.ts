@@ -7,6 +7,7 @@
  * handled by the command; this module stays pure and unit-testable.
  */
 import { decodeChecklistLink } from './workflowStructure';
+import { findSectionMatches, sectionBodyEnd, stepFence, type OpenFence } from '../sections/sectionEdit';
 
 export interface RemoveWorkflowFromReadmeResult {
   changed: boolean;
@@ -47,21 +48,23 @@ export function removeWorkflowFromReadme(
   readmeContent: string,
   fileName: string
 ): RemoveWorkflowFromReadmeResult {
-  const lines = readmeContent.split('\n');
-  const kept: string[] = [];
-  let changed = false;
-
-  for (const line of lines) {
-    if (isChecklistLineForFile(line, fileName)) {
-      changed = true;
-      continue;
+  // Keep each line's terminator so untouched bytes survive even mixed endings.
+  const lines = readmeContent.split(/(?<=\n)/);
+  const drop = new Set<number>();
+  for (const section of findSectionMatches(readmeContent, 'Related Workflows')) {
+    const end = sectionBodyEnd(lines, section.line, section.level);
+    let fence: OpenFence | null = null;
+    for (let i = section.line + 1; i < end; i++) {
+      const next = stepFence(lines[i], fence);
+      const inCode = fence !== null || next !== null;
+      fence = next;
+      if (!inCode && isChecklistLineForFile(lines[i], fileName)) drop.add(i);
     }
-    kept.push(line);
   }
 
-  if (!changed) {
+  if (drop.size === 0) {
     return { changed: false, content: readmeContent };
   }
 
-  return { changed: true, content: kept.join('\n') };
+  return { changed: true, content: lines.filter((_, i) => !drop.has(i)).join('') };
 }

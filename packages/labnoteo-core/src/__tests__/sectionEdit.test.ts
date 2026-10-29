@@ -8,6 +8,17 @@ import {
   diffBodyLines,
 } from '../sections/sectionEdit';
 
+describe('replacement body line endings', () => {
+  it.each(['\n', '\r\n'])('normalizes LF and CRLF bodies to document ending %j', newline => {
+    const md = ['## A', 'old', '## B', 'keep', ''].join(newline);
+    for (const body of ['x\ny', 'x\r\ny', 'x\r\ny\nz']) {
+      const expected = ['## A', '', ...body.split(/\r?\n/), '', '## B', 'keep', ''].join(newline);
+      expect(replaceSectionBody(md, 'A', body).md).toBe(expected);
+      expect(replaceSectionBodyAt(md, 0, body).md).toBe(expected);
+    }
+  });
+});
+
 const doc = [
   '## [WD010 Design]',
   '',

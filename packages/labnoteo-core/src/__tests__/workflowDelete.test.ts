@@ -1,6 +1,45 @@
 // Globals convention (no `import ... from 'vitest'`) — see sampleDefinition.test.ts.
 import { removeWorkflowFromReadme } from '../lib/workflowDelete';
 
+describe('workflow deletion section boundaries', () => {
+  const entry = '- [ ] [Design](./001_WD010_Design.labnote.md)';
+  const file = '001_WD010_Design.labnote.md';
+
+  it.each(['\n', '\r\n'])('preserves other sections and fenced examples with %j', newline => {
+    const before = ['# Experiment', entry, '```md', '## Related Workflows', entry, '```', ''];
+    const section = ['## 🗂️ Related Workflows', '> Instructions  ', '~~~~md', '## Notes', entry, '```', entry, '~~~~', '### Nested'];
+    const after = ['## Notes', entry, '# Appendix', entry, ''];
+    const md = [...before, ...section, entry, ...after].join(newline);
+    expect(removeWorkflowFromReadme(md, file)).toEqual({
+      changed: true,
+      content: [...before, ...section, ...after].join(newline),
+    });
+  });
+
+  it.each(['## Notes', '# Notes'])('stops at the next same or higher heading %s', boundary => {
+    const md = ['## Related Workflows', entry, boundary, entry].join('\n');
+    expect(removeWorkflowFromReadme(md, file)).toEqual({
+      changed: true, content: ['## Related Workflows', boundary, entry].join('\n'),
+    });
+  });
+
+  it.each([
+    ['## Notes', entry],
+    ['```md', '## Related Workflows', entry, '```'],
+    ['## Related Workflows', '~~~', entry],
+  ])('preserves content without a real matching checklist: %j', (...lines) => {
+    const md = lines.join('\r\n');
+    expect(removeWorkflowFromReadme(md, file)).toEqual({ changed: false, content: md });
+  });
+
+  it('preserves mixed line endings and the final newline byte for byte', () => {
+    const md = `## Related Workflows\r\n${entry}\n> keep  \r\n## Notes\n${entry}\r\n`;
+    expect(removeWorkflowFromReadme(md, file)).toEqual({
+      changed: true, content: `## Related Workflows\r\n> keep  \r\n## Notes\n${entry}\r\n`,
+    });
+  });
+});
+
 const README = [
   '# Experiment',
   '',
