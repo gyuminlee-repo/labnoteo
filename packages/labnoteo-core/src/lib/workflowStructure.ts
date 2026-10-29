@@ -358,7 +358,7 @@ export function createWorkflowFileName(
  * object is safe to share.
  */
 const CHECKLIST_ENTRY_RE =
-  /^(\s*(?:[-*+]\s+)?)\[([ x])\]\s*\[(.+?)\]\((?:\.\/)?([^)]+\.labnote\.md)\)(.*)$/i;
+  /^(\s*(?:[-*+]\s+)?)\[([ x])\]\s*\[(.+?)\]\((?:\.\/)?([^)]+\.labnote\.md)\)(.*)(\r?)$/i;
 
 /** One checklist entry line, split so a writer can change one part of it. */
 interface ChecklistEntryLine {
@@ -374,12 +374,14 @@ interface ChecklistEntryLine {
   link: string;
   /** Everything after the link: an `@issue` marker, a note. */
   tail: string;
+  /** The `\r` a CRLF README leaves on a line split on `\n`, else empty; kept out of `tail`. */
+  eol: string;
 }
 
 function parseChecklistEntryLine(line: string, index: number): ChecklistEntryLine | null {
   const m = CHECKLIST_ENTRY_RE.exec(line);
   if (!m) return null;
-  return { index, prefix: m[1], box: m[2], raw: m[3], link: m[4], tail: m[5] };
+  return { index, prefix: m[1], box: m[2], raw: m[3], link: m[4], tail: m[5], eol: m[6] };
 }
 
 /**
@@ -404,7 +406,7 @@ function checklistLinkText(fileName: string): string {
 }
 
 function renderChecklistEntryLine(e: Omit<ChecklistEntryLine, 'index'>): string {
-  return `${e.prefix}[${e.box}] [${e.raw}](${checklistLinkText(e.link)})${e.tail}`;
+  return `${e.prefix}[${e.box}] [${e.raw}](${checklistLinkText(e.link)})${e.tail}${e.eol}`;
 }
 
 /**
@@ -571,12 +573,15 @@ export function insertWorkflowChecklistEntries(
   for (const item of items) {
     const { header, end } = findWorkflowSection(lines);
     const entries = entriesInLines(lines);
+    // A CRLF README split on `\n` keeps `\r` on each line; new lines carry it too.
+    const eol = lines[header].endsWith('\r') ? '\r' : '';
     const line = renderChecklistEntryLine({
       prefix: entries[0]?.prefix ?? '- ',
       box: item.done ? 'x' : ' ',
       raw: escapeChecklistLabel(item.title),
       link: item.fileName,
       tail: '',
+      eol,
     });
     if (entries.length > 0) {
       lines.splice(checklistInsertAt(lines, entries, checklistSequence(item.fileName), end), 0, line);
@@ -588,7 +593,7 @@ export function insertWorkflowChecklistEntries(
     while (at < end && lines[at].trim().startsWith('>')) at++;
     while (at < end && lines[at].trim() === '') at++;
     // Keep a blank line between the new entry and whatever follows it.
-    const separator = at < lines.length && lines[at].trim() !== '' ? [''] : [];
+    const separator = at < lines.length && lines[at].trim() !== '' ? [eol] : [];
     lines.splice(at, 0, line, ...separator);
   }
   return lines.join('\n');
@@ -613,6 +618,7 @@ export function generateWorkflowChecklist(items: WorkflowChecklistItem[]): strin
         raw: escapeChecklistLabel(item.title),
         link: item.fileName,
         tail: '',
+        eol: '',
       })
     )
     .join('\n');

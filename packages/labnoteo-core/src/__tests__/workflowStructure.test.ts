@@ -649,6 +649,44 @@ describe('finding the Related Workflows section (#298)', () => {
   });
 });
 
+// A CRLF README split on `\n` leaves `\r` on every line; it must match and stay (#298 follow-up).
+describe('workflow checklists in CRLF READMEs', () => {
+  const entry = '- [ ] [A](./001_WD010_A.labnote.md) @issue';
+  const lf = (heading: string) => ['# E', '', heading, '', entry, '', '## Notes', ''].join('\n');
+  const crlf = (text: string) => text.replace(/\n/g, '\r\n');
+  const headings = ['## Related Workflows', '## Workflows'];
+
+  it.each(headings)('finds the section and its entries under %s as in LF', heading => {
+    expect(parseWorkflowChecklistFromReadme(lf(heading))).toHaveLength(1);
+    expect(parseWorkflowChecklistFromReadme(crlf(lf(heading)))).toEqual(parseWorkflowChecklistFromReadme(lf(heading)));
+    expect(hasWorkflowChecklistSection(crlf(lf(heading)))).toBe(true);
+    expect(isWorkflowChecklistEntryLine(`${entry}\r`)).toBe(true);
+  });
+
+  it.each(headings)('adds an entry under %s with CRLF line ends', heading => {
+    const item = { done: false, title: 'B', fileName: '002_WB030_B.labnote.md' };
+    const added = insertWorkflowChecklistEntries(lf(heading), [item]);
+    expect(added).toContain('002_WB030_B');
+    expect(insertWorkflowChecklistEntries(crlf(lf(heading)), [item])).toBe(crlf(added));
+  });
+
+  it('adds the first entry and its blank separator with CRLF line ends', () => {
+    const md = ['## Related Workflows', '> Instructions', '## Notes', ''].join('\n');
+    const item = { done: true, title: 'B', fileName: '002_WB030_B.labnote.md' };
+    expect(insertWorkflowChecklistEntries(crlf(md), [item])).toBe(crlf(insertWorkflowChecklistEntries(md, [item])));
+  });
+
+  it.each(headings)('relinks and removes entries under %s keeping the tail and CRLF', heading => {
+    const renames = [{ from: '001_WD010_A.labnote.md', to: '003_WD010_A.labnote.md' }];
+    const relinked = reconcileWorkflowChecklist(lf(heading), renames);
+    expect(relinked.content).toContain('(./003_WD010_A.labnote.md) @issue');
+    expect(reconcileWorkflowChecklist(crlf(lf(heading)), renames)).toEqual({ ...relinked, content: crlf(relinked.content) });
+    const removed = removeWorkflowChecklistEntries(lf(heading), ['001_WD010_A.labnote.md']);
+    expect(removed).not.toContain('001_WD010_A');
+    expect(removeWorkflowChecklistEntries(crlf(lf(heading)), ['001_WD010_A.labnote.md'])).toBe(crlf(removed));
+  });
+});
+
 describe('workflowNumberClashes (#288)', () => {
   it('lists the files that share a number', () => {
     const names = ['001_WD010_A.labnote.md', '002_WB030_B.labnote.md', '002_WT020_C.labnote.md', 'README.labnote.md'];
