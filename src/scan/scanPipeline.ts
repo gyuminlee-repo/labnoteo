@@ -390,8 +390,13 @@ export class ScanPipeline {
             render: () => this.deps.app.vault.readBinary(image),
           }, item.result, reason);
           Object.assign(item.result, queued);
-          await this.deps.app.fileManager.trashFile(image);
-          delete item.result.imagePath;
+          try {
+            await this.deps.app.fileManager.trashFile(image);
+            delete item.result.imagePath;
+          } catch (err) {
+            // The copy is queued already; the saved image stays, and imagePath says where.
+            console.warn('[labnoteo] could not trash a scan queued as unmatched', image.path, err);
+          }
         } catch (err) {
           Object.assign(item.result, { status: 'error', message: String(err) });
         }
@@ -449,6 +454,16 @@ export class ScanPipeline {
       const copy = app.vault.getAbstractFileByPath(result.unmatchedPath);
       if (copy instanceof TFile && copy !== image) await app.fileManager.trashFile(copy);
       result.unmatchedPath = image.path;
+    }
+    if (result.status === 'unmatched' && result.imagePath) {
+      // flush could not trash the image it saved; the queued image stands for it.
+      const saved = app.vault.getAbstractFileByPath(result.imagePath);
+      try {
+        if (saved instanceof TFile && saved !== image) await app.fileManager.trashFile(saved);
+        delete result.imagePath;
+      } catch (err) {
+        console.warn('[labnoteo] could not trash a scan image saved before filing failed', result.imagePath, err);
+      }
     }
     return result;
   }

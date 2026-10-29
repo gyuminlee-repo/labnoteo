@@ -186,6 +186,35 @@ describe('ScanPipeline.run', () => {
     expect(filed[0].embed).toBe(`![[${results[1].imagePath}]]`);
   });
 
+  it('keeps a scan queued as unmatched when its saved image cannot be trashed', async () => {
+    let rendered!: () => void;
+    let resume!: () => void;
+    const started = new Promise<void>(resolve => { rendered = resolve; });
+    const paused = new Promise<void>(resolve => { resume = resolve; });
+    const bytes = new Uint8Array([4, 5, 6]).buffer;
+    const s = setup({ [NOTE]: note }, {
+      'race.jpg': [page(pagePayload({ fingerprint: unitOpFingerprint('Op UHW020', '') }), 'aaaaaaaaaaaa', { render: async () => {
+        rendered();
+        await paused;
+        return bytes;
+      } })],
+    });
+    (s.app.fileManager as unknown as { trashFile: () => Promise<void> }).trashFile = async () => {
+      throw new Error('locked');
+    };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const running = s.pipeline.run([input('race.jpg')]);
+    await started;
+    s.text.set(NOTE, buildNote(ID, ['UHW010']));
+    resume();
+    const [lost] = await running;
+    warn.mockRestore();
+    expect(lost).toMatchObject({ status: 'unmatched', reason: 'no-unit-op' });
+    expect(s.binary.get(lost.unmatchedPath!)).toEqual(bytes);
+    expect(lost.imagePath).toBeDefined();
+    expect(s.binary.has(lost.imagePath!)).toBe(true);
+  });
+
   it.each(['no-unit-op', 'renamed', 'ambiguous'] as const)('queues a saved image for manual assignment when its block becomes %s during rendering', async reason => {
     let rendered!: () => void;
     let resume!: () => void;
@@ -497,6 +526,34 @@ describe('ScanPipeline.fileManually', () => {
 
     const again = await s.pipeline.run([input('scan_1-1.png')]);
     expect(again.map(r => r.status)).toEqual(['duplicate']);
+  });
+
+  it('trashes the image filing saved when the block changed and the first trash failed', async () => {
+    const s = manualSetup();
+    const pipeline = s.pipeline as unknown as { filePage: (...args: unknown[]) => Promise<unknown> };
+    const filePage = pipeline.filePage.bind(s.pipeline);
+    pipeline.filePage = async (...args: unknown[]) => {
+      const decoded = args[0] as DecodedPage;
+      const render = decoded.render;
+      decoded.render = async () => {
+        s.text.set(NOTE, s.text.get(NOTE)!.replace('### [UHW020 Op UHW020]', '### [UHW020 Op UHW020] 바뀜'));
+        return render();
+      };
+      return filePage(...args);
+    };
+    const manager = s.app.fileManager as unknown as { trashFile: (f: TFile) => Promise<void> };
+    const trash = manager.trashFile;
+    let calls = 0;
+    manager.trashFile = async f => {
+      if (calls++ === 0) throw new Error('locked');
+      return trash(f);
+    };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const result = await s.pipeline.fileManually(file(QUEUED), file(NOTE), 2, { page: 1, pageCount: 1 });
+    warn.mockRestore();
+    expect(result).toMatchObject({ status: 'unmatched', reason: 'renamed', unmatchedPath: QUEUED });
+    expect(result.imagePath).toBeUndefined();
+    expect([...s.binary.keys()]).toEqual([QUEUED]);
   });
 
   it('writes the print date the user gave', async () => {

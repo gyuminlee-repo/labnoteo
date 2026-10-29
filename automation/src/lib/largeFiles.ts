@@ -147,7 +147,11 @@ export function run(argv: string[] = process.argv.slice(2)): number {
   try {
     scanned = stagedOnly ? scanStaged() : scan(collectFiles());
   } catch {
-    console.error('❌ staged blob 크기를 확인할 수 없어 커밋을 차단합니다.');
+    console.error(
+      stagedOnly
+        ? '❌ staged blob 크기를 확인할 수 없어 커밋을 차단합니다.'
+        : '❌ 파일 크기를 확인할 수 없어 검사를 실패로 끝냅니다.'
+    );
     return 1;
   }
 
