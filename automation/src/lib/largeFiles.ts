@@ -18,6 +18,7 @@
  * function (`classifyFileSize`) kept separate for unit testing.
  */
 import { readdirSync, statSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import * as path from 'node:path';
 import { gitPaths } from './git';
 
@@ -57,16 +58,12 @@ interface ScannedFile {
 
 /**
  * Resolve the candidate file list. Prefers Git (tracked + staged), which keeps
- * the scan aligned with what will actually be committed. When `stagedOnly` is
- * set (the pre-commit hook path) only staged additions/modifications are
- * checked. Falls back to walking the working tree (excluding `.git` and
- * `node_modules`) when Git is unavailable or this is not a repository.
+ * the scan aligned with repository paths. Falls back to walking the working
+ * tree (excluding `.git` and `node_modules`) when Git is unavailable or this
+ * is not a repository.
  */
-function collectFiles(stagedOnly: boolean): string[] {
+function collectFiles(): string[] {
   try {
-    if (stagedOnly) {
-      return unique(gitPaths(['diff', '--cached', '--name-only', '--diff-filter=ACM']));
-    }
     const tracked = gitPaths(['ls-files']);
     const staged = gitPaths(['diff', '--cached', '--name-only', '--diff-filter=ACM']);
     return unique([...tracked, ...staged]);
@@ -122,6 +119,23 @@ function scan(files: string[]): ScannedFile[] {
   return scanned;
 }
 
+/** Read the exact staged objects; disabling rename detection includes every destination. */
+function scanStaged(): ScannedFile[] {
+  const entries = gitPaths([
+    'diff', '--cached', '--raw', '--no-abbrev', '--no-renames', '--no-ext-diff', '--diff-filter=ACMT',
+  ]);
+  const scanned: ScannedFile[] = [];
+  for (let i = 0; i < entries.length; i += 2) {
+    const [, mode, , oid] = entries[i].split(' ');
+    if (mode === '160000') continue; // A gitlink names a commit in another repository, not a blob.
+    const bytes = Number(execFileSync('git', ['cat-file', '-s', oid], {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim());
+    scanned.push({ file: entries[i + 1], bytes, cls: classifyFileSize(bytes) });
+  }
+  return scanned;
+}
+
 /**
  * Run the guard. Returns the process exit code (0 = ok/warn only, 1 = blocked).
  * The caller decides what to do with it: `check-large-files.ts` forwards it to
@@ -129,7 +143,13 @@ function scan(files: string[]): ScannedFile[] {
  */
 export function run(argv: string[] = process.argv.slice(2)): number {
   const stagedOnly = argv.includes('--staged');
-  const scanned = scan(collectFiles(stagedOnly));
+  let scanned: ScannedFile[];
+  try {
+    scanned = stagedOnly ? scanStaged() : scan(collectFiles());
+  } catch {
+    console.error('❌ staged blob 크기를 확인할 수 없어 커밋을 차단합니다.');
+    return 1;
+  }
 
   const blocked = scanned.filter(s => s.cls === 'block');
   const warned = scanned.filter(s => s.cls === 'warn');
