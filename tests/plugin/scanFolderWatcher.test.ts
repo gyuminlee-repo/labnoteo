@@ -122,6 +122,7 @@ describe('ScanFolderWatcher.tick', () => {
   afterEach(() => {
     // setConfig starts an fs.watch; left running it fires after the globals go.
     while (started.length > 0) started.pop()!.stop();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
     fs.rmSync(dir, { recursive: true, force: true });
   });
@@ -184,6 +185,37 @@ describe('ScanFolderWatcher.tick', () => {
     expect(runs).toEqual([{ names: ['photo.jpg'], skipNoQr: true }]);
     expect(fs.readdirSync(dir)).toEqual(['photo.jpg']);
     expect(Object.keys(saved.get('scanFolderHistory') as object)).toHaveLength(1);
+  });
+
+  it.each(['shared', 'dedicated'] as const)('%s mode retries unreadable originals in a mixed batch without changing metadata', async mode => {
+    saved.set('scanFolder', { path: dir, mode, since: Date.now() - 30_000 });
+    put('retry.jpg', 10_000);
+    put('good.jpg', 10_000);
+    const before = fs.statSync(path.join(dir, 'retry.jpg'));
+    const { w, runs } = watcher(() => 'filed');
+    const readFile = fs.promises.readFile.bind(fs.promises);
+    const read = vi.spyOn(fs.promises, 'readFile').mockImplementation(async (...args) => {
+      if (args[0] === path.join(dir, 'retry.jpg')) throw new Error('temporarily locked');
+      return readFile(...args);
+    });
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await w.tick({ manual: true });
+    expect(runs[0].names).toEqual(['good.jpg']);
+    expect.soft(fs.existsSync(path.join(dir, 'retry.jpg'))).toBe(true);
+    expect.soft(Object.keys(saved.get('scanFolderHistory') as object)).toEqual([
+      expect.stringMatching(/^good\.jpg\|/),
+    ]);
+    if (mode === 'dedicated') expect.soft(fs.readdirSync(path.join(dir, PROCESSED_DIR))).toEqual(['good.jpg']);
+
+    read.mockRestore();
+    await w.tick({ manual: true });
+    expect(runs.flatMap(r => r.names)).toEqual(['good.jpg', 'retry.jpg']);
+    const original = mode === 'shared' ? path.join(dir, 'retry.jpg') : path.join(dir, PROCESSED_DIR, 'retry.jpg');
+    expect(fs.statSync(original).mtimeMs).toBe(before.mtimeMs);
+    expect(fs.statSync(original).size).toBe(before.size);
+    await w.tick({ manual: true });
+    expect(runs.flatMap(r => r.names)).toEqual(['good.jpg', 'retry.jpg']);
   });
 
   it('reads files that were there before only when asked', async () => {

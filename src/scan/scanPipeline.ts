@@ -341,7 +341,7 @@ export class ScanPipeline {
     const byNote = new Map<string, Pending[]>();
     for (const p of pending) byNote.set(p.notePath, [...(byNote.get(p.notePath) ?? []), p]);
     for (const [notePath, items] of byNote) {
-      const missed = new Set<Pending>();
+      const missed = new Map<Pending, UnmatchedReason>();
       const apply = (content: string): string => {
         missed.clear();
         let out = content;
@@ -354,7 +354,7 @@ export class ScanPipeline {
           }
           if (target.kind === 'block') out = insertScanEntries(out, target.block, [item.entry]);
           else if (target.kind === 'note') out = insertScanEntries(out, null, [item.entry]);
-          else missed.add(item);
+          else missed.set(item, target.kind === 'missing' ? 'no-unit-op' : target.kind);
         }
         return out;
       };
@@ -367,7 +367,24 @@ export class ScanPipeline {
         continue;
       }
       // The note changed between reading and writing so that the unit operation is gone.
-      for (const item of missed) Object.assign(item.result, { status: 'unmatched', reason: 'no-unit-op' });
+      for (const [item, reason] of missed) {
+        try {
+          const image = this.deps.app.vault.getAbstractFileByPath(item.result.imagePath!);
+          if (!(image instanceof TFile)) throw new Error('Saved scan image is missing');
+          const queued = await this.unmatched({
+            source: item.result.source,
+            sourcePage: item.result.sourcePage,
+            hash: item.entry.hash,
+            blank: false,
+            render: () => this.deps.app.vault.readBinary(image),
+          }, item.result, reason);
+          Object.assign(item.result, queued);
+          await this.deps.app.fileManager.trashFile(image);
+          delete item.result.imagePath;
+        } catch (err) {
+          Object.assign(item.result, { status: 'error', message: String(err) });
+        }
+      }
     }
   }
 

@@ -19,7 +19,7 @@ import {
   type PageDecoder,
   type ScanInput,
 } from '../../src/scan/scanPipeline';
-import { isDateInput } from '../../src/scan/unmatchedModal';
+import { isDateInput, listUnmatched } from '../../src/scan/unmatchedModal';
 
 const EXP = 'labnote/001_Assay';
 const NOTE = `${EXP}/001_WD010_Design.labnote.md`;
@@ -51,7 +51,13 @@ function fakeVault(notes: Record<string, string>) {
     vault: {
       getMarkdownFiles: () => [...text.keys()].filter(p => p.endsWith('.md')).map(p => new TFile(p)),
       getFileByPath: fileAt,
-      getAbstractFileByPath: (p: string) => fileAt(p) ?? (folders.has(p) ? new TFolder() : null),
+      getAbstractFileByPath: (p: string) => {
+        if (!folders.has(p)) return fileAt(p);
+        const children = [...binary.keys()]
+          .filter(k => k.slice(0, k.lastIndexOf('/')) === p)
+          .map(k => new TFile(k));
+        return Object.assign(new TFolder(), { children });
+      },
       createFolder: async (p: string) => {
         if (exists(p)) throw new Error('exists');
         folders.add(p);
@@ -169,6 +175,43 @@ describe('ScanPipeline.run', () => {
       [2, 2, 'bbbbbbbbbbbb'],
     ]);
     expect(filed[0].embed).toBe(`![[${results[1].imagePath}]]`);
+  });
+
+  it.each(['no-unit-op', 'renamed', 'ambiguous'] as const)('queues a saved image for manual assignment when its block becomes %s during rendering', async reason => {
+    let rendered!: () => void;
+    let resume!: () => void;
+    const started = new Promise<void>(resolve => { rendered = resolve; });
+    const paused = new Promise<void>(resolve => { resume = resolve; });
+    const bytes = new Uint8Array([4, 5, 6]).buffer;
+    const s = setup({ [NOTE]: note }, {
+      'race.jpg': [page(pagePayload({ fingerprint: unitOpFingerprint('Op UHW020', '') }), 'aaaaaaaaaaaa', { render: async () => {
+        rendered();
+        await paused;
+        return bytes;
+      } })],
+      'good.jpg': [page(pagePayload({ unitOpIndex: 1, opId: 'UHW010' }), 'bbbbbbbbbbbb')],
+    });
+    const running = s.pipeline.run([input('race.jpg'), input('good.jpg')]);
+    await started;
+    const changed = reason === 'no-unit-op'
+      ? buildNote(ID, ['UHW010'])
+      : reason === 'renamed'
+        ? note.replace('### [UHW020 Op UHW020]', '### [UHW020 Op UHW020] changed')
+        : buildNote(ID, ['UHW010', 'UHW030', 'UHW020', 'UHW020']);
+    s.text.set(NOTE, changed);
+    resume();
+    const [lost, good] = await running;
+    expect(lost).toMatchObject({ status: 'unmatched', reason });
+    expect(listFiledScans(s.text.get(NOTE)!).map(f => f.hash)).toEqual(['bbbbbbbbbbbb']);
+    expect(good.status).toBe('filed');
+    expect(listUnmatched(s.app).map(f => f.path)).toEqual([expect.stringMatching(/^_labnote-scans\/unmatched\//)]);
+    expect(s.binary.get(lost.unmatchedPath!)).toEqual(bytes);
+    expect([...s.binary.keys()].sort()).toEqual([lost.unmatchedPath!, good.imagePath!].sort());
+
+    const queued = listUnmatched(s.app)[0];
+    const assigned = await s.pipeline.fileManually(queued, new TFile(NOTE) as unknown as Parameters<ScanPipeline['fileManually']>[1], 1, { page: 1, pageCount: 1 });
+    expect(assigned.status).toBe('filed');
+    expect(listUnmatched(s.app)).toEqual([]);
   });
 
   it('files pages as thumbnails with a full-size link when a width is set', async () => {
@@ -344,18 +387,27 @@ describe('ScanPipeline.fileManually', () => {
     expect(result).toMatchObject({ status: 'filed', block: '[UHW020 Op UHW020]', matchedBy: 'index', legacy: false });
   });
 
-  it('leaves the image in the queue, with no second copy, when the block is gone', async () => {
+  it.each(['before filing', 'during rendering'])('leaves the image in the queue, with no second copy, when the block changes %s', async timing => {
     const s = manualSetup();
     // The block was renamed between choosing and filing.
     const pipeline = s.pipeline as unknown as { filePage: (...args: unknown[]) => Promise<unknown> };
     const filePage = pipeline.filePage.bind(s.pipeline);
     pipeline.filePage = async (...args: unknown[]) => {
-      s.text.set(NOTE, s.text.get(NOTE)!.replace('### [UHW020 Op UHW020]', '### [UHW020 Op UHW020] 바뀜'));
+      const rename = () => s.text.set(NOTE, s.text.get(NOTE)!.replace('### [UHW020 Op UHW020]', '### [UHW020 Op UHW020] 바뀜'));
+      if (timing === 'before filing') rename();
+      else {
+        const decoded = args[0] as DecodedPage;
+        const render = decoded.render;
+        decoded.render = async () => {
+          rename();
+          return render();
+        };
+      }
       return filePage(...args);
     };
     const result = await s.pipeline.fileManually(file(QUEUED), file(NOTE), 2, { page: 1, pageCount: 1 });
     expect(result).toMatchObject({ status: 'unmatched', reason: 'renamed', unmatchedPath: QUEUED });
-    expect([...s.binary.keys()].filter(k => k.startsWith('_labnote-scans/'))).toEqual([QUEUED]);
+    expect([...s.binary.keys()]).toEqual([QUEUED]);
   });
 
   it('writes the print date the user gave', async () => {

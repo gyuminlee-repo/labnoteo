@@ -276,16 +276,18 @@ export class ScanFolderWatcher {
         return [];
       }
       const inputs: ScanInput[] = [];
+      const read: FolderEntry[] = [];
       for (const e of ready) {
         try {
           const buf = await fs.promises.readFile(path.join(cfg.path, e.name));
           inputs.push({ name: e.name, bytes: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer });
+          read.push(e);
         } catch (err) {
           console.warn('[labnoteo] could not read scan', e.name, err);
         }
       }
       const results = await this.deps.run(inputs, { skipNoQr: cfg.mode === 'shared' });
-      for (const e of ready) {
+      for (const e of read) {
         const own = results.filter(r => (r.input ?? r.source) === e.name);
         history[historyKey(e)] = now;
         if (cfg.mode === 'dedicated') await this.moveOriginal(cfg.path, e.name, outcomeOf(own));
