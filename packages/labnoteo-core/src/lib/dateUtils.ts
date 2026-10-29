@@ -378,7 +378,9 @@ export function updateAllDateFields(content: string, fieldName: string, newDate:
   if (fmEnd === -1) return content; // no front matter → nothing in scope
 
   for (let i = 1; i < fmEnd; i++) {
-    lines[i] = updateDateFieldInLine(lines[i], fieldName, newDate);
+    // The value pattern would take a CRLF line's `\r` with the old value.
+    const cr = lines[i].endsWith('\r') ? '\r' : '';
+    lines[i] = updateDateFieldInLine(lines[i].slice(0, lines[i].length - cr.length), fieldName, newDate) + cr;
   }
   return lines.join('\n');
 }

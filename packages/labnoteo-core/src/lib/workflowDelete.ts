@@ -7,7 +7,9 @@
  * handled by the command; this module stays pure and unit-testable.
  */
 import { decodeChecklistLink, workflowChecklistEntryLink, workflowChecklistSectionRange } from './workflowStructure';
-import { findSectionMatches, sectionBodyEnd, stepFence, type OpenFence } from '../sections/sectionEdit';
+import { readmeFencedLines } from './readmeFences';
+import { v442DeletedLines } from './workflowDeleteV442';
+import { normalizeHeadingText } from '../sections/sectionEdit';
 
 export interface RemoveWorkflowFromReadmeResult {
   changed: boolean;
@@ -33,6 +35,36 @@ function isChecklistLineForFile(line: string, fileName: string): boolean {
   return linkFile === fileName;
 }
 
+const HEADING_RE = /^(#{1,6})\s+(.*?)\s*$/;
+
+/**
+ * The bodies of the headings named "Related Workflows" at any level, each up
+ * to the next heading of the same or a higher level, fences not considered
+ * (or with the lines flagged in `skip` taken for no heading).
+ * As in `findSectionMatches`, headings compare by {@link normalizeHeadingText}
+ * only when none matches as written (#145). Exact headings at any level stay
+ * in so deletion covers a superset of the add range: a stale entry under
+ * `### Related Workflows` still goes.
+ */
+function exactSections(lines: readonly string[], skip?: readonly boolean[]): { start: number; end: number }[] {
+  const headings = lines.flatMap((line, i) => {
+    const m = skip?.[i] ? null : HEADING_RE.exec(line.replace(/\r?\n$/, ''));
+    return m ? [{ line: i, level: m[1].length, text: m[2] }] : [];
+  });
+  // ends[k]: line of the next heading at level 1..6 after heading k, or none (one reverse pass).
+  const nextAt = new Array<number>(7).fill(lines.length);
+  const ends = new Array<number>(headings.length);
+  for (let k = headings.length - 1; k >= 0; k--) {
+    ends[k] = Math.min(...nextAt.slice(1, headings[k].level + 1));
+    nextAt[headings[k].level] = headings[k].line;
+  }
+  const wanted = normalizeHeadingText('Related Workflows');
+  const exact = headings.some(h => h.text === 'Related Workflows');
+  return headings.flatMap((h, k) =>
+    (exact ? h.text === 'Related Workflows' : normalizeHeadingText(h.text) === wanted) ? [{ start: h.line + 1, end: ends[k] }] : []
+  );
+}
+
 /**
  * Return README content with the checklist entry for `fileName` removed.
  *
@@ -52,26 +84,20 @@ export function removeWorkflowFromReadme(
 ): RemoveWorkflowFromReadmeResult {
   // Keep each line's terminator so untouched bytes survive even mixed endings.
   const lines = readmeContent.split(/(?<=\n)/);
-  // Fence state is tracked over the whole document: the workflow section's
-  // heading pick is not fence-aware, so its range may start inside a fence.
-  const inCode: boolean[] = [];
-  let fence: OpenFence | null = null;
-  for (const line of lines) {
-    const next = stepFence(line, fence);
-    inCode.push(fence !== null || next !== null);
-    fence = next;
+  // The section the add path writes to (translated or renamed heading, #298)
+  // and every exact "Related Workflows" heading, found as the add path finds
+  // them, without regard to fences; within them a line in a closed fence is
+  // an example, not an entry, and stays.
+  // The same ranges once more with headings in a closed fence ignored, so an
+  // example heading cannot cut short a section v0.130.0 deleted from.
+  const inCode = readmeFencedLines(lines);
+  const ranges = [...exactSections(lines), ...exactSections(lines, inCode)];
+  for (const skip of [undefined, inCode]) {
+    const workflow = workflowChecklistSectionRange(readmeContent, skip);
+    if (workflow) ranges.push({ start: workflow.header + 1, end: workflow.end });
   }
-  // The exact-heading sections, plus the section the add path writes to
-  // (translated or renamed heading, #298), clipped where the exact path stops.
-  const ranges = findSectionMatches(readmeContent, 'Related Workflows').map(section => ({
-    start: section.line + 1,
-    end: sectionBodyEnd(lines, section.line, section.level),
-  }));
-  const workflow = workflowChecklistSectionRange(readmeContent);
-  if (workflow) {
-    ranges.push({ start: workflow.header + 1, end: Math.min(workflow.end, sectionBodyEnd(lines, workflow.header, 2)) });
-  }
-  const drop = new Set<number>();
+  // Union with what main (#442) deletes, so this never removes less than main did.
+  const drop = v442DeletedLines(readmeContent, lines, line => isChecklistLineForFile(line, fileName));
   for (const { start, end } of ranges) {
     for (let i = start; i < Math.min(end, lines.length); i++) {
       if (!inCode[i] && isChecklistLineForFile(lines[i], fileName)) drop.add(i);
@@ -82,5 +108,10 @@ export function removeWorkflowFromReadme(
     return { changed: false, content: readmeContent };
   }
 
-  return { changed: true, content: lines.filter((_, i) => !drop.has(i)).join('') };
+  const kept = lines.filter((_, i) => !drop.has(i));
+  // A README without a final newline still has none when its last line goes.
+  if (drop.has(lines.length - 1) && !readmeContent.endsWith('\n') && kept.length > 0) {
+    kept[kept.length - 1] = kept[kept.length - 1].replace(/\r?\n$/, '');
+  }
+  return { changed: true, content: kept.join('') };
 }

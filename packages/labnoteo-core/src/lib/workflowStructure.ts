@@ -13,6 +13,8 @@ import {
 } from './regexUtils';
 import { frontMatterNames, parseFrontMatterYaml, serializeFrontMatterEntry } from '../sections/frontMatter';
 import { normalizeHeadingText, stepFence, type OpenFence } from '../sections/sectionEdit';
+import { addsLastCr, joinSplitKeepingCr, splitKeepingCr } from '../util/lineEnds';
+import { positionOutsideFences } from './readmeFences';
 import { generateNoteId, NOTE_ID_KEY } from './noteId';
 import { underscoreTurnsItalic } from './sampleUtils';
 import { findSampleReferenceSpans } from './sampleStorage';
@@ -491,6 +493,27 @@ export function workflowChecklistEntryLabel(line: string): string | undefined {
   return e ? unescapeChecklistLabel(e.raw) : undefined;
 }
 
+/**
+ * Line arrays whose last line ends in a `\r` that is text, not part of a line
+ * break: the README ends in a lone CR. Such a line is no entry, as in v0.130.0.
+ */
+const crTextLast = new WeakSet<readonly string[]>();
+
+/** `text` split on `\n`, or by {@link splitKeepingCr} with `keepCr`, marking a lone CR that ends it (see {@link crTextLast}). */
+function readmeLines(text: string, keepCr = false): string[] {
+  const lines = keepCr ? splitKeepingCr(text) : text.split('\n');
+  // When splitKeepingCr follows that CR with a line-break CR, no entry pattern
+  // takes the line; otherwise it needs the mark.
+  if (text.endsWith('\r') && !(keepCr && addsLastCr(text))) crTextLast.add(lines);
+  return lines;
+}
+
+/** Whether line `i` of `lines` is a checklist entry; a lone CR ending the README is text, so its line is none. */
+function isEntryLineAt(lines: readonly string[], i: number): boolean {
+  if (crTextLast.has(lines) && i === lines.length - 1 && lines[i].endsWith('\r')) return false;
+  return isWorkflowChecklistEntryLine(lines[i]);
+}
+
 /** Heading words that name the "Related Workflows" section, after {@link normalizeHeadingText}. */
 const WORKFLOW_SECTION_NAMES = ['related workflows', '관련 워크플로'];
 
@@ -504,22 +527,22 @@ const WORKFLOW_SECTION_NAMES = ['related workflows', '관련 워크플로'];
  * workflow entry is taken: a heading renamed to anything else still has its
  * entries under it.
  */
-function findWorkflowSection(lines: readonly string[]): { header: number; end: number } {
-  const isH2 = (line: string): boolean => /^##\s/.test(line.trim());
+function findWorkflowSection(lines: readonly string[], skip?: readonly boolean[]): { header: number; end: number } {
+  const isH2At = (i: number): boolean => !skip?.[i] && /^##\s/.test(lines[i].trim());
   const endOf = (header: number): number => {
-    for (let i = header + 1; i < lines.length; i++) if (isH2(lines[i])) return i;
+    for (let i = header + 1; i < lines.length; i++) if (isH2At(i)) return i;
     return lines.length;
   };
-  const named = lines.findIndex(line => {
-    if (!isH2(line)) return false;
+  const named = lines.findIndex((line, i) => {
+    if (!isH2At(i)) return false;
     const text = normalizeHeadingText(line.trim().replace(/^##\s+/, ''));
     return WORKFLOW_SECTION_NAMES.some(name => text.includes(name));
   });
   if (named !== -1) return { header: named, end: endOf(named) };
   for (let i = 0; i < lines.length; i++) {
-    if (!isH2(lines[i])) continue;
+    if (!isH2At(i)) continue;
     const end = endOf(i);
-    if (lines.slice(i + 1, end).some(isWorkflowChecklistEntryLine)) return { header: i, end };
+    for (let j = i + 1; j < end; j++) if (!skip?.[j] && isEntryLineAt(lines, j)) return { header: i, end };
     i = end - 1;
   }
   return { header: -1, end: lines.length };
@@ -530,15 +553,21 @@ function findWorkflowSection(lines: readonly string[]): { header: number; end: n
  * picks, or undefined when there is none, so deletion acts on the section the
  * add path writes to (#298). Lines split on `\r?\n`: a CRLF README resolves the
  * same section, and indices match any split that keeps one element per line.
+ * Lines flagged in `skip` are neither headings nor entries.
  */
-export function workflowChecklistSectionRange(readmeContent: string): { header: number; end: number } | undefined {
-  const section = findWorkflowSection(readmeContent.split(/\r?\n/));
+export function workflowChecklistSectionRange(
+  readmeContent: string,
+  skip?: readonly boolean[]
+): { header: number; end: number } | undefined {
+  const lines = readmeContent.split(/\r?\n/);
+  if (readmeContent.endsWith('\r')) crTextLast.add(lines);
+  const section = findWorkflowSection(lines, skip);
   return section.header === -1 ? undefined : section;
 }
 
 /** Whether the README has a "Related Workflows" section (see {@link findWorkflowSection}) to list workflows in. */
 export function hasWorkflowChecklistSection(readmeContent: string): boolean {
-  return findWorkflowSection(readmeContent.split('\n')).header !== -1;
+  return findWorkflowSection(readmeLines(readmeContent)).header !== -1;
 }
 
 /**
@@ -547,7 +576,7 @@ export function hasWorkflowChecklistSection(readmeContent: string): boolean {
  */
 export function parseWorkflowChecklistFromReadme(readmeContent: string): WorkflowChecklistItem[] {
   // Downstream commands still validate each name via `parseWorkflowFileName`.
-  return entriesInLines(readmeContent.split('\n')).map(e => ({
+  return entriesInLines(readmeLines(readmeContent)).map(e => ({
     done: e.box.toLowerCase() === 'x',
     title: unescapeChecklistLabel(e.raw),
     fileName: decodeChecklistLink(e.link),
@@ -560,7 +589,7 @@ function entriesInLines(lines: readonly string[]): ChecklistEntryLine[] {
   if (header === -1) return [];
   const entries: ChecklistEntryLine[] = [];
   for (let i = header + 1; i < end; i++) {
-    const e = parseChecklistEntryLine(lines[i], i);
+    const e = isEntryLineAt(lines, i) ? parseChecklistEntryLine(lines[i], i) : null;
     if (e) entries.push(e);
   }
   return entries;
@@ -615,30 +644,44 @@ function checklistInsertAt(
  * goes where {@link checklistInsertAt} puts it, written with the list marker
  * of the entries already there. Every other line — an entry's tail, the
  * researcher's own to-dos, prose — stays as it was. With no entry yet the
- * first one goes after the instruction blockquote. Unchanged without the
- * section.
+ * first one goes after the instruction blockquote. A place inside a closed
+ * code fence moves to just after the fence ({@link positionOutsideFences});
+ * the place is otherwise found as in v0.130.0. Unchanged without the section.
  */
 export function insertWorkflowChecklistEntries(
   readmeContent: string,
   items: readonly WorkflowChecklistItem[]
 ): string {
-  const lines = readmeContent.split('\n');
+  const lines = readmeLines(readmeContent, true);
   if (items.length === 0 || findWorkflowSection(lines).header === -1) return readmeContent;
   for (const item of items) {
     const { header, end } = findWorkflowSection(lines);
     const entries = entriesInLines(lines);
-    // A CRLF README split on `\n` keeps `\r` on each line; new lines carry it too.
-    const eol = lines[header].endsWith('\r') ? '\r' : '';
-    const line = renderChecklistEntryLine({
-      prefix: entries[0]?.prefix ?? '- ',
-      box: item.done ? 'x' : ' ',
-      raw: escapeChecklistLabel(item.title),
-      link: item.fileName,
-      tail: '',
-      eol,
-    });
+    const render = (eol: string): string =>
+      renderChecklistEntryLine({
+        prefix: entries[0]?.prefix ?? '- ',
+        box: item.done ? 'x' : ' ',
+        raw: escapeChecklistLabel(item.title),
+        link: item.fileName,
+        tail: '',
+        eol,
+      });
+    // Past the last line, stay before the empty element a final newline leaves.
+    // The new line (and a blank separator after it) ends as the line before
+    // it did: CRLF only after a real CRLF break, never after a lone CR that
+    // ends the README as text. At the very end that gives no CR the join
+    // would leave behind.
+    const insertAt = (at: number, separator = false): void => {
+      const pos = at === lines.length && lines[at - 1] === '' ? at - 1 : at;
+      const before = pos - 1;
+      const crlf = lines[before].endsWith('\r') && !(crTextLast.has(lines) && before === lines.length - 1);
+      const eol = crlf ? '\r' : '';
+      lines.splice(pos, 0, render(eol), ...(separator ? [eol] : []));
+    };
+    // Never into a fenced example: just after its closing line instead.
+    const outside = (at: number): number => positionOutsideFences(lines, at, header, end);
     if (entries.length > 0) {
-      lines.splice(checklistInsertAt(lines, entries, checklistSequence(item.fileName), end), 0, line);
+      insertAt(outside(checklistInsertAt(lines, entries, checklistSequence(item.fileName), end)));
       continue;
     }
     // After the header, past the blank lines and the instruction blockquote.
@@ -646,11 +689,11 @@ export function insertWorkflowChecklistEntries(
     while (at < end && lines[at].trim() === '') at++;
     while (at < end && lines[at].trim().startsWith('>')) at++;
     while (at < end && lines[at].trim() === '') at++;
+    at = outside(at);
     // Keep a blank line between the new entry and whatever follows it.
-    const separator = at < lines.length && lines[at].trim() !== '' ? [eol] : [];
-    lines.splice(at, 0, line, ...separator);
+    insertAt(at, at < lines.length && lines[at].trim() !== '');
   }
-  return lines.join('\n');
+  return joinSplitKeepingCr(readmeContent, lines);
 }
 
 /**
@@ -1137,14 +1180,14 @@ export function reconcileWorkflowChecklist(
   opts: ReconcileChecklistOptions = {}
 ): ReconcileChecklistResult {
   const dir = opts.dir;
-  const lines = readmeContent.split('\n');
+  const lines = readmeLines(readmeContent, true);
   const current = entriesInLines(lines);
   if (current.length === 0) {
     return { changed: false, content: readmeContent };
   }
   // The baseline gives each entry the link it had before the batch; entries
   // pair up by position, which a batch of renames does not change.
-  const baseline = opts.baseline === undefined ? undefined : entriesInLines(opts.baseline.split('\n'));
+  const baseline = opts.baseline === undefined ? undefined : entriesInLines(readmeLines(opts.baseline));
   const source = baseline && baseline.length === current.length ? baseline : current;
 
   // Remap each link by basename (a checklist link may carry a `./` or subpath).
@@ -1185,7 +1228,7 @@ export function reconcileWorkflowChecklist(
   });
   for (const link of renumbered) moveEntryIntoNumberOrder(lines, link);
 
-  const content = lines.join('\n');
+  const content = joinSplitKeepingCr(readmeContent, lines);
   return { changed: content !== readmeContent, content };
 }
 
@@ -1314,7 +1357,7 @@ export function normalizeWorkflowChecklistLinks(
   readmeContent: string,
   dir: string
 ): { content: string; count: number } {
-  const lines = readmeContent.split('\n');
+  const lines = readmeLines(readmeContent);
   let count = 0;
   for (const e of entriesInLines(lines)) {
     const short = normalizeChecklistLink(e.link, dir);
@@ -1767,7 +1810,7 @@ export function relinkWorkflowChecklistEntries(
   links: readonly { from: string; to: string }[]
 ): string {
   if (links.length === 0) return readmeContent;
-  const lines = readmeContent.split('\n');
+  const lines = readmeLines(readmeContent);
   for (const e of entriesInLines(lines)) {
     const r = links.find(l => decodeChecklistLink(l.from) === decodeChecklistLink(e.link));
     if (!r) continue;
@@ -1790,7 +1833,7 @@ export function relinkCopiedExperimentChecklist(
   names: readonly string[]
 ): { content: string; count: number } {
   const own = new Set(names);
-  const lines = readmeContent.split('\n');
+  const lines = readmeLines(readmeContent);
   let count = 0;
   for (const e of entriesInLines(lines)) {
     const decoded = decodeChecklistLink(e.link);
@@ -1812,7 +1855,7 @@ function checklistEntries(
   readmeContent: string,
   dir?: string
 ): { index: number; done: boolean; raw: string; link: string; target: string | null }[] {
-  return entriesInLines(readmeContent.split('\n')).map(e => ({
+  return entriesInLines(readmeLines(readmeContent)).map(e => ({
     index: e.index,
     done: e.box.toLowerCase() === 'x',
     raw: e.raw,
@@ -1833,7 +1876,7 @@ export function dedupeWorkflowChecklistEntries(
 ): string {
   if (fileNames.length === 0) return readmeContent;
   const wanted = new Set(fileNames);
-  const lines = readmeContent.split('\n');
+  const lines = readmeLines(readmeContent, true);
   const first = new Map<string, number>();
   const drop = new Set<number>();
   for (const { index, done, target } of checklistEntries(readmeContent, dir)) {
@@ -1846,7 +1889,7 @@ export function dedupeWorkflowChecklistEntries(
     drop.add(index);
     if (done) lines[kept] = lines[kept].replace(/^(\s*(?:[-*+]\s+)?)\[ \]/, '$1[x]');
   }
-  return lines.filter((_, i) => !drop.has(i)).join('\n');
+  return joinSplitKeepingCr(readmeContent, lines.filter((_, i) => !drop.has(i)));
 }
 
 /**
@@ -1854,7 +1897,7 @@ export function dedupeWorkflowChecklistEntries(
  * text the way {@link escapeChecklistLabel} writes it. The label reads the same.
  */
 export function normalizeWorkflowChecklistLabels(readmeContent: string): string {
-  const lines = readmeContent.split('\n');
+  const lines = readmeLines(readmeContent);
   for (const { index, raw } of checklistEntries(readmeContent)) {
     const label = escapeChecklistLabel(unescapeChecklistLabel(raw));
     if (label !== raw) lines[index] = lines[index].replace(`[${raw}](`, () => `[${label}](`);
@@ -1873,7 +1916,7 @@ export function relabelWorkflowChecklistEntries(
   dir?: string
 ): string {
   if (relabel.length === 0) return readmeContent;
-  const lines = readmeContent.split('\n');
+  const lines = readmeLines(readmeContent);
   for (const e of entriesInLines(lines)) {
     const target = linkTargetInFolder(e.link, dir);
     const r = relabel.find(x => x.fileName === target && x.from === unescapeChecklistLabel(e.raw));
@@ -1894,13 +1937,13 @@ export function removeWorkflowChecklistEntries(
 ): string {
   if (links.length === 0) return readmeContent;
   const wanted = new Set(links.map(decodeChecklistLink));
-  const lines = readmeContent.split('\n');
+  const lines = readmeLines(readmeContent, true);
   const drop = new Set(
     entriesInLines(lines)
       .filter(e => wanted.has(decodeChecklistLink(e.link)))
       .map(e => e.index)
   );
-  return drop.size === 0 ? readmeContent : lines.filter((_, i) => !drop.has(i)).join('\n');
+  return drop.size === 0 ? readmeContent : joinSplitKeepingCr(readmeContent, lines.filter((_, i) => !drop.has(i)));
 }
 
 /**

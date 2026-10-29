@@ -7,27 +7,42 @@ describe('workflow deletion section boundaries', () => {
   const file = '001_WD010_Design.labnote.md';
 
   it.each(['\n', '\r\n'])('preserves other sections and fenced examples with %j', newline => {
-    const before = ['# Experiment', entry, '```md', '## Related Workflows', entry, '```', ''];
-    const section = ['## 🗂️ Related Workflows', '> Instructions  ', '~~~~md', '## Notes', entry, '```', entry, '~~~~', '### Nested'];
+    const section = ['## 🗂️ Related Workflows', '> Instructions  ', '~~~~md', entry, '```', entry, '~~~~', '### Nested'];
     const after = ['## Notes', entry, '# Appendix', entry, ''];
-    const md = [...before, ...section, entry, ...after].join(newline);
+    const md = ['# Experiment', entry, ...section, entry, ...after].join(newline);
     expect(removeWorkflowFromReadme(md, file)).toEqual({
       changed: true,
-      content: [...before, ...section, ...after].join(newline),
+      content: ['# Experiment', entry, ...section, ...after].join(newline),
     });
   });
 
-  it.each(['## Notes', '# Notes'])('stops at the next same or higher heading %s', boundary => {
-    const md = ['## Related Workflows', entry, boundary, entry].join('\n');
+  // Sections are found both as in v0.130.0 (a fenced example heading takes the
+  // section, as for parse and add) and with fenced headings ignored, so the
+  // real section after a fenced example still loses its entry; the fenced
+  // example line stays.
+  it.each(['\n', '\r\n'])('removes the entry of the real section after a fenced example heading with %j', newline => {
+    const head = ['# Experiment', '```md', '## Related Workflows', entry, '```', '## 🗂️ Related Workflows'];
+    const md = [...head, entry, ''].join(newline);
+    expect(removeWorkflowFromReadme(md, file)).toEqual({ changed: true, content: [...head, ''].join(newline) });
+  });
+
+  it('stops at the next ## heading', () => {
+    const md = ['## Related Workflows', entry, '## Notes', entry].join('\n');
     expect(removeWorkflowFromReadme(md, file)).toEqual({
-      changed: true, content: ['## Related Workflows', boundary, entry].join('\n'),
+      changed: true, content: ['## Related Workflows', '## Notes', entry].join('\n'),
     });
+  });
+
+  // The add path writes past a `#` heading (v0.130.0), so deletion reaches there too.
+  it('reads past a # heading as the add path does', () => {
+    const md = ['## Related Workflows', entry, '# Notes', entry].join('\n');
+    expect(removeWorkflowFromReadme(md, file)).toEqual({ changed: true, content: ['## Related Workflows', '# Notes'].join('\n') });
   });
 
   it.each([
     ['## Related Workflows', '## Notes', entry],
     ['```md', '## Related Workflows', entry, '```'],
-    ['## Related Workflows', '~~~', entry],
+    ['## Related Workflows', '```md', entry, '```'],
   ])('preserves content without a real matching checklist: %j', (...lines) => {
     const md = lines.join('\r\n');
     expect(removeWorkflowFromReadme(md, file)).toEqual({ changed: false, content: md });
