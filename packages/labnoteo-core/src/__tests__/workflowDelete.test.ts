@@ -24,7 +24,7 @@ describe('workflow deletion section boundaries', () => {
   });
 
   it.each([
-    ['## Notes', entry],
+    ['## Related Workflows', '## Notes', entry],
     ['```md', '## Related Workflows', entry, '```'],
     ['## Related Workflows', '~~~', entry],
   ])('preserves content without a real matching checklist: %j', (...lines) => {
@@ -36,6 +36,42 @@ describe('workflow deletion section boundaries', () => {
     const md = `## Related Workflows\r\n${entry}\n> keep  \r\n## Notes\n${entry}\r\n`;
     expect(removeWorkflowFromReadme(md, file)).toEqual({
       changed: true, content: `## Related Workflows\r\n> keep  \r\n## Notes\n${entry}\r\n`,
+    });
+  });
+});
+
+// #298: delete under the same section the add path writes to.
+describe('workflow deletion under translated or renamed sections', () => {
+  const entry = '- [ ] [Design](./001_WD010_Design.labnote.md)';
+  const sibling = '- [x] [Assay](./002_WS010_Assay.labnote.md)';
+  const file = '001_WD010_Design.labnote.md';
+  const headings = [
+    '## 🗂️ Related Workflows',
+    '## Related Workflows',
+    '## 관련 워크플로',
+    '## 🗂️ 관련 워크플로',
+    '## Related Workflows (3/5)',
+    '## Workflows',
+  ];
+  const cases = headings.flatMap(heading => ['\n', '\r\n'].map(newline => [heading, newline] as const));
+
+  it.each(cases)('removes only the entry under %s with %j', (heading, newline) => {
+    const head = ['# Experiment', '', heading, '> Instructions  '];
+    const tail = [sibling, '', '## Notes', 'body', ''];
+    const md = [...head, entry, ...tail].join(newline);
+    expect(removeWorkflowFromReadme(md, file)).toEqual({
+      changed: true,
+      content: [...head, ...tail].join(newline),
+    });
+  });
+
+  it.each(['\n', '\r\n'])('keeps the link in other sections and fences under a renamed heading with %j', newline => {
+    const before = ['# Experiment', entry, '## Workflows', sibling, '```md', entry, '```'];
+    const after = ['## Notes', entry, ''];
+    const md = [...before, entry, ...after].join(newline);
+    expect(removeWorkflowFromReadme(md, file)).toEqual({
+      changed: true,
+      content: [...before, ...after].join(newline),
     });
   });
 });

@@ -469,6 +469,17 @@ function findWorkflowSection(lines: readonly string[]): { header: number; end: n
   return { header: -1, end: lines.length };
 }
 
+/**
+ * The `[header, end)` line range of the section {@link findWorkflowSection}
+ * picks, or undefined when there is none, so deletion acts on the section the
+ * add path writes to (#298). Lines split on `\r?\n`: a CRLF README resolves the
+ * same section, and indices match any split that keeps one element per line.
+ */
+export function workflowChecklistSectionRange(readmeContent: string): { header: number; end: number } | undefined {
+  const section = findWorkflowSection(readmeContent.split(/\r?\n/));
+  return section.header === -1 ? undefined : section;
+}
+
 /** Whether the README has a "Related Workflows" section (see {@link findWorkflowSection}) to list workflows in. */
 export function hasWorkflowChecklistSection(readmeContent: string): boolean {
   return findWorkflowSection(readmeContent.split('\n')).header !== -1;
