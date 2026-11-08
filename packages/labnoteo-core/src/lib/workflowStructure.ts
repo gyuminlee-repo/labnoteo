@@ -15,7 +15,7 @@ import { frontMatterNames, lineEdits, parseFrontMatterYaml, serializeFrontMatter
 import { normalizeHeadingText, stepFence, type OpenFence } from '../sections/sectionEdit';
 import { markdownCodeLines, mayHaveFences } from '../sections/codeFences';
 import { joinLineBuffer, joinSplitKeepingCr, spliceLineBuffer, splitKeepingCr, splitLineBuffer } from '../util/lineEnds';
-import { positionOutsideFences, readmeFencedLines } from './readmeFences';
+import { positionOutsideFences, readmeFencedLines, readmeFenceSpans } from './readmeFences';
 import { generateNoteId, NOTE_ID_KEY } from './noteId';
 import { underscoreTurnsItalic } from './sampleUtils';
 import { findSampleReferenceSpans } from './sampleStorage';
@@ -655,6 +655,16 @@ export function insertWorkflowChecklistEntries(
 ): string {
   const lines = readmeLines(readmeContent, true);
   if (items.length === 0 || findWorkflowSection(lines).header === -1) return readmeContent;
+  // The closed fences, read once for the call and moved down with every line added
+  // above or inside them: an added entry or blank line is no fence line, so reading
+  // them again would give the same fences at the moved places.
+  const spans = readmeFenceSpans(lines);
+  const shiftSpans = (pos: number, count: number): void => {
+    for (const span of spans) {
+      if (span[0] >= pos) span[0] += count;
+      if (span[1] >= pos) span[1] += count;
+    }
+  };
   for (const item of items) {
     const { header, end } = findWorkflowSection(lines);
     const entries = entriesInLines(lines);
@@ -679,9 +689,10 @@ export function insertWorkflowChecklistEntries(
       const crlf = (crTextLast.has(lines) && before === lines.length - 1 ? lines[header] : lines[before]).endsWith('\r');
       const eol = crlf ? '\r' : '';
       lines.splice(pos, 0, render(eol), ...(separator ? [eol] : []));
+      shiftSpans(pos, separator ? 2 : 1);
     };
     // Never into a fenced example: just after its closing line instead.
-    const outside = (at: number): number => positionOutsideFences(lines, at, header, end);
+    const outside = (at: number): number => positionOutsideFences(lines, at, header, end, spans);
     if (entries.length > 0) {
       insertAt(outside(checklistInsertAt(lines, entries, checklistSequence(item.fileName), end)));
       continue;

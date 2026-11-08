@@ -49,8 +49,13 @@ export function readmeFencedLines(lines: readonly string[]): boolean[] {
  * line then stays in the section, where reading finds it. A section whose
  * heading is itself in a fence is left as v0.130.0 reads it: `at` stays.
  */
-export function positionOutsideFences(lines: readonly string[], at: number, header: number, limit = lines.length): number {
-  const spans = readmeFenceSpans(lines);
+export function positionOutsideFences(
+  lines: readonly string[],
+  at: number,
+  header: number,
+  limit = lines.length,
+  spans: readonly [number, number][] = readmeFenceSpans(lines)
+): number {
   if (spans.some(([open, close]) => open < header && header <= close)) return at;
   const inside = (pos: number): [number, number][] => spans.filter(([open, close]) => open < pos && pos <= close);
   let after = at;
