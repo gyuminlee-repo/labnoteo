@@ -5,6 +5,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { TFile, TFolder } from '../stubs/obsidian';
 import LabnotePlugin from '../../src/main';
+import { BarcodeFeature } from '../../src/barcode/barcodeFeature';
+import { NoteIdService } from '../../src/barcode/noteIdService';
 
 // main.ts brings in every view and suggester; the stub has no base class for those.
 vi.mock('obsidian', async importOriginal => {
@@ -25,7 +27,7 @@ vi.mock('obsidian', async importOriginal => {
   };
 });
 
-type Status = 'renewed' | 'none' | 'refused';
+type Status = 'renewed' | 'none' | 'refused' | 'failed';
 const DIR = 'labnote/002_Copy';
 
 function plugin(status: Status | ((path: string) => Status), notes: string[], text = '---\nlabnote_id: LN-7K3M9QX2\n  more\n---\nbody\n') {
@@ -147,5 +149,58 @@ describe('copy flows and a note ID that cannot be written', () => {
     await (p as unknown as { offerCopiedExperimentFix(f: TFolder, o: string): Promise<void> }).offerCopiedExperimentFix(folder, '001_Orig');
     expect([...((p.copyIdsRenewed as Map<string, Set<string>>).get(DIR) ?? [])]).toEqual([`${DIR}/001_WD010_A.labnote.md`]);
     expect(makeCopyNewExperiment).toHaveBeenCalledTimes(1);
+  });
+});
+
+// A `- ` line at column 0 under a labnote_id with a value is a YAML error, not a value over
+// several lines (L2): the real reassignCopiedId says what NoteIdService says (the front matter
+// warning) and the copy flows go on as B7 did.
+describe('copy flows and a copied note whose front matter cannot be read', () => {
+  const endings = [['LF', '\n'], ['CRLF', '\r\n']] as const;
+  const text = (nl: string) => ['---', 'labnote_id: LN-7K3M9QX2', '- continued', 'created_date: 2020-01-01', '---', 'body', ''].join(nl);
+
+  function real(nl: string, notes: string[]) {
+    const made = plugin('renewed', notes, text(nl));
+    const notices: { level: string; msg: string }[] = [];
+    const t = (s: string, ...args: unknown[]) => args.reduce<string>((out, a, i) => out.replace(`{${i}}`, String(a)), s);
+    const host = { notify: (level: string, msg: string) => notices.push({ level, msg }), t, confirm: async () => true, pick: async () => undefined, fs: { exists: async () => false } };
+    const app = made.p.app as Record<string, unknown>;
+    const barcode = Object.create(BarcodeFeature.prototype) as BarcodeFeature;
+    Object.assign(barcode, { plugin: { app, host, t }, noteIds: new NoteIdService(app as never, host as never) });
+    Object.assign(made.p, { host, t, barcode });
+    return { ...made, notices, barcode };
+  }
+
+  it.each(endings)('reassignCopiedId fails without the L2 warning (%s)', async (_n, nl) => {
+    const path = `${DIR}/001_WD010_A.labnote.md`;
+    const { barcode, notices } = real(nl, [path]);
+    expect(await barcode.reassignCopiedId(new TFile(path) as never)).toBe('failed');
+    expect(notices).toEqual([{ level: 'warn', msg: expect.stringContaining(`Front matter of ${path} could not be read`) }]);
+  });
+
+  it.each(endings)('a copied workflow note goes on to its name and rename (%s)', async (_n, nl) => {
+    const path = `${DIR}/001_WD010_A.labnote 1.md`;
+    const { p, renameFile, list, notices } = real(nl, [path]);
+    (p.copiedWorkflows as Set<string>).add(path);
+    // The step right before the rename; its date reset is not what is tested here.
+    const resetCopyDates = vi.fn(async () => {});
+    p.resetCopyDates = resetCopyDates;
+    await (p as unknown as { offerCopiedWorkflowFix(f: TFile): Promise<void> }).offerCopiedWorkflowFix(new TFile(path));
+    expect(list).toHaveBeenCalled();
+    expect(resetCopyDates).toHaveBeenCalledTimes(1);
+    expect(renameFile).toHaveBeenCalledTimes(1);
+    expect(notices.filter(n => n.msg.includes('could not be written'))).toEqual([]);
+    expect(notices.filter(n => n.msg.includes('could not be read'))).toHaveLength(1);
+  });
+
+  it.each(endings)('a copied experiment records the note and is made a new experiment (%s)', async (_n, nl) => {
+    const path = `${DIR}/001_WD010_A.labnote.md`;
+    const { p, folder, makeCopyNewExperiment, notices } = real(nl, [path]);
+    (p.copiedExperiments as Set<string>).add(DIR);
+    await (p as unknown as { offerCopiedExperimentFix(f: TFolder, o: string): Promise<void> }).offerCopiedExperimentFix(folder, '001_Orig');
+    expect([...((p.copyIdsRenewed as Map<string, Set<string>>).get(DIR) ?? [])]).toEqual([path]);
+    expect(makeCopyNewExperiment).toHaveBeenCalledTimes(1);
+    expect(notices.filter(n => n.msg.includes('could not be written'))).toEqual([]);
+    expect(notices.filter(n => n.msg.includes('could not be read'))).toHaveLength(1);
   });
 });

@@ -570,15 +570,16 @@ describe('BarcodeFeature and a labnote_id over several lines', () => {
   });
 
   // A `- ` item at column 0 under a key with a value is a YAML error, not more of the value
-  // (R1): the one-line ID is read, and the copy stops at the front matter that cannot be read,
-  // with B7's warning, not the L2 one. Under an empty value it is L2 (noteIdDashItem.test.ts).
+  // (R1): the one-line ID is read, and its renewal fails at the front matter that cannot be read
+  // with B7's warning, not the L2 one: 'failed', so the copy flows go on as B7's did
+  // (copiedNoteId.test.ts). Under an empty value it is L2 (noteIdDashItem.test.ts).
   it.each([
     ['LF, "- " item', '\n', '- continued'],
     ['CRLF, "- " item', '\r\n', '- continued'],
   ])('reassignCopiedId reads a one-line ID with a "- " line below it as B7 did (%s)', async (_name, nl, rest) => {
     const { f, files, notices, file } = feature(note(nl, rest));
     expect(readNoteId(note(nl, rest))).toBe('LN-7K3M9QX2');
-    expect(await f.reassignCopiedId(file)).toBe('refused');
+    expect(await f.reassignCopiedId(file)).toBe('failed');
     expect(files.get('a.labnote.md')).toBe(note(nl, rest));
     expect(notices).toEqual([{ level: 'warn', msg: expect.stringContaining('Front matter of a.labnote.md could not be read') }]);
   });
