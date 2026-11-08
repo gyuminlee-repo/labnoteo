@@ -241,3 +241,20 @@ describe('unit operation TOC rebuild pairs its entries once', () => {
     expect(out).not.toBe(md);
   });
 });
+
+// insertWorkflowChecklistEntries reads the README's closed fences once per call, not once
+// per entry it adds: twenty entries cost the readings one entry does.
+describe('checklist insert reads the fences once per call', () => {
+  const spanReadings = (run: () => void): number => {
+    vi.mocked(fences.closedFenceSpans).mockClear();
+    run();
+    return vi.mocked(fences.closedFenceSpans).mock.calls.length;
+  };
+  const items = (n: number) => Array.from({ length: n }, (_, k) => ({ done: false, title: `N${k}`, fileName: `${String(500 + k).padStart(3, '0')}_WD010_N.labnote.md` }));
+  it.each([['LF', '\n'], ['CRLF', '\r\n']])('the same fence readings for 20 entries as for 1 (%s)', (_n, nl) => {
+    const md = ['## Related Workflows', '- [ ] [A](./001_WD010_A.labnote.md)', ...Array.from({ length: 300 }, (_, i) => (i % 3 === 0 ? `## H${i}` : i % 3 === 1 ? '```md' : '```'))].join(nl);
+    const one = spanReadings(() => insertWorkflowChecklistEntries(md, items(1)));
+    expect(one).toBeGreaterThan(0);
+    expect(spanReadings(() => insertWorkflowChecklistEntries(md, items(20)))).toBe(one);
+  });
+});
