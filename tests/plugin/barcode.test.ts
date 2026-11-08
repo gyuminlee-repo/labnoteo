@@ -648,8 +648,15 @@ describe('a labnote_id on the line after an empty first value', () => {
     expect(notices.some(n => n.level === 'warn')).toBe(true);
   });
 
-  it.each(cases)('moves no scans and says why (%s, %s)', async (_a, _b, ind, nl) => {
+  // Under spaces YAML (and Obsidian) reads the ID, so the scans may carry it: they stay, with a
+  // warning. A tab indent is a YAML error, so no ID is read and nothing is said, as in B7.
+  it.each(cases)('moves no scans, and says why when YAML reads the ID (%s, %s)', async (_a, _b, ind, nl) => {
     const { f, notices } = setup(note(ind, nl));
+    if (ind === '\t') {
+      expect(await f.moveScansWithNote('a.labnote.md', 'A/001', 'B/001')).toBeUndefined();
+      expect(notices).toEqual([]);
+      return;
+    }
     expect(await f.moveScansWithNote('a.labnote.md', 'A/001', 'B/001')).toBe('refused');
     expect(notices).toEqual([{ level: 'warn', msg: expect.stringContaining('could not be written') }]);
   });

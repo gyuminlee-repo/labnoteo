@@ -204,3 +204,70 @@ describe('copy flows and a copied note whose front matter cannot be read', () =>
     expect(notices.filter(n => n.msg.includes('could not be read'))).toHaveLength(1);
   });
 });
+
+// A labnote_id that cannot be written but that YAML reads as no string (a list or a mapping)
+// is no ID the copy can share: as B7, the copy is handled as one without an ID and goes on,
+// with nothing said. One that YAML reads as an ID (on the line below an empty first value)
+// may be shared, so the copy still stops there with the L2 warning.
+describe('copy flows and an unwritable labnote_id YAML reads as no ID', () => {
+  const endings = [['LF', '\n'], ['CRLF', '\r\n']] as const;
+  const shapes = [
+    ['an indented list', ['labnote_id:', '  - LN-AAAAAAAA']],
+    ['a "- " sequence', ['labnote_id:', '- LN-AAAAAAAA']],
+    ['a mapping', ['labnote_id:', '  key: LN-AAAAAAAA']],
+  ] as const;
+  const cases = shapes.flatMap(([name, id]) => endings.map(([n, nl]) => [name, n, id, nl] as const));
+  const text = (id: readonly string[], nl: string) => ['---', ...id, 'created_date: 2020-01-01', '---', 'body', ''].join(nl);
+
+  function real(md: string, notes: string[]) {
+    const made = plugin('renewed', notes, md);
+    const notices: { level: string; msg: string }[] = [];
+    const t = (s: string, ...args: unknown[]) => args.reduce<string>((out, a, i) => out.replace(`{${i}}`, String(a)), s);
+    const host = { notify: (level: string, msg: string) => notices.push({ level, msg }), t, confirm: async () => true, pick: async () => undefined, fs: { exists: async () => false } };
+    const app = made.p.app as Record<string, unknown>;
+    const barcode = Object.create(BarcodeFeature.prototype) as BarcodeFeature;
+    Object.assign(barcode, { plugin: { app, host, t }, noteIds: new NoteIdService(app as never, host as never) });
+    Object.assign(made.p, { host, t, barcode });
+    return { ...made, notices, barcode };
+  }
+
+  it.each(cases)('reassignCopiedId gives none and says nothing (%s, %s)', async (_s, _n, id, nl) => {
+    const path = `${DIR}/001_WD010_A.labnote.md`;
+    const { barcode, notices } = real(text(id, nl), [path]);
+    expect(await barcode.reassignCopiedId(new TFile(path) as never)).toBe('none');
+    expect(notices).toEqual([]);
+  });
+
+  it.each(cases)('a copied workflow note goes on to its name and rename (%s, %s)', async (_s, _n, id, nl) => {
+    const path = `${DIR}/001_WD010_A.labnote 1.md`;
+    const { p, renameFile, list, notices } = real(text(id, nl), [path]);
+    (p.copiedWorkflows as Set<string>).add(path);
+    const resetCopyDates = vi.fn(async () => {});
+    p.resetCopyDates = resetCopyDates;
+    await (p as unknown as { offerCopiedWorkflowFix(f: TFile): Promise<void> }).offerCopiedWorkflowFix(new TFile(path));
+    expect(list).toHaveBeenCalled();
+    expect(resetCopyDates).toHaveBeenCalledTimes(1);
+    expect(renameFile).toHaveBeenCalledTimes(1);
+    expect(notices.filter(n => n.level === 'warn')).toEqual([]);
+  });
+
+  it.each(cases)('a copied experiment records the note and is made a new experiment (%s, %s)', async (_s, _n, id, nl) => {
+    const path = `${DIR}/001_WD010_A.labnote.md`;
+    const { p, folder, makeCopyNewExperiment, notices } = real(text(id, nl), [path]);
+    (p.copiedExperiments as Set<string>).add(DIR);
+    await (p as unknown as { offerCopiedExperimentFix(f: TFolder, o: string): Promise<void> }).offerCopiedExperimentFix(folder, '001_Orig');
+    expect([...((p.copyIdsRenewed as Map<string, Set<string>>).get(DIR) ?? [])]).toEqual([path]);
+    expect(makeCopyNewExperiment).toHaveBeenCalledTimes(1);
+    expect(notices.filter(n => n.level === 'warn')).toEqual([]);
+  });
+
+  it.each(endings)('an ID on the line below an empty first value is still refused (%s)', async (_n, nl) => {
+    const path = `${DIR}/001_WD010_A.labnote 1.md`;
+    const { p, barcode, renameFile, notices } = real(text(['labnote_id:', '  LN-AAAAAAAA'], nl), [path]);
+    expect(await barcode.reassignCopiedId(new TFile(path) as never)).toBe('refused');
+    (p.copiedWorkflows as Set<string>).add(path);
+    await (p as unknown as { offerCopiedWorkflowFix(f: TFile): Promise<void> }).offerCopiedWorkflowFix(new TFile(path));
+    expect(renameFile).not.toHaveBeenCalled();
+    expect(notices.filter(n => n.msg.includes('could not be written'))).toHaveLength(1);
+  });
+});

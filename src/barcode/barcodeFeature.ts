@@ -4,9 +4,9 @@
  * queue, and taking a note's scans along when it moves to another experiment.
  */
 import { MarkdownView, Notice, Platform, TFile, TFolder, type App } from 'obsidian';
-import { scanEntryLine, type LabnoteHost, type Translator } from '@labnoteo/core';
+import { parseFrontMatterYaml, scanEntryLine, type LabnoteHost, type Translator } from '@labnoteo/core';
 import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
-import { noteIdUnwritable, readNoteId } from '@labnoteo/core/lib/noteId';
+import { NOTE_ID_KEY, noteIdUnwritable, readNoteId } from '@labnoteo/core/lib/noteId';
 import { isSameSampleFolder, loadSampleLocationLookup, noteLabsamplesFolder } from '@labnoteo/core/lib/sampleStorage';
 import { getSampleDisplayMeta } from '@labnoteo/core/lib/sampleUtils';
 import { isValidWorkflowPath } from '@labnoteo/core/lib/workflowStructure';
@@ -39,6 +39,19 @@ export function planScanMoves(
 ): { move: string[]; keep: string[] } {
   const own = names.filter(n => isScanOfNote(n, noteId));
   return { move: own.filter(n => !takenInTarget.has(n)), keep: own.filter(n => takenInTarget.has(n)) };
+}
+
+/**
+ * Whether `content` has a `labnote_id` that cannot be written (L2) and that YAML (and so
+ * Obsidian) reads as a non-empty string: an ID the note may share with another or have its
+ * scans named after. An empty block, a list or front matter YAML cannot read gives no such
+ * ID, so the note is handled as one without an ID, as B7 handled it.
+ */
+function unwritableIdInUse(content: string): boolean {
+  if (!noteIdUnwritable(content)) return false;
+  const { frontMatter, parseError } = parseFrontMatterYaml(content.replace(/\r\n/g, '\n'));
+  const value = parseError ? undefined : frontMatter[NOTE_ID_KEY];
+  return typeof value === 'string' && value.trim() !== '';
 }
 
 export class BarcodeFeature {
@@ -264,14 +277,14 @@ export class BarcodeFeature {
   /**
    * Copies made in Obsidian get their own ID right away, like their issue markers:
    * 'renewed', or 'none' for a note without one. A `labnote_id` that cannot be written
-   * (over several lines: L2) is said once and left as it is: 'refused', and the caller
-   * goes no further with the copy. Any other failure (front matter that cannot be read)
+   * (over several lines: L2) and reads as an ID ({@link unwritableIdInUse}) is said once and
+   * left as it is: 'refused', and the caller goes no further with the copy. Any other failure (front matter that cannot be read)
    * was said by NoteIdService and is 'failed': the caller goes on with the copy, as B7 did.
    */
   async reassignCopiedId(file: TFile): Promise<'renewed' | 'none' | 'refused' | 'failed'> {
     const content = await this.app.vault.read(file);
     if (!readNoteId(content)) {
-      if (!noteIdUnwritable(content)) return 'none';
+      if (!unwritableIdInUse(content)) return 'none';
       this.noteIds.warnUnwritable(file, true);
       return 'refused';
     }
@@ -382,7 +395,8 @@ export class BarcodeFeature {
     if (!(file instanceof TFile)) return;
     const content = await this.app.vault.read(file);
     const noteId = readNoteId(content);
-    if (!noteId && !noteIdUnwritable(content)) return;
+    // Scans are named after an ID: without one YAML reads, there are none of the note's to move.
+    if (!noteId && !unwritableIdInUse(content)) return;
     const fromExp = getExperimentDir(posix.join(fromDir, 'x.md')) ?? fromDir;
     const toExp = getExperimentDir(newPath) ?? toDir;
     if (fromExp === toExp) return;

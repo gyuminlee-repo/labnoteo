@@ -95,11 +95,13 @@ describe('R1: a "- " line under an empty labnote_id stays a value over several l
     expect(notices.some(n => n.level === 'warn' && n.msg.includes('could not be written'))).toBe(true);
   });
 
-  it.each(cases)('moveScansWithNote refuses with the warning when there are scans (%s, %s)', async (_n, _k, nl, key) => {
+  // YAML reads a list there, not an ID, so no scan is named after it: nothing moves and
+  // nothing is said, as in B7.
+  it.each(cases)('moveScansWithNote moves nothing and says nothing (%s, %s)', async (_n, _k, nl, key) => {
     const { f, notices, moved } = setup(`${TO}/a.labnote.md`, note(nl, key, `- ${ID}`), [`${FROM}/images/scans`]);
-    expect(await f.moveScansWithNote(`${TO}/a.labnote.md`, FROM, TO)).toBe('refused');
+    expect(await f.moveScansWithNote(`${TO}/a.labnote.md`, FROM, TO)).toBeUndefined();
     expect(moved).toEqual([]);
-    expect(notices).toEqual([{ level: 'warn', msg: expect.stringContaining('could not be written') }]);
+    expect(notices).toEqual([]);
   });
 });
 
