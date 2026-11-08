@@ -25,3 +25,19 @@ describe('workflow deletion stays in the sections the checklist is read from', (
     expect(removeWorkflowFromReadme(md, '001_WD010_A.labnote.md')).toEqual({ changed: false, content: md });
   });
 });
+
+// R1: where no heading names the section (or the one named first is the add path's),
+// another section the reading with fences ignored picks first is not one the add path
+// reads or writes: its entry stays, as in main.
+describe('workflow deletion stays out of a section only the other reading picks', () => {
+  const picks = [
+    ['an entry under ## Tasks after a fenced one under ## Notes', ['# Exp', '', '## Notes', '', '```md', A, '```', '', '## Tasks', '', A, '']],
+    [
+      'an entry under # Appendix after an unclosed fence below ## 관련 워크플로',
+      ['~~~', '## Related Workflows', '   ~~~', '````', '~~~', '## 관련 워크플로', '~~~ a`b', '- ```md', '# Appendix', '  - [ ] [A2](./001_WD010_A.labnote.md)', '- [ ] todo', '## Example', A, ''],
+    ],
+  ] as const;
+  it.each(picks.flatMap(([name, lines]) => endings.map(([n, nl]) => [name, n, lines.join(nl)] as const)))('%s (%s)', (_name, _n, md) => {
+    expect(removeWorkflowFromReadme(md, '001_WD010_A.labnote.md')).toEqual({ changed: false, content: md });
+  });
+});

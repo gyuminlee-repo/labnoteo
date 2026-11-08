@@ -106,6 +106,9 @@ export function removeWorkflowFromReadme(
     const workflow = workflowChecklistSectionRange(readmeContent, skip);
     if (!workflow || inCode[workflow.header]) continue;
     if (addPathNamed && !isWorkflowSectionHeading(lines[workflow.header])) continue;
+    // With those headings ignored the add path's own section may run on further; a section
+    // the add path does not read (another pick of the first section with an entry) is not it.
+    if (skip && workflow.header !== addPath?.header) continue;
     ranges.push({ start: workflow.header + 1, end: workflow.end });
   }
   // Union with what main (#442) deletes, so this never removes less than main did.
