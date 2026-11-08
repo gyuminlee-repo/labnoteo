@@ -265,8 +265,10 @@ const THEMATIC_BREAK_RE = /^ {0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/;
  * With `replacing` (a writer about to delete or replace the body, and its
  * preview) the body also ends at a heading that only the closed-blocks
  * reading shows (that opener is text), so a replacement cannot delete the
- * sections after an opener never closed. Readers of the body (model replies,
- * summaries, placeholder checks) read it line by line only.
+ * sections after an opener never closed. {@link sectionBodyAt} reads the body
+ * with `replacing` too, so the section read, appended to and described by the
+ * tools is the range a replacement writes. The method body and summary
+ * insertion readers (blockInsert, summaryInsert) read it line by line only.
  */
 export function sectionBodyEnd(
   lines: readonly string[],
