@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { App, TFile as ObsidianTFile } from 'obsidian';
 import jsQR from 'jsqr';
-import { TFile } from '../stubs/obsidian';
+import { TFile, TFolder } from '../stubs/obsidian';
 import type { LabnoteHost } from '../../packages/labnoteo-core/src';
 import { readNoteId } from '../../packages/labnoteo-core/src/lib/noteId';
 import { parseFrontMatterYaml } from '../../packages/labnoteo-core/src/sections/frontMatter';
@@ -531,6 +531,10 @@ describe('NoteIdService', () => {
 
 // L2: a copied note whose labnote_id is written over several lines has an ID that can be
 // neither read nor written; that is said (the NoteIdService warning), not taken for none.
+// The scans folder of experiment `A/001`, with one scan in it: a move has something to look through (E1).
+const SCANS = 'A/001/images/scans';
+const scans = Object.assign(new TFolder(), { path: SCANS, name: 'scans', children: [new TFile(`${SCANS}/LN-7K3M9QX2_u1_p1_20261015.jpg`)] });
+
 describe('BarcodeFeature and a labnote_id over several lines', () => {
   function feature(text: string) {
     const files = new Map([['a.labnote.md', text]]);
@@ -539,7 +543,7 @@ describe('BarcodeFeature and a labnote_id over several lines', () => {
     const app = {
       vault: {
         getMarkdownFiles: () => [...files.keys()].map(fileOf),
-        getAbstractFileByPath: (p: string) => (files.has(p) ? fileOf(p) : null),
+        getAbstractFileByPath: (p: string) => (files.has(p) ? fileOf(p) : p === SCANS ? scans : null),
         read: async (f: TFile) => files.get(f.path)!,
         process: async (f: TFile, fn: (s: string) => string) => {
           files.set(f.path, fn(files.get(f.path)!));
@@ -558,13 +562,25 @@ describe('BarcodeFeature and a labnote_id over several lines', () => {
   it.each([
     ['LF, indented', '\n', '  continued'],
     ['CRLF, indented', '\r\n', '  continued'],
-    ['LF, "- " item', '\n', '- continued'],
-    ['CRLF, "- " item', '\r\n', '- continued'],
   ])('reassignCopiedId warns and leaves it (%s)', async (_name, nl, rest) => {
     const { f, files, notices, file } = feature(note(nl, rest));
     expect(await f.reassignCopiedId(file)).toBe('refused');
     expect(files.get('a.labnote.md')).toBe(note(nl, rest));
     expect(notices).toEqual([{ level: 'warn', msg: expect.stringContaining('could not be written') }]);
+  });
+
+  // A `- ` item at column 0 under a key with a value is a YAML error, not more of the value
+  // (R1): the one-line ID is read, and the copy stops at the front matter that cannot be read,
+  // with B7's warning, not the L2 one. Under an empty value it is L2 (noteIdDashItem.test.ts).
+  it.each([
+    ['LF, "- " item', '\n', '- continued'],
+    ['CRLF, "- " item', '\r\n', '- continued'],
+  ])('reassignCopiedId reads a one-line ID with a "- " line below it as B7 did (%s)', async (_name, nl, rest) => {
+    const { f, files, notices, file } = feature(note(nl, rest));
+    expect(readNoteId(note(nl, rest))).toBe('LN-7K3M9QX2');
+    expect(await f.reassignCopiedId(file)).toBe('refused');
+    expect(files.get('a.labnote.md')).toBe(note(nl, rest));
+    expect(notices).toEqual([{ level: 'warn', msg: expect.stringContaining('Front matter of a.labnote.md could not be read') }]);
   });
 
   it.each([['LF', '\n'], ['CRLF', '\r\n']])('reassignCopiedId gives a one-line ID a new one, as before (%s)', async (_name, nl) => {
@@ -598,7 +614,7 @@ describe('a labnote_id on the line after an empty first value', () => {
     const app = {
       vault: {
         getMarkdownFiles: () => [...files.keys()].map(fileOf),
-        getAbstractFileByPath: (p: string) => (files.has(p) ? fileOf(p) : null),
+        getAbstractFileByPath: (p: string) => (files.has(p) ? fileOf(p) : p === SCANS ? scans : null),
         read: async (f: TFile) => files.get(f.path)!,
         process: async (f: TFile, fn: (s: string) => string) => {
           files.set(f.path, fn(files.get(f.path)!));

@@ -32,12 +32,17 @@ describe('readNoteId / setNoteId', () => {
   // value over lines) is no valid ID: YAML reads the whole value.
   it.each([
     ['an indented continuation line', '---\nlabnote_id: LN-7K3M9QX2\n  old\n---\nbody\n'],
-    ['a list line', '---\nlabnote_id: LN-7K3M9QX2\n- old\n---\nbody\n'],
+    ['a list under an empty value', '---\nlabnote_id:\n- LN-7K3M9QX2\n---\nbody\n'],
     ['a folded block', '---\nlabnote_id: >-\n  LN-7K3M9QX2\n---\nbody\n'],
     ['a literal block', '---\nlabnote_id: |\n  LN-7K3M9QX2\n---\nbody\n'],
     ['a quoted value over lines', '---\nlabnote_id: "LN-7K3M9QX2\n  old"\n---\nbody\n'],
   ])('reads no ID from a value on several lines: %s', (_name, md) => {
     expect(readNoteId(md)).toBeUndefined();
+  });
+
+  // A `- ` line under a key with a value is a YAML error, not more of the value: read as B7 did (R1).
+  it('reads the one-line ID with a list line below it', () => {
+    expect(readNoteId('---\nlabnote_id: LN-7K3M9QX2\n- old\n---\nbody\n')).toBe('LN-7K3M9QX2');
   });
 
   it.each([
