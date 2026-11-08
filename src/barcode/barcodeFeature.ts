@@ -6,7 +6,7 @@
 import { MarkdownView, Notice, Platform, TFile, TFolder, type App } from 'obsidian';
 import { parseFrontMatterYaml, scanEntryLine, type LabnoteHost, type Translator } from '@labnoteo/core';
 import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
-import { NOTE_ID_KEY, noteIdUnwritable, readNoteId } from '@labnoteo/core/lib/noteId';
+import { isValidNoteId, NOTE_ID_KEY, noteIdUnwritable, readNoteId } from '@labnoteo/core/lib/noteId';
 import { isSameSampleFolder, loadSampleLocationLookup, noteLabsamplesFolder } from '@labnoteo/core/lib/sampleStorage';
 import { getSampleDisplayMeta } from '@labnoteo/core/lib/sampleUtils';
 import { isValidWorkflowPath } from '@labnoteo/core/lib/workflowStructure';
@@ -43,15 +43,16 @@ export function planScanMoves(
 
 /**
  * Whether `content` has a `labnote_id` that cannot be written (L2) and that YAML (and so
- * Obsidian) reads as a non-empty string: an ID the note may share with another or have its
- * scans named after. An empty block, a list or front matter YAML cannot read gives no such
- * ID, so the note is handled as one without an ID, as B7 handled it.
+ * Obsidian) reads as a valid note ID, as {@link NoteIdService.idOf} counts one: an ID the note
+ * may share with another or have its scans named after. Any other value (an empty block, a
+ * list, a string that is no ID such as `LN-AAAAAAAA\n` from a `|` block) or front matter YAML
+ * cannot read gives no such ID, so the note is handled as one without an ID, as B7 handled it.
  */
 function unwritableIdInUse(content: string): boolean {
   if (!noteIdUnwritable(content)) return false;
   const { frontMatter, parseError } = parseFrontMatterYaml(content.replace(/\r\n/g, '\n'));
   const value = parseError ? undefined : frontMatter[NOTE_ID_KEY];
-  return typeof value === 'string' && value.trim() !== '';
+  return isValidNoteId(value);
 }
 
 export class BarcodeFeature {

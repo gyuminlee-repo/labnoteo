@@ -559,14 +559,16 @@ describe('BarcodeFeature and a labnote_id over several lines', () => {
   }
   const note = (nl: string, rest: string) => ['---', 'labnote_id: LN-7K3M9QX2', rest, 'created_date: 2020-01-01', '---', 'body', ''].join(nl);
 
+  // An indented line below a one-line value continues it: YAML reads 'LN-7K3M9QX2 continued',
+  // which is no note ID (NoteIdService.idOf), so the copy is one without an ID, as in B7.
   it.each([
     ['LF, indented', '\n', '  continued'],
     ['CRLF, indented', '\r\n', '  continued'],
-  ])('reassignCopiedId warns and leaves it (%s)', async (_name, nl, rest) => {
+  ])('reassignCopiedId leaves a value YAML reads as no ID, as B7 did (%s)', async (_name, nl, rest) => {
     const { f, files, notices, file } = feature(note(nl, rest));
-    expect(await f.reassignCopiedId(file)).toBe('refused');
+    expect(await f.reassignCopiedId(file)).toBe('none');
     expect(files.get('a.labnote.md')).toBe(note(nl, rest));
-    expect(notices).toEqual([{ level: 'warn', msg: expect.stringContaining('could not be written') }]);
+    expect(notices).toEqual([]);
   });
 
   // A `- ` item at column 0 under a key with a value is a YAML error, not more of the value
@@ -598,10 +600,10 @@ describe('BarcodeFeature and a labnote_id over several lines', () => {
     expect(notices).toEqual([]);
   });
 
-  it.each([['LF', '\n'], ['CRLF', '\r\n']])('moveScansWithNote warns instead of leaving the scans silently (%s)', async (_name, nl) => {
+  it.each([['LF', '\n'], ['CRLF', '\r\n']])('moveScansWithNote moves nothing for a value YAML reads as no ID, as B7 did (%s)', async (_name, nl) => {
     const { f, notices } = feature(note(nl, '  continued'));
-    expect(await f.moveScansWithNote('a.labnote.md', 'A/001', 'B/001')).toBe('refused');
-    expect(notices).toEqual([{ level: 'warn', msg: expect.stringContaining('could not be written') }]);
+    expect(await f.moveScansWithNote('a.labnote.md', 'A/001', 'B/001')).toBeUndefined();
+    expect(notices).toEqual([]);
   });
 });
 

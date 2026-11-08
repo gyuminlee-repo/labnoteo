@@ -205,8 +205,8 @@ describe('copy flows and a copied note whose front matter cannot be read', () =>
   });
 });
 
-// A labnote_id that cannot be written but that YAML reads as no string (a list or a mapping)
-// is no ID the copy can share: as B7, the copy is handled as one without an ID and goes on,
+// A labnote_id that cannot be written but that YAML reads as no note ID (a list, a mapping or
+// a string that is no ID) is no ID the copy can share: as B7, the copy is handled as one without an ID and goes on,
 // with nothing said. One that YAML reads as an ID (on the line below an empty first value)
 // may be shared, so the copy still stops there with the L2 warning.
 describe('copy flows and an unwritable labnote_id YAML reads as no ID', () => {
@@ -215,6 +215,10 @@ describe('copy flows and an unwritable labnote_id YAML reads as no ID', () => {
     ['an indented list', ['labnote_id:', '  - LN-AAAAAAAA']],
     ['a "- " sequence', ['labnote_id:', '- LN-AAAAAAAA']],
     ['a mapping', ['labnote_id:', '  key: LN-AAAAAAAA']],
+    // Strings, but no note ID (NoteIdService.idOf): 'LN-AAAAAAAA\n', 'LN-AAAAAAAA more', 'LN-A LN-B'.
+    ['a literal block', ['labnote_id: |', '  LN-AAAAAAAA']],
+    ['an open quote going on', ['labnote_id: "LN-AAAAAAAA', '  more"']],
+    ['two lines below an empty first value', ['labnote_id:', '  LN-A', '  LN-B']],
   ] as const;
   const cases = shapes.flatMap(([name, id]) => endings.map(([n, nl]) => [name, n, id, nl] as const));
   const text = (id: readonly string[], nl: string) => ['---', ...id, 'created_date: 2020-01-01', '---', 'body', ''].join(nl);
