@@ -14,7 +14,7 @@ import {
 import { frontMatterNames, lineEdits, parseFrontMatterYaml, serializeFrontMatterEntry } from '../sections/frontMatter';
 import { normalizeHeadingText, stepFence, type OpenFence } from '../sections/sectionEdit';
 import { markdownCodeLines, mayHaveFences } from '../sections/codeFences';
-import { addsLastCr, joinLineBuffer, joinSplitKeepingCr, spliceLineBuffer, splitKeepingCr, splitLineBuffer } from '../util/lineEnds';
+import { joinLineBuffer, joinSplitKeepingCr, spliceLineBuffer, splitKeepingCr, splitLineBuffer } from '../util/lineEnds';
 import { positionOutsideFences, readmeFencedLines } from './readmeFences';
 import { generateNoteId, NOTE_ID_KEY } from './noteId';
 import { underscoreTurnsItalic } from './sampleUtils';
@@ -495,23 +495,21 @@ export function workflowChecklistEntryLabel(line: string): string | undefined {
 }
 
 /**
- * Line arrays whose last line ends in a `\r` that is text, not part of a line
- * break: the README ends in a lone CR. Such a line is no entry, as in v0.130.0.
+ * Line arrays whose last line ends in the lone CR that ends the README. That CR
+ * ends the line (CommonMark §2.1), so the line reads as any other, as in main;
+ * a writer only looks here to pick the break of a line it adds after it.
  */
 const crTextLast = new WeakSet<readonly string[]>();
 
 /** `text` split on `\n`, or by {@link splitKeepingCr} with `keepCr`, marking a lone CR that ends it (see {@link crTextLast}). */
 function readmeLines(text: string, keepCr = false): string[] {
   const lines = keepCr ? splitKeepingCr(text) : text.split('\n');
-  // When splitKeepingCr follows that CR with a line-break CR, no entry pattern
-  // takes the line; otherwise it needs the mark.
-  if (text.endsWith('\r') && !(keepCr && addsLastCr(text))) crTextLast.add(lines);
+  if (text.endsWith('\r')) crTextLast.add(lines);
   return lines;
 }
 
-/** Whether line `i` of `lines` is a checklist entry; a lone CR ending the README is text, so its line is none. */
+/** Whether line `i` of `lines` is a checklist entry; a lone CR ending the README ends its line, as `\r\n` would. */
 function isEntryLineAt(lines: readonly string[], i: number): boolean {
-  if (crTextLast.has(lines) && i === lines.length - 1 && lines[i].endsWith('\r')) return false;
   return isWorkflowChecklistEntryLine(lines[i]);
 }
 
@@ -561,7 +559,6 @@ export function workflowChecklistSectionRange(
   skip?: readonly boolean[]
 ): { header: number; end: number } | undefined {
   const lines = readmeContent.split(/\r?\n/);
-  if (readmeContent.endsWith('\r')) crTextLast.add(lines);
   const section = findWorkflowSection(lines, skip);
   return section.header === -1 ? undefined : section;
 }
@@ -669,13 +666,15 @@ export function insertWorkflowChecklistEntries(
       });
     // Past the last line, stay before the empty element a final newline leaves.
     // The new line (and a blank separator after it) ends as the line before
-    // it did: CRLF only after a real CRLF break, never after a lone CR that
-    // ends the README as text. At the very end that gives no CR the join
-    // would leave behind.
+    // it did: CRLF only after a real CRLF break. After the lone CR that ends
+    // the README it ends as the README's lines do, CRLF in one with any, so
+    // that line is left as it was (as main wrote it). At the very end that
+    // gives no CR the join would leave behind.
     const insertAt = (at: number, separator = false): void => {
       const pos = at === lines.length && lines[at - 1] === '' ? at - 1 : at;
       const before = pos - 1;
-      const crlf = lines[before].endsWith('\r') && !(crTextLast.has(lines) && before === lines.length - 1);
+      const crlf =
+        crTextLast.has(lines) && before === lines.length - 1 ? readmeContent.includes('\r\n') : lines[before].endsWith('\r');
       const eol = crlf ? '\r' : '';
       lines.splice(pos, 0, render(eol), ...(separator ? [eol] : []));
     };

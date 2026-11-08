@@ -19,23 +19,23 @@ export function splitKeepingCr(text: string): string[] {
 /**
  * Whether {@link splitKeepingCr} gives the last line of `text` a `\r`: it has
  * no final newline and the line break before it is CRLF. A lone CR ending
- * `text` is the last line's text; the added CR follows it.
+ * `text` already ends the last line (CommonMark §2.1), so it gets none.
  */
 export function addsLastCr(text: string): boolean {
   const lastBreak = text.lastIndexOf('\n');
-  return lastBreak > 0 && lastBreak < text.length - 1 && text[lastBreak - 1] === '\r';
+  return lastBreak > 0 && lastBreak < text.length - 1 && text[lastBreak - 1] === '\r' && !text.endsWith('\r');
 }
 
 /**
  * `lines` from {@link splitKeepingCr} of `text` joined again, still without a
  * final newline when `text` had none, so the line now last ends in no `\r`
  * of a line break: the one the split added, or that of a CRLF line moved or
- * added to the end. A `\r` that ended `text` as text stays while its line is
- * still last.
+ * added to the end. A `text` ending in a lone CR, which ends its last line,
+ * is joined as main joined it, whichever line is last now.
  */
 export function joinSplitKeepingCr(text: string, lines: readonly string[]): string {
   const joined = lines.join('\n');
-  if (text.endsWith('\n') || lines.length === 0) return joined;
+  if (text.endsWith('\n') || text.endsWith('\r') || lines.length === 0) return joined;
   if (addsLastCr(text)) return joined.replace(/\r$/, '');
   const textLast = text.slice(text.lastIndexOf('\n') + 1);
   return lines[lines.length - 1] === textLast ? joined : joined.replace(/\r$/, '');

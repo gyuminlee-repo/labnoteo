@@ -110,8 +110,9 @@ export function removeWorkflowFromReadme(
   dropBlankLeftByEntries(lines, drop, lines.length, readmeContent.endsWith('\n'));
 
   const kept = lines.filter((_, i) => !drop.has(i));
-  // A README without a final newline still has none when its last line goes.
-  if (drop.has(lines.length - 1) && !readmeContent.endsWith('\n') && kept.length > 0) {
+  // A README without a final newline still has none when its last line goes. A lone CR
+  // ending it ends its last line (CommonMark §2.1): the line now last keeps its break, as in main.
+  if (drop.has(lines.length - 1) && !/[\r\n]$/.test(readmeContent) && kept.length > 0) {
     kept[kept.length - 1] = kept[kept.length - 1].replace(/\r?\n$/, '');
   }
   return { changed: true, content: kept.join('') };
