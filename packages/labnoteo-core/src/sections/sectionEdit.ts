@@ -8,6 +8,8 @@
  */
 
 import { escapeRegExp } from '../lib/regexUtils';
+import { closedFencedLines, stepFence, type OpenFence } from './codeFences';
+import { joinLineBuffer, spliceLineBuffer, splitLineBuffer } from '../util/lineEnds';
 
 export interface SectionEditResult {
   ok: boolean;
@@ -26,39 +28,7 @@ export interface SectionBody {
   subheadings: number;
 }
 
-/** An open code fence: which character opened it, and how long the run was. */
-export interface OpenFence {
-  char: string;
-  length: number;
-}
-
-/** A fence line: up to 3 leading spaces, then a run of 3+ backticks or tildes. */
-const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
-
-/**
- * Advance code-fence state across one line.
- *
- * Per CommonMark a fence is closed only by a run of the SAME character that is
- * at least as long as the opener, and a closing fence carries no info string.
- * Tracking that matters: a plain boolean toggle read the ``` inside a `~~~`
- * block as a close, then read the real `~~~` as an open — and from there every
- * heading in the rest of the document looked like it was inside code, so the
- * section body ran to EOF and replacing it deleted every following section.
- * Showing fenced Markdown inside a fenced example is a normal thing to write in
- * a protocol note.
- */
-export function stepFence(line: string, open: OpenFence | null): OpenFence | null {
-  const match = line.match(FENCE_RE);
-  if (!match) return open;
-
-  const run = match[1];
-  const afterRun = line.slice(line.indexOf(run) + run.length);
-  // CommonMark: a backtick fence's info string has no backtick (```` ```a``` ```` is inline code).
-  if (open === null) return run[0] === '`' && afterRun.includes('`') ? null : { char: run[0], length: run.length };
-
-  const closes = run[0] === open.char && run.length >= open.length && afterRun.trim() === '';
-  return closes ? null : open;
-}
+export { stepFence, type OpenFence } from './codeFences';
 
 /** One heading that {@link findSectionMatches} found. */
 export interface SectionMatch {
@@ -200,21 +170,18 @@ export function replaceSectionBody(
  * vs LF endings are detected and preserved.
  */
 export function replaceSectionBodyAt(md: string, line: number, newBody: string): SectionEditResult {
-  const newline = md.includes('\r\n') ? '\r\n' : '\n';
-  const lines = md.split(/\r?\n/);
+  // Lines outside the body keep their own line breaks, even in mixed endings.
+  const buf = splitLineBuffer(md);
+  const lines = [...buf.lines];
   const headingIdx = line;
   const m = lines[headingIdx]?.match(ANY_HEADING_RE);
   if (!m) return { ok: false, md };
-  const bodyEnd = sectionBodyEnd(lines, headingIdx, m[1].length);
+  const bodyEnd = sectionBodyEnd(lines, headingIdx, m[1].length, { replacing: true });
 
   const bodyLines = newBody === '' ? [''] : ['', ...newBody.split(/\r?\n/), ''];
-  const next: string[] = [
-    ...lines.slice(0, headingIdx + 1),
-    ...bodyLines,
-    ...lines.slice(bodyEnd),
-  ];
+  spliceLineBuffer(buf, headingIdx + 1, bodyEnd - headingIdx - 1, bodyLines);
 
-  return { ok: true, md: next.join(newline), removed: summarizeBody(lines.slice(headingIdx + 1, bodyEnd)) };
+  return { ok: true, md: joinLineBuffer(buf), removed: summarizeBody(lines.slice(headingIdx + 1, bodyEnd)) };
 }
 
 /**
@@ -226,7 +193,8 @@ export function sectionBodyAt(md: string, line: number): SectionBody | undefined
   const lines = md.split(/\r?\n/);
   const m = lines[line]?.match(ANY_HEADING_RE);
   if (!m) return undefined;
-  return summarizeBody(lines.slice(line + 1, sectionBodyEnd(lines, line, m[1].length)));
+  // What replaceSectionBodyAt would replace, so its preview reads the same range.
+  return summarizeBody(lines.slice(line + 1, sectionBodyEnd(lines, line, m[1].length, { replacing: true })));
 }
 
 /**
@@ -291,24 +259,42 @@ const THEMATIC_BREAK_RE = /^ {0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/;
  * the template puts one between unit operations — so the body ends before
  * it (#332). One right under a line of text is that line's setext underline
  * and stays in the body, as does a rule at the end of the note.
+ *
+ * A `#` line inside a code block after the heading is not a boundary; fences
+ * are read line by line, so an opener never closed runs on to the end.
+ * With `replacing` (a writer about to delete or replace the body, and its
+ * preview) the body also ends at a heading that only the closed-blocks
+ * reading shows (that opener is text), so a replacement cannot delete the
+ * sections after an opener never closed. Readers of the body (model replies,
+ * summaries, placeholder checks) read it line by line only.
  */
-export function sectionBodyEnd(lines: readonly string[], headingIdx: number, level: number): number {
-  // The heading was matched outside any fence, so restart fence tracking here;
-  // a `#` line inside a code block after the heading is not a real boundary.
+export function sectionBodyEnd(
+  lines: readonly string[],
+  headingIdx: number,
+  level: number,
+  { replacing = false }: { replacing?: boolean } = {}
+): number {
   const boundaryRe = new RegExp(`^#{1,${level}}\\s`);
-  let bodyFence: OpenFence | null = null;
-  for (let i = headingIdx + 1; i < lines.length; i++) {
-    const next = stepFence(lines[i], bodyFence);
-    if (next !== bodyFence) {
-      bodyFence = next;
-      continue;
+  // Fences read from just after the heading, which was matched outside one.
+  const from = headingIdx + 1;
+  const scan = (closed?: readonly boolean[]): number => {
+    let fence: OpenFence | null = null;
+    for (let i = from; i < lines.length; i++) {
+      const next = stepFence(lines[i], fence);
+      const inCode = fence !== null || next !== fence;
+      fence = next;
+      if (inCode && (closed === undefined || closed[i - from])) continue;
+      if (!boundaryRe.test(lines[i])) continue;
+      let j = i - 1;
+      while (j > headingIdx && lines[j].trim() === '') j--;
+      if (j > headingIdx && THEMATIC_BREAK_RE.test(lines[j]) && (j - 1 === headingIdx || lines[j - 1].trim() === '')) return j;
+      return i;
     }
-    if (bodyFence) continue;
-    if (!boundaryRe.test(lines[i])) continue;
-    let j = i - 1;
-    while (j > headingIdx && lines[j].trim() === '') j--;
-    if (j > headingIdx && THEMATIC_BREAK_RE.test(lines[j]) && (j - 1 === headingIdx || lines[j - 1].trim() === '')) return j;
-    return i;
-  }
-  return lines.length;
+    return lines.length;
+  };
+  // Up to a boundary the line-by-line reading finds, every fence it opened has closed, and
+  // the closed-blocks reading has the same code: only past an opener never closed (the
+  // reading then runs to the end) can that reading end the body sooner.
+  const end = scan();
+  return replacing && end === lines.length ? scan(closedFencedLines(lines.slice(from))) : end;
 }
