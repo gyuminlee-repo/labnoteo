@@ -683,13 +683,13 @@ export function insertWorkflowChecklistEntries(
     // the README it ends as the section heading does, as main wrote every new
     // line, and that line is left as it was. At the very end that gives no CR
     // the join would leave behind.
-    const insertAt = (at: number, separator = false): void => {
+    const insertAt = (at: number, separator = false, blankAbove = false): void => {
       const pos = at === lines.length && lines[at - 1] === '' ? at - 1 : at;
       const before = pos - 1;
       const crlf = (crTextLast.has(lines) && before === lines.length - 1 ? lines[header] : lines[before]).endsWith('\r');
       const eol = crlf ? '\r' : '';
-      lines.splice(pos, 0, render(eol), ...(separator ? [eol] : []));
-      shiftSpans(pos, separator ? 2 : 1);
+      lines.splice(pos, 0, ...(blankAbove ? [eol] : []), render(eol), ...(separator ? [eol] : []));
+      shiftSpans(pos, 1 + (separator ? 1 : 0) + (blankAbove ? 1 : 0));
     };
     // Never into a fenced example: just after its closing line instead.
     const outside = (at: number): number => positionOutsideFences(lines, at, header, end, spans);
@@ -703,8 +703,11 @@ export function insertWorkflowChecklistEntries(
     while (at < end && lines[at].trim().startsWith('>')) at++;
     while (at < end && lines[at].trim() === '') at++;
     at = outside(at);
-    // Keep a blank line between the new entry and whatever follows it.
-    insertAt(at, at < lines.length && lines[at].trim() !== '');
+    // Keep a blank line between the new entry and whatever follows it. Past the last
+    // line the empty element a final newline leaves was passed over as a blank line,
+    // as main did: that blank line stays above the entry, and the final newline after it.
+    const blankAbove = at === lines.length && at - 1 > header && lines[at - 1] === '';
+    insertAt(at, at < lines.length && lines[at].trim() !== '', blankAbove);
   }
   return joinSplitKeepingCr(readmeContent, lines);
 }
