@@ -374,8 +374,15 @@ describe('appendUnitOpToWorkflowToc', () => {
     expect(appendUnitOpToWorkflowToc(md, 'U3', 'C')).toBe(['## Related Unit Operations', '### [Group]', '- [U1 A](#u1-a)', '- [U3 C](#u3-c)', ''].join(nl));
   });
 
+  // `  ```inline```` opens no fence (a backtick in its info: inline code), so the bare
+  // `  ```` below it opens one that runs to the end, and no unit operation section is left
+  // to append to: as main reads the same note with that line as plain text (D1).
+  it('leaves the toc when a front matter line opens a fence that runs to the end', () => {
+    const md = '---\ndescription: |\n  ```inline```\n  ```\n---\n## Related Unit Operations\n\n- [UHW010 A](#uhw010-a)\n\n---\n### [UHW010 A]\n';
+    expect(appendUnitOpToWorkflowToc(md, 'UHW020', 'B')).toBe(md);
+  });
+
   it.each([
-    ['front matter fence', '---\ndescription: |\n  ```inline```\n  ```\n---\n## Related Unit Operations\n\n- [UHW010 A](#uhw010-a)\n\n---\n### [UHW010 A]\n', '---\ndescription: |\n  ```inline```\n  ```\n---\n## Related Unit Operations\n\n- [UHW010 A](#uhw010-a)\n- [UHW020 B](#uhw020-b)\n\n---\n### [UHW010 A]\n'],
     ['unit op body', '## Related Unit Operations\n- [UHW010 A](#uhw010-a)\n```md\n## Example heading\n```\n### [UHW010 A]\n- [Protocol](https://example.org)\n## Notes\ntail\n', '## Related Unit Operations\n- [UHW010 A](#uhw010-a)\n- [UHW020 B](#uhw020-b)\n```md\n## Example heading\n```\n### [UHW010 A]\n- [Protocol](https://example.org)\n## Notes\ntail\n'],
   ])('appends as before after a %s', (_name, md, want) => {
     expect(appendUnitOpToWorkflowToc(md, 'UHW020', 'B')).toBe(want);

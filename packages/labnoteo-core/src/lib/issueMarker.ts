@@ -103,7 +103,16 @@ const MARKER_RE = /^@issue[;:]([A-Za-z0-9-]+)(?:[;:](.*))?$/i;
 const MARKER_START_RE = /@issue(?=[;:])/i;
 
 /** Opening/closing fence of a code block (up to 3 leading spaces, per CommonMark). */
-const FENCE_RE = /^ {0,3}(?:`{3,}|~{3,})/;
+const FENCE_RE = /^ {0,3}(`{3,}|~{3,})([^\n]*)/;
+
+/**
+ * Whether `line` is a fence line: a backtick run with a backtick after it is inline code,
+ * not a fence (CommonMark), as stepFence reads it, so a marker below it is text there too.
+ */
+function isFenceLine(line: string): boolean {
+  const m = FENCE_RE.exec(line);
+  return !!m && !(m[1][0] === '`' && m[2].includes('`'));
+}
 const INDENTED_CODE_RE = /^(?: {4}|\t)/;
 const LIST_ITEM_RE = /^\s*(?:[-*+]|\d+[.)])(?:\s|$)/;
 
@@ -122,7 +131,7 @@ function codeLines(lines: readonly string[]): boolean[] {
   let inList = false;
   let prevBlank = true;
   for (const line of lines) {
-    if (FENCE_RE.test(line)) {
+    if (isFenceLine(line)) {
       inFence = !inFence;
       code.push(true);
       prevBlank = false;
@@ -413,7 +422,7 @@ export function fencedCodeRanges(md: string): IssueMarkerRange[] {
   let start = -1;
   for (const line of md.split('\n')) {
     const end = offset + line.length;
-    if (FENCE_RE.test(line)) {
+    if (isFenceLine(line)) {
       if (start === -1) {
         start = offset;
       } else {

@@ -397,20 +397,16 @@ interface MdLine {
 /** Split into lines with offsets, marking ``` / ~~~ fenced code (fence lines included). */
 function scanLines(md: string): MdLine[] {
   const lines: MdLine[] = [];
-  let fence: { ch: string; len: number } | null = null;
+  // Fences read as stepFence reads them, so a backtick run with a backtick in its info is text.
+  let fence: OpenFence | null = null;
   let start = 0;
   for (;;) {
     const nl = md.indexOf('\n', start);
     const end = nl === -1 ? md.length : nl > start && md[nl - 1] === '\r' ? nl - 1 : nl;
     const text = md.slice(start, end);
-    const m = /^ {0,3}(`{3,}|~{3,})/.exec(text);
-    let fenced = fence !== null;
-    if (fence) {
-      if (m && m[1][0] === fence.ch && m[1].length >= fence.len && text.trim() === m[1]) fence = null;
-    } else if (m) {
-      fence = { ch: m[1][0], len: m[1].length };
-      fenced = true;
-    }
+    const next = stepFence(text, fence);
+    const fenced = fence !== null || next !== null;
+    fence = next;
     lines.push({ start, end, text, fenced });
     if (nl === -1) break;
     start = nl + 1;

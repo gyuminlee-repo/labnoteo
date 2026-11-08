@@ -196,7 +196,9 @@ function scanSampleListTables(
   let fence: string | undefined;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].text;
-    const mark = /^\s{0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+    // A backtick run with a backtick after it is inline code, not a fence, as stepFence reads it.
+    const run = /^\s{0,3}(`{3,}|~{3,})([^\n]*)/.exec(line);
+    const mark = run && !(run[1][0] === '`' && run[2].includes('`')) ? run[1] : undefined;
     if (mark && (!fence || (mark[0] === fence[0] && mark.length >= fence.length))) {
       fence = fence ? undefined : mark;
       continue;

@@ -190,7 +190,6 @@ function unquote(line: string): QuotedLine {
 const HEADING_RE = /^ {0,3}#{1,6}(?:\s|$)/;
 const THEMATIC_BREAK_RE = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
 const CALLOUT_TITLE_RE = /^ {0,3}\[![^\]\s]+\][+-]?(?:\s|$)/;
-const FENCE_OPEN_RE = /^ {0,3}(?:`{3,}|~{3,})/;
 const UNESCAPED_PIPE_RE = /(?:^|[^\\])\|/;
 
 /**
@@ -204,7 +203,8 @@ const isTableRow = (l: QuotedLine | undefined, depth: number): boolean =>
   UNESCAPED_PIPE_RE.test(l.text) &&
   !LIST_ITEM_RE.test(l.text) &&
   !HEADING_RE.test(l.text) &&
-  !FENCE_OPEN_RE.test(l.text) &&
+  // A fence opens as stepFence reads it: a backtick run with a backtick after it is inline code.
+  stepFence(l.text, null) === null &&
   !THEMATIC_BREAK_RE.test(l.text);
 
 /**

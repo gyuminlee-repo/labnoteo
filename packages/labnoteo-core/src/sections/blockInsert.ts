@@ -161,8 +161,9 @@ export function findUnitOpMethodByIndex(
  */
 export function extractMethodBody(output: string): string {
   let text = output.trim();
-  const fenced = /^(`{3,}|~{3,})[^\n]*\n([\s\S]*?)\n\1\s*$/.exec(text);
-  if (fenced) text = fenced[2];
+  const fenced = /^(`{3,}|~{3,})([^\n]*)\n([\s\S]*?)\n\1\s*$/.exec(text);
+  // A backtick run with a backtick in its info is inline code, not a fence, as stepFence reads it.
+  if (fenced && !(fenced[1][0] === '`' && fenced[2].includes('`'))) text = fenced[3];
 
   let lines = text.split(/\r?\n/);
   const [method] = findSectionMatches(text, 'Method');
