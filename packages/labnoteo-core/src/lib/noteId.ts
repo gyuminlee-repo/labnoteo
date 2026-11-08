@@ -62,7 +62,7 @@ const KEY_LINE_RE = new RegExp(`^${NOTE_ID_KEY}\\s*:(.*)$`);
 /**
  * The note's `labnote_id` when it is a valid ID written on its one line; any other value
  * counts as none. A value {@link setNoteId} leaves as it is ({@link noteIdUnwritable}:
- * continued on the next lines, even after an empty first line, a block scalar, an open
+ * continued on the next lines, even after an empty first line, a block scalar or an open
  * quote) is no ID either, so a note never has an ID it cannot be given.
  */
 export function readNoteId(content: string): string | undefined {
@@ -98,8 +98,8 @@ export function readRawNoteId(content: string): string | undefined {
 
 /**
  * Whether the note has a `labnote_id` line whose value {@link setNoteId} leaves as it is
- * (written over several lines, a block scalar, a quote left open): the ID can be neither
- * read nor written there, which is not the same as having none.
+ * (continued on the lines below it, a block scalar or open quote included): the ID can be
+ * neither read nor written there, which is not the same as having none.
  */
 export function noteIdUnwritable(content: string): boolean {
   const lines = frontMatterHead(content);
@@ -123,21 +123,13 @@ const continuesValue = (line: string, keyValue: string): boolean =>
 
 /**
  * Whether the `labnote_id:` line `i` holds its whole value on that line: not
- * continued on the next line, no block scalar (`|`, `>`, after a tag or anchor
- * too) and no quote left open. A tag, anchor, alias or flow value that ends on
- * the line is rewritten as before.
+ * continued on the next line ({@link continuesValue}). A block scalar indicator
+ * (`|`, `>`) or a quote left open with no line continuing it is that line alone
+ * too, and is rewritten as before (B7): one line replaced keeps the YAML valid.
  */
 function oneLineScalarAt(lines: readonly string[], i: number, close: number): boolean {
   const next = i + 1 < close ? lines[i + 1] : '';
-  const keyValue = KEY_LINE_RE.exec(lines[i])?.[1] ?? '';
-  if (continuesValue(next, keyValue)) return false;
-  // The value after its node properties (`!tag`, `&anchor`), if any.
-  const value = keyValue.trim().replace(/^(?:[!&]\S*[ \t]+)*/, '');
-  if (/^[|>]/.test(value)) return false;
-  // A quote is refused only when it does not close on the line; what follows it is as before.
-  if (value.startsWith("'")) return /^'(?:[^']|'')*'/.test(value);
-  if (value.startsWith('"')) return /^"(?:[^"\\]|\\.)*"/.test(value);
-  return true;
+  return !continuesValue(next, KEY_LINE_RE.exec(lines[i])?.[1] ?? '');
 }
 
 /**
@@ -155,9 +147,9 @@ export function setNoteId(content: string, id: string): string {
   if (!fm) return ['---', entry, '---', '', content].join(newline);
   for (let i = 1; i < fm.close; i++) {
     if (!KEY_LINE_RE.test(lines[i])) continue;
-    // Only a value on this one line, plain or quoted, is rewritten; any other
-    // shape (block scalar, continued or multi-line quoted value, anchor, tag,
-    // alias, collection) stays as written: the caller reads the ID back.
+    // Only a value on this one line is rewritten, a block scalar indicator or an
+    // open quote with nothing continuing it included; a value continued on the
+    // lines below stays as written: the caller reads the ID back.
     if (!oneLineScalarAt(lines, i, fm.close)) return content;
     if (lines[i] === entry) return content;
     spliceLineBuffer(buf, i, 1, [entry]);

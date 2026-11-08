@@ -207,3 +207,29 @@ describe('readNoteId, noteIdUnwritable and setNoteId agree', () => {
     expect(bad).toEqual([]);
   });
 });
+
+// A block scalar indicator or an open quote with no line continuing it is that one line: it is
+// rewritten as B7 rewrote it, and the front matter reads as YAML afterwards. With a line
+// continuing it, it stays as written (L2).
+describe('a block indicator or open quote alone on its line', () => {
+  const endings = [['LF', '\n'], ['CRLF', '\r\n']] as const;
+  const firsts = ['labnote_id: |', 'labnote_id: >-', 'labnote_id: "LN-OLD'];
+  const cases = firsts.flatMap(first => endings.map(([n, nl]) => [first, n, nl] as const));
+  const md = (first: string, nl: string, rest: string[] = []) => ['---', 'title: T', first, ...rest, 'other: 1', '---', 'body', ''].join(nl);
+
+  it.each(cases)('rewrites %s as B7 did, to valid YAML (%s)', (first, _n, nl) => {
+    const out = setNoteId(md(first, nl), 'LN-00000000');
+    expect(out).toBe(md('labnote_id: LN-00000000', nl));
+    expect(noteIdUnwritable(md(first, nl))).toBe(false);
+    const parsed = parseFrontMatterYaml(out.replace(/\r\n/g, '\n'));
+    expect(parsed.parseError).toBeUndefined();
+    expect(parsed.frontMatter.labnote_id).toBe('LN-00000000');
+    expect(readNoteId(out)).toBe('LN-00000000');
+  });
+
+  it.each(cases)('leaves %s with a line continuing it (%s)', (first, _n, nl) => {
+    const input = md(first, nl, ['  LN-OLD']);
+    expect(noteIdUnwritable(input)).toBe(true);
+    expect(setNoteId(input, 'LN-00000000')).toBe(input);
+  });
+});
