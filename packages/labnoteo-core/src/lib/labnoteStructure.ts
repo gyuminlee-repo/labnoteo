@@ -6,6 +6,7 @@ import * as path from '../util/posixPath';
 import { getSeoulDateString } from './dateUtils';
 import { sanitizePathSegment, capPathSegment, EXPERIMENT_FOLDER_TITLE_MAX } from './regexUtils';
 import { serializeFrontMatterEntry, setFrontMatterKeys } from '../sections/frontMatter';
+import { joinLineBuffer, spliceLineBuffer, splitLineBuffer } from '../util/lineEnds';
 
 /**
  * Structure returned by createLabnoteStructure
@@ -503,7 +504,8 @@ export function retryFamily(folder: string, retryOf: ReadonlyMap<string, string 
  * else after `project` (or at the end of the front matter).
  */
 export function setRetryOf(content: string, link: string): string {
-  const lines = content.split(/\r?\n/);
+  const buf = splitLineBuffer(content);
+  const { lines } = buf;
   const fmEnd = lines[0]?.trim() === '---' ? lines.findIndex((l, i) => i > 0 && l.trim() === '---') : -1;
   if (fmEnd < 0) return content;
   const keyAt = (key: string): number => lines.findIndex((l, i) => i > 0 && i < fmEnd && new RegExp(`^${key}\\s*:`).test(l));
@@ -515,8 +517,8 @@ export function setRetryOf(content: string, link: string): string {
   } else {
     at = fmEnd;
   }
-  lines.splice(at, 0, serializeFrontMatterEntry('retry_of', link));
-  return lines.join(content.includes('\r\n') ? '\r\n' : '\n');
+  spliceLineBuffer(buf, at, 0, [serializeFrontMatterEntry('retry_of', link)]);
+  return joinLineBuffer(buf);
 }
 
 /**

@@ -1085,9 +1085,11 @@ async function readNoteForFrontMatterEdit(
   readmePath: string
 ): Promise<{ frontMatter: Record<string, unknown>; body: string; text: string } | undefined> {
   // `parseFrontMatterYaml` requires LF-normalised text (a bare `\n` after the
-  // opening `---`); normalise CRLF so Windows-authored notes parse correctly.
-  const original = (await host.fs.read(readmePath)).replace(/\r\n/g, '\n');
-  const { frontMatter, body, parseError } = parseFrontMatterYaml(original);
+  // opening `---`); parse a CRLF copy normalised so Windows-authored notes
+  // parse correctly, but edit the text as read, so every line the edit leaves
+  // keeps its own line ending.
+  const original = await host.fs.read(readmePath);
+  const { frontMatter, body, parseError } = parseFrontMatterYaml(original.replace(/\r\n/g, '\n'));
   if (parseError) {
     host.notify(
       'warn',

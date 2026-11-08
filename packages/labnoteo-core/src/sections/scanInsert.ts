@@ -13,6 +13,7 @@
  * again (undo) without depending on how the image link is written.
  */
 import { stepFence, type OpenFence } from './sectionEdit';
+import { joinLineBuffer, spliceLineBuffer, splitLineBuffer, type LineRef } from '../util/lineEnds';
 import { UNIT_OP_HEADING_PATTERN } from './workflowSectionParser';
 import { unitOpFingerprint } from '../lib/scanPayload';
 
@@ -178,7 +179,10 @@ export function renderScanEntry(entry: ScanEntry): string[] {
 interface ParsedEntry {
   page: number;
   hash: string;
-  lines: string[];
+  /** New lines, or the note's own lines (carried with their line breaks). */
+  lines: (string | LineRef)[];
+  /** The note's blank line after the entry, which separates it from the next one. */
+  gap?: LineRef;
 }
 
 interface Section {
@@ -186,28 +190,31 @@ interface Section {
   /** Exclusive end, before trailing blank lines. */
   end: number;
   /** Lines between the heading and the first entry, without framing blanks. */
-  preface: string[];
+  preface: LineRef[];
   entries: ParsedEntry[];
 }
 
 function parseSection(lines: readonly string[], headingLine: number, end: number): Section {
   const entries: ParsedEntry[] = [];
-  const preface: string[] = [];
+  const preface: LineRef[] = [];
   let current: ParsedEntry | null = null;
+  const blankAt = (ref: string | LineRef): boolean => typeof ref !== 'string' && isBlank(lines[ref.line]);
   for (let i = headingLine + 1; i < end; i++) {
     const m = ENTRY_RE.exec(lines[i]);
     if (m) {
-      current = { page: Number(m[1]), hash: m[3], lines: [lines[i]] };
+      current = { page: Number(m[1]), hash: m[3], lines: [{ line: i }] };
       entries.push(current);
     } else if (current) {
-      current.lines.push(lines[i]);
+      current.lines.push({ line: i });
     } else {
-      preface.push(lines[i]);
+      preface.push({ line: i });
     }
   }
-  for (const e of entries) while (e.lines.length > 1 && isBlank(e.lines[e.lines.length - 1])) e.lines.pop();
-  while (preface.length && isBlank(preface[0])) preface.shift();
-  while (preface.length && isBlank(preface[preface.length - 1])) preface.pop();
+  for (const e of entries) {
+    while (e.lines.length > 1 && blankAt(e.lines[e.lines.length - 1])) e.gap = e.lines.pop() as LineRef;
+  }
+  while (preface.length && blankAt(preface[0])) preface.shift();
+  while (preface.length && blankAt(preface[preface.length - 1])) preface.pop();
   return { headingLine, end, preface, entries };
 }
 
@@ -226,11 +233,11 @@ function findSection(
   return parseSection(lines, h.line, end);
 }
 
-function renderSection(level: number, section: Pick<Section, 'preface' | 'entries'>): string[] {
-  const out = [`${'#'.repeat(level)} ${WORKSHEET_SCANS_HEADING}`, ''];
+function renderSection(level: number, section: Pick<Section, 'preface' | 'entries'>): (string | LineRef)[] {
+  const out: (string | LineRef)[] = [`${'#'.repeat(level)} ${WORKSHEET_SCANS_HEADING}`, ''];
   if (section.preface.length) out.push(...section.preface, '');
   section.entries.forEach((e, i) => {
-    if (i > 0) out.push('');
+    if (i > 0) out.push(section.entries[i - 1].gap ?? '');
     out.push(...e.lines);
   });
   return out;
@@ -243,8 +250,9 @@ function renderSection(level: number, section: Pick<Section, 'preface' | 'entrie
  */
 export function insertScanEntries(md: string, block: UnitOpBlock | null, entries: readonly ScanEntry[]): string {
   if (entries.length === 0) return md;
-  const newline = md.includes('\r\n') ? '\r\n' : '\n';
-  const lines = md.split(/\r?\n/);
+  // Lines outside the section keep their own line breaks, even in mixed endings.
+  const buf = splitLineBuffer(md);
+  const { lines } = buf;
   const headings = scanHeadings(lines);
   const level = block ? 4 : 2;
   const from = block ? block.headingLine : -1;
@@ -258,8 +266,8 @@ export function insertScanEntries(md: string, block: UnitOpBlock | null, entries
       .sort((a, b) => a.e.page - b.e.page || a.order - b.order)
       .map(x => x.e);
     const body = renderSection(level, { preface: existing.preface, entries: merged });
-    lines.splice(existing.headingLine, existing.end - existing.headingLine, ...body);
-    return lines.join(newline);
+    spliceLineBuffer(buf, existing.headingLine, existing.end - existing.headingLine, body);
+    return joinLineBuffer(buf);
   }
 
   const sorted = [...added].sort((a, b) => a.page - b.page);
@@ -269,8 +277,8 @@ export function insertScanEntries(md: string, block: UnitOpBlock | null, entries
   const before = at > 0 && !isBlank(lines[at - 1]) ? [''] : [];
   const after = at < lines.length && !isBlank(lines[at]) ? [''] : [];
   if (!block && at === lines.length) after.push('');
-  lines.splice(at, 0, ...before, ...section, ...after);
-  return lines.join(newline);
+  spliceLineBuffer(buf, at, 0, [...before, ...section, ...after]);
+  return joinLineBuffer(buf);
 }
 
 /** Content hashes of the scans already filed anywhere in the note. */
@@ -352,8 +360,9 @@ export function listFiledScans(md: string): FiledScan[] {
  * page), and its Worksheet scans section when nothing else is left in it.
  */
 export function removeScanEntry(md: string, hash: string): { md: string; removed: boolean } {
-  const newline = md.includes('\r\n') ? '\r\n' : '\n';
-  const lines = md.split(/\r?\n/);
+  // Lines outside the section keep their own line breaks, even in mixed endings.
+  const buf = splitLineBuffer(md);
+  const { lines } = buf;
   const headings = scanHeadings(lines);
   const sectionRe = new RegExp(`^(#{2}|#{4})\\s+${WORKSHEET_SCANS_HEADING}\\s*$`);
   for (const h of headings) {
@@ -367,12 +376,12 @@ export function removeScanEntry(md: string, hash: string): { md: string; removed
     if (keep.length === 0 && section.preface.length === 0) {
       let start = section.headingLine;
       if (start > 0 && isBlank(lines[start - 1])) start--;
-      lines.splice(start, section.end - start);
+      spliceLineBuffer(buf, start, section.end - start);
     } else {
       const body = renderSection(h.level, { preface: section.preface, entries: keep });
-      lines.splice(section.headingLine, section.end - section.headingLine, ...body);
+      spliceLineBuffer(buf, section.headingLine, section.end - section.headingLine, body);
     }
-    return { md: lines.join(newline), removed: true };
+    return { md: joinLineBuffer(buf), removed: true };
   }
   return { md, removed: false };
 }
