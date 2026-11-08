@@ -28,16 +28,23 @@ describe('generateNoteId', () => {
 });
 
 describe('readNoteId / setNoteId', () => {
-  // A labnote_id continued on the next lines (or a block scalar, or a quoted
-  // value over lines) is no valid ID: YAML reads the whole value.
+  // A labnote_id continued on the next lines after an empty first value (or a block
+  // scalar, or a quoted value over lines) is no valid ID: YAML reads the whole value.
   it.each([
-    ['an indented continuation line', '---\nlabnote_id: LN-7K3M9QX2\n  old\n---\nbody\n'],
     ['a list under an empty value', '---\nlabnote_id:\n- LN-7K3M9QX2\n---\nbody\n'],
     ['a folded block', '---\nlabnote_id: >-\n  LN-7K3M9QX2\n---\nbody\n'],
     ['a literal block', '---\nlabnote_id: |\n  LN-7K3M9QX2\n---\nbody\n'],
     ['a quoted value over lines', '---\nlabnote_id: "LN-7K3M9QX2\n  old"\n---\nbody\n'],
   ])('reads no ID from a value on several lines: %s', (_name, md) => {
     expect(readNoteId(md)).toBeUndefined();
+  });
+
+  // R-2: a plain value with an indented line below it is read and written on its key line,
+  // as B7 did: YAML reads it with that line before the write and after it alike.
+  it.each([['LF', '\n'], ['CRLF', '\r\n']])('reads and writes a plain value with a line below it on its key line (%s)', (_n, nl) => {
+    const md = ['---', 'labnote_id: LN-7K3M9QX2', '  old', '---', 'body', ''].join(nl);
+    expect(readNoteId(md)).toBe('LN-7K3M9QX2');
+    expect(setNoteId(md, 'LN-00000001')).toBe(['---', 'labnote_id: LN-00000001', '  old', '---', 'body', ''].join(nl));
   });
 
   // A `- ` line under a key with a value is a YAML error, not more of the value: read as B7 did (R1).
@@ -117,7 +124,6 @@ describe('readNoteId / setNoteId', () => {
   it.each([
     ['folded', '---\ntitle: T\nlabnote_id: >-\n  LN-OLD\nother: 1\n---\nbody\n'],
     ['literal', '---\nlabnote_id: |\n  LN-OLD\n---\n'],
-    ['continued plain', '---\nlabnote_id: LN-OLD\n  more\n---\n'],
     ['quoted over lines', '---\nlabnote_id: "LN-OLD\n  more"\n---\n'],
     ['tagged block', '---\nlabnote_id: !!str |\n  LN-OLD\n---\n'],
     ['anchored block', '---\nlabnote_id: &a >-\n  LN-OLD\n---\n'],

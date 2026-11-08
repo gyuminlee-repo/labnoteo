@@ -10,7 +10,7 @@
 import { TFile, type App } from 'obsidian';
 import type { LabnoteHost } from '@labnoteo/core';
 import { listFiledScans, parseFrontMatterYaml } from '@labnoteo/core';
-import { generateNoteId, isValidNoteId, NOTE_ID_KEY, noteIdUnwritable, readKeyLineNoteId, readNoteId, readRawNoteId, setNoteId } from '@labnoteo/core/lib/noteId';
+import { generateNoteId, isValidNoteId, NOTE_ID_KEY, noteIdUnwritable, readNoteId, readRawNoteId, setNoteId } from '@labnoteo/core/lib/noteId';
 import { noteIdFromFiledScanEmbed } from '../scan/imageStore';
 
 /** Notes that get a barcode: lab notes (`*.labnote.md`). */
@@ -110,8 +110,7 @@ export class NoteIdService {
   ): Promise<{ id: string; reason?: undefined } | { id?: undefined; reason: 'unreadable' | 'cancelled' }> {
     const content = (await this.app.vault.read(file)).replace(/\r\n/g, '\n');
     if (!opts.reassign) {
-      // Only read here, nothing written: the ID on its line, as B7 read it (L2).
-      const existing = readKeyLineNoteId(content);
+      const existing = readNoteId(content);
       if (existing) return { id: existing };
     }
     const { parseError } = parseFrontMatterYaml(content);

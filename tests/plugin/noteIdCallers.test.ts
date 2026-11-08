@@ -7,9 +7,8 @@
  *   - copy or move warning: a copy or a scan move whose ID YAML reads; said, not passed over.
  *   - user command warning: printing, showBarcode or Assign note ID; warned before any question,
  *     since every answer that writes would break the value.
- *   - E-1: a copy with a one-line ID and a line below it is handled as one without an ID.
- * A path that only reads the ID (no write) is the same as B7: reading it through readNoteId
- * instead of readKeyLineNoteId fails the plainCont cells.
+ * A plain value on the key line with a line below it (plainCont) is read and written on that
+ * line as B7 did, by every caller alike (R-1, R-2): each plainCont cell is the same as B7.
  */
 import { describe, it, expect } from 'vitest';
 import { TFile, TFolder } from '../stubs/obsidian';
@@ -85,8 +84,8 @@ const cells: [string, string, string, string, string, string][] = [
   ['ensureId', 'folded', 'CRLF', 'none', 'user command warning', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
   ['ensureId', 'emptyThenId', 'LF', 'none', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
   ['ensureId', 'emptyThenId', 'CRLF', 'none', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
-  ['ensureIdReassign', 'plainCont', 'LF', 'none', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
-  ['ensureIdReassign', 'plainCont', 'CRLF', 'none', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
+  ['ensureIdReassign', 'plainCont', 'LF', 'none', 'same as B7', "{\"r\":\"LN-NEW\",\"wrote\":\"---\\ntitle: x\\nlabnote_id: LN-NEW\\n  more\\n---\\nbody\\n\",\"renames\":0,\"notices\":[]}"],
+  ['ensureIdReassign', 'plainCont', 'CRLF', 'none', 'same as B7', "{\"r\":\"LN-NEW\",\"wrote\":\"---\\r\\ntitle: x\\r\\nlabnote_id: LN-NEW\\r\\n  more\\r\\n---\\r\\nbody\\r\\n\",\"renames\":0,\"notices\":[]}"],
   ['ensureIdReassign', 'literal', 'LF', 'none', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
   ['ensureIdReassign', 'literal', 'CRLF', 'none', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
   ['ensureIdReassign', 'quotedCont', 'LF', 'none', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
@@ -109,8 +108,8 @@ const cells: [string, string, string, string, string, string][] = [
   ['assignId', 'folded', 'CRLF', 'none', 'user command warning', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
   ['assignId', 'emptyThenId', 'LF', 'none', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
   ['assignId', 'emptyThenId', 'CRLF', 'none', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
-  ['reassignCopiedId', 'plainCont', 'LF', 'none', 'E-1', "{\"r\":\"none\",\"wrote\":\"no\",\"renames\":0,\"notices\":[]}"],
-  ['reassignCopiedId', 'plainCont', 'CRLF', 'none', 'E-1', "{\"r\":\"none\",\"wrote\":\"no\",\"renames\":0,\"notices\":[]}"],
+  ['reassignCopiedId', 'plainCont', 'LF', 'none', 'same as B7 (B7 returns nothing)', "{\"r\":\"renewed\",\"wrote\":\"---\\ntitle: x\\nlabnote_id: LN-NEW\\n  more\\n---\\nbody\\n\",\"renames\":0,\"notices\":[\"info:Gave the copy 001_WD010_A.labnote its own note ID \"]}"],
+  ['reassignCopiedId', 'plainCont', 'CRLF', 'none', 'same as B7 (B7 returns nothing)', "{\"r\":\"renewed\",\"wrote\":\"---\\r\\ntitle: x\\r\\nlabnote_id: LN-NEW\\r\\n  more\\r\\n---\\r\\nbody\\r\\n\",\"renames\":0,\"notices\":[\"info:Gave the copy 001_WD010_A.labnote its own note ID \"]}"],
   ['reassignCopiedId', 'literal', 'LF', 'none', 'same as B7 (B7 returns nothing)', "{\"r\":\"none\",\"wrote\":\"no\",\"renames\":0,\"notices\":[]}"],
   ['reassignCopiedId', 'literal', 'CRLF', 'none', 'same as B7 (B7 returns nothing)', "{\"r\":\"none\",\"wrote\":\"no\",\"renames\":0,\"notices\":[]}"],
   ['reassignCopiedId', 'quotedCont', 'LF', 'none', 'same as B7 (B7 returns nothing)', "{\"r\":\"none\",\"wrote\":\"no\",\"renames\":0,\"notices\":[]}"],
@@ -145,8 +144,8 @@ const cells: [string, string, string, string, string, string][] = [
   ['ensureId', 'folded', 'CRLF', 'new', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
   ['ensureId', 'emptyThenId', 'LF', 'new', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
   ['ensureId', 'emptyThenId', 'CRLF', 'new', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
-  ['ensureIdReassign', 'plainCont', 'LF', 'new', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
-  ['ensureIdReassign', 'plainCont', 'CRLF', 'new', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
+  ['ensureIdReassign', 'plainCont', 'LF', 'new', 'same as B7', "{\"r\":\"LN-NEW\",\"wrote\":\"---\\ntitle: x\\nlabnote_id: LN-NEW\\n  more\\n---\\nbody\\n\",\"renames\":0,\"notices\":[]}"],
+  ['ensureIdReassign', 'plainCont', 'CRLF', 'new', 'same as B7', "{\"r\":\"LN-NEW\",\"wrote\":\"---\\r\\ntitle: x\\r\\nlabnote_id: LN-NEW\\r\\n  more\\r\\n---\\r\\nbody\\r\\n\",\"renames\":0,\"notices\":[]}"],
   ['ensureIdReassign', 'literal', 'LF', 'new', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
   ['ensureIdReassign', 'literal', 'CRLF', 'new', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
   ['ensureIdReassign', 'quotedCont', 'LF', 'new', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
@@ -169,8 +168,8 @@ const cells: [string, string, string, string, string, string][] = [
   ['assignId', 'folded', 'CRLF', 'new', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
   ['assignId', 'emptyThenId', 'LF', 'new', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
   ['assignId', 'emptyThenId', 'CRLF', 'new', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
-  ['reassignCopiedId', 'plainCont', 'LF', 'new', 'E-1', "{\"r\":\"none\",\"wrote\":\"no\",\"renames\":0,\"notices\":[]}"],
-  ['reassignCopiedId', 'plainCont', 'CRLF', 'new', 'E-1', "{\"r\":\"none\",\"wrote\":\"no\",\"renames\":0,\"notices\":[]}"],
+  ['reassignCopiedId', 'plainCont', 'LF', 'new', 'same as B7 (B7 returns nothing)', "{\"r\":\"renewed\",\"wrote\":\"---\\ntitle: x\\nlabnote_id: LN-NEW\\n  more\\n---\\nbody\\n\",\"renames\":0,\"notices\":[\"info:Gave the copy 001_WD010_A.labnote its own note ID \"]}"],
+  ['reassignCopiedId', 'plainCont', 'CRLF', 'new', 'same as B7 (B7 returns nothing)', "{\"r\":\"renewed\",\"wrote\":\"---\\r\\ntitle: x\\r\\nlabnote_id: LN-NEW\\r\\n  more\\r\\n---\\r\\nbody\\r\\n\",\"renames\":0,\"notices\":[\"info:Gave the copy 001_WD010_A.labnote its own note ID \"]}"],
   ['reassignCopiedId', 'literal', 'LF', 'new', 'same as B7 (B7 returns nothing)', "{\"r\":\"none\",\"wrote\":\"no\",\"renames\":0,\"notices\":[]}"],
   ['reassignCopiedId', 'literal', 'CRLF', 'new', 'same as B7 (B7 returns nothing)', "{\"r\":\"none\",\"wrote\":\"no\",\"renames\":0,\"notices\":[]}"],
   ['reassignCopiedId', 'quotedCont', 'LF', 'new', 'same as B7 (B7 returns nothing)', "{\"r\":\"none\",\"wrote\":\"no\",\"renames\":0,\"notices\":[]}"],
@@ -205,8 +204,8 @@ const cells: [string, string, string, string, string, string][] = [
   ['ensureId', 'folded', 'CRLF', 'restore', 'user command warning', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
   ['ensureId', 'emptyThenId', 'LF', 'restore', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
   ['ensureId', 'emptyThenId', 'CRLF', 'restore', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
-  ['ensureIdReassign', 'plainCont', 'LF', 'restore', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
-  ['ensureIdReassign', 'plainCont', 'CRLF', 'restore', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
+  ['ensureIdReassign', 'plainCont', 'LF', 'restore', 'same as B7', "{\"r\":\"LN-NEW\",\"wrote\":\"---\\ntitle: x\\nlabnote_id: LN-NEW\\n  more\\n---\\nbody\\n\",\"renames\":0,\"notices\":[]}"],
+  ['ensureIdReassign', 'plainCont', 'CRLF', 'restore', 'same as B7', "{\"r\":\"LN-NEW\",\"wrote\":\"---\\r\\ntitle: x\\r\\nlabnote_id: LN-NEW\\r\\n  more\\r\\n---\\r\\nbody\\r\\n\",\"renames\":0,\"notices\":[]}"],
   ['ensureIdReassign', 'literal', 'LF', 'restore', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
   ['ensureIdReassign', 'literal', 'CRLF', 'restore', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
   ['ensureIdReassign', 'quotedCont', 'LF', 'restore', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
@@ -229,8 +228,8 @@ const cells: [string, string, string, string, string, string][] = [
   ['assignId', 'folded', 'CRLF', 'restore', 'user command warning', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
   ['assignId', 'emptyThenId', 'LF', 'restore', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
   ['assignId', 'emptyThenId', 'CRLF', 'restore', 'L2 write refusal', "{\"wrote\":\"no\",\"renames\":0,\"notices\":[\"warn:The labnote_id of labnote/002_B/001_WD010_A.labnot\"]}"],
-  ['reassignCopiedId', 'plainCont', 'LF', 'restore', 'E-1', "{\"r\":\"none\",\"wrote\":\"no\",\"renames\":0,\"notices\":[]}"],
-  ['reassignCopiedId', 'plainCont', 'CRLF', 'restore', 'E-1', "{\"r\":\"none\",\"wrote\":\"no\",\"renames\":0,\"notices\":[]}"],
+  ['reassignCopiedId', 'plainCont', 'LF', 'restore', 'same as B7 (B7 returns nothing)', "{\"r\":\"renewed\",\"wrote\":\"---\\ntitle: x\\nlabnote_id: LN-NEW\\n  more\\n---\\nbody\\n\",\"renames\":0,\"notices\":[\"info:Gave the copy 001_WD010_A.labnote its own note ID \"]}"],
+  ['reassignCopiedId', 'plainCont', 'CRLF', 'restore', 'same as B7 (B7 returns nothing)', "{\"r\":\"renewed\",\"wrote\":\"---\\r\\ntitle: x\\r\\nlabnote_id: LN-NEW\\r\\n  more\\r\\n---\\r\\nbody\\r\\n\",\"renames\":0,\"notices\":[\"info:Gave the copy 001_WD010_A.labnote its own note ID \"]}"],
   ['reassignCopiedId', 'literal', 'LF', 'restore', 'same as B7 (B7 returns nothing)', "{\"r\":\"none\",\"wrote\":\"no\",\"renames\":0,\"notices\":[]}"],
   ['reassignCopiedId', 'literal', 'CRLF', 'restore', 'same as B7 (B7 returns nothing)', "{\"r\":\"none\",\"wrote\":\"no\",\"renames\":0,\"notices\":[]}"],
   ['reassignCopiedId', 'quotedCont', 'LF', 'restore', 'same as B7 (B7 returns nothing)', "{\"r\":\"none\",\"wrote\":\"no\",\"renames\":0,\"notices\":[]}"],

@@ -60,34 +60,16 @@ function frontMatterHead(content: string): string[] {
 const KEY_LINE_RE = new RegExp(`^${NOTE_ID_KEY}\\s*:(.*)$`);
 
 /**
- * The note's `labnote_id` when it is a valid ID written on its one line; any other value
- * counts as none. A value {@link setNoteId} leaves as it is ({@link noteIdUnwritable}:
- * continued on the next lines, even after an empty first line, a block scalar or an open
- * quote) is no ID either, so a note never has an ID it cannot be given.
+ * The note's `labnote_id` when it is a valid ID on its key line; any other value counts
+ * as none. A value {@link setNoteId} leaves as it is ({@link noteIdUnwritable}: continued
+ * on the next lines after an empty first line, a block scalar or an open quote) is no ID
+ * either, so a note never has an ID it cannot be given. A plain value with lines below it
+ * is read and written on its key line, as B7 did.
  */
 export function readNoteId(content: string): string | undefined {
   if (noteIdUnwritable(content)) return undefined;
   const value = readRawNoteId(content);
   return isValidNoteId(value) ? value : undefined;
-}
-
-/**
- * The valid ID on the `labnote_id:` line itself, as B7's readNoteId read it: lines
- * continuing the value are not looked at. For paths that only read the ID (show it,
- * move scans named after it) and write nothing, so they go on as B7 did; a path that
- * writes the ID uses {@link readNoteId}.
- */
-export function readKeyLineNoteId(content: string): string | undefined {
-  const lines = content.split(/\r?\n/);
-  const fm = frontMatterLines(lines);
-  if (!fm) return undefined;
-  for (let i = 1; i < fm.close; i++) {
-    const m = KEY_LINE_RE.exec(lines[i]);
-    if (!m) continue;
-    const value = m[1].trim().replace(/^(['"])(.*)\1$/, '$2').trim();
-    return isValidNoteId(value) ? value : undefined;
-  }
-  return undefined;
 }
 
 /**
@@ -101,14 +83,9 @@ export function readRawNoteId(content: string): string | undefined {
   for (let i = 1; i < fm.close; i++) {
     const m = KEY_LINE_RE.exec(lines[i]);
     if (!m) continue;
-    // A value continued on the next lines ({@link continuesValue}: indented
-    // text, or a `- ` item under an empty first value) reads whole, as YAML
-    // reads it, so `LN-X` followed by more is no valid ID. A block scalar
-    // (`|`, `>`) or a quoted value left open is no ID either way. Not
-    // detected: a quoted value going on at column 0.
-    let end = i + 1;
-    while (end < fm.close && continuesValue(lines[end], m[1])) end++;
-    if (end > i + 1) return [m[1], ...lines.slice(i + 1, end)].map(l => l.trim()).join(' ').trim() || undefined;
+    // The value on the key line, as B7 read it: a plain value with lines continuing
+    // it is read, and written ({@link setNoteId}), on that line alone. A value that
+    // cannot be written there ({@link noteIdUnwritable}) is no ID (readNoteId).
     const value = m[1].trim().replace(/^(['"])(.*)\1$/, '$2').trim();
     return value || undefined;
   }
@@ -117,7 +94,8 @@ export function readRawNoteId(content: string): string | undefined {
 
 /**
  * Whether the note has a `labnote_id` line whose value {@link setNoteId} leaves as it is
- * (continued on the lines below it, a block scalar or open quote included): the ID can be
+ * (continued on the lines below it after an empty first line, a block scalar indicator or
+ * an open quote; a plain value on the key line is written there): the ID can be
  * neither read nor written there, which is not the same as having none.
  */
 export function noteIdUnwritable(content: string): boolean {
@@ -141,14 +119,31 @@ const continuesValue = (line: string, keyValue: string): boolean =>
   /^[ \t]+[^\s#]/.test(line) || (/^(?:[ \t]+#.*)?[ \t]*$/.test(keyValue) && /^-([ \t]|$)/.test(line));
 
 /**
- * Whether the `labnote_id:` line `i` holds its whole value on that line: not
- * continued on the next line ({@link continuesValue}). A block scalar indicator
+ * Whether the `labnote_id:` line `i` can be rewritten alone: it holds a plain value
+ * ({@link plainKeyValue}), or nothing continues it on the next line
+ * ({@link continuesValue}). A block scalar indicator
  * (`|`, `>`) or a quote left open with no line continuing it is that line alone
  * too, and is rewritten as before (B7): one line replaced keeps the YAML valid.
  */
 function oneLineScalarAt(lines: readonly string[], i: number, close: number): boolean {
   const next = i + 1 < close ? lines[i + 1] : '';
-  return !continuesValue(next, KEY_LINE_RE.exec(lines[i])?.[1] ?? '');
+  const keyValue = KEY_LINE_RE.exec(lines[i])?.[1] ?? '';
+  return plainKeyValue(keyValue) || !continuesValue(next, keyValue);
+}
+
+/**
+ * Whether the `labnote_id:` line holds a plain value of its own (not empty or a comment,
+ * no block scalar indicator `|` `>`, no quote left open). Lines continuing it are left as
+ * they are when that line is rewritten, as B7 rewrote it: YAML read the value with them
+ * before and reads it with them after (`LN-X more`, then `LN-NEW more`), so nothing the
+ * write does breaks more than it was.
+ */
+function plainKeyValue(keyValue: string): boolean {
+  // A tag (`!!str`) or anchor (`&a`) ahead of the value is not the value.
+  const value = keyValue.replace(/(^|[ \t])#.*$/, '').trim().replace(/^(?:[!&]\S*[ \t]+)+/, '');
+  if (value === '' || /^[!&|>]/.test(value)) return false;
+  const quote = /^['"]/.exec(value)?.[0];
+  return quote === undefined || (value.length > 1 && value.endsWith(quote));
 }
 
 /**

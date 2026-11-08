@@ -240,13 +240,14 @@ describe('NoteIdService', () => {
     expect(notices).toEqual([]);
   });
 
-  // The same value given a new ID is written: left as it is, with the L2 warning.
-  it('gives no new ID for a labnote_id continued on the next line', async () => {
+  // R-2: a new ID for the same value goes on its key line, as B7 wrote it; the line below stays.
+  it('gives a new ID on the key line of a labnote_id continued on the next line', async () => {
     const text = '---\nlabnote_id: LN-7K3M9QX2\n  old\n---\nbody\n';
     const { svc, files, fileOf, notices } = service({ 'a.labnote.md': { text, ctime: 1 } }, 'new');
-    expect(await svc.ensureIdResult(fileOf('a.labnote.md'), { reassign: true })).toEqual({ reason: 'unreadable' });
-    expect(files.get('a.labnote.md')!.text).toBe(text);
-    expect(notices.some(n => n.includes('could not be written'))).toBe(true);
+    const result = await svc.ensureIdResult(fileOf('a.labnote.md'), { reassign: true });
+    expect(result.id).toMatch(/^LN-[0-9A-Z]{8}$/);
+    expect(files.get('a.labnote.md')!.text).toBe(`---\nlabnote_id: ${result.id}\n  old\n---\nbody\n`);
+    expect(notices).toEqual([]);
   });
 
   it('repairs a one-line ID with an indented comment below it', async () => {
@@ -569,16 +570,18 @@ describe('BarcodeFeature and a labnote_id over several lines', () => {
   }
   const note = (nl: string, rest: string) => ['---', 'labnote_id: LN-7K3M9QX2', rest, 'created_date: 2020-01-01', '---', 'body', ''].join(nl);
 
-  // An indented line below a one-line value continues it: YAML reads 'LN-7K3M9QX2 continued',
-  // which is no note ID (NoteIdService.idOf), so the copy is one without an ID, as in B7.
+  // An indented line below a one-line value continues it (YAML reads 'LN-7K3M9QX2 continued'):
+  // the key line is rewritten as B7 rewrote it, which breaks nothing more (R-2).
   it.each([
     ['LF, indented', '\n', '  continued'],
     ['CRLF, indented', '\r\n', '  continued'],
-  ])('reassignCopiedId leaves a value YAML reads as no ID, as B7 did (%s)', async (_name, nl, rest) => {
+  ])('reassignCopiedId gives a new ID on the key line, as B7 did (%s)', async (_name, nl, rest) => {
     const { f, files, notices, file } = feature(note(nl, rest));
-    expect(await f.reassignCopiedId(file)).toBe('none');
-    expect(files.get('a.labnote.md')).toBe(note(nl, rest));
-    expect(notices).toEqual([]);
+    expect(await f.reassignCopiedId(file)).toBe('renewed');
+    const after = files.get('a.labnote.md')!;
+    expect(after.split(nl)[2]).toBe(rest);
+    expect(readNoteId(after)).toMatch(/^LN-(?!7K3M9QX2)[0-9A-Z]{8}$/);
+    expect(notices.map(n => n.level)).toEqual(['info']);
   });
 
   // A `- ` item at column 0 under a key with a value is a YAML error, not more of the value
