@@ -4,10 +4,12 @@ import jsQR from 'jsqr';
 import { TFile } from '../stubs/obsidian';
 import type { LabnoteHost } from '../../packages/labnoteo-core/src';
 import { readNoteId } from '../../packages/labnoteo-core/src/lib/noteId';
+import { parseFrontMatterYaml } from '../../packages/labnoteo-core/src/sections/frontMatter';
 import { encodePagePayload, decodeScanPayload } from '../../packages/labnoteo-core/src/lib/scanPayload';
 import { qrMatrix, qrSvg, QR_QUIET_ZONE } from '../../src/barcode/qr';
 import { NoteIdService, previousNoteIdFromScans } from '../../src/barcode/noteIdService';
-import { planScanMoves } from '../../src/barcode/barcodeFeature';
+import { BarcodeFeature, planScanMoves } from '../../src/barcode/barcodeFeature';
+import { printFullNoteCommand } from '../../src/print/fullNotePrint';
 import { createPcStore } from '../../src/scan/pcStore';
 import {
   isScanOfNote,
@@ -217,6 +219,63 @@ describe('NoteIdService', () => {
     expect(readNoteId(files.get('b.labnote.md')!.text)).toBe(id);
   });
 
+  // setNoteId rewrites only a one-line labnote_id; when the write leaves the
+  // note without the ID, no ID is given back and the user is told.
+  it('gives no ID it could not write over a labnote_id on several lines', async () => {
+    const text = '---\ntitle: x\nlabnote_id: >-\n  LN-bad\n---\n\nbody\n';
+    const { svc, files, fileOf, notices } = service({ 'a.labnote.md': { text, ctime: 1 } }, 'new');
+    expect(await svc.ensureIdResult(fileOf('a.labnote.md'))).toEqual({ reason: 'unreadable' });
+    expect(files.get('a.labnote.md')!.text).toBe(text);
+    expect(notices.some(n => n.includes('could not be written'))).toBe(true);
+  });
+
+  // A valid-looking ID continued on the next line is no ID: the note is not
+  // printed under it, and the ID that cannot be written is reported.
+  it('gives no ID for a labnote_id continued on the next line', async () => {
+    const text = '---\nlabnote_id: LN-7K3M9QX2\n  old\n---\nbody\n';
+    const { svc, files, fileOf, notices } = service({ 'a.labnote.md': { text, ctime: 1 } }, 'new');
+    expect(await svc.ensureIdResult(fileOf('a.labnote.md'))).toEqual({ reason: 'unreadable' });
+    expect(files.get('a.labnote.md')!.text).toBe(text);
+    expect(notices.some(n => n.includes('could not be written'))).toBe(true);
+  });
+
+  it('repairs a one-line ID with an indented comment below it', async () => {
+    const text = '---\nlabnote_id: ln-7k3m9qx2\n  # barcode\n---\nbody\n';
+    const { svc, files, fileOf, notices } = service({ 'a.labnote.md': { text, ctime: 1 } }, 'new');
+    expect(await svc.ensureIdResult(fileOf('a.labnote.md'))).toEqual({ id: 'LN-7K3M9QX2' });
+    expect(readNoteId(files.get('a.labnote.md')!.text)).toBe('LN-7K3M9QX2');
+    expect(notices.some(n => n.includes('could not be written'))).toBe(false);
+  });
+
+  it.each([['NBSP', '\u00a0'], ['em space', '\u2003'], ['ideographic space', '\u3000']])(
+    'gives the ID before a "-%s" key',
+    async (_name, sp) => {
+      const text = `---\nlabnote_id: LN-7K3M9QX2\n-${sp}other: keep\n---\nbody\n`;
+      const { svc, files, fileOf } = service({ 'a.labnote.md': { text, ctime: 1 } }, 'new');
+      expect(await svc.ensureIdResult(fileOf('a.labnote.md'))).toEqual({ id: 'LN-7K3M9QX2' });
+      expect(files.get('a.labnote.md')!.text).toBe(text);
+    }
+  );
+
+  it.each([['NBSP', '\u00a0'], ['em space', '\u2003'], ['ideographic space', '\u3000']])(
+    'gives the ID before a key indented with %s',
+    async (_name, sp) => {
+      const text = `---\nlabnote_id: LN-7K3M9QX2\n${sp}other: keep\n---\nbody\n`;
+      const { svc, files, fileOf } = service({ 'a.labnote.md': { text, ctime: 1 } }, 'new');
+      expect(await svc.ensureIdResult(fileOf('a.labnote.md'))).toEqual({ id: 'LN-7K3M9QX2' });
+      expect(files.get('a.labnote.md')!.text).toBe(text);
+    }
+  );
+
+  it('gives a new ID over a one-line tagged labnote_id', async () => {
+    const text = '---\nlabnote_id: !!str LN-7K3M9QX2\n---\nbody\n';
+    const { svc, files, fileOf, notices } = service({ 'a.labnote.md': { text, ctime: 1 } }, 'new');
+    const result = await svc.ensureIdResult(fileOf('a.labnote.md'));
+    expect(result).toHaveProperty('id');
+    expect(readNoteId(files.get('a.labnote.md')!.text)).toBe((result as { id: string }).id);
+    expect(notices.some(n => n.includes('could not be written'))).toBe(false);
+  });
+
   it('leaves a note with broken front matter unchanged', async () => {
     const broken = '---\ntitle: [unclosed\n---\n';
     const { svc, files, fileOf, notices } = service({ 'a.labnote.md': { text: broken, ctime: 1 } });
@@ -399,6 +458,23 @@ describe('NoteIdService', () => {
       expect(asked).toHaveLength(1);
     });
 
+    // The restore goes through writeId: when the old ID does not take, the user
+    // is told so, not that it is back, and the note's ID stays the one it has.
+    it('says so when the old ID could not be written back, and does not ask again', async () => {
+      const { svc, files, fileOf, notices } = service({ 'a.labnote.md': { text: note('LN-AAAAAAAA'), ctime: 1 } });
+      svc.rememberIds();
+      const asked = answering(svc, true);
+      files.get('a.labnote.md')!.text = note('LN-CCCCCCCC');
+      (svc as unknown as { app: { vault: { process: () => Promise<string> } } }).app.vault.process = async () => '';
+
+      expect(await svc.checkIdChange(fileOf('a.labnote.md'))).toBe(true);
+      expect(readNoteId(files.get('a.labnote.md')!.text)).toBe('LN-CCCCCCCC');
+      expect(notices.some(n => n.includes('could not be written'))).toBe(true);
+      expect(notices.some(n => n.includes('has the note ID'))).toBe(false);
+      expect(await svc.checkIdChange(fileOf('a.labnote.md'))).toBe(false);
+      expect(asked).toHaveLength(1);
+    });
+
     it('keeps the new ID when the question is declined, and does not ask again', async () => {
       const { svc, files, fileOf } = service({ 'a.labnote.md': { text: note('LN-AAAAAAAA'), ctime: 1 } });
       svc.rememberIds();
@@ -450,5 +526,324 @@ describe('NoteIdService', () => {
       expect(await svc.checkIdChange(fileOf('b.labnote.md'))).toBe(true);
       expect(asked).toHaveLength(1);
     });
+  });
+});
+
+// L2: a copied note whose labnote_id is written over several lines has an ID that can be
+// neither read nor written; that is said (the NoteIdService warning), not taken for none.
+describe('BarcodeFeature and a labnote_id over several lines', () => {
+  function feature(text: string) {
+    const files = new Map([['a.labnote.md', text]]);
+    const notices: { level: string; msg: string }[] = [];
+    const fileOf = (p: string) => new TFile(p) as unknown as ObsidianTFile;
+    const app = {
+      vault: {
+        getMarkdownFiles: () => [...files.keys()].map(fileOf),
+        getAbstractFileByPath: (p: string) => (files.has(p) ? fileOf(p) : null),
+        read: async (f: TFile) => files.get(f.path)!,
+        process: async (f: TFile, fn: (s: string) => string) => {
+          files.set(f.path, fn(files.get(f.path)!));
+        },
+      },
+      metadataCache: { getFileCache: (f: TFile) => ({ frontmatter: { labnote_id: readNoteId(files.get(f.path)!) } }) },
+    } as unknown as App;
+    const t = (s: string, ...args: unknown[]) => args.reduce<string>((out, a, i) => out.replace(`{${i}}`, String(a)), s);
+    const host = { notify: (level: string, msg: string) => notices.push({ level, msg }), t, confirm: async () => true, pick: async () => 'new' } as unknown as LabnoteHost;
+    const f = Object.create(BarcodeFeature.prototype) as BarcodeFeature;
+    Object.assign(f, { plugin: { app, host, t }, noteIds: new NoteIdService(app, host) });
+    return { f, files, notices, file: fileOf('a.labnote.md') };
+  }
+  const note = (nl: string, rest: string) => ['---', 'labnote_id: LN-7K3M9QX2', rest, 'created_date: 2020-01-01', '---', 'body', ''].join(nl);
+
+  it.each([
+    ['LF, indented', '\n', '  continued'],
+    ['CRLF, indented', '\r\n', '  continued'],
+    ['LF, "- " item', '\n', '- continued'],
+    ['CRLF, "- " item', '\r\n', '- continued'],
+  ])('reassignCopiedId warns and leaves it (%s)', async (_name, nl, rest) => {
+    const { f, files, notices, file } = feature(note(nl, rest));
+    expect(await f.reassignCopiedId(file)).toBe('refused');
+    expect(files.get('a.labnote.md')).toBe(note(nl, rest));
+    expect(notices).toEqual([{ level: 'warn', msg: expect.stringContaining('could not be written') }]);
+  });
+
+  it.each([['LF', '\n'], ['CRLF', '\r\n']])('reassignCopiedId gives a one-line ID a new one, as before (%s)', async (_name, nl) => {
+    const text = ['---', 'labnote_id: LN-7K3M9QX2', '---', 'body', ''].join(nl);
+    const { f, files, notices, file } = feature(text);
+    expect(await f.reassignCopiedId(file)).toBe('renewed');
+    expect(readNoteId(files.get('a.labnote.md')!)).not.toBe('LN-7K3M9QX2');
+    expect(notices.map(n => n.level)).toEqual(['info']);
+  });
+
+  it('reassignCopiedId says nothing for a note without labnote_id', async () => {
+    const { f, notices, file } = feature('---\ntitle: T\n---\nbody\n');
+    expect(await f.reassignCopiedId(file)).toBe('none');
+    expect(notices).toEqual([]);
+  });
+
+  it.each([['LF', '\n'], ['CRLF', '\r\n']])('moveScansWithNote warns instead of leaving the scans silently (%s)', async (_name, nl) => {
+    const { f, notices } = feature(note(nl, '  continued'));
+    expect(await f.moveScansWithNote('a.labnote.md', 'A/001', 'B/001')).toBe('refused');
+    expect(notices).toEqual([{ level: 'warn', msg: expect.stringContaining('could not be written') }]);
+  });
+});
+
+// L2: an empty first value with the ID on an indented line below (tab or spaces) is a value
+// over several lines too: no ID, so printing stops and the scans stay, with a warning.
+describe('a labnote_id on the line after an empty first value', () => {
+  function setup(text: string) {
+    const files = new Map([['a.labnote.md', text]]);
+    const notices: { level: string; msg: string }[] = [];
+    const fileOf = (p: string) => new TFile(p) as unknown as ObsidianTFile;
+    const app = {
+      vault: {
+        getMarkdownFiles: () => [...files.keys()].map(fileOf),
+        getAbstractFileByPath: (p: string) => (files.has(p) ? fileOf(p) : null),
+        read: async (f: TFile) => files.get(f.path)!,
+        process: async (f: TFile, fn: (s: string) => string) => {
+          files.set(f.path, fn(files.get(f.path)!));
+        },
+      },
+      metadataCache: { getFileCache: (f: TFile) => ({ frontmatter: { labnote_id: readNoteId(files.get(f.path)!) } }) },
+    } as unknown as App;
+    const t = (s: string, ...args: unknown[]) => args.reduce<string>((out, a, i) => out.replace(`{${i}}`, String(a)), s);
+    const host = { notify: (level: string, msg: string) => notices.push({ level, msg }), t, confirm: async () => true, pick: async () => 'new' } as unknown as LabnoteHost;
+    const noteIds = new NoteIdService(app, host);
+    const f = Object.create(BarcodeFeature.prototype) as BarcodeFeature;
+    Object.assign(f, { plugin: { app, host, t }, noteIds });
+    return { f, noteIds, app, host, t, files, notices, file: fileOf('a.labnote.md') };
+  }
+  const cases = ['\t', '  '].flatMap(ind => ['\n', '\r\n'].map(nl => [JSON.stringify(ind), JSON.stringify(nl), ind, nl]));
+  const note = (ind: string, nl: string) => ['---', 'labnote_id:', `${ind}LN-7K3M9QX2`, '---', '### [H01 Test]', '#### Method', '1. Test', ''].join(nl);
+
+  it.each(cases)('reads no ID (%s, %s)', (_a, _b, ind, nl) => {
+    expect(readNoteId(note(ind, nl))).toBeUndefined();
+  });
+
+  it.each(cases)('stops printing the whole note with a warning (%s, %s)', async (_a, _b, ind, nl) => {
+    const { noteIds, app, host, t, files, notices, file } = setup(note(ind, nl));
+    // Past the ID the print measures in the DOM, which this test has none of: reaching it throws.
+    await printFullNoteCommand(
+      { app, host, t, paper: () => 'A4', setPaper: async () => {}, ensureNoteId: (x: ObsidianTFile) => noteIds.ensureId(x) } as unknown as Parameters<typeof printFullNoteCommand>[0],
+      file
+    );
+    expect(files.get('a.labnote.md')).toBe(note(ind, nl));
+    expect(notices.some(n => n.level === 'warn')).toBe(true);
+  });
+
+  it.each(cases)('moves no scans and says why (%s, %s)', async (_a, _b, ind, nl) => {
+    const { f, notices } = setup(note(ind, nl));
+    expect(await f.moveScansWithNote('a.labnote.md', 'A/001', 'B/001')).toBe('refused');
+    expect(notices).toEqual([{ level: 'warn', msg: expect.stringContaining('could not be written') }]);
+  });
+});
+
+// Codex v7m: a labnote_id continued on the next line cannot be written, so asking for a new
+// ID (or a restore) would only fail. Each call says so once and asks nothing.
+describe('a labnote_id that cannot be written, asked about before', () => {
+  function setup(nl: string) {
+    const text = ['---', 'labnote_id: LN-AAAAAAAA', '  continued', '---', 'body', ''].join(nl);
+    const files = new Map([['a.labnote.md', text]]);
+    const notices: { level: string; msg: string }[] = [];
+    const counts = { asked: 0 };
+    const fileOf = (p: string) => new TFile(p) as unknown as ObsidianTFile;
+    const app = {
+      vault: {
+        getMarkdownFiles: () => [...files.keys()].map(fileOf),
+        getAbstractFileByPath: (p: string) => (files.has(p) ? fileOf(p) : null),
+        read: async (f: TFile) => files.get(f.path)!,
+        process: async (f: TFile, fn: (s: string) => string) => { files.set(f.path, fn(files.get(f.path)!)); },
+      },
+      // As Obsidian reads it: the continued value.
+      metadataCache: { getFileCache: (f: TFile) => ({ frontmatter: parseFrontMatterYaml(files.get(f.path)!.replace(/\r\n/g, '\n')).frontMatter }) },
+    } as unknown as App;
+    const t = (s: string, ...args: unknown[]) => args.reduce<string>((out, a, i) => out.replace(`{${i}}`, String(a)), s);
+    const host = {
+      notify: (level: string, msg: string) => notices.push({ level, msg }),
+      t,
+      confirm: async () => { counts.asked++; return true; },
+      pick: async () => { counts.asked++; return 'new'; },
+    } as unknown as LabnoteHost;
+    const noteIds = new NoteIdService(app, host);
+    const warns = () => notices.filter(n => n.level === 'warn').length;
+    return { noteIds, app, host, t, files, text, counts, warns, file: fileOf('a.labnote.md') };
+  }
+  const cases = [['LF', '\n'], ['CRLF', '\r\n']];
+
+  it.each(cases)('ensureIdResult asks nothing and warns once per call (%s)', async (_name, nl) => {
+    const { noteIds, files, text, counts, warns, file } = setup(nl);
+    const seen: number[][] = [];
+    for (let k = 0; k < 3; k++) {
+      expect(await noteIds.ensureIdResult(file)).toEqual({ reason: 'unreadable' });
+      seen.push([counts.asked, warns()]);
+    }
+    expect(seen).toEqual([[0, 1], [0, 2], [0, 3]]);
+    expect(files.get('a.labnote.md')).toBe(text);
+  });
+
+  it.each(cases)('printing the whole note asks nothing and warns once per call (%s)', async (_name, nl) => {
+    const { noteIds, app, host, t, files, text, counts, warns, file } = setup(nl);
+    const seen: number[][] = [];
+    for (let k = 0; k < 3; k++) {
+      await printFullNoteCommand(
+        { app, host, t, paper: () => 'A4', setPaper: async () => {}, ensureNoteId: (x: ObsidianTFile) => noteIds.ensureId(x) } as unknown as Parameters<typeof printFullNoteCommand>[0],
+        file
+      );
+      seen.push([counts.asked, warns()]);
+    }
+    expect(seen).toEqual([[0, 1], [0, 2], [0, 3]]);
+    expect(files.get('a.labnote.md')).toBe(text);
+  });
+
+  // The same before offering an ID back: a changed ID now on the line below asks nothing.
+  it.each(cases)('asks nothing about restoring a changed ID it could not write (%s)', async (_name, nl) => {
+    const { noteIds, files, counts, warns, file } = setup(nl);
+    files.set('a.labnote.md', ['---', 'labnote_id: LN-BBBBBBBB', '---', 'body', ''].join(nl));
+    noteIds.rememberIds();
+    files.set('a.labnote.md', ['---', 'labnote_id:', '  LN-AAAAAAAA', '---', 'body', ''].join(nl));
+    expect(await noteIds.checkIdChange(file)).toBe(true);
+    expect([counts.asked, warns()]).toEqual([0, 1]);
+  });
+});
+
+// A copy whose labnote_id cannot be written (over several lines) still shares the original's
+// ID as Obsidian reads it. Re-numbering it would fail, so it is not asked about: it is said
+// once per note this session, and the set stays reported as in B6 (the Assign note ID command
+// or a reload looks again).
+describe('a shared note ID whose re-numbering could not be written', () => {
+  function setup(nl: string, answer: boolean, copyText?: string) {
+    const text = (id: string, multi: boolean) => ['---', ...(multi ? ['labnote_id:', `  ${id}`] : [`labnote_id: ${id}`]), '---', 'body', ''].join(nl);
+    const files = new Map([
+      ['orig.labnote.md', { text: text('LN-AAAAAAAA', false), ctime: 1 }],
+      ['copy.labnote.md', { text: copyText ?? text('LN-AAAAAAAA', true), ctime: 5 }],
+    ]);
+    const fileOf = (p: string) => Object.assign(new TFile(p), { stat: { ctime: files.get(p)!.ctime } }) as unknown as ObsidianTFile;
+    const notices: { level: string; msg: string }[] = [];
+    const counts = { asked: 0 };
+    const app = {
+      vault: {
+        getMarkdownFiles: () => [...files.keys()].map(fileOf),
+        getAbstractFileByPath: (p: string) => (files.has(p) ? fileOf(p) : null),
+        read: async (f: TFile) => files.get(f.path)!.text,
+        process: async (f: TFile, fn: (s: string) => string) => { files.get(f.path)!.text = fn(files.get(f.path)!.text); },
+      },
+      // As Obsidian reads it: the YAML value, here the ID on the line below too. Obsidian knows
+      // the timestamp tag the core schema refuses, so it is read without the tag.
+      metadataCache: { getFileCache: (f: TFile) => ({ frontmatter: parseFrontMatterYaml(files.get(f.path)!.text.replace(/\r\n/g, '\n').replace(/!!timestamp /g, '')).frontMatter }) },
+    } as unknown as App;
+    const host = {
+      notify: (level: string, msg: string) => notices.push({ level, msg }),
+      t: (s: string, ...args: unknown[]) => args.reduce<string>((out, a, i) => out.split(`{${i}}`).join(String(a)), s),
+      confirm: async (msg: string) => { counts.asked++; asked.push(/Give (\S+) a new ID/.exec(msg)?.[1] ?? msg); return answer; },
+      pick: async () => 'new',
+    } as unknown as LabnoteHost;
+    const asked: string[] = [];
+    const svc = new NoteIdService(app, host);
+    const copy = fileOf('copy.labnote.md');
+    // What barcodeFeature's 'changed' handler does for the copy.
+    const changed = async (f: ObsidianTFile = copy) => { if (svc.sharesId(f)) await svc.offerDuplicateFixes(); };
+    const warns = () => notices.filter(n => n.level === 'warn').length;
+    // The copy flows' re-numbering, from the feature over the same service.
+    const feature = Object.create(BarcodeFeature.prototype) as BarcodeFeature;
+    Object.assign(feature, { plugin: { app, host, t: host.t }, noteIds: svc });
+    return { files, text, counts, notices, warns, changed, fileOf, asked, svc, feature, copy };
+  }
+  const cases = [['LF', '\n'], ['CRLF', '\r\n']];
+  it.each(cases)('asks nothing over three changes while the field is as it was, and says so once (%s)', async (_name, nl) => {
+    const { counts, warns, changed, files, text } = setup(nl, true);
+    const seen: number[] = [];
+    for (let k = 0; k < 3; k++) { await changed(); seen.push(counts.asked); }
+    expect(seen).toEqual([0, 0, 0]);
+    expect(warns()).toBe(1);
+    expect(files.get('copy.labnote.md')!.text).toBe(text('LN-AAAAAAAA', true));
+  });
+
+  // Codex v7o 1: the newest of three cannot be written. B6 asked about it and stopped when the
+  // re-numbering failed; the older copy is not asked about or re-numbered instead.
+  it.each(cases)('stops at a newest note it cannot write, as B6 did, re-numbering no other (%s)', async (_name, nl) => {
+    const copy2 = ['---', 'labnote_id:', '  LN-AAAAAAAA', 'created_date: !!timestamp 2026-11-03', '---', 'body', ''].join(nl);
+    const { notices, warns, changed, files, text, fileOf, asked } = setup(nl, true, copy2);
+    files.set('copy1.labnote.md', { text: text('LN-AAAAAAAA', false), ctime: 3 });
+    await changed(fileOf('copy1.labnote.md'));
+    expect(asked.filter(a => a !== 'copy.labnote.md')).toEqual([]);
+    expect(files.get('copy1.labnote.md')!.text).toBe(text('LN-AAAAAAAA', false));
+    expect(notices.filter(n => n.level === 'info')).toEqual([]);
+    expect(warns()).toBe(1);
+  });
+
+  // Codex v7o 2: the copy flow said it, so the shared ID found after says nothing more.
+  it.each(cases)('says it once over a copy handled and three changes after (%s)', async (_name, nl) => {
+    const { warns, changed, feature, copy, counts } = setup(nl, true);
+    expect(await feature.reassignCopiedId(copy)).toBe('refused');
+    for (let k = 0; k < 3; k++) await changed();
+    expect(warns()).toBe(1);
+    expect(counts.asked).toBe(0);
+  });
+
+  // Codex v7o 2: an ID changed to one that cannot be written back, then found shared.
+  it.each(cases)('says it once over a changed ID not restored and the shared ID after (%s)', async (_name, nl) => {
+    const { warns, changed, files, text, svc, copy, counts } = setup(nl, true);
+    files.get('copy.labnote.md')!.text = text('LN-CCCCCCCC', false);
+    svc.rememberIds();
+    files.get('copy.labnote.md')!.text = text('LN-AAAAAAAA', true);
+    expect(await svc.checkIdChange(copy)).toBe(true);
+    for (let k = 0; k < 2; k++) if (!(await svc.checkIdChange(copy))) await changed();
+    expect(warns()).toBe(1);
+    expect(counts.asked).toBe(0);
+  });
+
+  // Codex v7n: newer notes with the same ID come in one by one, every question said yes to.
+  // B6 asked 4 times (copy, then each new note); the copy is not asked about again.
+  it.each(cases)('asks only about the newer notes that join, not the copy again (%s)', async (_name, nl) => {
+    const { counts, warns, changed, files, text, fileOf, asked } = setup(nl, true);
+    await changed();
+    for (let k = 0; k < 3; k++) {
+      files.set(`third${k}.labnote.md`, { text: text('LN-AAAAAAAA', false), ctime: 10 + k });
+      await changed(fileOf(`third${k}.labnote.md`));
+    }
+    expect(asked).toEqual(['third0.labnote.md', 'third1.labnote.md', 'third2.labnote.md']);
+    expect(counts.asked).toBeLessThanOrEqual(4);
+    expect(warns()).toBe(1);
+  });
+
+  // The copy renamed three times: B6 asked once. Each new path is said once more (allowed).
+  it.each(cases)('asks nothing about a copy renamed three times (%s)', async (_name, nl) => {
+    const { counts, warns, changed, files, fileOf } = setup(nl, true);
+    await changed();
+    let path = 'copy.labnote.md';
+    for (let k = 0; k < 3; k++) {
+      const next = `copy${k}.labnote.md`;
+      files.set(next, files.get(path)!);
+      files.delete(path);
+      path = next;
+      await changed(fileOf(path));
+    }
+    expect(counts.asked).toBeLessThanOrEqual(1);
+    expect(counts.asked).toBe(0);
+    expect(warns()).toBe(4);
+  });
+
+  // Codex v7l 1: another field the core schema refuses as well; the ID put on one line later
+  // asks no more than B6 did (once).
+  it.each(cases)('asks no more than once when another field fails too and the ID goes on one line (%s)', async (_name, nl) => {
+    const copyText = ['---', 'labnote_id:', '  LN-AAAAAAAA', 'created_date: !!timestamp 2026-11-03', '---', 'body', ''].join(nl);
+    const { counts, warns, changed, files } = setup(nl, true, copyText);
+    await changed();
+    const seen = [counts.asked];
+    files.get('copy.labnote.md')!.text = ['---', 'labnote_id: LN-AAAAAAAA', 'created_date: !!timestamp 2026-11-03', '---', 'body', ''].join(nl);
+    for (let k = 0; k < 3; k++) { await changed(); seen.push(counts.asked); }
+    expect(seen).toEqual([0, 0, 0, 0]);
+    expect(warns()).toBe(1);
+  });
+
+  // B6 asked once and a cancel kept it quiet; now it is not asked about at all, the ID put on
+  // one line later included.
+  it.each(cases)('keeps quiet, the ID put on one line later included (%s)', async (_name, nl) => {
+    const { counts, changed, files, text } = setup(nl, false);
+    await changed();
+    await changed();
+    files.get('copy.labnote.md')!.text = text('LN-AAAAAAAA', false);
+    await changed();
+    expect(counts.asked).toBe(0);
   });
 });

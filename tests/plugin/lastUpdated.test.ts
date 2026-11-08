@@ -59,6 +59,18 @@ describe('plugin operations stamp last_updated_date', () => {
     expect(await fs.read(README)).toContain(`last_updated_date: ${TODAY}`);
   });
 
+  it('keeps the line endings of the lines it does not change', async () => {
+    for (const md of [note().replace(/\n/g, '\r\n'), '---\r\nstatus: planned\r\ncreated_date: 2026-10-01\n---\n\n# Body\r\n']) {
+      const fs = new MemFileSystem();
+      await fs.write(README, md);
+      await changeExperimentStatusCommand(makeApp(), makeHost(fs, 'in-progress'));
+      expect(await fs.read(README)).toBe(md.replace('status: planned', 'status: in-progress'));
+      await toggleDiscussionFlagCommand(makeApp(), makeHost(fs));
+      expect(await fs.read(README)).toContain('status: in-progress');
+      expect((await fs.read(README)).endsWith(md.slice(md.indexOf('# Body')))).toBe(true);
+    }
+  });
+
   // #108: the flag lives in the README, whichever experiment note it was run from.
   it('says which README it changed when run from a workflow note', async () => {
     const run = async (active: string): Promise<string> => {

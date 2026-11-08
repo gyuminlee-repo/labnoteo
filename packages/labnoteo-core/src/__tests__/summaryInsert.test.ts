@@ -36,6 +36,12 @@ describe('findAiCalloutInSection / sectionText', () => {
 });
 
 // #319: a renamed heading sent every new summary to the end of the note.
+describe('findAiCalloutInSection and a fence never closed', () => {
+  it('takes no callout in that fence for the summary', () => {
+    expect(findAiCalloutInSection('## Method\n\n```md\n> [!note] AI summary\n> KEEP\n', 'Summary', ['AI summary'])).toBeUndefined();
+  });
+});
+
 describe('locateSummary', () => {
   const titles = ['AI experiment results summary', 'AI 실험 결과 요약'];
   const renamed =

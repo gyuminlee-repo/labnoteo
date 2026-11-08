@@ -1,5 +1,6 @@
 // Globals convention (no `import ... from 'vitest'`) — see sampleDefinition.test.ts.
 import {
+  sectionBodyAt,
   findSectionMatches,
   replaceSectionBody,
   replaceSectionBodyAt,
@@ -8,6 +9,8 @@ import {
   diffBodyLines,
   stepFence,
 } from '../sections/sectionEdit';
+import { closedFencedLines } from '../sections/codeFences';
+import { readmeFencedLines } from '../lib/readmeFences';
 
 describe('replacement body line endings', () => {
   it.each(['\n', '\r\n'])('normalizes LF and CRLF bodies to document ending %j', newline => {
@@ -216,6 +219,34 @@ describe('replaceSectionBody', () => {
 });
 
 // #51: the same heading text under different unit operations.
+describe('a code fence that is never closed', () => {
+  // An unclosed opener used to hide every heading after it, so the body ran to
+  // the end of the note and replacing it deleted the sections below.
+  it('is text, so the body still ends at the next heading', () => {
+    const md = '## A\n\nold\n\n```\n## B inside code\n\n## C\n\nkeep\n';
+    const out = replaceSectionBody(md, 'A', 'NEW');
+    expect(out.md).toBe('## A\n\nNEW\n\n## B inside code\n\n## C\n\nkeep\n');
+    expect(out.removed?.text).toBe('old\n\n```');
+    // The preview of a replacement reads the same range.
+    expect(sectionBodyAt(md, 0)?.text).toBe('old\n\n```');
+    // A heading after that opener is still not a section to edit.
+    expect(findSectionMatches(md, 'C')).toHaveLength(0);
+    expect(replaceSectionBody(md, 'C', 'NEW')).toMatchObject({ ok: false, md });
+  });
+
+  it('reads as the README checklist writers read it', () => {
+    const lines = '## A\n```\n## B\n~~~\n## C\n~~~\n## D'.split('\n');
+    const fenced = closedFencedLines(lines);
+    expect(fenced).toEqual(readmeFencedLines(lines));
+    expect(fenced).toEqual([false, false, false, true, true, true, false]);
+  });
+
+  it('still leaves a heading in a closed fence inside the body', () => {
+    const md = '## A\n\n```\n## B inside code\n```\n\n## C\n\nkeep\n';
+    expect(replaceSectionBody(md, 'A', 'NEW').md).toBe('## A\n\nNEW\n\n## C\n\nkeep\n');
+  });
+});
+
 describe('findSectionMatches / replaceSectionBodyAt', () => {
   const repeated = [
     '## Unit Operations',

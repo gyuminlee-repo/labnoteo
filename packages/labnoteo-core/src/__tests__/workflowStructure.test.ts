@@ -166,6 +166,11 @@ describe('resetCopiedWorkflowDates', () => {
     ]);
   });
 
+  it('leaves a date in a fence never closed, which shows as code', () => {
+    const src = '---\ntitle: X\n---\n\n```\n- End_date: 2026-09-03\n';
+    expect(resetCopiedWorkflowDates(src, '2026-10-19')).toBe(src);
+  });
+
   it('leaves a note without those dates as it is', () => {
     const src = '---\ntitle: X\n---\n\n- End_date: \'\'\n';
     expect(resetCopiedWorkflowDates(src, '2026-10-19')).toBe(src);
@@ -219,6 +224,12 @@ describe('planWorkflowExperimenterSync', () => {
       futureEndDates: [],
       unreadableEndDates: [],
     });
+  });
+
+  it('leaves an experimenter line in a fence never closed', () => {
+    const plan = planWorkflowExperimenterSync(note("experimenter: ''", '\n```\n- Experimenter:\n'), 'Bob');
+    expect(plan?.content).toBe(note('experimenter: Bob', '\n```\n- Experimenter:\n'));
+    expect(plan?.unitOpLines).toBe(0);
   });
 
   // #404: each note may be someone else's than the README author's.
@@ -1618,6 +1629,16 @@ describe('planWorkflowChecklistSync', () => {
 });
 
 describe('removeWorkflowChecklistEntries', () => {
+  it('takes the blank line the entry leaves at the end or doubled', () => {
+    const A = '- [ ] [A](./001_WD010_A.labnote.md)';
+    const B = '- [ ] [B](./002_WD020_B.labnote.md)';
+    const C = '- [ ] [C](./003_WD030_C.labnote.md)';
+    const rm = (lines: string[], nl = '\n') => removeWorkflowChecklistEntries(lines.join(nl), ['002_WD020_B.labnote.md']);
+    expect(rm(['## Related Workflows', A, '', B, ''])).toBe(['## Related Workflows', A, ''].join('\n'));
+    expect(rm(['## Related Workflows', A, '', B, '', C, ''], '\r\n')).toBe(['## Related Workflows', A, '', C, ''].join('\r\n'));
+    expect(rm(['## Related Workflows', A, '', '', B, C, ''])).toBe(['## Related Workflows', A, '', '', C, ''].join('\n'));
+  });
+
   it('removes only entries whose link matches exactly', () => {
     const md = [
       '## Related Workflows',
