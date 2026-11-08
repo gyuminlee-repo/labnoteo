@@ -6,6 +6,7 @@
  * one as the experiment's issue identity, so it must not change meaning.
  */
 import { serializeFrontMatterEntry } from '../sections/frontMatter';
+import { joinLineBuffer, spliceLineBuffer, splitLineBuffer } from '../util/lineEnds';
 
 export const NOTE_ID_KEY = 'labnote_id';
 
@@ -38,10 +39,34 @@ function frontMatterLines(lines: string[]): { close: number } | null {
   return close === -1 ? null : { close };
 }
 
+/**
+ * The lines of `content` up to its front matter's closing `---` (all of it without one),
+ * read one by one so a long body is not split: what {@link frontMatterLines} needs.
+ */
+function frontMatterHead(content: string): string[] {
+  const lines: string[] = [];
+  for (let at = 0; at <= content.length; ) {
+    const nl = content.indexOf('\n', at);
+    const end = nl === -1 ? content.length : nl;
+    const line = content.slice(at, end > at && content[end - 1] === '\r' && nl !== -1 ? end - 1 : end);
+    lines.push(line);
+    if (lines.length === 1 ? line.trim() !== '---' : line.trim() === '---') break;
+    if (nl === -1) break;
+    at = nl + 1;
+  }
+  return lines;
+}
+
 const KEY_LINE_RE = new RegExp(`^${NOTE_ID_KEY}\\s*:(.*)$`);
 
-/** The note's `labnote_id` when it is a valid ID; any other value counts as none. */
+/**
+ * The note's `labnote_id` when it is a valid ID written on its one line; any other value
+ * counts as none. A value {@link setNoteId} leaves as it is ({@link noteIdUnwritable}:
+ * continued on the next lines, even after an empty first line, a block scalar, an open
+ * quote) is no ID either, so a note never has an ID it cannot be given.
+ */
 export function readNoteId(content: string): string | undefined {
+  if (noteIdUnwritable(content)) return undefined;
   const value = readRawNoteId(content);
   return isValidNoteId(value) ? value : undefined;
 }
@@ -57,10 +82,55 @@ export function readRawNoteId(content: string): string | undefined {
   for (let i = 1; i < fm.close; i++) {
     const m = KEY_LINE_RE.exec(lines[i]);
     if (!m) continue;
+    // A value continued on the next lines (setFrontMatterKeys' rule: indented
+    // text or a `- ` item) reads whole, as YAML reads it, so `LN-X` followed by
+    // more is no valid ID. A block scalar (`|`, `>`) or a quoted value left
+    // open is no ID either way. Not detected: a quoted value going on at column 0.
+    let end = i + 1;
+    while (end < fm.close && continuesValue(lines[end])) end++;
+    if (end > i + 1) return [m[1], ...lines.slice(i + 1, end)].map(l => l.trim()).join(' ').trim() || undefined;
     const value = m[1].trim().replace(/^(['"])(.*)\1$/, '$2').trim();
     return value || undefined;
   }
   return undefined;
+}
+
+/**
+ * Whether the note has a `labnote_id` line whose value {@link setNoteId} leaves as it is
+ * (written over several lines, a block scalar, a quote left open): the ID can be neither
+ * read nor written there, which is not the same as having none.
+ */
+export function noteIdUnwritable(content: string): boolean {
+  const lines = frontMatterHead(content);
+  const fm = frontMatterLines(lines);
+  if (!fm) return false;
+  for (let i = 1; i < fm.close; i++) if (KEY_LINE_RE.test(lines[i])) return !oneLineScalarAt(lines, i, fm.close);
+  return false;
+}
+
+/**
+ * Whether `line` continues the value of the key above it: indented by ASCII
+ * spaces or tabs and not a comment, or a `- ` item. A line indented by another
+ * space (NBSP, U+3000), or a `-` followed by one, is a key of its own.
+ */
+const continuesValue = (line: string): boolean => /^[ \t]+[^\s#]/.test(line) || /^-([ \t]|$)/.test(line);
+
+/**
+ * Whether the `labnote_id:` line `i` holds its whole value on that line: not
+ * continued on the next line, no block scalar (`|`, `>`, after a tag or anchor
+ * too) and no quote left open. A tag, anchor, alias or flow value that ends on
+ * the line is rewritten as before.
+ */
+function oneLineScalarAt(lines: readonly string[], i: number, close: number): boolean {
+  const next = i + 1 < close ? lines[i + 1] : '';
+  if (continuesValue(next)) return false;
+  // The value after its node properties (`!tag`, `&anchor`), if any.
+  const value = (KEY_LINE_RE.exec(lines[i])?.[1] ?? '').trim().replace(/^(?:[!&]\S*[ \t]+)*/, '');
+  if (/^[|>]/.test(value)) return false;
+  // A quote is refused only when it does not close on the line; what follows it is as before.
+  if (value.startsWith("'")) return /^'(?:[^']|'')*'/.test(value);
+  if (value.startsWith('"')) return /^"(?:[^"\\]|\\.)*"/.test(value);
+  return true;
 }
 
 /**
@@ -70,22 +140,27 @@ export function readRawNoteId(content: string): string | undefined {
  * Line endings are preserved; unchanged content is returned as is.
  */
 export function setNoteId(content: string, id: string): string {
-  const newline = content.includes('\r\n') ? '\r\n' : '\n';
-  const lines = content.split(/\r?\n/);
+  // Every other line keeps its own line break, even in mixed endings.
+  const buf = splitLineBuffer(content);
+  const { lines, newline } = buf;
   const entry = serializeFrontMatterEntry(NOTE_ID_KEY, id);
   const fm = frontMatterLines(lines);
   if (!fm) return ['---', entry, '---', '', content].join(newline);
   for (let i = 1; i < fm.close; i++) {
     if (!KEY_LINE_RE.test(lines[i])) continue;
+    // Only a value on this one line, plain or quoted, is rewritten; any other
+    // shape (block scalar, continued or multi-line quoted value, anchor, tag,
+    // alias, collection) stays as written: the caller reads the ID back.
+    if (!oneLineScalarAt(lines, i, fm.close)) return content;
     if (lines[i] === entry) return content;
-    lines[i] = entry;
-    return lines.join(newline);
+    spliceLineBuffer(buf, i, 1, [entry]);
+    return joinLineBuffer(buf);
   }
   const title = lines.findIndex((l, i) => i > 0 && i < fm.close && /^title\s*:/.test(l));
   // A title continued on indented lines (block scalar, folded string) keeps them.
   const afterTitle = title !== -1 && !/^[ \t]/.test(lines[title + 1] ?? '') ? title + 1 : 1;
-  lines.splice(afterTitle, 0, entry);
-  return lines.join(newline);
+  spliceLineBuffer(buf, afterTitle, 0, [entry]);
+  return joinLineBuffer(buf);
 }
 
 /** IDs carried by more than one note, with the notes' paths in input order. */

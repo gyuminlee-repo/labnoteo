@@ -10,7 +10,7 @@
 import { TFile, type App } from 'obsidian';
 import type { LabnoteHost } from '@labnoteo/core';
 import { listFiledScans, parseFrontMatterYaml } from '@labnoteo/core';
-import { generateNoteId, isValidNoteId, NOTE_ID_KEY, readNoteId, readRawNoteId, setNoteId } from '@labnoteo/core/lib/noteId';
+import { generateNoteId, isValidNoteId, NOTE_ID_KEY, noteIdUnwritable, readNoteId, readRawNoteId, setNoteId } from '@labnoteo/core/lib/noteId';
 import { noteIdFromFiledScanEmbed } from '../scan/imageStore';
 
 /** Notes that get a barcode: lab notes (`*.labnote.md`). */
@@ -43,6 +43,8 @@ export class NoteIdService {
   /** Duplicates already asked about, by ID and the notes sharing it (#425). */
   private readonly reported = new Set<string>();
   private readonly warnedOutsideLabNotes = new Set<string>();
+  /** Notes said once this session to have a labnote_id that cannot be re-numbered. */
+  private readonly warnedUnwritable = new Set<string>();
   /**
    * Each lab note's ID as last seen, by path, to tell when it changed (#443).
    * Undefined until {@link rememberIds}: before the metadata cache has every
@@ -124,22 +126,23 @@ export class NoteIdService {
       return { reason: 'unreadable' };
     }
     if (!opts.reassign) {
+      // Before any question: a value that cannot be written makes every answer fail.
+      if (noteIdUnwritable(content)) {
+        this.warnUnwritable(file);
+        return { reason: 'unreadable' };
+      }
       const raw = readRawNoteId(content);
       const offer = raw === undefined ? await this.offerPreviousId(file, content) : await this.offerFixedId(file, content, raw);
       if (offer.choice === 'restored') return { id: offer.id };
       if (offer.choice === 'cancelled') return { reason: 'cancelled' };
+      // The ID could not be written; writeId said so.
+      if (offer.choice === 'unwritable') return { reason: 'unreadable' };
     }
     const taken = new Set([...this.index().keys(), ...this.index({ outsideLabNotes: true }).keys()]);
     let id = generateNoteId();
     while (taken.has(id)) id = generateNoteId();
-    await this.writeId(file, id);
+    if (!(await this.writeId(file, id))) return { reason: 'unreadable' };
     return { id };
-  }
-
-  /** Write `id` as the note's `labnote_id`, known first so it is not taken for a change made elsewhere. */
-  private async writeId(file: TFile, id: string): Promise<void> {
-    this.known?.set(file.path, id);
-    await this.app.vault.process(file, data => setNoteId(data, id));
   }
 
   /**
@@ -185,6 +188,11 @@ export class NoteIdService {
   }
 
   private async offerIdBack(file: TFile, old: string, now: string): Promise<void> {
+    // Before the question: the old ID could not be written back.
+    if (noteIdUnwritable(await this.app.vault.read(file))) {
+      this.warnUnwritable(file, true);
+      return;
+    }
     const ok = await this.host.confirm(
       this.host.t(
         'The labnote_id of {0} changed from {1} to {2} (by merging notes, say). Worksheets already printed as {1} will not find this note. Restore {1}?',
@@ -196,8 +204,39 @@ export class NoteIdService {
     );
     if (!ok || !(this.app.vault.getAbstractFileByPath(file.path) instanceof TFile)) return;
     if (this.filesWithId(old).some(f => f.path !== file.path)) return;
-    await this.writeId(file, old);
+    if (!(await this.writeId(file, old))) return;
     this.host.notify('info', this.host.t('{0} has the note ID {1} again.', file.basename, old));
+  }
+
+  /**
+   * Write `id` as the note's `labnote_id` and read it back. setNoteId leaves a
+   * value written over several lines (or with an anchor, tag or alias) as it
+   * is; then the user is told and false comes back, so no caller goes on with
+   * an ID the note does not carry.
+   */
+  private async writeId(file: TFile, id: string): Promise<boolean> {
+    // Known first, so the write is not taken for a change made elsewhere (#443);
+    // the ID it was is known again when the write did not take.
+    const before = this.known?.get(file.path);
+    this.known?.set(file.path, id);
+    await this.app.vault.process(file, data => setNoteId(data, id));
+    if (readNoteId(await this.app.vault.read(file)) === id) return true;
+    if (before === undefined) this.known?.delete(file.path);
+    else this.known?.set(file.path, before);
+    this.warnUnwritable(file);
+    return false;
+  }
+
+  /**
+   * The warning for a `labnote_id` that cannot be written (L2). A path the user did not start
+   * (`auto`: a copy handled, a shared or changed ID found) says it once per note this session;
+   * a command the user gave says it every time, and counts as said.
+   */
+  warnUnwritable(file: TFile, auto = false): void {
+    const said = this.warnedUnwritable.has(file.path);
+    this.warnedUnwritable.add(file.path);
+    if (auto && said) return;
+    this.host.notify('warn', this.host.t('The labnote_id of {0} could not be written, so its value was left as it is: write it on one line (labnote_id: LN-…) and try again.', file.path));
   }
 
   /**
@@ -211,10 +250,10 @@ export class NoteIdService {
     file: TFile,
     content: string,
     raw: string
-  ): Promise<{ choice: 'restored'; id: string } | { choice: 'new' | 'cancelled' }> {
+  ): Promise<{ choice: 'restored'; id: string } | { choice: 'new' | 'cancelled' | 'unwritable' }> {
     const upper = raw.toUpperCase();
     if (isValidNoteId(upper) && !this.filesWithId(upper).some(f => f.path !== file.path)) {
-      await this.writeId(file, upper);
+      if (!(await this.writeId(file, upper))) return { choice: 'unwritable' };
       this.host.notify(
         'info',
         this.host.t('The labnote_id of {0} was written as "{1}"; restored it as {2}.', file.basename, raw, upper)
@@ -238,7 +277,7 @@ export class NoteIdService {
     );
     if (choice === 'new') return { choice: 'new' };
     if (choice !== 'restore' || !restorable) return { choice: 'cancelled' };
-    await this.writeId(file, restorable);
+    if (!(await this.writeId(file, restorable))) return { choice: 'unwritable' };
     return { choice: 'restored', id: restorable };
   }
 
@@ -251,7 +290,7 @@ export class NoteIdService {
   private async offerPreviousId(
     file: TFile,
     content: string
-  ): Promise<{ choice: 'restored'; id: string } | { choice: 'new' | 'cancelled' }> {
+  ): Promise<{ choice: 'restored'; id: string } | { choice: 'new' | 'cancelled' | 'unwritable' }> {
     const previous = previousNoteIdFromScans(content);
     if (!previous) return { choice: 'new' };
     const holder = this.filesWithId(previous).find(f => f.path !== file.path);
@@ -281,7 +320,7 @@ export class NoteIdService {
     );
     if (choice === 'new') return { choice: 'new' };
     if (choice !== 'restore') return { choice: 'cancelled' };
-    await this.writeId(file, previous);
+    if (!(await this.writeId(file, previous))) return { choice: 'unwritable' };
     return { choice: 'restored', id: previous };
   }
 
@@ -318,6 +357,13 @@ export class NoteIdService {
       while (files.length > 1) {
         const newest = files === dup.files ? dup.newest : newestOf(files);
         this.reported.add(duplicateKey(dup.id, files));
+        // A labnote_id that cannot be written would fail the re-numbering: said once per note
+        // instead of asked about each time another note joins the set, and the set is left
+        // there, as B6 stopped at a re-numbering that failed.
+        if (noteIdUnwritable(await this.app.vault.read(newest))) {
+          this.warnUnwritable(newest, true);
+          break;
+        }
         const ok = await this.host.confirm(
           this.host.t(
             'Notes {0} share the note ID {1}, probably because one was copied. Scans of either note would be filed in the wrong one. Give {2} a new ID?',

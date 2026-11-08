@@ -6,7 +6,7 @@
 import { MarkdownView, Notice, Platform, TFile, TFolder, type App } from 'obsidian';
 import { scanEntryLine, type LabnoteHost, type Translator } from '@labnoteo/core';
 import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
-import { readNoteId } from '@labnoteo/core/lib/noteId';
+import { noteIdUnwritable, readNoteId } from '@labnoteo/core/lib/noteId';
 import { isSameSampleFolder, loadSampleLocationLookup, noteLabsamplesFolder } from '@labnoteo/core/lib/sampleStorage';
 import { getSampleDisplayMeta } from '@labnoteo/core/lib/sampleUtils';
 import { isValidWorkflowPath } from '@labnoteo/core/lib/workflowStructure';
@@ -261,11 +261,24 @@ export class BarcodeFeature {
     if (id) this.host.notify('info', this.t('{0} now has the note ID {1}.', file.basename, id));
   }
 
-  /** Copies made in Obsidian get their own ID right away, like their issue markers. */
-  async reassignCopiedId(file: TFile): Promise<void> {
-    if (!readNoteId(await this.app.vault.read(file))) return;
+  /**
+   * Copies made in Obsidian get their own ID right away, like their issue markers:
+   * 'renewed', or 'none' for a note without one. A `labnote_id` that cannot be written
+   * (over several lines, or front matter that cannot be read) is said once and left as
+   * it is: 'refused', and the caller goes no further with the copy.
+   */
+  async reassignCopiedId(file: TFile): Promise<'renewed' | 'none' | 'refused'> {
+    const content = await this.app.vault.read(file);
+    if (!readNoteId(content)) {
+      if (!noteIdUnwritable(content)) return 'none';
+      this.noteIds.warnUnwritable(file, true);
+      return 'refused';
+    }
+    // NoteIdService warns when it cannot write the new ID.
     const id = await this.noteIds.ensureId(file, { reassign: true });
-    if (id) this.host.notify('info', this.t('Gave the copy {0} its own note ID {1}.', file.basename, id));
+    if (!id) return 'refused';
+    this.host.notify('info', this.t('Gave the copy {0} its own note ID {1}.', file.basename, id));
+    return 'renewed';
   }
 
   // --- scans -------------------------------------------------------------
@@ -363,11 +376,17 @@ export class BarcodeFeature {
    * A workflow note moved to another experiment: move its scans
    * (`images/scans/<labnote_id>_*`) along, like its table CSVs.
    */
-  async moveScansWithNote(newPath: string, fromDir: string, toDir: string): Promise<void> {
+  async moveScansWithNote(newPath: string, fromDir: string, toDir: string): Promise<'refused' | undefined> {
     const file = this.app.vault.getAbstractFileByPath(newPath);
     if (!(file instanceof TFile)) return;
-    const noteId = readNoteId(await this.app.vault.read(file));
-    if (!noteId) return;
+    const content = await this.app.vault.read(file);
+    const noteId = readNoteId(content);
+    if (!noteId) {
+      // Its scans are named after an ID that cannot be read: say so rather than leave them.
+      if (!noteIdUnwritable(content)) return;
+      this.noteIds.warnUnwritable(file);
+      return 'refused';
+    }
     const fromExp = getExperimentDir(posix.join(fromDir, 'x.md')) ?? fromDir;
     const toExp = getExperimentDir(newPath) ?? toDir;
     if (fromExp === toExp) return;

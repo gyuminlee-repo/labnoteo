@@ -290,6 +290,8 @@ const obsidianKo: Record<string, string> = {
   'Added {0} workflow file(s) to the README checklist.':
     'README 체크리스트에 워크플로 파일 {0}개를 등록했습니다.',
   'This experiment has no README.labnote.md.': '이 실험에는 README.labnote.md가 없습니다.',
+  'The labnote_id of {0} could not be written, so its value was left as it is: write it on one line (labnote_id: LN-…) and try again.':
+    '{0}의 labnote_id를 쓰지 못해 값을 그대로 두었습니다. 한 줄로 적고(labnote_id: LN-…) 다시 시도하세요.',
   'README.labnote.md has no "Related Workflows" section.':
     'README.labnote.md에 "Related Workflows" 절이 없습니다.',
   'These checklist entries do not point to a workflow file in this folder. Remove them from the checklist?':

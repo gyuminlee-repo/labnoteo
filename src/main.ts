@@ -1866,8 +1866,9 @@ export default class LabnotePlugin extends Plugin {
         )
       );
     }
-    // Same for the note ID, or scans of either note could be filed in the other.
-    await this.barcode.reassignCopiedId(file);
+    // Same for the note ID, or scans of either note could be filed in the other. One that
+    // cannot be written was said; the copy is then left as it is.
+    if ((await this.barcode.reassignCopiedId(file)) === 'refused') return;
     const suggestion = suggestCopiedWorkflowFileName(file.name, await this.fs.list(dir));
     const target = suggestion ? posix.join(dir, suggestion) : undefined;
     if (!settled || !suggestion || !target || this.app.vault.getAbstractFileByPath(target)) {
@@ -1979,6 +1980,7 @@ export default class LabnotePlugin extends Plugin {
     await this.waitForCopiedNotes(folder, posix.join(labnoteDir, origin));
     if (this.unloaded || folder.path !== copyPath) return;
     const renewed = new Set<string>();
+    let refused = false;
     let markers = 0;
     let scans = 0;
     for (const note of markdownFilesIn(folder)) {
@@ -1991,8 +1993,11 @@ export default class LabnotePlugin extends Plugin {
         scans += stripped.count;
         await this.app.vault.process(note, data => removeAllScanEntries(reassignIssueMarkerIds(data).content).md);
       }
+      // Recorded first, as B6 did, so no question about the shared ID comes while the copy is
+      // handled. A note ID that cannot be written was said and stays as it is; the copy is then
+      // not made a new experiment.
       renewed.add(note.path);
-      await this.barcode.reassignCopiedId(note);
+      if ((await this.barcode.reassignCopiedId(note)) === 'refused') refused = true;
     }
     this.copyIdsRenewed.set(copyPath, renewed);
     if (markers > 0) {
@@ -2013,6 +2018,7 @@ export default class LabnotePlugin extends Plugin {
         ].join(' ')
       );
     }
+    if (refused) return;
 
     const readme = this.app.vault.getAbstractFileByPath(posix.join(copyPath, 'README.labnote.md'));
     if (!(readme instanceof TFile)) {
