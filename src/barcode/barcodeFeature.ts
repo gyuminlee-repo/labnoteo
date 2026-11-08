@@ -264,10 +264,11 @@ export class BarcodeFeature {
   /**
    * Copies made in Obsidian get their own ID right away, like their issue markers:
    * 'renewed', or 'none' for a note without one. A `labnote_id` that cannot be written
-   * (over several lines, or front matter that cannot be read) is said once and left as
-   * it is: 'refused', and the caller goes no further with the copy.
+   * (over several lines: L2) is said once and left as it is: 'refused', and the caller
+   * goes no further with the copy. Any other failure (front matter that cannot be read)
+   * was said by NoteIdService and is 'failed': the caller goes on with the copy, as B7 did.
    */
-  async reassignCopiedId(file: TFile): Promise<'renewed' | 'none' | 'refused'> {
+  async reassignCopiedId(file: TFile): Promise<'renewed' | 'none' | 'refused' | 'failed'> {
     const content = await this.app.vault.read(file);
     if (!readNoteId(content)) {
       if (!noteIdUnwritable(content)) return 'none';
@@ -276,7 +277,7 @@ export class BarcodeFeature {
     }
     // NoteIdService warns when it cannot write the new ID.
     const id = await this.noteIds.ensureId(file, { reassign: true });
-    if (!id) return 'refused';
+    if (!id) return noteIdUnwritable(await this.app.vault.read(file)) ? 'refused' : 'failed';
     this.host.notify('info', this.t('Gave the copy {0} its own note ID {1}.', file.basename, id));
     return 'renewed';
   }
