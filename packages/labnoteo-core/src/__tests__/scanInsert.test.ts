@@ -312,7 +312,6 @@ describe('insertScanEntries / removeScanEntry', () => {
   });
 });
 
-// Found by the Codex review of v6h.
 describe('scan removal and an entry comment in code', () => {
   it.each([['\n'], ['\r\n']])('keeps the user line after an entry with image and caption too (%j)', nl => {
     const md = ['## Worksheet scans', '', '<!-- labnoteo-scan page=1/3 sha=aa -->', '![[aa.jpg]]', '*aa*', '```md', '<!-- labnoteo-scan page=2/3 sha=bb -->', '```', 'KEEP', ''].join(nl);

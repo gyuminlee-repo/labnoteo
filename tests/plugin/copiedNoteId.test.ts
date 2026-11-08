@@ -79,7 +79,7 @@ describe('copy flows and a note ID that cannot be written', () => {
     expect(renameFile).not.toHaveBeenCalled();
   });
 
-  // As B6: the renewal is recorded for every note the copy handled, a refused one too, so a note
+  // The renewal is recorded for every note the copy handled, a refused one too, so a note
   // copied in later with the original's ID is still asked about; only the steps after (README
   // id, new experiment) are not taken.
   it('a copied experiment records its renewals as before but is not made a new experiment', async () => {
@@ -102,7 +102,7 @@ describe('copy flows and a note ID that cannot be written', () => {
     expect(makeCopyNewExperiment).not.toHaveBeenCalled();
   });
 
-  // Codex v7l 2: a 'changed' for the refused note while the copy is still handled (here while
+  // A 'changed' for the refused note while the copy is still handled (here while
   // its scan images are counted) asks nothing and writes nothing more; it was said once.
   it('asks nothing about a refused note while the copy is handled', async () => {
     const multi = `${DIR}/001_WD010_A.labnote.md`, other = `${DIR}/002_WD010_B.labnote.md`;
@@ -154,7 +154,7 @@ describe('copy flows and a note ID that cannot be written', () => {
 
 // A `- ` line at column 0 under a labnote_id with a value is a YAML error, not a value over
 // several lines (L2): the real reassignCopiedId says what NoteIdService says (the front matter
-// warning) and the copy flows go on as B7 did.
+// warning) and the copy flows go on as 0.140.2 does.
 describe('copy flows and a copied note whose front matter cannot be read', () => {
   const endings = [['LF', '\n'], ['CRLF', '\r\n']] as const;
   const text = (nl: string) => ['---', 'labnote_id: LN-7K3M9QX2', '- continued', 'created_date: 2020-01-01', '---', 'body', ''].join(nl);
@@ -206,7 +206,7 @@ describe('copy flows and a copied note whose front matter cannot be read', () =>
 });
 
 // A labnote_id that cannot be written but that YAML reads as no note ID (a list, a mapping or
-// a string that is no ID) is no ID the copy can share: as B7, the copy is handled as one without an ID and goes on,
+// a string that is no ID) is no ID the copy can share: as in 0.140.2, the copy is handled as one without an ID and goes on,
 // with nothing said. One that YAML reads as an ID (on the line below an empty first value)
 // may be shared, so the copy still stops there with the L2 warning.
 describe('copy flows and an unwritable labnote_id YAML reads as no ID', () => {

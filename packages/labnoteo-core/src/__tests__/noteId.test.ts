@@ -39,15 +39,15 @@ describe('readNoteId / setNoteId', () => {
     expect(readNoteId(md)).toBeUndefined();
   });
 
-  // R-2: a plain value with an indented line below it is read and written on its key line,
-  // as B7 did: YAML reads it with that line before the write and after it alike.
+  // A plain value with an indented line below it is read and written on its key line,
+  // as 0.140.2 does: YAML reads it with that line before the write and after it alike.
   it.each([['LF', '\n'], ['CRLF', '\r\n']])('reads and writes a plain value with a line below it on its key line (%s)', (_n, nl) => {
     const md = ['---', 'labnote_id: LN-7K3M9QX2', '  old', '---', 'body', ''].join(nl);
     expect(readNoteId(md)).toBe('LN-7K3M9QX2');
     expect(setNoteId(md, 'LN-00000001')).toBe(['---', 'labnote_id: LN-00000001', '  old', '---', 'body', ''].join(nl));
   });
 
-  // A `- ` line under a key with a value is a YAML error, not more of the value: read as B7 did (R1).
+  // A `- ` line under a key with a value is a YAML error, not more of the value: read as 0.140.2 reads it.
   it('reads the one-line ID with a list line below it', () => {
     expect(readNoteId('---\nlabnote_id: LN-7K3M9QX2\n- old\n---\nbody\n')).toBe('LN-7K3M9QX2');
   });
@@ -215,7 +215,7 @@ describe('readNoteId, noteIdUnwritable and setNoteId agree', () => {
 });
 
 // A block scalar indicator or an open quote with no line continuing it is that one line: it is
-// rewritten as B7 rewrote it, and the front matter reads as YAML afterwards. With a line
+// rewritten as 0.140.2 rewrites it, and the front matter reads as YAML afterwards. With a line
 // continuing it, it stays as written (L2).
 describe('a block indicator or open quote alone on its line', () => {
   const endings = [['LF', '\n'], ['CRLF', '\r\n']] as const;
@@ -223,7 +223,7 @@ describe('a block indicator or open quote alone on its line', () => {
   const cases = firsts.flatMap(first => endings.map(([n, nl]) => [first, n, nl] as const));
   const md = (first: string, nl: string, rest: string[] = []) => ['---', 'title: T', first, ...rest, 'other: 1', '---', 'body', ''].join(nl);
 
-  it.each(cases)('rewrites %s as B7 did, to valid YAML (%s)', (first, _n, nl) => {
+  it.each(cases)('rewrites %s as 0.140.2 does, to valid YAML (%s)', (first, _n, nl) => {
     const out = setNoteId(md(first, nl), 'LN-00000000');
     expect(out).toBe(md('labnote_id: LN-00000000', nl));
     expect(noteIdUnwritable(md(first, nl))).toBe(false);

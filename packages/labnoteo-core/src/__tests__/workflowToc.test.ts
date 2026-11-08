@@ -226,7 +226,7 @@ describe('findUnitOpInsertOffset', () => {
 });
 
 // The new entry goes after the last `- [` line, a hand-written link included; code examples aside.
-// Found by the B6/HEAD differential check: a list fence's closer opens a fence for the
+// A list fence's closer opens a fence for the
 // line-by-line readings, but no other reading takes the toc for code there, so it is read as before.
 describe('appendUnitOpToWorkflowToc after a list fence', () => {
   it('appends as before when a list fence ran ahead of an unclosed fence', () => {

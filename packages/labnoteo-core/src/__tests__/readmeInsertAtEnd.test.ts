@@ -1,5 +1,5 @@
 /**
- * E1: the first entry added to a Related Workflows section that ends the README is
+ * The first entry added to a Related Workflows section that ends the README is
  * placed as main (d7461be) places it, a blank line below the heading or the instruction
  * blockquote, and the README keeps its final line break, which main lost.
  */

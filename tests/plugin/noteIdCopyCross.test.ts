@@ -1,9 +1,9 @@
 /**
- * R-2: a note copied in Obsidian, then both notes' barcodes, Assign note ID on the copy and the
+ * A note copied in Obsidian, then both notes' barcodes, Assign note ID on the copy and the
  * copy moved to another experiment, for the six labnote_id values written over several lines
  * (LF and CRLF) and a one-line original whose copy has a line below its ID. The copy never keeps
  * the original's ID and never takes the original's scans along: it gets an ID of its own, or
- * (a value B7 would break by writing) it is left as it is with the L2 warning.
+ * (a value that writing would break) it is left as it is with the L2 warning.
  */
 import { describe, it, expect } from 'vitest';
 import { TFile, TFolder } from '../stubs/obsidian';
@@ -27,7 +27,7 @@ const cases: [string, string[], string[]][] = [
 ];
 // Values that YAML reads as an ID: the copy shares it, so it is refused with the warning.
 const REFUSED = new Set(['folded', 'emptyThenId']);
-// Values B7 broke by writing, which YAML reads as no ID: the copy is handled as one without.
+// Values that writing would break, which YAML reads as no ID: the copy is handled as one without.
 const LEFT = new Set(['literal', 'quotedCont', 'emptyThenTwo']);
 
 const O = 'labnote/001_A/001_WD010_O.labnote.md';
@@ -103,7 +103,7 @@ describe('a copied note, its barcode, Assign note ID and a move, for a labnote_i
       expect([idO, idC]).toEqual([undefined, undefined]);
       expect(r.barcodes.notices.filter(x => x.startsWith('warn:'))).toHaveLength(2);
     } else {
-      // A new ID on the copy's key line, as B7 gave it: the two barcodes differ.
+      // A new ID on the copy's key line, as 0.140.2 gives it: the two barcodes differ.
       expect(r.copied.value).toBe('renewed');
       expect(r.copyChanged).toBe(true);
       expect(idO).toBe('LN-7K3M9QX2');
@@ -112,7 +112,7 @@ describe('a copied note, its barcode, Assign note ID and a move, for a labnote_i
     }
   });
   // Assign note ID on the copy alone, while the original still shares the ID: asked once,
-  // then a new ID on the copy's key line, as B7 did.
+  // then a new ID on the copy's key line, as 0.140.2 does.
   it.each([['LF', '\n'], ['CRLF', '\r\n']])('Assign note ID on a plainCont copy sharing the ID (%s)', async (_n, nl) => {
     const note = (id: string[]) => ['---', 'title: x', ...id, '---', 'body', ''].join(nl);
     const files = new Map<string, string>([[O, note([ID])], [C, note(shapes.plainCont)]]);

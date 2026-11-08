@@ -1,7 +1,7 @@
-// R1: a `- ` line at column 0 continues `labnote_id` only under an empty first value (a block
+// A `- ` line at column 0 continues `labnote_id` only under an empty first value (a block
 // sequence, L2). Under a key with a value it is a YAML error, not more of the value: the ID
-// reads, prints and takes its scans along as B7 did.
-// E1: the L2 warning for a scan move is given only when there are scans to look through.
+// reads, prints and takes its scans along as 0.140.2 does.
+// The L2 warning for a scan move is given only when there are scans to look through.
 import { describe, it, expect } from 'vitest';
 import type { App, TFile as ObsidianTFile } from 'obsidian';
 import { TFile, TFolder } from '../stubs/obsidian';
@@ -58,7 +58,7 @@ const endings = [['LF', '\n'], ['CRLF', '\r\n']] as const;
 /** The front matter with `key` (the `labnote_id` line) and `next` (the line below it). */
 const note = (nl: string, key: string, next: string) => ['---', 'title: T', key, next, '---', 'body', ''].join(nl);
 
-describe('R1: a "- " line under a labnote_id with a value, as B7 read it', () => {
+describe('a "- " line under a labnote_id with a value, read as 0.140.2 reads it', () => {
   it.each(endings)('readNoteId reads the one-line ID (%s)', (_n, nl) => {
     expect(readNoteId(note(nl, `labnote_id: ${ID}`, '- a'))).toBe(ID);
   });
@@ -79,7 +79,7 @@ describe('R1: a "- " line under a labnote_id with a value, as B7 read it', () =>
   });
 });
 
-describe('R1: a "- " line under an empty labnote_id stays a value over several lines (L2)', () => {
+describe('a "- " line under an empty labnote_id stays a value over several lines (L2)', () => {
   const keys = ['labnote_id:', 'labnote_id: # the barcode'];
   const cases = keys.flatMap(key => endings.map(([n, nl]) => [n, JSON.stringify(key), nl, key] as const));
 
@@ -96,7 +96,7 @@ describe('R1: a "- " line under an empty labnote_id stays a value over several l
   });
 
   // YAML reads a list there, not an ID, so no scan is named after it: nothing moves and
-  // nothing is said, as in B7.
+  // nothing is said, as in 0.140.2.
   it.each(cases)('moveScansWithNote moves nothing and says nothing (%s, %s)', async (_n, _k, nl, key) => {
     const { f, notices, moved } = setup(`${TO}/a.labnote.md`, note(nl, key, `- ${ID}`), [`${FROM}/images/scans`]);
     expect(await f.moveScansWithNote(`${TO}/a.labnote.md`, FROM, TO)).toBeUndefined();
@@ -105,7 +105,7 @@ describe('R1: a "- " line under an empty labnote_id stays a value over several l
   });
 });
 
-describe('E1: no L2 warning for a move with no scans to look through', () => {
+describe('no L2 warning for a move with no scans to look through', () => {
   const unwritable = (nl: string) => note(nl, `labnote_id: ${ID}`, '  continued');
 
   it.each(endings)('a move to a subfolder of the same experiment (%s)', async (_n, nl) => {

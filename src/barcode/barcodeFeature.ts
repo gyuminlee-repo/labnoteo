@@ -46,7 +46,7 @@ export function planScanMoves(
  * Obsidian) reads as a valid note ID, as {@link NoteIdService.idOf} counts one: an ID the note
  * may share with another or have its scans named after. Any other value (an empty block, a
  * list, a string that is no ID such as `LN-AAAAAAAA\n` from a `|` block) or front matter YAML
- * cannot read gives no such ID, so the note is handled as one without an ID, as B7 handled it.
+ * cannot read gives no such ID, so the note is handled as one without an ID, as 0.140.2 does.
  */
 function unwritableIdInUse(content: string): boolean {
   if (!noteIdUnwritable(content)) return false;
@@ -280,7 +280,7 @@ export class BarcodeFeature {
    * 'renewed', or 'none' for a note without one. A `labnote_id` that cannot be written
    * (over several lines: L2) and reads as an ID ({@link unwritableIdInUse}) is said once and
    * left as it is: 'refused', and the caller goes no further with the copy. Any other failure (front matter that cannot be read)
-   * was said by NoteIdService and is 'failed': the caller goes on with the copy, as B7 did.
+   * was said by NoteIdService and is 'failed': the caller goes on with the copy, as 0.140.2 does.
    */
   async reassignCopiedId(file: TFile): Promise<'renewed' | 'none' | 'refused' | 'failed'> {
     const content = await this.app.vault.read(file);

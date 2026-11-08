@@ -231,8 +231,8 @@ describe('NoteIdService', () => {
 
   // A valid-looking ID continued on the next line is no ID: the note is not
   // printed under it, and the ID that cannot be written is reported.
-  // Only read, nothing written: the ID on its line, as B7 read it (R-1).
-  it.each([['LF', '\n'], ['CRLF', '\r\n']])('gives the ID on its line with a line continuing it, as B7 did (%s)', async (_n, nl) => {
+  // Only read, nothing written: the ID on its key line, as 0.140.2 reads it.
+  it.each([['LF', '\n'], ['CRLF', '\r\n']])('gives the ID on its line with a line continuing it, as 0.140.2 does (%s)', async (_n, nl) => {
     const text = ['---', 'labnote_id: LN-7K3M9QX2', '  old', '---', 'body', ''].join(nl);
     const { svc, files, fileOf, notices } = service({ 'a.labnote.md': { text, ctime: 1 } }, 'new');
     expect(await svc.ensureIdResult(fileOf('a.labnote.md'))).toEqual({ id: 'LN-7K3M9QX2' });
@@ -240,7 +240,7 @@ describe('NoteIdService', () => {
     expect(notices).toEqual([]);
   });
 
-  // R-2: a new ID for the same value goes on its key line, as B7 wrote it; the line below stays.
+  // A new ID for the same value goes on its key line, as 0.140.2 writes it; the line below stays.
   it('gives a new ID on the key line of a labnote_id continued on the next line', async () => {
     const text = '---\nlabnote_id: LN-7K3M9QX2\n  old\n---\nbody\n';
     const { svc, files, fileOf, notices } = service({ 'a.labnote.md': { text, ctime: 1 } }, 'new');
@@ -542,7 +542,7 @@ describe('NoteIdService', () => {
 
 // L2: a copied note whose labnote_id is written over several lines has an ID that can be
 // neither read nor written; that is said (the NoteIdService warning), not taken for none.
-// The scans folder of experiment `A/001`, with one scan in it: a move has something to look through (E1).
+// The scans folder of experiment `A/001`, with one scan in it: a move has something to look through.
 const SCANS = 'A/001/images/scans';
 const scans = Object.assign(new TFolder(), { path: SCANS, name: 'scans', children: [new TFile(`${SCANS}/LN-7K3M9QX2_u1_p1_20261015.jpg`)] });
 
@@ -571,11 +571,11 @@ describe('BarcodeFeature and a labnote_id over several lines', () => {
   const note = (nl: string, rest: string) => ['---', 'labnote_id: LN-7K3M9QX2', rest, 'created_date: 2020-01-01', '---', 'body', ''].join(nl);
 
   // An indented line below a one-line value continues it (YAML reads 'LN-7K3M9QX2 continued'):
-  // the key line is rewritten as B7 rewrote it, which breaks nothing more (R-2).
+  // the key line is rewritten as 0.140.2 rewrites it, which breaks nothing more.
   it.each([
     ['LF, indented', '\n', '  continued'],
     ['CRLF, indented', '\r\n', '  continued'],
-  ])('reassignCopiedId gives a new ID on the key line, as B7 did (%s)', async (_name, nl, rest) => {
+  ])('reassignCopiedId gives a new ID on the key line, as 0.140.2 does (%s)', async (_name, nl, rest) => {
     const { f, files, notices, file } = feature(note(nl, rest));
     expect(await f.reassignCopiedId(file)).toBe('renewed');
     const after = files.get('a.labnote.md')!;
@@ -584,14 +584,14 @@ describe('BarcodeFeature and a labnote_id over several lines', () => {
     expect(notices.map(n => n.level)).toEqual(['info']);
   });
 
-  // A `- ` item at column 0 under a key with a value is a YAML error, not more of the value
-  // (R1): the one-line ID is read, and its renewal fails at the front matter that cannot be read
-  // with B7's warning, not the L2 one: 'failed', so the copy flows go on as B7's did
+  // A `- ` item at column 0 under a key with a value is a YAML error, not more of the value:
+  // the one-line ID is read, and its renewal fails at the front matter that cannot be read
+  // with the YAML warning of 0.140.2, not the L2 one: 'failed', so the copy flows go on as in 0.140.2
   // (copiedNoteId.test.ts). Under an empty value it is L2 (noteIdDashItem.test.ts).
   it.each([
     ['LF, "- " item', '\n', '- continued'],
     ['CRLF, "- " item', '\r\n', '- continued'],
-  ])('reassignCopiedId reads a one-line ID with a "- " line below it as B7 did (%s)', async (_name, nl, rest) => {
+  ])('reassignCopiedId reads a one-line ID with a "- " line below it as 0.140.2 does (%s)', async (_name, nl, rest) => {
     const { f, files, notices, file } = feature(note(nl, rest));
     expect(readNoteId(note(nl, rest))).toBe('LN-7K3M9QX2');
     expect(await f.reassignCopiedId(file)).toBe('failed');
@@ -615,10 +615,10 @@ describe('BarcodeFeature and a labnote_id over several lines', () => {
 
 });
 
-// R-1: moving a note's scans writes no labnote_id, so it reads the ID on its line as B7 did,
+// Moving a note's scans reads the ID on its key line as 0.140.2 does,
 // with an indented line below it too, and takes the scans named after it along.
 describe('moving the scans of a note whose one-line ID has a line below it', () => {
-  it.each([['LF', '\n'], ['CRLF', '\r\n']])('moves them as B7 did (%s)', async (_name, nl) => {
+  it.each([['LF', '\n'], ['CRLF', '\r\n']])('moves them as 0.140.2 does (%s)', async (_name, nl) => {
     const NOTE = 'labnote/002_B/001_WD010_A.labnote.md', DIR = 'labnote/001_A/images/scans';
     const img = new TFile(`${DIR}/LN-7K3M9QX2_u1_p1_2026-01-01.jpg`);
     const folder = Object.assign(new TFolder(), { path: DIR, name: 'scans', children: [img] });
@@ -644,8 +644,8 @@ describe('moving the scans of a note whose one-line ID has a line below it', () 
     expect(notices.map(n => n.level)).toEqual(['info']);
   });
 
-  // Assign note ID reads the ID before anything is written: told it has it, as B7 told.
-  it.each([['LF', '\n'], ['CRLF', '\r\n']])('Assign note ID says the note has it, as B7 did (%s)', async (_name, nl) => {
+  // Assign note ID reads the ID before anything is written: told it has it, as 0.140.2 tells.
+  it.each([['LF', '\n'], ['CRLF', '\r\n']])('Assign note ID says the note has it, as 0.140.2 does (%s)', async (_name, nl) => {
     const text = ['---', 'title: x', 'labnote_id: LN-7K3M9QX2', '  more', '---', 'body', ''].join(nl);
     const files = new Map([['a.labnote.md', text]]);
     const notices: { level: string; msg: string }[] = [];
@@ -712,7 +712,7 @@ describe('a labnote_id on the line after an empty first value', () => {
   });
 
   // Under spaces YAML (and Obsidian) reads the ID, so the scans may carry it: they stay, with a
-  // warning. A tab indent is a YAML error, so no ID is read and nothing is said, as in B7.
+  // warning. A tab indent is a YAML error, so no ID is read and nothing is said, as in 0.140.2.
   it.each(cases)('moves no scans, and says why when YAML reads the ID (%s, %s)', async (_a, _b, ind, nl) => {
     const { f, notices } = setup(note(ind, nl));
     if (ind === '\t') {
@@ -725,12 +725,12 @@ describe('a labnote_id on the line after an empty first value', () => {
   });
 });
 
-// Codex v7m: a labnote_id continued on the next line cannot be written, so asking for a new
+// A labnote_id continued on the next lines after an empty first value cannot be written, so asking for a new
 // ID (or a restore) would only fail. Each call says so once and asks nothing.
 describe('a labnote_id that cannot be written, asked about before', () => {
   function setup(nl: string) {
-    // Over two lines below an empty first value: B7 gave it a new ID on the key line and
-    // left both lines below it (R-1 keeps the one-line ID with a line below it as B7 read it).
+    // Over two lines below an empty first value: a new ID on the key line would leave both
+    // lines below it and break the value.
     const text = ['---', 'labnote_id:', '  LN-AAAAAAAA', '  continued', '---', 'body', ''].join(nl);
     const files = new Map([['a.labnote.md', text]]);
     const notices: { level: string; msg: string }[] = [];
@@ -797,7 +797,7 @@ describe('a labnote_id that cannot be written, asked about before', () => {
 
 // A copy whose labnote_id cannot be written (over several lines) still shares the original's
 // ID as Obsidian reads it. Re-numbering it would fail, so it is not asked about: it is said
-// once per note this session, and the set stays reported as in B6 (the Assign note ID command
+// once per note this session, and the set stays reported (the Assign note ID command
 // or a reload looks again).
 describe('a shared note ID whose re-numbering could not be written', () => {
   function setup(nl: string, answer: boolean, copyText?: string) {
@@ -847,9 +847,9 @@ describe('a shared note ID whose re-numbering could not be written', () => {
     expect(files.get('copy.labnote.md')!.text).toBe(text('LN-AAAAAAAA', true));
   });
 
-  // Codex v7o 1: the newest of three cannot be written. B6 asked about it and stopped when the
-  // re-numbering failed; the older copy is not asked about or re-numbered instead.
-  it.each(cases)('stops at a newest note it cannot write, as B6 did, re-numbering no other (%s)', async (_name, nl) => {
+  // The newest of three cannot be written: it stops there, and the older copy is not asked
+  // about or re-numbered instead.
+  it.each(cases)('stops at a newest note it cannot write, re-numbering no other (%s)', async (_name, nl) => {
     const copy2 = ['---', 'labnote_id:', '  LN-AAAAAAAA', 'created_date: !!timestamp 2026-11-03', '---', 'body', ''].join(nl);
     const { notices, warns, changed, files, text, fileOf, asked } = setup(nl, true, copy2);
     files.set('copy1.labnote.md', { text: text('LN-AAAAAAAA', false), ctime: 3 });
@@ -860,7 +860,7 @@ describe('a shared note ID whose re-numbering could not be written', () => {
     expect(warns()).toBe(1);
   });
 
-  // Codex v7o 2: the copy flow said it, so the shared ID found after says nothing more.
+  // The copy flow said it, so the shared ID found after says nothing more.
   it.each(cases)('says it once over a copy handled and three changes after (%s)', async (_name, nl) => {
     const { warns, changed, feature, copy, counts } = setup(nl, true);
     expect(await feature.reassignCopiedId(copy)).toBe('refused');
@@ -869,7 +869,7 @@ describe('a shared note ID whose re-numbering could not be written', () => {
     expect(counts.asked).toBe(0);
   });
 
-  // Codex v7o 2: an ID changed to one that cannot be written back, then found shared.
+  // An ID changed to one that cannot be written back, then found shared.
   it.each(cases)('says it once over a changed ID not restored and the shared ID after (%s)', async (_name, nl) => {
     const { warns, changed, files, text, svc, copy, counts } = setup(nl, true);
     files.get('copy.labnote.md')!.text = text('LN-CCCCCCCC', false);
@@ -881,8 +881,8 @@ describe('a shared note ID whose re-numbering could not be written', () => {
     expect(counts.asked).toBe(0);
   });
 
-  // Codex v7n: newer notes with the same ID come in one by one, every question said yes to.
-  // B6 asked 4 times (copy, then each new note); the copy is not asked about again.
+  // Newer notes with the same ID come in one by one, every question said yes to: each new
+  // note is asked about, the copy not again.
   it.each(cases)('asks only about the newer notes that join, not the copy again (%s)', async (_name, nl) => {
     const { counts, warns, changed, files, text, fileOf, asked } = setup(nl, true);
     await changed();
@@ -895,7 +895,7 @@ describe('a shared note ID whose re-numbering could not be written', () => {
     expect(warns()).toBe(1);
   });
 
-  // The copy renamed three times: B6 asked once. Each new path is said once more (allowed).
+  // The copy renamed three times: not asked about; each new path is said once more.
   it.each(cases)('asks nothing about a copy renamed three times (%s)', async (_name, nl) => {
     const { counts, warns, changed, files, fileOf } = setup(nl, true);
     await changed();
@@ -912,8 +912,8 @@ describe('a shared note ID whose re-numbering could not be written', () => {
     expect(warns()).toBe(4);
   });
 
-  // Codex v7l 1: another field the core schema refuses as well; the ID put on one line later
-  // asks no more than B6 did (once).
+  // Another field the core schema refuses as well; the ID put on one line later asks no more
+  // than once.
   it.each(cases)('asks no more than once when another field fails too and the ID goes on one line (%s)', async (_name, nl) => {
     const copyText = ['---', 'labnote_id:', '  LN-AAAAAAAA', 'created_date: !!timestamp 2026-11-03', '---', 'body', ''].join(nl);
     const { counts, warns, changed, files } = setup(nl, true, copyText);
@@ -925,7 +925,7 @@ describe('a shared note ID whose re-numbering could not be written', () => {
     expect(warns()).toBe(1);
   });
 
-  // B6 asked once and a cancel kept it quiet; now it is not asked about at all, the ID put on
+  // Not asked about at all, the ID put on
   // one line later included.
   it.each(cases)('keeps quiet, the ID put on one line later included (%s)', async (_name, nl) => {
     const { counts, changed, files, text } = setup(nl, false);

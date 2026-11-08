@@ -111,7 +111,7 @@ function replaceRange<T>(arr: T[], start: number, deleteCount: number, items: re
 
 /**
  * The break `end` for `line`. A line ending in `\r` (the lone CR that ended the text) takes
- * the text's own break for LF, as B6 wrote it: CRLF in a text with any, so that CR stays the
+ * the text's own break for LF: CRLF in a text with any, so that CR stays the
  * line's and is not read with the LF as one CRLF.
  */
 function breakAfter(buf: LineBuffer, line: string, end: string): string {

@@ -1,5 +1,5 @@
 /**
- * D3: deleting a workflow from the README removes its entry only from a section the
+ * Deleting a workflow from the README removes its entry only from a section the
  * checklist is read from, as main (d7461be) does: a heading in a closed fence starts no
  * section, an entries-based pick is made only where the add path makes it too, and a fence
  * indented four spaces (no fence to CommonMark) hides no heading. The entry stays in each
@@ -26,7 +26,7 @@ describe('workflow deletion stays in the sections the checklist is read from', (
   });
 });
 
-// R1: where no heading names the section (or the one named first is the add path's),
+// Where no heading names the section (or the one named first is the add path's),
 // another section the reading with fences ignored picks first is not one the add path
 // reads or writes: its entry stays, as in main.
 describe('workflow deletion stays out of a section only the other reading picks', () => {

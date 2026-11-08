@@ -211,31 +211,31 @@ describe('line-break guard', () => {
   });
 });
 
-// Codex v7p: a lone CR ending the text is the last line's text (LineBuffer). A line added after
+// A lone CR ending the text is the last line's text (LineBuffer). A line added after
 // it gives that line a break; LF there would read with the CR as one CRLF and take the CR off
-// the line. The text's own break goes there instead, as B6 wrote: CRLF in a text with any.
+// the line. The text's own break goes there instead: CRLF in a text with any.
 describe('a line added after a lone CR ending the text', () => {
-  // The break before the last line LF, CRLF, or LF in a text that has CRLF too (Codex's input).
+  // The break before the last line LF, CRLF, or LF in a text that has CRLF too.
   const bases = [
     ['LF', ['A', 'B', 'C\r'].join('\n')],
     ['CRLF', ['A', 'B', 'C\r'].join('\r\n')],
     ['mixed', 'A\r\nB\nC\r'],
   ];
-  // What B6 wrote after the last line: the text's own break, the lone CR kept before it.
+  // What goes after the last line: the text's own break, the lone CR kept before it.
   const kept = (md: string) => md + (md.includes('\r\n') ? '\r\n' : '\n');
 
-  it.each(bases)('insertScanEntries keeps the line as B6 did (%s)', (_name, md) => {
+  it.each(bases)('insertScanEntries keeps the lone CR on its line (%s)', (_name, md) => {
     const out = insertScanEntries(md, null, [{ page: 1, pageCount: 5, hash: 'aa', embed: '![[new.jpg]]', caption: 'new' }]);
     expect(out.startsWith(kept(md))).toBe(true);
   });
 
-  it.each(bases)('appendUnitOpToWorkflowToc keeps the line as B6 did (%s)', (_name, md) => {
+  it.each(bases)('appendUnitOpToWorkflowToc keeps the lone CR on its line (%s)', (_name, md) => {
     const toc = md.replace(/^A/, '## Related Unit Operations').replace('C\r', '- [UHW010 A](#uhw010-a)\r');
     const out = appendUnitOpToWorkflowToc(toc, 'UHW020', 'B');
     expect(out.startsWith(kept(toc))).toBe(true);
   });
 
-  it.each(bases)('replaceSectionBody and replaceSectionBodyAt keep the heading line as B6 did (%s)', (_name, md) => {
+  it.each(bases)('replaceSectionBody and replaceSectionBodyAt keep the lone CR on the heading line (%s)', (_name, md) => {
     const doc = md.replace(/^A/, '# T').replace('C\r', '## Z\r');
     const at = replaceSectionBodyAt(doc, 2, 'NEW');
     expect(at.ok && at.md.startsWith(kept(doc))).toBe(true);

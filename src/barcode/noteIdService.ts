@@ -359,7 +359,7 @@ export class NoteIdService {
         this.reported.add(duplicateKey(dup.id, files));
         // A labnote_id that cannot be written would fail the re-numbering: said once per note
         // instead of asked about each time another note joins the set, and the set is left
-        // there, as B6 stopped at a re-numbering that failed.
+        // there, as a re-numbering that failed leaves it.
         if (noteIdUnwritable(await this.app.vault.read(newest))) {
           this.warnUnwritable(newest, true);
           break;

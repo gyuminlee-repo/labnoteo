@@ -1,5 +1,5 @@
 /**
- * D1: a backtick run with a backtick in its info (```` ```a``` ````) is inline code, not a
+ * A backtick run with a backtick in its info (```` ```a``` ````) is inline code, not a
  * fence (CommonMark), for every fence reader a call goes through, not stepFence alone. Each
  * reader gives on such a note what it gives on the same note with that line as plain text of
  * the same length, the line put back in the result.

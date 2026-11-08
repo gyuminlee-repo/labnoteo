@@ -1993,7 +1993,7 @@ export default class LabnotePlugin extends Plugin {
         scans += stripped.count;
         await this.app.vault.process(note, data => removeAllScanEntries(reassignIssueMarkerIds(data).content).md);
       }
-      // Recorded first, as B6 did, so no question about the shared ID comes while the copy is
+      // Recorded first, so no question about the shared ID comes while the copy is
       // handled. A note ID that cannot be written was said and stays as it is; the copy is then
       // not made a new experiment.
       renewed.add(note.path);

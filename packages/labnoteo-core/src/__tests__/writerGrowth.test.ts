@@ -55,8 +55,8 @@ const linesRead = (run: () => void): number => {
 };
 
 // L5: the blank line a removed workflow entry leaves is judged from the lines up to it; a long
-// README after the entry is read no more than B6 read it (removeWorkflowFromReadme reads
-// all of it once in each of its two closed-fence readings, as B6 did).
+// README after the entry is read only once in each of the two closed-fence readings of
+// removeWorkflowFromReadme.
 describe('workflow entry removal and the README after it', () => {
   const readme = (n: number): string =>
     ['## Related Workflows', '', '- [ ] [A](./001_WD010_A.labnote.md)', '', ...Array(n).fill('~~~'), ''].join('\n');
@@ -64,7 +64,7 @@ describe('workflow entry removal and the README after it', () => {
     const at = (n: number): number => linesRead(() => removeWorkflowChecklistEntries(readme(n), ['001_WD010_A.labnote.md']));
     expect(at(4000)).toBe(at(2000));
   });
-  it('removeWorkflowFromReadme reads the rest only as B6 did', () => {
+  it('removeWorkflowFromReadme reads the rest once per closed-fence reading', () => {
     const at = (n: number): number => linesRead(() => removeWorkflowFromReadme(readme(n), '001_WD010_A.labnote.md'));
     expect(at(4000) - at(2000)).toBeLessThanOrEqual(2 * 2000);
   });

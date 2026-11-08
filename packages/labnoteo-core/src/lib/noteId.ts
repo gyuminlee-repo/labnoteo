@@ -64,7 +64,7 @@ const KEY_LINE_RE = new RegExp(`^${NOTE_ID_KEY}\\s*:(.*)$`);
  * as none. A value {@link setNoteId} leaves as it is ({@link noteIdUnwritable}: continued
  * on the next lines after an empty first line, a block scalar or an open quote) is no ID
  * either, so a note never has an ID it cannot be given. A plain value with lines below it
- * is read and written on its key line, as B7 did.
+ * is read and written on its key line, as 0.140.2 does.
  */
 export function readNoteId(content: string): string | undefined {
   if (noteIdUnwritable(content)) return undefined;
@@ -83,7 +83,7 @@ export function readRawNoteId(content: string): string | undefined {
   for (let i = 1; i < fm.close; i++) {
     const m = KEY_LINE_RE.exec(lines[i]);
     if (!m) continue;
-    // The value on the key line, as B7 read it: a plain value with lines continuing
+    // The value on the key line, as 0.140.2 reads it: a plain value with lines continuing
     // it is read, and written ({@link setNoteId}), on that line alone. A value that
     // cannot be written there ({@link noteIdUnwritable}) is no ID (readNoteId).
     const value = m[1].trim().replace(/^(['"])(.*)\1$/, '$2').trim();
@@ -123,7 +123,7 @@ const continuesValue = (line: string, keyValue: string): boolean =>
  * ({@link plainKeyValue}), or nothing continues it on the next line
  * ({@link continuesValue}). A block scalar indicator
  * (`|`, `>`) or a quote left open with no line continuing it is that line alone
- * too, and is rewritten as before (B7): one line replaced keeps the YAML valid.
+ * too, and is rewritten as 0.140.2 does: one line replaced keeps the YAML valid.
  */
 function oneLineScalarAt(lines: readonly string[], i: number, close: number): boolean {
   const next = i + 1 < close ? lines[i + 1] : '';
@@ -134,7 +134,7 @@ function oneLineScalarAt(lines: readonly string[], i: number, close: number): bo
 /**
  * Whether the `labnote_id:` line holds a plain value of its own (not empty or a comment,
  * no block scalar indicator `|` `>`, no quote left open). Lines continuing it are left as
- * they are when that line is rewritten, as B7 rewrote it: YAML read the value with them
+ * they are when that line is rewritten, as 0.140.2 rewrites it: YAML read the value with them
  * before and reads it with them after (`LN-X more`, then `LN-NEW more`), so nothing the
  * write does breaks more than it was.
  */
