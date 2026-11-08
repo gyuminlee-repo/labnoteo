@@ -8,7 +8,7 @@
 import * as fences from '../sections/codeFences';
 import { removeAllScanEntries, removeScanEntry } from '../sections/scanInsert';
 import { insertWorkflowChecklistEntries, removeWorkflowChecklistEntries } from '../lib/workflowStructure';
-import { appendUnitOpToWorkflowToc } from '../sections/workflowSectionParser';
+import { appendUnitOpToWorkflowToc, rebuildUnitOpToc } from '../sections/workflowSectionParser';
 import { insertScanEntries } from '../sections/scanInsert';
 import { removeWorkflowFromReadme } from '../lib/workflowDelete';
 import { copyFrontMatterKeys, setFrontMatterKeys } from '../sections/frontMatter';
@@ -215,5 +215,29 @@ describe('writer work grows with the note, not its square', () => {
       const md = Array.from({ length: n }, (_, i) => (every && i % every === 0 ? '## Related Workflows\n- [ ] [A](./001_WD010_A.labnote.md)' : '## Related Workflows')).join('\n');
       return () => { removeWorkflowChecklistEntries(md, ['001_WD010_A.labnote.md']); removeWorkflowFromReadme(md, '001_WD010_A.labnote.md'); };
     });
+  });
+});
+
+// rebuildUnitOpToc pairs the current TOC entries with the headings once per call: the
+// pairing is the only Map of entry index to line index (number to number) the rebuild fills,
+// so the Maps filled that way count the pairings. Twice doubles the work on a long TOC.
+describe('unit operation TOC rebuild pairs its entries once', () => {
+  const pairings = (run: () => void): number => {
+    const maps = new Set<Map<unknown, unknown>>();
+    const set = Map.prototype.set;
+    Map.prototype.set = function (this: Map<unknown, unknown>, k: unknown, v: unknown) {
+      if (typeof k === 'number' && typeof v === 'number') maps.add(this);
+      return set.call(this, k, v);
+    };
+    try { run(); } finally { Map.prototype.set = set; }
+    return maps.size;
+  };
+  it.each([['LF', '\n'], ['CRLF', '\r\n']])('one pairing for a TOC to reorder (%s)', (_n, nl) => {
+    const ops = Array.from({ length: 50 }, (_, i) => `UHW${String(10 + i).padStart(3, '0')}`);
+    const toc = [...ops].reverse().map(id => `- [${id} Op](#${id.toLowerCase()}-op)`);
+    const md = ['## Related Unit Operations', '', ...toc, '', '---', '', ...ops.flatMap(id => [`### [${id} Op]`, '', 'x', ''])].join(nl);
+    let out = '';
+    expect(pairings(() => { out = rebuildUnitOpToc(md); })).toBe(1);
+    expect(out).not.toBe(md);
   });
 });

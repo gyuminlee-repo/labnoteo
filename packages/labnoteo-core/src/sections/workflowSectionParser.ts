@@ -501,13 +501,17 @@ function pairTocEntries(scan: UnitOpTocScan): Map<number, number> {
   return pairs;
 }
 
-/** The rebuilt entries, each with the tail of the current entry paired with it (see {@link pairTocEntries}). */
-function entriesWithTails(scan: UnitOpTocScan): string[] {
+/**
+ * The rebuilt entries, each with the tail of the current entry paired with it, and those
+ * pairs ({@link pairTocEntries}), worked out once for the caller.
+ */
+function entriesWithTails(scan: UnitOpTocScan): { entries: string[]; pairs: Map<number, number> } {
   const pairs = pairTocEntries(scan);
-  return scan.entries.map((line, k) => {
+  const entries = scan.entries.map((line, k) => {
     const idx = pairs.get(k);
     return line + (idx === undefined ? '' : splitTocEntry(scan.lines[idx].text).tail);
   });
+  return { entries, pairs };
 }
 
 /**
@@ -590,7 +594,7 @@ function scanUnitOpToc(md: string): UnitOpTocScan | null {
  */
 function tocEdit(md: string, scan: UnitOpTocScan): TextEdit | null {
   const { lines, newline, headingIdx, entryIdxs } = scan;
-  const entries = entriesWithTails(scan);
+  const { entries, pairs } = entriesWithTails(scan);
   // The line break after line `j` as written (mixed endings stay), or for the
   // last line the one before it; new lines take the break of the line above.
   const breakAfter = (j: number): string =>
@@ -604,7 +608,6 @@ function tocEdit(md: string, scan: UnitOpTocScan): TextEdit | null {
     // The ordered entries, then the interleaved lines. An entry rebuilt from
     // an existing one, and every interleaved line, keeps that line's break; a
     // new entry takes the break of the line above it.
-    const pairs = pairTocEntries(scan);
     const out: { text: string; end: string }[] = [];
     let above = breakAfter(first - 1);
     const push = (text: string, end: string): void => {
