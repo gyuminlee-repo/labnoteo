@@ -6,7 +6,7 @@
 import { MarkdownView, Notice, Platform, TFile, TFolder, type App } from 'obsidian';
 import { parseFrontMatterYaml, scanEntryLine, type LabnoteHost, type Translator } from '@labnoteo/core';
 import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
-import { isValidNoteId, NOTE_ID_KEY, noteIdUnwritable, readNoteId } from '@labnoteo/core/lib/noteId';
+import { isValidNoteId, NOTE_ID_KEY, noteIdUnwritable, readKeyLineNoteId, readNoteId } from '@labnoteo/core/lib/noteId';
 import { isSameSampleFolder, loadSampleLocationLookup, noteLabsamplesFolder } from '@labnoteo/core/lib/sampleStorage';
 import { getSampleDisplayMeta } from '@labnoteo/core/lib/sampleUtils';
 import { isValidWorkflowPath } from '@labnoteo/core/lib/workflowStructure';
@@ -258,7 +258,8 @@ export class BarcodeFeature {
   }
 
   private async assignId(file: TFile): Promise<void> {
-    const current = readNoteId(await this.app.vault.read(file));
+    // A re-numbering it leads to writes through ensureId, which says when it cannot (L2).
+    const current = readKeyLineNoteId(await this.app.vault.read(file));
     if (current) {
       const others = this.noteIds.filesWithId(current).filter(f => f.path !== file.path);
       if (others.length === 0) {
@@ -395,7 +396,8 @@ export class BarcodeFeature {
     const file = this.app.vault.getAbstractFileByPath(newPath);
     if (!(file instanceof TFile)) return;
     const content = await this.app.vault.read(file);
-    const noteId = readNoteId(content);
+    // Moving scans writes no ID: the one on its line, as B7 read it, names them.
+    const noteId = readKeyLineNoteId(content);
     // Scans are named after an ID: without one YAML reads, there are none of the note's to move.
     if (!noteId && !unwritableIdInUse(content)) return;
     const fromExp = getExperimentDir(posix.join(fromDir, 'x.md')) ?? fromDir;

@@ -231,10 +231,20 @@ describe('NoteIdService', () => {
 
   // A valid-looking ID continued on the next line is no ID: the note is not
   // printed under it, and the ID that cannot be written is reported.
-  it('gives no ID for a labnote_id continued on the next line', async () => {
+  // Only read, nothing written: the ID on its line, as B7 read it (R-1).
+  it.each([['LF', '\n'], ['CRLF', '\r\n']])('gives the ID on its line with a line continuing it, as B7 did (%s)', async (_n, nl) => {
+    const text = ['---', 'labnote_id: LN-7K3M9QX2', '  old', '---', 'body', ''].join(nl);
+    const { svc, files, fileOf, notices } = service({ 'a.labnote.md': { text, ctime: 1 } }, 'new');
+    expect(await svc.ensureIdResult(fileOf('a.labnote.md'))).toEqual({ id: 'LN-7K3M9QX2' });
+    expect(files.get('a.labnote.md')!.text).toBe(text);
+    expect(notices).toEqual([]);
+  });
+
+  // The same value given a new ID is written: left as it is, with the L2 warning.
+  it('gives no new ID for a labnote_id continued on the next line', async () => {
     const text = '---\nlabnote_id: LN-7K3M9QX2\n  old\n---\nbody\n';
     const { svc, files, fileOf, notices } = service({ 'a.labnote.md': { text, ctime: 1 } }, 'new');
-    expect(await svc.ensureIdResult(fileOf('a.labnote.md'))).toEqual({ reason: 'unreadable' });
+    expect(await svc.ensureIdResult(fileOf('a.labnote.md'), { reassign: true })).toEqual({ reason: 'unreadable' });
     expect(files.get('a.labnote.md')!.text).toBe(text);
     expect(notices.some(n => n.includes('could not be written'))).toBe(true);
   });
@@ -600,10 +610,58 @@ describe('BarcodeFeature and a labnote_id over several lines', () => {
     expect(notices).toEqual([]);
   });
 
-  it.each([['LF', '\n'], ['CRLF', '\r\n']])('moveScansWithNote moves nothing for a value YAML reads as no ID, as B7 did (%s)', async (_name, nl) => {
-    const { f, notices } = feature(note(nl, '  continued'));
-    expect(await f.moveScansWithNote('a.labnote.md', 'A/001', 'B/001')).toBeUndefined();
-    expect(notices).toEqual([]);
+});
+
+// R-1: moving a note's scans writes no labnote_id, so it reads the ID on its line as B7 did,
+// with an indented line below it too, and takes the scans named after it along.
+describe('moving the scans of a note whose one-line ID has a line below it', () => {
+  it.each([['LF', '\n'], ['CRLF', '\r\n']])('moves them as B7 did (%s)', async (_name, nl) => {
+    const NOTE = 'labnote/002_B/001_WD010_A.labnote.md', DIR = 'labnote/001_A/images/scans';
+    const img = new TFile(`${DIR}/LN-7K3M9QX2_u1_p1_2026-01-01.jpg`);
+    const folder = Object.assign(new TFolder(), { path: DIR, name: 'scans', children: [img] });
+    const text = ['---', 'title: x', 'labnote_id: LN-7K3M9QX2', '  more', '---', 'body', ''].join(nl);
+    const renames: string[] = [];
+    const notices: { level: string; msg: string }[] = [];
+    const app = {
+      vault: {
+        read: async () => text,
+        getAbstractFileByPath: (p: string) => (p === NOTE ? new TFile(NOTE) : p === DIR ? folder : p === img.path ? img : null),
+        getMarkdownFiles: () => [],
+        createFolder: async () => {},
+      },
+      fileManager: { renameFile: async (f: TFile, to: string) => { renames.push(`${f.path} -> ${to}`); } },
+      metadataCache: { getFileCache: () => null },
+    } as unknown as App;
+    const t = (s: string, ...args: unknown[]) => args.reduce<string>((out, a, i) => out.replace(`{${i}}`, String(a)), s);
+    const host = { notify: (level: string, msg: string) => notices.push({ level, msg }), t } as unknown as LabnoteHost;
+    const f = Object.create(BarcodeFeature.prototype) as BarcodeFeature;
+    Object.assign(f, { plugin: { app, host, t }, noteIds: new NoteIdService(app, host) });
+    expect(await f.moveScansWithNote(NOTE, 'labnote/001_A', 'labnote/002_B')).toBeUndefined();
+    expect(renames).toEqual([`${img.path} -> labnote/002_B/images/scans/LN-7K3M9QX2_u1_p1_2026-01-01.jpg`]);
+    expect(notices.map(n => n.level)).toEqual(['info']);
+  });
+
+  // Assign note ID reads the ID before anything is written: told it has it, as B7 told.
+  it.each([['LF', '\n'], ['CRLF', '\r\n']])('Assign note ID says the note has it, as B7 did (%s)', async (_name, nl) => {
+    const text = ['---', 'title: x', 'labnote_id: LN-7K3M9QX2', '  more', '---', 'body', ''].join(nl);
+    const files = new Map([['a.labnote.md', text]]);
+    const notices: { level: string; msg: string }[] = [];
+    const app = {
+      vault: {
+        read: async (f: TFile) => files.get(f.path)!,
+        process: async (f: TFile, fn: (s: string) => string) => { files.set(f.path, fn(files.get(f.path)!)); },
+        getAbstractFileByPath: (p: string) => (files.has(p) ? new TFile(p) : null),
+        getMarkdownFiles: () => [...files.keys()].map(p => new TFile(p)),
+      },
+      metadataCache: { getFileCache: (f: TFile) => ({ frontmatter: parseFrontMatterYaml(files.get(f.path)!.replace(/\r\n/g, '\n')).frontMatter }) },
+    } as unknown as App;
+    const t = (s: string, ...args: unknown[]) => args.reduce<string>((out, a, i) => out.replace(`{${i}}`, String(a)), s);
+    const host = { notify: (level: string, msg: string) => notices.push({ level, msg }), t, confirm: async () => true, pick: async () => 'new' } as unknown as LabnoteHost;
+    const f = Object.create(BarcodeFeature.prototype) as BarcodeFeature;
+    Object.assign(f, { plugin: { app, host, t }, noteIds: new NoteIdService(app, host) });
+    await (f as unknown as { assignId(x: TFile): Promise<void> }).assignId(new TFile('a.labnote.md'));
+    expect(files.get('a.labnote.md')).toBe(text);
+    expect(notices).toEqual([{ level: 'info', msg: 'This note already has the note ID LN-7K3M9QX2.' }]);
   });
 });
 
@@ -668,7 +726,9 @@ describe('a labnote_id on the line after an empty first value', () => {
 // ID (or a restore) would only fail. Each call says so once and asks nothing.
 describe('a labnote_id that cannot be written, asked about before', () => {
   function setup(nl: string) {
-    const text = ['---', 'labnote_id: LN-AAAAAAAA', '  continued', '---', 'body', ''].join(nl);
+    // Over two lines below an empty first value: B7 gave it a new ID on the key line and
+    // left both lines below it (R-1 keeps the one-line ID with a line below it as B7 read it).
+    const text = ['---', 'labnote_id:', '  LN-AAAAAAAA', '  continued', '---', 'body', ''].join(nl);
     const files = new Map([['a.labnote.md', text]]);
     const notices: { level: string; msg: string }[] = [];
     const counts = { asked: 0 };

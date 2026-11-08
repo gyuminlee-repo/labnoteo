@@ -72,6 +72,25 @@ export function readNoteId(content: string): string | undefined {
 }
 
 /**
+ * The valid ID on the `labnote_id:` line itself, as B7's readNoteId read it: lines
+ * continuing the value are not looked at. For paths that only read the ID (show it,
+ * move scans named after it) and write nothing, so they go on as B7 did; a path that
+ * writes the ID uses {@link readNoteId}.
+ */
+export function readKeyLineNoteId(content: string): string | undefined {
+  const lines = content.split(/\r?\n/);
+  const fm = frontMatterLines(lines);
+  if (!fm) return undefined;
+  for (let i = 1; i < fm.close; i++) {
+    const m = KEY_LINE_RE.exec(lines[i]);
+    if (!m) continue;
+    const value = m[1].trim().replace(/^(['"])(.*)\1$/, '$2').trim();
+    return isValidNoteId(value) ? value : undefined;
+  }
+  return undefined;
+}
+
+/**
  * The note's `labnote_id` value as written, valid or not (#478), unquoted and
  * trimmed; undefined without the line or with an empty value.
  */
