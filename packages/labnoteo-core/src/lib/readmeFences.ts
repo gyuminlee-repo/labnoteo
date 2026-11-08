@@ -18,6 +18,22 @@ export function readmeFenceSpans(lines: readonly string[]): [number, number][] {
   return [...closedFenceSpans(lines), ...closedFenceSpans(lines, line => line.trimStart())];
 }
 
+/**
+ * {@link readmeFencedLines} (`inCode`, either reading) and the lines in a closed fence
+ * indented up to three spaces alone (`plain`, the CommonMark reading), from the same two
+ * readings: a heading in a `plain` fence is no heading, while the any-indent reading only
+ * keeps lines from being touched and never hides a heading.
+ */
+export function readmeFencedReadings(lines: readonly string[]): { inCode: boolean[]; plain: boolean[] } {
+  const fill = (spans: readonly [number, number][]): boolean[] => {
+    const out = new Array<boolean>(lines.length).fill(false);
+    for (const [open, close] of spans) out.fill(true, open, close + 1);
+    return out;
+  };
+  const plainSpans = closedFenceSpans(lines);
+  return { inCode: fill([...plainSpans, ...closedFenceSpans(lines, line => line.trimStart())]), plain: fill(plainSpans) };
+}
+
 /** Whether each line lies in a closed fence of {@link readmeFenceSpans}, its fence lines included. */
 export function readmeFencedLines(lines: readonly string[]): boolean[] {
   const inCode = new Array<boolean>(lines.length).fill(false);

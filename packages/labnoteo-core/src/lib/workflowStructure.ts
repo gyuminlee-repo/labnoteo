@@ -516,6 +516,13 @@ function isEntryLineAt(lines: readonly string[], i: number): boolean {
 /** Heading words that name the "Related Workflows" section, after {@link normalizeHeadingText}. */
 const WORKFLOW_SECTION_NAMES = ['related workflows', '관련 워크플로'];
 
+/** Whether `line` is a `##` heading naming the "Related Workflows" section, as {@link findWorkflowSection} matches it. */
+export function isWorkflowSectionHeading(line: string): boolean {
+  if (!/^##\s/.test(line.trim())) return false;
+  const text = normalizeHeadingText(line.trim().replace(/^##\s+/, ''));
+  return WORKFLOW_SECTION_NAMES.some(name => text.includes(name));
+}
+
 /**
  * Find the "Related Workflows" header and the line the section ends on (the
  * next `## ` heading, or end of document). `header` is -1 when absent.
@@ -532,11 +539,7 @@ function findWorkflowSection(lines: readonly string[], skip?: readonly boolean[]
     for (let i = header + 1; i < lines.length; i++) if (isH2At(i)) return i;
     return lines.length;
   };
-  const named = lines.findIndex((line, i) => {
-    if (!isH2At(i)) return false;
-    const text = normalizeHeadingText(line.trim().replace(/^##\s+/, ''));
-    return WORKFLOW_SECTION_NAMES.some(name => text.includes(name));
-  });
+  const named = lines.findIndex((line, i) => isH2At(i) && isWorkflowSectionHeading(line));
   if (named !== -1) return { header: named, end: endOf(named) };
   for (let i = 0; i < lines.length; i++) {
     if (!isH2At(i)) continue;

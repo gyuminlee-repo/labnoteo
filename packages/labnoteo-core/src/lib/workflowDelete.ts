@@ -6,8 +6,14 @@
  * section. The filesystem side (moving the file to trash, sample cleanup) is
  * handled by the command; this module stays pure and unit-testable.
  */
-import { decodeChecklistLink, dropBlankLeftByEntries, workflowChecklistEntryLink, workflowChecklistSectionRange } from './workflowStructure';
-import { readmeFencedLines } from './readmeFences';
+import {
+  decodeChecklistLink,
+  dropBlankLeftByEntries,
+  isWorkflowSectionHeading,
+  workflowChecklistEntryLink,
+  workflowChecklistSectionRange,
+} from './workflowStructure';
+import { readmeFencedReadings } from './readmeFences';
 import { v442DeletedLines } from './workflowDeleteV442';
 import { normalizeHeadingText } from '../sections/sectionEdit';
 
@@ -85,16 +91,22 @@ export function removeWorkflowFromReadme(
   // Keep each line's terminator so untouched bytes survive even mixed endings.
   const lines = readmeContent.split(/(?<=\n)/);
   // The section the add path writes to (translated or renamed heading, #298)
-  // and every exact "Related Workflows" heading, found as the add path finds
-  // them, without regard to fences; within them a line in a closed fence is
-  // an example, not an entry, and stays.
-  // The same ranges once more with headings in a closed fence ignored, so an
-  // example heading cannot cut short a section v0.130.0 deleted from.
-  const inCode = readmeFencedLines(lines);
-  const ranges = [...exactSections(lines), ...exactSections(lines, inCode)];
-  for (const skip of [undefined, inCode]) {
+  // and every exact "Related Workflows" heading; within them a line in a closed
+  // fence (either reading) is an example, not an entry, and stays. A range starts
+  // only at a heading outside every closed fence, and headings in a closed fence
+  // of the CommonMark reading are ignored, so an example heading neither starts a
+  // section nor cuts one short. The add path's section is taken as it reads it and
+  // with those headings ignored; its pick of the first section holding an entry
+  // only when the add path makes that pick too (no heading names the section).
+  const { inCode, plain } = readmeFencedReadings(lines);
+  const ranges = exactSections(lines, plain).filter(r => !inCode[r.start - 1]);
+  const addPath = workflowChecklistSectionRange(readmeContent);
+  const addPathNamed = addPath !== undefined && isWorkflowSectionHeading(lines[addPath.header]);
+  for (const skip of [undefined, plain]) {
     const workflow = workflowChecklistSectionRange(readmeContent, skip);
-    if (workflow) ranges.push({ start: workflow.header + 1, end: workflow.end });
+    if (!workflow || inCode[workflow.header]) continue;
+    if (addPathNamed && !isWorkflowSectionHeading(lines[workflow.header])) continue;
+    ranges.push({ start: workflow.header + 1, end: workflow.end });
   }
   // Union with what main (#442) deletes, so this never removes less than main did.
   const drop = v442DeletedLines(readmeContent, lines, line => isChecklistLineForFile(line, fileName));
