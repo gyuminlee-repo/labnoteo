@@ -381,17 +381,19 @@ export class BarcodeFeature {
     if (!(file instanceof TFile)) return;
     const content = await this.app.vault.read(file);
     const noteId = readNoteId(content);
-    if (!noteId) {
-      // Its scans are named after an ID that cannot be read: say so rather than leave them.
-      if (!noteIdUnwritable(content)) return;
-      this.noteIds.warnUnwritable(file);
-      return 'refused';
-    }
+    if (!noteId && !noteIdUnwritable(content)) return;
     const fromExp = getExperimentDir(posix.join(fromDir, 'x.md')) ?? fromDir;
     const toExp = getExperimentDir(newPath) ?? toDir;
     if (fromExp === toExp) return;
     const source = this.app.vault.getAbstractFileByPath(posix.join(fromExp, SCANS_SUBFOLDER));
     if (!(source instanceof TFolder)) return;
+    if (!noteId) {
+      // Its scans are named after an ID that cannot be read: with scans to look through,
+      // say so rather than leave them. Without any there is nothing to move, as before.
+      if (!source.children.some(c => c instanceof TFile)) return;
+      this.noteIds.warnUnwritable(file);
+      return 'refused';
+    }
     const targetDir = posix.join(toExp, SCANS_SUBFOLDER);
     const target = this.app.vault.getAbstractFileByPath(targetDir);
     const taken = new Set(target instanceof TFolder ? target.children.map(c => c.name) : []);

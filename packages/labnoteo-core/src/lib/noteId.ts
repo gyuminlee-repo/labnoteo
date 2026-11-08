@@ -82,12 +82,13 @@ export function readRawNoteId(content: string): string | undefined {
   for (let i = 1; i < fm.close; i++) {
     const m = KEY_LINE_RE.exec(lines[i]);
     if (!m) continue;
-    // A value continued on the next lines (setFrontMatterKeys' rule: indented
-    // text or a `- ` item) reads whole, as YAML reads it, so `LN-X` followed by
-    // more is no valid ID. A block scalar (`|`, `>`) or a quoted value left
-    // open is no ID either way. Not detected: a quoted value going on at column 0.
+    // A value continued on the next lines ({@link continuesValue}: indented
+    // text, or a `- ` item under an empty first value) reads whole, as YAML
+    // reads it, so `LN-X` followed by more is no valid ID. A block scalar
+    // (`|`, `>`) or a quoted value left open is no ID either way. Not
+    // detected: a quoted value going on at column 0.
     let end = i + 1;
-    while (end < fm.close && continuesValue(lines[end])) end++;
+    while (end < fm.close && continuesValue(lines[end], m[1])) end++;
     if (end > i + 1) return [m[1], ...lines.slice(i + 1, end)].map(l => l.trim()).join(' ').trim() || undefined;
     const value = m[1].trim().replace(/^(['"])(.*)\1$/, '$2').trim();
     return value || undefined;
@@ -109,11 +110,16 @@ export function noteIdUnwritable(content: string): boolean {
 }
 
 /**
- * Whether `line` continues the value of the key above it: indented by ASCII
- * spaces or tabs and not a comment, or a `- ` item. A line indented by another
- * space (NBSP, U+3000), or a `-` followed by one, is a key of its own.
+ * Whether `line` continues the value of the `labnote_id:` key above it, whose
+ * own line holds `keyValue`: indented by ASCII spaces or tabs and not a
+ * comment, or a `- ` item at column 0 when `keyValue` is empty (a comment
+ * aside), as a block sequence is. Under a key with a value such an item is a
+ * YAML error, not more of the value, and the value reads as before. A line
+ * indented by another space (NBSP, U+3000), or a `-` followed by one, is a
+ * key of its own.
  */
-const continuesValue = (line: string): boolean => /^[ \t]+[^\s#]/.test(line) || /^-([ \t]|$)/.test(line);
+const continuesValue = (line: string, keyValue: string): boolean =>
+  /^[ \t]+[^\s#]/.test(line) || (/^(?:[ \t]+#.*)?[ \t]*$/.test(keyValue) && /^-([ \t]|$)/.test(line));
 
 /**
  * Whether the `labnote_id:` line `i` holds its whole value on that line: not
@@ -123,9 +129,10 @@ const continuesValue = (line: string): boolean => /^[ \t]+[^\s#]/.test(line) || 
  */
 function oneLineScalarAt(lines: readonly string[], i: number, close: number): boolean {
   const next = i + 1 < close ? lines[i + 1] : '';
-  if (continuesValue(next)) return false;
+  const keyValue = KEY_LINE_RE.exec(lines[i])?.[1] ?? '';
+  if (continuesValue(next, keyValue)) return false;
   // The value after its node properties (`!tag`, `&anchor`), if any.
-  const value = (KEY_LINE_RE.exec(lines[i])?.[1] ?? '').trim().replace(/^(?:[!&]\S*[ \t]+)*/, '');
+  const value = keyValue.trim().replace(/^(?:[!&]\S*[ \t]+)*/, '');
   if (/^[|>]/.test(value)) return false;
   // A quote is refused only when it does not close on the line; what follows it is as before.
   if (value.startsWith("'")) return /^'(?:[^']|'')*'/.test(value);
