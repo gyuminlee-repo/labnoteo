@@ -11,10 +11,11 @@ import {
   escapeRegExp,
   WORKFLOW_FILE_NAME_MAX,
 } from './regexUtils';
-import { frontMatterNames, parseFrontMatterYaml, serializeFrontMatterEntry } from '../sections/frontMatter';
+import { frontMatterNames, lineEdits, parseFrontMatterYaml, serializeFrontMatterEntry } from '../sections/frontMatter';
 import { normalizeHeadingText, stepFence, type OpenFence } from '../sections/sectionEdit';
-import { addsLastCr, joinSplitKeepingCr, splitKeepingCr } from '../util/lineEnds';
-import { positionOutsideFences } from './readmeFences';
+import { markdownCodeLines, mayHaveFences } from '../sections/codeFences';
+import { addsLastCr, joinLineBuffer, joinSplitKeepingCr, spliceLineBuffer, splitKeepingCr, splitLineBuffer } from '../util/lineEnds';
+import { positionOutsideFences, readmeFencedLines } from './readmeFences';
 import { generateNoteId, NOTE_ID_KEY } from './noteId';
 import { underscoreTurnsItalic } from './sampleUtils';
 import { findSampleReferenceSpans } from './sampleStorage';
@@ -1613,14 +1614,15 @@ export function rewriteWorkflowTitle(
   alias: string,
   parts: { title?: boolean; heading?: boolean } = {}
 ): string {
-  const newline = content.includes('\r\n') ? '\r\n' : '\n';
-  const lines = content.split(/\r?\n/);
+  // Every line not rewritten keeps its own line break, even in mixed endings.
+  const buf = splitLineBuffer(content);
+  const { lines } = buf;
   const suffix = alias.trim() ? ` ${alias.trim()}` : '';
 
   if (parts.title !== false && lines[0]?.trim() === '---') {
     for (let i = 1; i < lines.length && lines[i].trim() !== '---'; i++) {
       if (/^title\s*:/.test(lines[i])) {
-        lines[i] = serializeFrontMatterEntry('title', `${id} ${name}${suffix}`);
+        spliceLineBuffer(buf, i, 1, [serializeFrontMatterEntry('title', `${id} ${name}${suffix}`)]);
         break;
       }
     }
@@ -1630,7 +1632,7 @@ export function rewriteWorkflowTitle(
     const at = lines.findIndex(l => h2.test(l));
     if (at !== -1) lines[at] = `## [${id} ${name}]${suffix}`;
   }
-  return lines.join(newline);
+  return joinLineBuffer(buf);
 }
 
 /**
@@ -1926,6 +1928,63 @@ export function relabelWorkflowChecklistEntries(
 }
 
 /**
+ * Add to `drop` (the entry lines going) the one blank line next to each run
+ * of them that would otherwise leave two blank lines in a row (the one after
+ * the run) or, when the README ends in a newline, a blank line ending it (the
+ * blank lines right before a run that ends it). Lines from `contentEnd` on
+ * are the empty rest after a final newline. No other blank line is touched,
+ * nor one that may be code: in a fence as any reading has it (line by line,
+ * closed fences at any indent, or {@link markdownCodeLines}).
+ */
+export function dropBlankLeftByEntries(
+  lines: readonly string[],
+  drop: Set<number>,
+  contentEnd: number,
+  endsInNewline: boolean
+): void {
+  if (drop.size === 0) return;
+  // No fence marker anywhere: no blank line may be code, so the readings are not run.
+  const fences = mayHaveFences(lines);
+  // Fences read from after the front matter (no Markdown), whose lines are no entries' neighbours.
+  const fmEnd = lines[0]?.trim() === '---' ? lines.findIndex((l, i) => i > 0 && l.trim() === '---') : -1;
+  const maybeCode: boolean[] = new Array<boolean>(fmEnd + 1).fill(false);
+  if (fences) {
+    // Only the lines up to just past the last entry going can be the blank lines asked about.
+    // The line-by-line readings of a line need no line below it; the closed-blocks readings
+    // do only for a fence still open there (in either reading), so they read past it then.
+    let lastDrop = 0;
+    for (const i of drop) if (i > lastDrop) lastDrop = i;
+    const limit = Math.min(lines.length, lastDrop + 2);
+    const head = lines.slice(fmEnd + 1, limit);
+    let plain: OpenFence | null = null;
+    let anyIndent: OpenFence | null = null;
+    for (const line of head) {
+      plain = stepFence(line, plain);
+      anyIndent = stepFence(line.trimStart(), anyIndent);
+    }
+    const closed = readmeFencedLines(plain === null && anyIndent === null ? head : lines.slice(fmEnd + 1));
+    const markdown = markdownCodeLines(lines.slice(0, limit).map(line => line.replace(/\r?\n$|\r$/, '')));
+    let fence: OpenFence | null = null;
+    head.forEach((line, i) => {
+      const next = stepFence(line, fence);
+      maybeCode.push(fence !== null || next !== null || closed[i] || markdown[fmEnd + 1 + i]);
+      fence = next;
+    });
+  }
+  const blank = (i: number): boolean => i >= 0 && i < contentEnd && !drop.has(i) && lines[i].trim() === '' && !maybeCode[i];
+  const entries = [...drop].sort((x, y) => x - y);
+  for (let k = 0; k < entries.length; k++) {
+    const first = entries[k];
+    while (k + 1 < entries.length && entries[k + 1] === entries[k] + 1) k++;
+    const last = entries[k];
+    if (!blank(first - 1)) continue;
+    if (blank(last + 1)) drop.add(last + 1);
+    // Without a final newline the line left last loses its line break instead.
+    else if (last === contentEnd - 1 && endsInNewline) for (let i = first - 1; blank(i); i--) drop.add(i);
+  }
+}
+
+/**
  * Remove the "Related Workflows" checklist entries whose link is exactly one of
  * `links` (as parsed, without a leading `./`). Unlike `removeWorkflowFromReadme`
  * this does not compare base names, so removing `../002_B/001_X.labnote.md`
@@ -1943,7 +2002,12 @@ export function removeWorkflowChecklistEntries(
       .filter(e => wanted.has(decodeChecklistLink(e.link)))
       .map(e => e.index)
   );
-  return drop.size === 0 ? readmeContent : joinSplitKeepingCr(readmeContent, lines.filter((_, i) => !drop.has(i)));
+  // Nothing to remove: no blank line goes either, so the fence readings are not run.
+  if (drop.size === 0) return readmeContent;
+  // Split on `\n`, a final newline leaves an empty last element after the content.
+  const ends = readmeContent.endsWith('\n');
+  dropBlankLeftByEntries(lines, drop, ends ? lines.length - 1 : lines.length, ends);
+  return joinSplitKeepingCr(readmeContent, lines.filter((_, i) => !drop.has(i)));
 }
 
 /**
@@ -2052,16 +2116,16 @@ export function planWorkflowExperimenterSync(
   const from = frontMatterNames(frontMatter.experimenter).join(', ');
   if (from !== '') return undefined;
 
-  const newline = content.includes('\r\n') ? '\r\n' : '\n';
-  const lines = content.split(/\r?\n/);
+  // Every line not rewritten keeps its own line break, even in mixed endings.
+  const buf = splitLineBuffer(content);
+  const { lines } = buf;
   let fmEnd = lines.findIndex((l, i) => i > 0 && l.trim() === '---');
   if (lines[0]?.trim() !== '---' || fmEnd === -1) return undefined;
   for (let i = 1; i < fmEnd; i++) {
     if (!/^experimenter\s*:/.test(lines[i])) continue;
-    lines[i] = serializeFrontMatterEntry('experimenter', to);
     let end = i + 1;
     while (end < fmEnd && /^(?:\s+\S|-\s|-$)/.test(lines[end])) end++;
-    lines.splice(i + 1, end - i - 1);
+    spliceLineBuffer(buf, i, end - i, [serializeFrontMatterEntry('experimenter', to)]);
     fmEnd -= end - i - 1;
   }
   // Experimenter lines to rewrite, grouped by unit op, and which unit ops ended.
@@ -2113,7 +2177,7 @@ export function planWorkflowExperimenterSync(
     }
     if (block.unreadable && block.lines.length > 0) unreadableEndDates.push({ unitOp: block.name, value: block.unreadable });
   }
-  const next = lines.join(newline);
+  const next = joinLineBuffer(buf);
   return next === content
     ? undefined
     : {
@@ -2137,13 +2201,17 @@ export function planWorkflowExperimenterSync(
  * touched. Returns the content unchanged when there is nothing to reset.
  */
 export function resetCopiedWorkflowDates(content: string, today: string): string {
-  const newline = content.includes('\r\n') ? '\r\n' : '\n';
-  const lines = content.split(/\r?\n/);
+  // Every line not rewritten keeps its own line break, even in mixed endings.
+  const buf = splitLineBuffer(content);
+  const { lines } = buf;
   const fmEnd = lines[0]?.trim() === '---' ? lines.findIndex((l, i) => i > 0 && l.trim() === '---') : -1;
+  // In one pass, so a front matter of many date keys costs its length (see lineEdits).
+  const { edit, apply } = lineEdits(buf);
   for (let i = 1; i < fmEnd; i++) {
     const key = /^(created_date|last_updated_date|end_date)\s*:/.exec(lines[i])?.[1];
-    if (key) lines[i] = serializeFrontMatterEntry(key, key === 'end_date' ? '' : today);
+    if (key) edit(i, 1, [serializeFrontMatterEntry(key, key === 'end_date' ? '' : today)]);
   }
+  apply();
   let fence: OpenFence | null = null;
   for (let i = fmEnd + 1; i < lines.length; i++) {
     const next = stepFence(lines[i], fence);
@@ -2158,7 +2226,7 @@ export function resetCopiedWorkflowDates(content: string, today: string): string
       ? line.slice(0, date.valueStart) + line.slice(date.valueEnd)
       : `${line.slice(0, date.valueStart)}''${line.slice(date.valueEnd)}`;
   }
-  const next = lines.join(newline);
+  const next = joinLineBuffer(buf);
   return next === content ? content : next;
 }
 

@@ -6,7 +6,7 @@
  * section. The filesystem side (moving the file to trash, sample cleanup) is
  * handled by the command; this module stays pure and unit-testable.
  */
-import { decodeChecklistLink, workflowChecklistEntryLink, workflowChecklistSectionRange } from './workflowStructure';
+import { decodeChecklistLink, dropBlankLeftByEntries, workflowChecklistEntryLink, workflowChecklistSectionRange } from './workflowStructure';
 import { readmeFencedLines } from './readmeFences';
 import { v442DeletedLines } from './workflowDeleteV442';
 import { normalizeHeadingText } from '../sections/sectionEdit';
@@ -107,6 +107,7 @@ export function removeWorkflowFromReadme(
   if (drop.size === 0) {
     return { changed: false, content: readmeContent };
   }
+  dropBlankLeftByEntries(lines, drop, lines.length, readmeContent.endsWith('\n'));
 
   const kept = lines.filter((_, i) => !drop.has(i));
   // A README without a final newline still has none when its last line goes.

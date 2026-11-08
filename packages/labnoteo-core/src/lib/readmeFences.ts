@@ -7,42 +7,15 @@
  * they used to see.
  *
  * A line is inside when either reading puts it there: fences indented up to
- * three spaces ({@link stepFence} as is), or fences at any indent (the line
+ * three spaces ({@link closedFenceSpans} as is), or fences at any indent (the line
  * with its indent dropped, as under a list entry). An opener that is never
  * closed is not a fence. Each reading is one linear pass.
  */
-import { stepFence, type OpenFence } from '../sections/sectionEdit';
-
-/** `[opener, closer]` line pairs of the closed fences in one reading of `lines`. */
-function fenceSpans(lines: readonly string[], read: (line: string) => string): [number, number][] {
-  const n = lines.length;
-  const openers: (OpenFence | null)[] = lines.map(line => stepFence(read(line), null));
-  // nearest[char][length]: the first closing line below, for an opener of that run length or shorter.
-  const nearest = new Map<string, number[]>();
-  const closeAfter = new Array<number>(n).fill(-1);
-  for (let i = n - 1; i >= 0; i--) {
-    const open = openers[i];
-    if (open) closeAfter[i] = nearest.get(open.char)?.[open.length] ?? -1;
-    // A bare run (nothing after it) closes any open fence of its character no longer than itself.
-    if (open && stepFence(read(lines[i]), open) === null) {
-      const byLength = nearest.get(open.char) ?? [];
-      for (let len = 3; len <= open.length; len++) byLength[len] = i;
-      nearest.set(open.char, byLength);
-    }
-  }
-  const spans: [number, number][] = [];
-  for (let i = 0; i < n; ) {
-    if (openers[i] && closeAfter[i] !== -1) {
-      spans.push([i, closeAfter[i]]);
-      i = closeAfter[i] + 1;
-    } else i++;
-  }
-  return spans;
-}
+import { closedFenceSpans } from '../sections/codeFences';
 
 /** Closed fences of `lines` as `[opener, closer]` pairs, in either reading (they may overlap). */
 export function readmeFenceSpans(lines: readonly string[]): [number, number][] {
-  return [...fenceSpans(lines, line => line), ...fenceSpans(lines, line => line.trimStart())];
+  return [...closedFenceSpans(lines), ...closedFenceSpans(lines, line => line.trimStart())];
 }
 
 /** Whether each line lies in a closed fence of {@link readmeFenceSpans}, its fence lines included. */
