@@ -8,7 +8,8 @@
  * unit-op blocks at the cursor and keeps the TOC in sync with these targeted
  * helpers.
  */
-import { normalizeHeadingText } from './sectionEdit';
+import { normalizeHeadingText, stepFence, type OpenFence } from './sectionEdit';
+import { joinLineBuffer, spliceLineBuffer, splitLineBuffer } from '../util/lineEnds';
 
 export const UNIT_OP_HEADING_PATTERN = /^###\s+\[([A-Z]+\d+)\s+(.+?)\]\s*(.*)/;
 
@@ -183,8 +184,9 @@ export function appendUnitOpToWorkflowToc(
   opName: string,
   alias?: string
 ): string {
-  const newline = md.includes('\r\n') ? '\r\n' : '\n';
-  const lines = md.split(/\r?\n/);
+  // Every other line keeps its own line break, even in mixed endings.
+  const buf = splitLineBuffer(md);
+  const { lines } = buf;
 
   const headingIdx = findUnitOpSection(scanLines(md));
   if (headingIdx === -1) return md;
@@ -200,13 +202,54 @@ export function appendUnitOpToWorkflowToc(
 
   const entryLine = buildUnitOpTocLine(opId, opName, alias);
 
+  const isEntry = (j: number): boolean => /^\s*- \[/.test(lines[j]);
   let lastEntry = -1;
   for (let j = headingIdx + 1; j < endIdx; j++) {
-    if (/^\s*- \[/.test(lines[j])) lastEntry = j;
+    if (isEntry(j)) lastEntry = j;
+  }
+
+  // A last `- [` line in a code example (fences read line by line): the entry
+  // goes after the last one before it out of every fence, or nowhere when none
+  // is. Only a fence opened unindented in the section and closed there counts, and
+  // only when no fence line before it was indented: an indented one may belong
+  // to a list item and end with it (CommonMark), which this reading does not see.
+  // Nor after a line that may start an HTML block (`<` at up to three spaces): a
+  // fence in an HTML block is no code there. Nor when a fence closes on a line with
+  // anything but spaces and tabs after its run (an NBSP, say): this reading takes
+  // that for a closer, CommonMark does not. Nor when a line holds a lone CR: CommonMark
+  // ends a line there, this reading (split on LF) does not.
+  if (lastEntry !== -1) {
+    const opener: number[] = [];
+    const closed = new Set<number>();
+    let fence: OpenFence | null = null;
+    let at = -1;
+    let indented = false;
+    let oddClose = false;
+    for (let j = 0; j < endIdx; j++) {
+      const next = stepFence(lines[j], fence);
+      if (next !== fence && j < lastEntry && /^\s/.test(lines[j])) indented = true;
+      if (fence === null && next !== null) at = j;
+      opener.push(fence !== null || next !== null ? at : -1);
+      if (fence !== null && next === null) {
+        closed.add(at);
+        if (!/^ {0,3}(`{3,}|~{3,})[ \t]*$/.test(lines[j])) oddClose = true;
+      }
+      fence = next;
+    }
+    const html = lines.slice(0, lastEntry).some(l => /^ {0,3}</.test(l));
+    const loneCr = lines.slice(0, endIdx).some(l => l.includes('\r'));
+    const inCode = (j: number): boolean =>
+      !indented && !html && !oddClose && !loneCr && opener[j] > headingIdx && closed.has(opener[j]) && /^[`~]/.test(lines[opener[j]]);
+    if (inCode(lastEntry)) {
+      let alt = -1;
+      for (let j = lastEntry - 1; j > headingIdx && alt === -1; j--) if (isEntry(j) && opener[j] === -1) alt = j;
+      if (alt === -1) return md;
+      lastEntry = alt;
+    }
   }
 
   if (lastEntry !== -1) {
-    lines.splice(lastEntry + 1, 0, entryLine);
+    spliceLineBuffer(buf, lastEntry + 1, 0, [entryLine]);
   } else {
     let insertAt = headingIdx + 1;
     // Skip the single blank line that follows the heading.
@@ -214,10 +257,10 @@ export function appendUnitOpToWorkflowToc(
     const toInsert = [entryLine];
     // Keep a blank separator before following non-blank prose.
     if (lines[insertAt] !== undefined && lines[insertAt].trim() !== '') toInsert.push('');
-    lines.splice(insertAt, 0, ...toInsert);
+    spliceLineBuffer(buf, insertAt, 0, toInsert);
   }
 
-  return lines.join(newline);
+  return joinLineBuffer(buf);
 }
 
 /**
@@ -548,17 +591,39 @@ function scanUnitOpToc(md: string): UnitOpTocScan | null {
 function tocEdit(md: string, scan: UnitOpTocScan): TextEdit | null {
   const { lines, newline, headingIdx, entryIdxs } = scan;
   const entries = entriesWithTails(scan);
+  // The line break after line `j` as written (mixed endings stay), or for the
+  // last line the one before it; new lines take the break of the line above.
+  const breakAfter = (j: number): string =>
+    j + 1 < lines.length ? md.slice(lines[j].end, lines[j + 1].start) : j > 0 ? md.slice(lines[j - 1].end, lines[j].start) : newline;
 
   if (entryIdxs.length > 0) {
     const first = entryIdxs[0];
     const last = entryIdxs[entryIdxs.length - 1];
-    const kept: string[] = [];
-    for (let j = first; j <= last; j++) {
-      if (!isTocEntry(lines[j])) kept.push(lines[j].text);
-    }
+    // The break a line ended with, '' for the last line of the note.
+    const own = (j: number): string => (j + 1 < lines.length ? md.slice(lines[j].end, lines[j + 1].start) : '');
+    // The ordered entries, then the interleaved lines. An entry rebuilt from
+    // an existing one, and every interleaved line, keeps that line's break; a
+    // new entry takes the break of the line above it.
+    const pairs = pairTocEntries(scan);
+    const out: { text: string; end: string }[] = [];
+    let above = breakAfter(first - 1);
+    const push = (text: string, end: string): void => {
+      out.push({ text, end: end || above });
+      above = end || above;
+    };
+    entries.forEach((text, k) => {
+      const idx = pairs.get(k);
+      push(text, idx === undefined ? '' : own(idx));
+    });
+    for (let j = first; j <= last; j++) if (!isTocEntry(lines[j])) push(lines[j].text, own(j));
+    // The range runs to the next line, so the line now last carries its own break too.
+    // With no line left, the break the last entry ended on stays, so the text
+    // above does not run into what follows (a `---` would make it a heading).
+    const toEnd = out.length === 0 || last + 1 >= lines.length;
+    const text = out.map((l, k) => l.text + (toEnd && k === out.length - 1 ? '' : l.end)).join('');
     const from = lines[first].start;
-    const to = lines[last].end;
-    const d = minimalReplacement(md.slice(from, to), [...entries, ...kept].join(newline));
+    const to = toEnd ? lines[last].end : lines[last + 1].start;
+    const d = minimalReplacement(md.slice(from, to), text);
     return d && { from: from + d.start, to: from + d.end, insert: d.text };
   }
 
@@ -566,10 +631,11 @@ function tocEdit(md: string, scan: UnitOpTocScan): TextEdit | null {
   let insertAt = headingIdx + 1;
   if (lines[insertAt] !== undefined && lines[insertAt].text.trim() === '') insertAt++;
   const target = lines[insertAt];
-  if (!target) return { from: md.length, to: md.length, insert: newline + entries.join(newline) };
+  const above = breakAfter(insertAt - 1);
+  if (!target) return { from: md.length, to: md.length, insert: above + entries.join(above) };
   // Keep a blank separator before following non-blank prose.
-  const gap = target.text.trim() !== '' ? newline : '';
-  return { from: target.start, to: target.start, insert: entries.join(newline) + newline + gap };
+  const gap = target.text.trim() !== '' ? above : '';
+  return { from: target.start, to: target.start, insert: entries.join(above) + above + gap };
 }
 
 /**
