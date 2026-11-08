@@ -10,6 +10,7 @@
  */
 import { normalizeHeadingText, stepFence, type OpenFence } from './sectionEdit';
 import { joinLineBuffer, spliceLineBuffer, splitLineBuffer } from '../util/lineEnds';
+import { frontMatterLineCount } from './frontMatter';
 
 export const UNIT_OP_HEADING_PATTERN = /^###\s+\[([A-Z]+\d+)\s+(.+?)\]\s*(.*)/;
 
@@ -225,8 +226,10 @@ export function appendUnitOpToWorkflowToc(
     let at = -1;
     let indented = false;
     let oddClose = false;
+    // No fence in the front matter, as scanLines reads it.
+    const frontMatter = frontMatterLineCount(md);
     for (let j = 0; j < endIdx; j++) {
-      const next = stepFence(lines[j], fence);
+      const next: OpenFence | null = j < frontMatter ? fence : stepFence(lines[j], fence);
       if (next !== fence && j < lastEntry && /^\s/.test(lines[j])) indented = true;
       if (fence === null && next !== null) at = j;
       opener.push(fence !== null || next !== null ? at : -1);
@@ -397,14 +400,16 @@ interface MdLine {
 /** Split into lines with offsets, marking ``` / ~~~ fenced code (fence lines included). */
 function scanLines(md: string): MdLine[] {
   const lines: MdLine[] = [];
-  // Fences read as stepFence reads them, so a backtick run with a backtick in its info is text.
+  // Fences read as stepFence reads them, so a backtick run with a backtick in its info is text;
+  // none in the front matter, which Obsidian reads as properties.
+  const frontMatter = frontMatterLineCount(md);
   let fence: OpenFence | null = null;
   let start = 0;
   for (;;) {
     const nl = md.indexOf('\n', start);
     const end = nl === -1 ? md.length : nl > start && md[nl - 1] === '\r' ? nl - 1 : nl;
     const text = md.slice(start, end);
-    const next = stepFence(text, fence);
+    const next: OpenFence | null = lines.length < frontMatter ? fence : stepFence(text, fence);
     const fenced = fence !== null || next !== null;
     fence = next;
     lines.push({ start, end, text, fenced });

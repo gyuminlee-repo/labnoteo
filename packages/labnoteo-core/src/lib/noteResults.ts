@@ -8,7 +8,7 @@
  * added themselves.
  */
 import { stepFence, type OpenFence } from '../sections/sectionEdit';
-import { stripFrontMatter } from '../sections/frontMatter';
+import { frontMatterLineCount } from '../sections/frontMatter';
 import { HW_PLACEHOLDERS, SW_PLACEHOLDERS } from './unitOpTemplate';
 import { stripAiCallouts } from './aiCallout';
 import { stripIssueMarkers } from './issueMarker';
@@ -66,10 +66,12 @@ const isTemplateSection = (s: HeadingSection): boolean => TEMPLATE_HEADINGS.has(
 function sections(md: string): HeadingSection[] {
   const out: HeadingSection[] = [];
   const unitOpLine = unitOpSectionLine(md);
+  // No fence in the front matter, as unitOpSectionLine reads it.
+  const frontMatter = frontMatterLineCount(md);
   let fence: OpenFence | null = null;
   let current: HeadingSection | null = null;
   for (const [i, line] of md.split(/\r?\n/).entries()) {
-    const next = stepFence(line, fence);
+    const next: OpenFence | null = i < frontMatter ? fence : stepFence(line, fence);
     const inFence = fence !== null || next !== null;
     fence = next;
     const heading = inFence ? null : HEADING_RE.exec(line);
@@ -160,7 +162,11 @@ export function hasRecordedResults(md: string): boolean {
  * Empty when nothing is written in.
  */
 export function extractResultSections(md: string): string {
-  const text = stripIssueMarkers(stripTemplatePlaceholders(stripAiCallouts(stripFrontMatter(md))));
+  // The front matter's lines left blank rather than cut, so a `---` block the body starts with
+  // is not read as front matter in its place: nothing of the front matter is read, as before.
+  const frontMatter = frontMatterLineCount(md);
+  const body = frontMatter === 0 ? md : md.split('\n').map((line, i) => (i < frontMatter ? '' : line)).join('\n');
+  const text = stripIssueMarkers(stripTemplatePlaceholders(stripAiCallouts(body)));
   const out: string[] = [];
   for (const { block, title, body } of resultSectionsOf(text)) {
     if (!written(body)) continue;

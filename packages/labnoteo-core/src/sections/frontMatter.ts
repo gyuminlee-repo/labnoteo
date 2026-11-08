@@ -25,6 +25,17 @@ export function stripFrontMatter(md: string): string {
 }
 
 /**
+ * How many lines at the top of `md` are its front matter, `---` lines included, as
+ * {@link stripFrontMatter} finds it (0 without one). Obsidian reads them as properties,
+ * so a fence-like line there opens no code block in the note.
+ */
+export function frontMatterLineCount(md: string): number {
+  const head = md.slice(0, md.length - stripFrontMatter(md).length);
+  if (head === '') return 0;
+  return head.split('\n').length - (head.endsWith('\n') ? 1 : 0);
+}
+
+/**
  * Parse a `---` front-matter block using a real YAML parser (js-yaml).
  *
  * The previous line-based parser silently dropped YAML list items (Obsidian
