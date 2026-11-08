@@ -667,14 +667,13 @@ export function insertWorkflowChecklistEntries(
     // Past the last line, stay before the empty element a final newline leaves.
     // The new line (and a blank separator after it) ends as the line before
     // it did: CRLF only after a real CRLF break. After the lone CR that ends
-    // the README it ends as the README's lines do, CRLF in one with any, so
-    // that line is left as it was (as main wrote it). At the very end that
-    // gives no CR the join would leave behind.
+    // the README it ends as the section heading does, as main wrote every new
+    // line, and that line is left as it was. At the very end that gives no CR
+    // the join would leave behind.
     const insertAt = (at: number, separator = false): void => {
       const pos = at === lines.length && lines[at - 1] === '' ? at - 1 : at;
       const before = pos - 1;
-      const crlf =
-        crTextLast.has(lines) && before === lines.length - 1 ? readmeContent.includes('\r\n') : lines[before].endsWith('\r');
+      const crlf = (crTextLast.has(lines) && before === lines.length - 1 ? lines[header] : lines[before]).endsWith('\r');
       const eol = crlf ? '\r' : '';
       lines.splice(pos, 0, render(eol), ...(separator ? [eol] : []));
     };
