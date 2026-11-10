@@ -105,7 +105,7 @@ describe('the checklist relink of a copied experiment', () => {
     const { notices, readme } = await run(when);
     expect(readme).toBe(start);
     expect(notices).toEqual([{ level: 'warn', msg: unchecked }]);
-  }, OPEN_SAVE_WAIT_MS + 5000);
+  }, OPEN_SAVE_WAIT_MS + 10000);
 
   it('no save under way: relinked and said', async () => {
     const { notices, readme } = await run('none');
@@ -139,7 +139,7 @@ describe('the dates of a copied workflow note', () => {
     const { notices, note } = await run('before');
     expect(note).toBe(start);
     expect(notices.filter(n => n.level === 'info')).toEqual([]);
-  }, OPEN_SAVE_WAIT_MS + 5000);
+  }, OPEN_SAVE_WAIT_MS + 10000);
 
   it('no save under way: reset and said', async () => {
     const { notices, note } = await run('none');

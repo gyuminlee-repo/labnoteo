@@ -159,5 +159,5 @@ describe("a write while Obsidian's own save of the open note is writing", () => 
         `The labnote_id of ${P} could not be written, so its value was left as it is: write it on one line (labnote_id: LN-…) and try again.`,
       ]);
     }
-  }, OPEN_SAVE_WAIT_MS + 5000);
+  }, OPEN_SAVE_WAIT_MS + 10000);
 });

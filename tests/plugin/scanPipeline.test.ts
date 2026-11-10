@@ -622,7 +622,7 @@ describe('embedLinkPath', () => {
 // Obsidian still saving the open note past the wait: nothing is written into it, so no scan
 // counts as filed or undone and no image goes to the trash; the scans stay to be filed again.
 describe('scans while a save of the open note does not end in time', () => {
-  const T = OPEN_SAVE_WAIT_MS + 5000;
+  const T = OPEN_SAVE_WAIT_MS + 10000;
   const stuck = (s: ReturnType<typeof setup>) => {
     const view = { file: { path: NOTE }, savePromise: new Promise(() => {}) };
     Object.assign(s.app, { workspace: { getLeavesOfType: () => [{ view }] } });

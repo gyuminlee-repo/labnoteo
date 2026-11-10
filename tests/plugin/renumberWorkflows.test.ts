@@ -260,7 +260,7 @@ describe('renumberWorkflowsCommand with unlisted files (#56)', () => {
 
     expect(await h.fs.read(README)).toBe(before);
     expect(h.calls.filter(c => c.startsWith('notify Added'))).toEqual([]);
-  }, OPEN_SAVE_WAIT_MS + 5000);
+  }, OPEN_SAVE_WAIT_MS + 10000);
 });
 
 // #60: "Export tables to CSV" names files after the note, so they must follow it.

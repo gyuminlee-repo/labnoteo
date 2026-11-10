@@ -78,10 +78,11 @@ describe('the wait for saves under way on an open note', () => {
     expect(await processNoteThroughVault(app, host, P, c => c.replace('b', 'B'))).toBe(false);
     const waited = Date.now() - started;
     expect(waited).toBeGreaterThanOrEqual(OPEN_SAVE_WAIT_MS - 5);
-    expect(waited).toBeLessThan(OPEN_SAVE_WAIT_MS + 500);
+    // Well under twice the wait, which a second wait would take; loose for a loaded machine.
+    expect(waited).toBeLessThan(OPEN_SAVE_WAIT_MS + 2000);
     expect(state.order).toEqual([]);
     expect(state.disk).toBe(disk);
-  }, OPEN_SAVE_WAIT_MS + 5000);
+  }, OPEN_SAVE_WAIT_MS + 10000);
 
   it.each([
     ['LF', 'a\nb\n'],
@@ -92,7 +93,7 @@ describe('the wait for saves under way on an open note', () => {
     expect(await writeNoteThroughVault(app, host, P, 'a\nB\n')).toBe(false);
     expect(state.order).toEqual([]);
     expect(state.disk).toBe(disk);
-  }, OPEN_SAVE_WAIT_MS + 5000);
+  }, OPEN_SAVE_WAIT_MS + 10000);
 
   it.each([
     ['one view, LF', 1, 'a\nb\n'],

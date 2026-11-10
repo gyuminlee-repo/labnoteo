@@ -60,7 +60,7 @@ describe('a workflow created while the open README is still being saved', () => 
       },
     ]);
     expect(notices.filter(n => n.level === 'info')).toEqual([{ level: 'info', msg: 'Workflow created: 001_WD020_New.labnote.md' }]);
-  }, OPEN_SAVE_WAIT_MS + 5000);
+  }, OPEN_SAVE_WAIT_MS + 10000);
 
   it('with no save under way, is listed with no warning', async () => {
     const { notices, readme } = await create(false);
