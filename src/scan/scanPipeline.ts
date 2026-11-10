@@ -376,7 +376,7 @@ export class ScanPipeline {
           (await changeNotWritten(this.deps.host, notePath, apply))
         ) {
           // Not written: a save of the open note did not end in time.
-          failure = 'Error: the note was still being saved, so the scans were not written into it';
+          failure = this.deps.t('The note was still being saved, so the scans were not written into it.');
         } else {
           this.deps.markUserEdit(notePath);
         }

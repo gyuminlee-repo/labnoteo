@@ -3,7 +3,9 @@ import type { App } from 'obsidian';
 import { zipSync, strToU8 } from 'fflate';
 import { TFile, TFolder } from '../stubs/obsidian';
 import type { LabnoteHost } from '../../packages/labnoteo-core/src';
-import { formatMessage } from '../../packages/labnoteo-core/src/i18n/translator';
+import { createTranslator, formatMessage } from '../../packages/labnoteo-core/src/i18n/translator';
+import type { Translator } from '../../packages/labnoteo-core/src/i18n/translator';
+import obsidianKo from '../../src/l10n.ko';
 import { createWorkflowContent } from '../../packages/labnoteo-core/src/lib/workflowStructure';
 import { buildHwUnitOpMarkdown } from '../../packages/labnoteo-core/src/lib/unitOpTemplate';
 import { readNoteId } from '../../packages/labnoteo-core/src/lib/noteId';
@@ -141,13 +143,18 @@ function decoderFor(pages: Record<string, DecodedPage[] | Error>): PageDecoder {
 
 const input = (name: string): ScanInput => ({ name, bytes: new ArrayBuffer(0) });
 
-function setup(notes: Record<string, string>, pages: Record<string, DecodedPage[] | Error>, embedWidth = 0) {
+function setup(
+  notes: Record<string, string>,
+  pages: Record<string, DecodedPage[] | Error>,
+  embedWidth = 0,
+  t: Translator = (key, ...args) => formatMessage(key, args)
+) {
   const v = fakeVault(notes);
   const edits: string[] = [];
   const pipeline = new ScanPipeline({
     app: v.app,
     host: v.host,
-    t: (key, ...args) => formatMessage(key, args),
+    t,
     noteIds: new NoteIdService(v.app, v.host),
     decoder: decoderFor(pages),
     embedWidth: () => embedWidth,
@@ -633,13 +640,21 @@ describe('scans while a save of the open note does not end in time', () => {
     const s = setup({ [NOTE]: note }, { 'a.jpg': [page(pagePayload(), 'aaaaaaaaaaaa')] });
     stuck(s);
     const [result] = await s.pipeline.run([input('a.jpg')]);
-    expect(result).toMatchObject({ status: 'error', message: 'Error: the note was still being saved, so the scans were not written into it' });
+    expect(result).toMatchObject({ status: 'error', message: 'The note was still being saved, so the scans were not written into it.' });
     expect(s.text.get(NOTE)).toBe(note);
     expect(result.imagePath).toBeUndefined();
     expect([...s.binary.keys()]).toEqual([result.unmatchedPath]);
     expect(result.unmatchedPath).toMatch(/^_labnote-scans\/unmatched\//);
     expect(listUnmatched(s.app as never).map(f => f.path)).toEqual([result.unmatchedPath]);
     expect(s.edits).toEqual([]);
+  }, T);
+
+  it('an import in Korean: the reason in Korean', async () => {
+    const s = setup({ [NOTE]: buildNote(ID, ['UHW010', 'UHW020']) }, { 'a.jpg': [page(pagePayload(), 'aaaaaaaaaaaa')] }, 0,
+      createTranslator(obsidianKo as Record<string, string>));
+    stuck(s);
+    const [result] = await s.pipeline.run([input('a.jpg')]);
+    expect(result).toMatchObject({ status: 'error', message: '노트를 아직 저장하는 중이라 스캔을 넣지 못했습니다.' });
   }, T);
 
   // A write that throws is the same failure: the scan is queued, not left unlinked in the note folder.

@@ -1281,6 +1281,7 @@ const obsidianKo: Record<string, string> = {
   'Slack gave no download link (the file may be deleted, or hidden by the free plan limit).':
     'Slack이 내려받기 링크를 주지 않았습니다(삭제됐거나 무료 요금제 한도로 숨겨진 파일일 수 있습니다).',
   'Slack refused the download (check the files:read permission).': 'Slack이 내려받기를 거부했습니다(files:read 권한을 확인하세요).',
+  'The note was still being saved, so the scans were not written into it.': '노트를 아직 저장하는 중이라 스캔을 넣지 못했습니다.',
   'Slack had more messages than one check reads; the oldest may have been skipped.':
     '한 번에 읽는 양보다 Slack 메시지가 많았습니다. 가장 오래된 메시지는 건너뛰었을 수 있습니다.',
   'The Slack bot cannot add the 👀 reaction (reactions:write). Fine on one PC, but do not link a second one.':
