@@ -531,9 +531,11 @@ describe('editSampleInteractive alias rewrite', () => {
 
   let open: { path: string; text: string; mode?: 'source' | 'preview' } | undefined;
   let editTarget: () => EditTarget | undefined;
+  let openView: MarkdownView | undefined;
 
   function editPlugin() {
     const view = new MarkdownView();
+    openView = view;
     if (open) {
       const state = open;
       view.file = new TFile(state.path);
@@ -632,6 +634,23 @@ describe('editSampleInteractive alias rewrite', () => {
     expect(await fs.read(`${A}/002_WD020_B.labnote.md`)).toBe('RNA-1;siKIF 를 처리했다\n');
     expect(await fs.read(`${B}/001_WD010_C.labnote.md`)).toBe('RNA-1;si KIF\n');
     expect(Notice.shown.at(-1)).toBe('Sample updated: RNA-1 2 note(s) updated.');
+  });
+
+  // The view opened another note while the user was asked: the note is rewritten in its file,
+  // and the note now in the editor is left as it is.
+  it('rewrites a note in its file when its view opened another note meanwhile', async () => {
+    open = { path: `${A}/002_WD020_Open.labnote.md`, text: 'RNA-1;si KIF (unsaved)\n' };
+    await fs.write(open.path, 'RNA-1;si KIF\n');
+    vi.mocked(confirmModal).mockImplementation(async () => {
+      openView!.file = new TFile(`${A}/003_WD030_Other.labnote.md`);
+      open!.text = 'Other note RNA-1;si KIF\n';
+      return true;
+    });
+
+    await edit(FOLDER, 'siKIF');
+
+    expect(await fs.read(`${A}/002_WD020_Open.labnote.md`)).toBe('RNA-1;siKIF\n');
+    expect(open.text).toBe('Other note RNA-1;si KIF\n');
   });
 
   it('changes nothing when declined, and warns that a definition can revert the alias', async () => {

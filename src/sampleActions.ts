@@ -384,8 +384,8 @@ async function updateSampleListTables(
         if (shadowed.get(local)) continue;
       }
     }
-    if (note.editor) {
-      const editor = note.editor;
+    const editor = liveEditor(app, note);
+    if (editor) {
       const edits = planSampleListRowUpdate(editor.getValue(), headers, id, cells);
       if (edits.length === 0) continue;
       editor.transaction({
@@ -1284,6 +1284,21 @@ export interface ScopedNote {
 }
 
 /**
+ * `note`'s editor while its view still shows that note in source mode: the view may have
+ * closed, or opened another note, since the note was read.
+ */
+function liveEditor(app: App, note: ScopedNote): Editor | undefined {
+  if (!note.editor) return undefined;
+  for (const leaf of app.workspace.getLeavesOfType('markdown')) {
+    const view = leaf.view;
+    if (view instanceof MarkdownView && view.editor === note.editor && view.file?.path === note.path && view.getMode() === 'source') {
+      return note.editor;
+    }
+  }
+  return undefined;
+}
+
+/**
  * The notes a sample in `folder` can be used from: its experiment for a Local
  * folder, the whole vault for the Global one. A note open for editing is read
  * from its editor so just-typed, unsaved text counts. One shown only in
@@ -1431,10 +1446,10 @@ async function rewriteStaleAliases(
 
   let updated = 0;
   for (const note of planned) {
-    if (note.editor) {
+    const editor = liveEditor(app, note);
+    if (editor) {
       // Re-planned on the live text (the user may have typed meanwhile), as
       // one transaction so a single undo reverts the note.
-      const editor = note.editor;
       const edits = planAliasRewrite(editor.getValue(), type, id, oldAlias, newAlias, sampleListHeaders(plugin));
       if (edits.length === 0) continue;
       editor.transaction({
@@ -1586,8 +1601,8 @@ async function removeSampleListRows(
         if (shadowed.get(local)) continue;
       }
     }
-    if (note.editor) {
-      const editor = note.editor;
+    const editor = liveEditor(app, note);
+    if (editor) {
       const edits = planSampleListRowRemoval(editor.getValue(), headers, id);
       if (edits.length === 0) continue;
       editor.transaction({
@@ -1694,9 +1709,9 @@ export async function changeSampleTypeInteractive(
   await deleteSampleRecord(plugin.fs, folder, type, id);
   let updated = 0;
   for (const note of planned) {
-    if (note.editor) {
+    const editor = liveEditor(app, note);
+    if (editor) {
       // Re-planned on the live text, as one transaction so one undo reverts the note.
-      const editor = note.editor;
       const edits = plan(editor.getValue());
       if (edits.length === 0) continue;
       editor.transaction({

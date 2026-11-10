@@ -50,6 +50,8 @@ export async function stampNote(
     if (view.getMode() !== 'source') continue;
     // A change to the file Obsidian has yet to read back: stamped in the file, not the editor.
     if (view.file && !(await openViewHasDisk(app, view.file))) break;
+    // The view may show another note, or reading mode, once the file is read: stamped in the file.
+    if (view.file?.path !== path || view.getMode() !== 'source') break;
     const editor = view.editor;
     const before = editor.getValue();
     const edit = minimalReplacement(before, stamp(before, path));
