@@ -40,12 +40,19 @@ function setup(disk: string, save: Save) {
       land();
       return;
     }
-    // Another writer changes the file while the save fails, or while the view closes and the
-    // save writes nothing.
+    // Another writer changes the file as the save fails, the view reading it over its editor
+    // once the save is over (as onModify does), or while the view closes and the save writes
+    // nothing.
     if (save === 'otherThenFails' || save === 'otherThenNothing') {
       state.disk = state.disk.replace('status: ongoing', 'status: other');
       state.writes.push('other');
-      if (save === 'otherThenFails') throw new Error('save failed');
+      if (save === 'otherThenFails') {
+        setTimeout(() => {
+          view.lastSavedData = state.disk;
+          state.editor = lf(state.disk);
+        }, 0);
+        throw new Error('save failed');
+      }
       view.file = null;
       return;
     }

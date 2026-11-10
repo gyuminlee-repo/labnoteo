@@ -41,7 +41,8 @@ function plugin(files: Map<string, string>, path: string, when: When) {
   const notices: { level: string; msg: string }[] = [];
   let view = { file: new TFile(path), savePromise: when === 'before' ? new Promise(() => {}) : null } as { file: TFile; savePromise: Promise<unknown> | null };
   if (when === 'otherWriter') {
-    // Open in source mode with CRLF in its file; its save fails while another writer changes the file.
+    // Open in source mode with CRLF in its file; its save fails as another writer changes the
+    // file, which the view reads over its editor once the save is over (as onModify does).
     const open = new MarkdownView();
     let text = files.get(path)!.replace(/\r\n/g, '\n');
     open.file = new TFile(path);
@@ -55,6 +56,10 @@ function plugin(files: Map<string, string>, path: string, when: When) {
     };
     open.save = async () => {
       files.set(path, files.get(path)!.replace('title: WD010 A', 'title: Other'));
+      setTimeout(() => {
+        open.lastSavedData = files.get(path)!;
+        text = files.get(path)!.replace(/\r\n/g, '\n');
+      }, 0);
       throw new Error('save failed');
     };
     view = open as unknown as typeof view;
