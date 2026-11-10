@@ -111,7 +111,7 @@ describe('a change to an open CRLF note reaches the file once, however its save 
   describe.each(['otherThenFails', 'otherThenNothing'] as const)('another writer changes the file meanwhile (save: %s)', save => {
     it('a new workflow entry', async () => {
       const { app, host, state } = setup(readme('\r\n'), save);
-      expect(await registerWorkflowInReadme(app, host, README, { title: 'WD020 New', fileName: '002_WD020_New.labnote.md' })).toBe('registered');
+      expect(await registerWorkflowInReadme(app, host, README, { title: 'WD020 New', fileName: '002_WD020_New.labnote.md' })).toBe('notWritten');
       expect(count(state.disk, /WD020 New/g)).toBe(0);
       expect(state.disk).toContain('status: other');
     });

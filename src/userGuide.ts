@@ -37,7 +37,7 @@ export function guideVersion(text: string): string | undefined {
 export async function openUserGuide(
   host: LabnoteHost,
   pluginVersion: string,
-  write: (path: string, content: string) => Promise<void> = (path, content) => host.fs.write(path, content)
+  write: (path: string, content: string) => Promise<unknown> = (path, content) => host.fs.write(path, content)
 ): Promise<void> {
   const record = await readInstallRecord(host);
   const newer = record.pluginVersion !== undefined && compareVersions(record.pluginVersion, pluginVersion) > 0;

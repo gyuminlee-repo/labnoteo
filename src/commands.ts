@@ -1291,7 +1291,7 @@ async function createWorkflowFile(
 }
 
 /** What {@link registerWorkflowInReadme} did. */
-export type WorkflowRegistration = 'registered' | 'noSection' | 'noReadme';
+export type WorkflowRegistration = 'registered' | 'noSection' | 'noReadme' | 'notWritten';
 
 /**
  * Add a new workflow to the README "Related Workflows" checklist
@@ -1303,7 +1303,8 @@ export type WorkflowRegistration = 'registered' | 'noSection' | 'noReadme';
  * through the vault, so the entry goes into the editor and the README is saved as
  * LF there ({@link processNoteThroughVault}); its CRLF is not kept, as Obsidian
  * keeps it for no open note. Writes nothing without a README or without
- * the section to list it in (#298), and says which. A date the reader set by
+ * the section to list it in (#298), and says which; 'notWritten' when the entry was
+ * not written (a save of the open README did not end in time). A date the reader set by
  * hand in the README today is left as it is, as `stamp` decides (#363).
  */
 export async function registerWorkflowInReadme(
@@ -1315,15 +1316,19 @@ export async function registerWorkflowInReadme(
 ): Promise<WorkflowRegistration> {
   if (!(await host.fs.exists(readmePath))) return 'noReadme';
   if (!hasWorkflowChecklistSection(await host.fs.read(readmePath))) return 'noSection';
-  await processNoteThroughVault(app, host, readmePath, readme => {
+  const add = (readme: string) => {
     if (!hasWorkflowChecklistSection(readme)) return readme;
     // Named, so a README date its reader set by hand today stands (#363).
     return stamp(
       insertWorkflowChecklistEntries(readme, [{ done: false, title: entry.title, fileName: entry.fileName }]),
       readmePath
     );
-  });
-  return 'registered';
+  };
+  if (await processNoteThroughVault(app, host, readmePath, add)) return 'registered';
+  // Nothing written: the entry is there already, or the README did not get it (a save of
+  // the open README did not end in time).
+  const now = await host.fs.read(readmePath);
+  return add(now) === now ? 'registered' : 'notWritten';
 }
 
 /**
@@ -2423,6 +2428,8 @@ export function unlinkableWorkflowNotice(host: Pick<LabnoteHost, 't'>, names: re
  * refreshes immediately. `vault.process` fires only a 'modify' event (never
  * rename/delete), so it cannot re-enter the workflow README sync listeners.
  * Falls back to the adapter when the file is not (yet) in the vault index.
+ * Returns false when nothing was written: a save of the open note did not end in
+ * time ({@link waitForOpenSaves}), or the editor already held the content.
  * (Data files such as `{Type}.json` keep using the adapter directly.)
  *
  * Exported as the `writeNote` hook for `ToolContext`: AI tools edit notes the
@@ -2434,16 +2441,17 @@ export async function writeNoteThroughVault(
   host: LabnoteHost,
   notePath: string,
   content: string
-): Promise<void> {
+): Promise<boolean> {
   const file = app.vault.getFileByPath(notePath);
   if (file instanceof TFile) {
     // Open in an editor with CRLF in its file: written there, LF as the editor holds it.
-    if ((await processInOpenCrlfEditor(app, file, () => content.replace(/\r\n?/g, '\n'))) === undefined) {
-      await app.vault.process(file, () => content);
-    }
+    const inEditor = await processInOpenCrlfEditor(app, file, () => content.replace(/\r\n?/g, '\n'));
+    if (inEditor !== undefined) return inEditor;
+    await app.vault.process(file, () => content);
   } else {
     await host.fs.write(notePath, content);
   }
+  return true;
 }
 
 /** The editor `path` is open in, in source or live preview mode. */
@@ -2467,7 +2475,7 @@ export async function processNoteThroughVault(
   // A save Obsidian has under way on the open note first, so it does not write over this;
   // one deadline for the whole write.
   const deadline = Date.now() + OPEN_SAVE_WAIT_MS;
-  await waitForOpenSaves(app, notePath, deadline);
+  if (!(await waitForOpenSaves(app, notePath, deadline))) return false;
   const current = await host.fs.read(notePath);
   const next = transform(current);
   if (next === current) return false;

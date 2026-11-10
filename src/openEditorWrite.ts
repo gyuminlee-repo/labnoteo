@@ -21,10 +21,12 @@ export function openSourceView(app: App, path: string): MarkdownView | undefined
 }
 
 /**
- * How long a write waits for a save Obsidian has under way on the note: well above the
- * longest such save measured in Obsidian 1.15.0 (median 3 ms, longest 142 ms).
+ * How long a write waits for a save Obsidian has under way on the note before it gives up
+ * and writes nothing: some 20 times the longest such save measured in Obsidian 1.15.0
+ * (median 3 ms, longest 142 ms), so a slow disk still gets its write; only a save stalled
+ * that long makes a write wait so.
  */
-export const OPEN_SAVE_WAIT_MS = 1000;
+export const OPEN_SAVE_WAIT_MS = 3000;
 
 /**
  * Wait for the saves under way in the views `path` is open in, until none of them has one or
@@ -33,8 +35,9 @@ export const OPEN_SAVE_WAIT_MS = 1000;
  * over by it. Obsidian 1.15.0 keeps a save under way in the view's `savePromise` (null when
  * none; not in the API) and its own save waits for it the same way, in a loop; that promise
  * is awaited, not `save()` called, which would write the buffer again. A view without it is
- * not waited for. Returns false when a save was still under way at the deadline: the write
- * then goes on through the vault as it would.
+ * not waited for. Returns false when a save was still under way at the deadline: that save
+ * writes a buffer without the change, so a change written before it would be written over;
+ * the write is not made and its caller is told so.
  */
 export async function waitForOpenSaves(app: App, path: string, deadline = Date.now() + OPEN_SAVE_WAIT_MS): Promise<boolean> {
   for (;;) {
@@ -54,7 +57,8 @@ export async function waitForOpenSaves(app: App, path: string, deadline = Date.n
 
 /**
  * Apply `transform` to the note in the editor it is open in, when its file has a CR, and save
- * it. Text typed in the editor and not saved yet is saved with the change, not lost. When the
+ * it. Nothing is written while a save Obsidian has under way on it does not end in time
+ * ({@link waitForOpenSaves}): false. Text typed in the editor and not saved yet is saved with the change, not lost. When the
  * save fails or leaves the file as it was (the view closing, say), the change is applied to
  * the file through the vault, once, and only to the file as it was before the save. Returns whether the file changed, or undefined when
  * it is not such a note: the caller then writes through the vault as before.
@@ -65,9 +69,10 @@ export async function processInOpenCrlfEditor(
   transform: (content: string) => string,
   deadline?: number
 ): Promise<boolean | undefined> {
-  // A save still under way past the wait would hold this one's save too (Obsidian's save
-  // waits for the one under way, with no limit): the change goes through the vault instead.
-  if (!(await waitForOpenSaves(app, file.path, deadline))) return undefined;
+  // A save still under way past the wait would write over the change (and would hold this
+  // one's save too: Obsidian's save waits for the one under way, with no limit): nothing is
+  // written, through the editor or the vault.
+  if (!(await waitForOpenSaves(app, file.path, deadline))) return false;
   const view = openSourceView(app, file.path);
   if (!view) return undefined;
   const disk = await app.vault.read(file);

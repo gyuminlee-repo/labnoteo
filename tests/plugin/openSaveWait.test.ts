@@ -1,13 +1,14 @@
 /**
  * How long a write waits for the saves Obsidian has under way on an open note: once, for the
- * whole write, up to OPEN_SAVE_WAIT_MS however many views or waits there are; and until no
- * view the note is open in has one under way, a save started after another included.
+ * whole write, up to OPEN_SAVE_WAIT_MS however many views or waits there are, and past it
+ * nothing is written; and until no view the note is open in has one under way, a save
+ * started after another included.
  */
 import { describe, it, expect } from 'vitest';
 import type { App } from 'obsidian';
 import { MarkdownView, TFile } from '../stubs/obsidian';
 import type { LabnoteHost } from '@labnoteo/core';
-import { processNoteThroughVault } from '../../src/commands';
+import { processNoteThroughVault, writeNoteThroughVault } from '../../src/commands';
 import { OPEN_SAVE_WAIT_MS, processNote } from '../../src/openEditorWrite';
 
 const P = 'labnote/001_Test/README.labnote.md';
@@ -70,15 +71,40 @@ describe('the wait for saves under way on an open note', () => {
     ['one view, LF', 1, 'a\nb\n'],
     ['one view, CRLF', 1, 'a\r\nb\r\n'],
     ['two views, CRLF', 2, 'a\r\nb\r\n'],
-  ] as const)('a save that never ends is waited for once, for the whole write (%s)', async (_name, count, disk) => {
+  ] as const)('a save that never ends is waited for once, for the whole write, and nothing is written (%s)', async (_name, count, disk) => {
     const { app, host, state, views } = setup(count, disk);
     for (const view of views) void saving(view, 'never', state, 'never');
     const started = Date.now();
-    expect(await processNoteThroughVault(app, host, P, c => c.replace('b', 'B'))).toBe(true);
+    expect(await processNoteThroughVault(app, host, P, c => c.replace('b', 'B'))).toBe(false);
     const waited = Date.now() - started;
     expect(waited).toBeGreaterThanOrEqual(OPEN_SAVE_WAIT_MS - 5);
     expect(waited).toBeLessThan(OPEN_SAVE_WAIT_MS + 500);
-    expect(state.order).toEqual(['process']);
+    expect(state.order).toEqual([]);
+    expect(state.disk).toBe(disk);
+  }, OPEN_SAVE_WAIT_MS + 5000);
+
+  it.each([
+    ['LF', 'a\nb\n'],
+    ['CRLF', 'a\r\nb\r\n'],
+  ] as const)('a whole note written past a save that never ends: nothing written, false (%s)', async (_name, disk) => {
+    const { app, host, state, views } = setup(1, disk);
+    void saving(views[0], 'never', state, 'never');
+    expect(await writeNoteThroughVault(app, host, P, 'a\nB\n')).toBe(false);
+    expect(state.order).toEqual([]);
+    expect(state.disk).toBe(disk);
+  }, OPEN_SAVE_WAIT_MS + 5000);
+
+  it.each([
+    ['one view, LF', 1, 'a\nb\n'],
+    ['one view, CRLF', 1, 'a\r\nb\r\n'],
+    ['two views, CRLF', 2, 'a\r\nb\r\n'],
+  ] as const)('a save that ends within the wait (500 ms) is waited for, then the change is written once (%s)', async (_name, count, disk) => {
+    const { app, host, state, views } = setup(count, disk);
+    for (const view of views) void saving(view, 500, state, 'slow save');
+    expect(await processNoteThroughVault(app, host, P, c => c.replace('b', 'B'))).toBe(true);
+    expect(state.order.slice(0, count)).toEqual(Array(count).fill('slow save'));
+    expect(state.disk.split('B')).toHaveLength(2);
+    expect(state.disk.replace(/\r\n/g, '\n')).toBe('a\nB\n');
   });
 
   // The first view's save ends, then the other's, and only then the first starts another.

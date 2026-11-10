@@ -2,7 +2,8 @@
  * A write to an open note while Obsidian's own save of it is still writing (text typed, the
  * save started, its write not on the file yet). The write waits for that save, so neither is
  * lost: the change is in the file once, with the typed text, and what it returns is what
- * happened. A save that does not end within the wait leaves the write to go on as before.
+ * happened. Past the wait for a save that does not end, nothing is written and the caller
+ * says so: false, a README entry not written, the warning for a note ID not written.
  * The view follows Obsidian 1.15.0's TextFileView (save, savePromise, the re-read on modify).
  */
 import { describe, it, expect } from 'vitest';
@@ -11,6 +12,7 @@ import { MarkdownView, TFile } from '../stubs/obsidian';
 import type { LabnoteHost } from '@labnoteo/core';
 import { processNoteThroughVault, registerWorkflowInReadme } from '../../src/commands';
 import { NoteIdService } from '../../src/barcode/noteIdService';
+import { BarcodeFeature } from '../../src/barcode/barcodeFeature';
 import { readNoteId } from '../../packages/labnoteo-core/src/lib/noteId';
 import { OPEN_SAVE_WAIT_MS } from '../../src/openEditorWrite';
 
@@ -18,7 +20,7 @@ const P = 'labnote/001_Test/README.labnote.md';
 const TYPED = 'Typed line.';
 const ENTRY = '- [ ] [WD020 New](./002_WD020_New.labnote.md)';
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
-type Op = 'register' | 'counted' | 'noteId';
+type Op = 'register' | 'counted' | 'noteId' | 'assign';
 
 async function run(nl: string, op: Op, release: 'soon' | 'never') {
   const start = ['---', 'title: x', '---', '# Test', '', '## Related Workflows', ''].join(nl);
@@ -70,7 +72,13 @@ async function run(nl: string, op: Op, release: 'soon' | 'never') {
     },
   };
   const app = { workspace: { getLeavesOfType: () => [{ view }] }, vault, metadataCache: { getFileCache: () => null } } as unknown as App;
-  const host = { fs: { exists: async () => true, read: async () => disk.text, write: async () => {} }, notify: () => {}, t: (s: string) => s } as unknown as LabnoteHost;
+  const notices: { level: string; msg: string }[] = [];
+  const t = (s: string, ...args: unknown[]) => args.reduce<string>((out, a, i) => out.replace(`{${i}}`, String(a)), s);
+  const host = {
+    fs: { exists: async () => true, read: async () => disk.text, write: async () => {} },
+    notify: (level: string, msg: string) => notices.push({ level, msg }),
+    t,
+  } as unknown as LabnoteHost;
 
   // Typed, and Obsidian's save of it started; its write waits at the gate.
   text = text.replace('# Test\n', `# Test\n${TYPED}\n`);
@@ -84,7 +92,9 @@ async function run(nl: string, op: Op, release: 'soon' | 'never') {
       ? registerWorkflowInReadme(app, host, P, { title: 'WD020 New', fileName: '002_WD020_New.labnote.md' })
       : op === 'counted'
         ? processNoteThroughVault(app, host, P, c => c.replace('title: x', 'title: y'))
-        : new NoteIdService(app, host).ensureId(tf as never, { reassign: true });
+        : op === 'noteId'
+          ? new NoteIdService(app, host).ensureId(tf as never, { reassign: true })
+          : assignId(app, host, t, tf);
   if (release === 'soon') {
     await tick();
     await tick();
@@ -101,7 +111,14 @@ async function run(nl: string, op: Op, release: 'soon' | 'never') {
   await tick();
   // Leaving the note later: Obsidian saves the buffer when it differs from what it read.
   await view.save(true);
-  return { result, file: disk.text };
+  return { result, file: disk.text, notices };
+}
+
+/** The Assign note ID command on `file`. */
+function assignId(app: App, host: LabnoteHost, t: unknown, file: TFile): Promise<void> {
+  const f = Object.create(BarcodeFeature.prototype) as BarcodeFeature;
+  Object.assign(f, { plugin: { app, host, t }, noteIds: new NoteIdService(app, host) });
+  return (f as unknown as { assignId(x: TFile): Promise<void> }).assignId(file);
 }
 
 const endings = [['CRLF', '\r\n'], ['LF', '\n']] as const;
@@ -123,13 +140,24 @@ describe("a write while Obsidian's own save of the open note is writing", () => 
     }
   });
 
-  // Past the wait the write goes on as it did: Obsidian's save then lands after it.
-  it.each(endings)('a save that does not end in time is waited for no longer (%s)', async (_n, nl) => {
+  // Past the wait nothing is written (Obsidian's save would write over it), and the caller says so.
+  const late: Op[] = ['register', 'counted', 'assign'];
+  it.each(endings.flatMap(([n, nl]) => late.map(op => [op, n, nl] as const)))('%s (%s): a save that does not end in time, nothing written', async (op, _n, nl) => {
     const started = Date.now();
-    const { result, file } = await run(nl, 'counted', 'never');
+    const { result, file, notices } = await run(nl, op, 'never');
     expect(Date.now() - started).toBeGreaterThanOrEqual(OPEN_SAVE_WAIT_MS);
     expect(Date.now() - started).toBeLessThan(OPEN_SAVE_WAIT_MS + 2000);
-    expect(result).toBe(true);
     expect(file).toContain(TYPED);
-  });
+    expect(file).not.toContain(ENTRY);
+    expect(file).not.toContain('title: y');
+    expect(readNoteId(file)).toBeUndefined();
+    if (op === 'register') expect(result).toBe('notWritten');
+    else if (op === 'counted') expect(result).toBe(false);
+    else {
+      expect(notices.filter(n => n.level === 'info')).toEqual([]);
+      expect(notices.filter(n => n.level === 'warn').map(n => n.msg)).toEqual([
+        `The labnote_id of ${P} could not be written, so its value was left as it is: write it on one line (labnote_id: LN-…) and try again.`,
+      ]);
+    }
+  }, OPEN_SAVE_WAIT_MS + 5000);
 });
