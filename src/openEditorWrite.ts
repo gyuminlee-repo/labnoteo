@@ -23,9 +23,10 @@ export function openSourceView(app: App, path: string): MarkdownView | undefined
 /**
  * Apply `transform` to the note in the editor it is open in, when its file has a CR, and save
  * it. Text typed in the editor and not saved yet is saved with the change, not lost. When the
- * save fails or does not reach the file (the view closing, say), the same change is written
- * through the vault; the editor already holds it. Returns whether the note changed, or
- * undefined when it is not such a note: the caller then writes through the vault as before.
+ * save fails or leaves the file as it was (the view closing, say), the editor's new text is
+ * written through the vault, once, and only onto the file as it was before the save; the
+ * change is not applied a second time. Returns whether the file changed, or undefined when
+ * it is not such a note: the caller then writes through the vault as before.
  */
 export async function processInOpenCrlfEditor(
   app: App,
@@ -43,11 +44,14 @@ export async function processInOpenCrlfEditor(
   view.editor.replaceRange(edit.text, view.editor.offsetToPos(edit.start), view.editor.offsetToPos(edit.end));
   try {
     await view.save();
-    if ((await app.vault.read(file)).replace(/\r\n/g, '\n') === after) return true;
   } catch {
-    // Written through the vault below.
+    // The file is looked at below either way.
   }
-  return (await app.vault.process(file, transform)) !== disk;
+  if ((await app.vault.read(file)) !== disk) return true;
+  let final = disk;
+  // Changed meanwhile (a save landing late, say): that write stands.
+  await app.vault.process(file, data => (final = data !== disk ? data : after));
+  return final !== disk;
 }
 
 /** {@link processInOpenCrlfEditor}, else `app.vault.process` as before. */

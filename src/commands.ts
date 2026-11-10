@@ -2438,7 +2438,7 @@ export async function writeNoteThroughVault(
   const file = app.vault.getFileByPath(notePath);
   if (file instanceof TFile) {
     // Open in an editor with CRLF in its file: written there, LF as the editor holds it.
-    if ((await processInOpenCrlfEditor(app, file, () => content.replace(/\r\n/g, '\n'))) === undefined) {
+    if ((await processInOpenCrlfEditor(app, file, () => content.replace(/\r\n?/g, '\n'))) === undefined) {
       await app.vault.process(file, () => content);
     }
   } else {
