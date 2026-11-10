@@ -51,12 +51,12 @@ describe('processNote', () => {
     expect(state.processed).toBe(0);
   });
 
-  // The editor holds the change either way; its text goes to the file through the vault.
-  it.each(['fails', 'writes nothing'] as const)('writes the editor text through the vault when the save %s', async save => {
+  // The editor holds the change either way; the file gets it through the vault.
+  it.each(['fails', 'writes nothing'] as const)('writes the change through the vault when the save %s', async save => {
     const { app, view, state } = setup('---\r\ntitle: x\r\n---\r\nbody\r\n', true, save);
     expect(await processInOpenCrlfEditor(app, new TFile(NOTE) as never, data => data.replace('body', 'text'))).toBe(true);
     expect(state.editor).toBe('---\ntitle: x\n---\ntext\n');
-    expect(state.disk).toBe('---\ntitle: x\n---\ntext\n');
+    expect(state.disk).toBe('---\r\ntitle: x\r\n---\r\ntext\r\n');
     expect(view.saved).toBe(1);
     expect(state.processed).toBe(1);
   });

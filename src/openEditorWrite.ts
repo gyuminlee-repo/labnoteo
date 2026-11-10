@@ -23,9 +23,8 @@ export function openSourceView(app: App, path: string): MarkdownView | undefined
 /**
  * Apply `transform` to the note in the editor it is open in, when its file has a CR, and save
  * it. Text typed in the editor and not saved yet is saved with the change, not lost. When the
- * save fails or leaves the file as it was (the view closing, say), the editor's new text is
- * written through the vault, once, and only onto the file as it was before the save; the
- * change is not applied a second time. Returns whether the file changed, or undefined when
+ * save fails or leaves the file as it was (the view closing, say), the change is applied to
+ * the file through the vault, once, and only to the file as it was before the save. Returns whether the file changed, or undefined when
  * it is not such a note: the caller then writes through the vault as before.
  */
 export async function processInOpenCrlfEditor(
@@ -38,6 +37,11 @@ export async function processInOpenCrlfEditor(
   const disk = await app.vault.read(file);
   if (!disk.includes('\r')) return undefined;
   const before = view.editor.getValue();
+  // A view still loading the note holds none of it yet (an empty editor; Obsidian 1.15.0 sets
+  // the view's file before it reads it, and its `data` is null until then, which the API does
+  // not document): the change is made on the file through the vault, as for a closed note.
+  // An editor with other text than the file is loaded, with text typed and not saved yet.
+  if ((view as { data: string | null }).data === null || (before === '' && disk.trim() !== '')) return undefined;
   const after = transform(before);
   const edit = minimalReplacement(before, after);
   if (!edit) return false;
@@ -60,9 +64,15 @@ export async function processInOpenCrlfEditor(
   const now = await app.vault.read(file);
   if (now !== disk) return (saved && openSourceView(app, file.path) === view) || landed(now);
   let final = disk;
-  // Changed meanwhile (a save landing late, say): that write stands.
-  await app.vault.process(file, data => (final = data !== disk ? data : after));
-  return landed(final);
+  let applied = false;
+  // Applied to the file, once, only as it was before the save; changed meanwhile (a save
+  // landing late, say), that write stands.
+  await app.vault.process(file, data => {
+    if (data !== disk) return (final = data);
+    applied = true;
+    return (final = transform(data));
+  });
+  return applied ? final !== disk : landed(final);
 }
 
 /** {@link processInOpenCrlfEditor}, else `app.vault.process` as before. */
