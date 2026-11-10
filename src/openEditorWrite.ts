@@ -42,19 +42,23 @@ export async function processInOpenCrlfEditor(
   const edit = minimalReplacement(before, after);
   if (!edit) return false;
   view.editor.replaceRange(edit.text, view.editor.offsetToPos(edit.start), view.editor.offsetToPos(edit.end));
+  let saved = false;
   try {
     await view.save();
+    saved = true;
   } catch {
     // The file is looked at below either way.
   }
-  // A file no longer as it was holds the save when it reads as the editor's text (the change,
-  // and anything typed meanwhile); else another writer changed it and the change is not
-  // known to be there. It is not applied again then, which could put it in twice with a
+  // A save that ended with the view still on the note wrote the editor's text (assumed of
+  // TextFileView.save: the API documents getViewData as what a save writes): the file holds the
+  // change even when another plugin changed it right after. Else a file no longer as it was
+  // holds the save when it reads as the editor's text (the change, and anything typed
+  // meanwhile); else another writer changed it and the change is not known to be there. It is not applied again then, which could put it in twice with a
   // save landing late: false, and the editor keeps the change, which Obsidian may save later.
   const lf = (text: string) => text.replace(/\r\n?/g, '\n');
   const landed = (text: string) => lf(text) === after || lf(text) === lf(view.editor.getValue());
   const now = await app.vault.read(file);
-  if (now !== disk) return landed(now);
+  if (now !== disk) return (saved && openSourceView(app, file.path) === view) || landed(now);
   let final = disk;
   // Changed meanwhile (a save landing late, say): that write stands.
   await app.vault.process(file, data => (final = data !== disk ? data : after));
