@@ -1881,7 +1881,8 @@ export default class LabnotePlugin extends Plugin {
     // A copy under the original's name and label is indistinguishable from it
     // in the checklist (#65): ask for the copy's own alias when the note has
     // its `## [ID name]` heading to rebuild the name from.
-    const content = await this.app.vault.read(file);
+    // As the note is: an open editor keeps a change above its save could not write yet.
+    const content = (await openEditorText(this.app, file.path)) ?? (await this.app.vault.read(file));
     const heading = parseWorkflowHeading(content);
     const parts = parseWorkflowFileName(suggestion);
     if (heading && parts && heading.id === parts.id) {

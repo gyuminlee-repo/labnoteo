@@ -52,7 +52,7 @@ import {
 import { ISSUE_SYNC_WORKFLOW_PATH, SETUP_DOC_PATH } from './scaffold/assets';
 import * as posix from '@labnoteo/core/posix';
 import { workflowAliasModal } from './modals';
-import { OPEN_SAVE_WAIT_MS, openSourceView, processInOpenEditor, waitForOpenSaves } from './openEditorWrite';
+import { OPEN_SAVE_WAIT_MS, openEditorText, openSourceView, processInOpenEditor, waitForOpenSaves } from './openEditorWrite';
 import { getObsidianLanguage } from './i18n';
 import {
   createLabnoteStructure,
@@ -2211,7 +2211,8 @@ export async function syncWorkflowChecklistCommand(
         await processNoteThroughVault(app, host, readmePath, content => relinkWorkflowChecklistEntries(content, relinks));
       }
       if (movedBack > 0) {
-        readme = await host.fs.read(readmePath);
+        // As the README is: an open editor keeps a relink its save could not write yet.
+        readme = (await openEditorText(app, readmePath)) ?? (await host.fs.read(readmePath));
         ({ names, notes } = await readWorkflowFolder(host, labnoteDir));
         titles = workflowLabels(notes);
         subfolders = workflowNotesInSubfolders(app, labnoteDir);
@@ -2276,7 +2277,8 @@ export async function syncWorkflowChecklistCommand(
         );
         if (changed) {
           updatedNotes.add(name);
-          notes.set(name, await readWorkflowNote(host, labnoteDir, name));
+          // As the note is: an open editor keeps a title its save could not write yet.
+          notes.set(name, (await openEditorText(app, notePath)) ?? (await readWorkflowNote(host, labnoteDir, name)));
         }
       }
       titles = workflowLabels(notes);
