@@ -145,15 +145,28 @@ export class MarkdownView {
     this.data = text;
   }
 
-  /** As Obsidian 1.15.0: written only when it differs from what was last read or saved. */
+  /** The save under way, as Obsidian 1.15.0 keeps it (not in the API); null when none. */
+  savePromise: Promise<void> | null = null;
+  dirty = false;
+
+  /**
+   * As Obsidian 1.15.0: after any save under way, written only when it differs from what was
+   * last read or saved, with `savePromise` set while it writes.
+   */
   async save(clear = false): Promise<void> {
     this.saved++;
+    for (this.dirty = false; this.savePromise !== null; ) await this.savePromise.catch(() => undefined);
     if (!this.file) return;
     const text = this.getViewData();
     if (this.lastSavedData !== text && this.lastSavedData !== null) {
       this.data = text;
       this.lastSavedData = text;
-      await this.writeData(this.file, text);
+      this.savePromise = this.writeData(this.file, text);
+      try {
+        await this.savePromise;
+      } finally {
+        this.savePromise = null;
+      }
       if (clear) this.lastSavedData = null;
     }
   }

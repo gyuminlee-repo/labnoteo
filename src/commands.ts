@@ -52,7 +52,7 @@ import {
 import { ISSUE_SYNC_WORKFLOW_PATH, SETUP_DOC_PATH } from './scaffold/assets';
 import * as posix from '@labnoteo/core/posix';
 import { workflowAliasModal } from './modals';
-import { openSourceView, processInOpenCrlfEditor } from './openEditorWrite';
+import { openSourceView, processInOpenCrlfEditor, waitForOpenSaves } from './openEditorWrite';
 import { getObsidianLanguage } from './i18n';
 import {
   createLabnoteStructure,
@@ -2464,6 +2464,8 @@ export async function processNoteThroughVault(
   notePath: string,
   transform: (content: string) => string
 ): Promise<boolean> {
+  // A save Obsidian has under way on the open note first, so it does not write over this.
+  await waitForOpenSaves(app, notePath);
   const current = await host.fs.read(notePath);
   const next = transform(current);
   if (next === current) return false;

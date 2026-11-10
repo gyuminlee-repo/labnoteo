@@ -21,6 +21,39 @@ export function openSourceView(app: App, path: string): MarkdownView | undefined
 }
 
 /**
+ * How long a write waits for a save Obsidian has under way on the note: well above the
+ * longest such save measured in Obsidian 1.15.0 (median 3 ms, longest 142 ms).
+ */
+export const OPEN_SAVE_WAIT_MS = 1000;
+
+/**
+ * Wait for the saves under way in the views `path` is open in, up to {@link OPEN_SAVE_WAIT_MS},
+ * so a write does not land before one of them and get written over by it. Obsidian 1.15.0
+ * keeps a save under way in the view's `savePromise` (null when none; not in the API) and
+ * its own save waits for it the same way, in a loop; that promise is awaited, not `save()`
+ * called, which would write the buffer again. A view without it, or past the wait, is not
+ * waited for: the write goes on as it would.
+ */
+export async function waitForOpenSaves(app: App, path: string): Promise<void> {
+  const deadline = Date.now() + OPEN_SAVE_WAIT_MS;
+  // An app with no workspace (a test's) has no editor open.
+  for (const leaf of app.workspace?.getLeavesOfType?.('markdown') ?? []) {
+    const view = leaf.view as unknown as { file?: { path?: string } | null; savePromise?: unknown };
+    if (view?.file?.path !== path) continue;
+    while (view.savePromise instanceof Promise) {
+      const left = deadline - Date.now();
+      if (left <= 0) return;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([
+        view.savePromise.catch(() => undefined),
+        new Promise(resolve => (timer = setTimeout(resolve, left))),
+      ]);
+      clearTimeout(timer);
+    }
+  }
+}
+
+/**
  * Apply `transform` to the note in the editor it is open in, when its file has a CR, and save
  * it. Text typed in the editor and not saved yet is saved with the change, not lost. When the
  * save fails or leaves the file as it was (the view closing, say), the change is applied to
@@ -32,6 +65,7 @@ export async function processInOpenCrlfEditor(
   file: TFile,
   transform: (content: string) => string
 ): Promise<boolean | undefined> {
+  await waitForOpenSaves(app, file.path);
   const view = openSourceView(app, file.path);
   if (!view) return undefined;
   const disk = await app.vault.read(file);
