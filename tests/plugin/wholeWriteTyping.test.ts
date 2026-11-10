@@ -16,6 +16,8 @@ import { OPEN_SAVE_WAIT_MS, openEditorText, processInOpenEditor } from '../../sr
 const P = 'labnote/001_Test/001_WD010_A.labnote.md';
 const NOTE = ['---', 'title: T', 'last_updated_date: 2026-11-01', '---', '## A', 'body a', '', '## B', 'body b', '', '## C', 'body c', ''].join('\n');
 const stamp = (c: string) => c.replace(/last_updated_date: .*/, 'last_updated_date: 2026-11-10');
+/** What another writer puts in the file. */
+const OTHER = '# written by another\n';
 
 /** An editor over CodeMirror's state, as Obsidian's is: a change maps the cursor as there. */
 function cmEditor(text: string, cursor = text.length) {
@@ -47,15 +49,18 @@ function cmEditor(text: string, cursor = text.length) {
 /**
  * `path` open in a source view over `disk`, with `typed` in its editor not saved yet and the
  * cursor at `cursor` (the end by default). `save`: 'fails' throws, 'stuck' never ends, 'leaves'
- * ends without writing, the view gone from the note. `files`: others in the vault.
+ * ends without writing, the view gone from the note, 'reloads' ends without writing, another
+ * writer having changed the file and the view reading it again. `files`: others in the vault.
+ * `interject`: another writer, run as the vault's process begins.
  */
 function openNote(
   path: string,
   disk: string,
   typed: string,
   cursor = typed.length,
-  save: 'writes' | 'fails' | 'stuck' | 'leaves' = 'writes',
-  files: Record<string, string> = {}
+  save: 'writes' | 'fails' | 'stuck' | 'leaves' | 'reloads' = 'writes',
+  files: Record<string, string> = {},
+  interject?: () => Promise<void>
 ) {
   const fs = new MemFileSystem({ ...files, [path]: disk });
   const tf = new TFile(path);
@@ -75,12 +80,19 @@ function openNote(
       view.file = null;
     };
   }
+  if (save === 'reloads') {
+    view.save = async () => {
+      await fs.write(path, OTHER);
+      view.lastSavedData = null;
+    };
+  }
   const app = {
     workspace: { getLeavesOfType: () => [{ view }], getActiveFile: () => tf },
     vault: {
       getFileByPath: (p: string) => (p === path ? tf : null),
       read: async () => fs.read(path),
       process: async (_f: TFile, fn: (s: string) => string) => {
+        await interject?.();
         const next = fn(await fs.read(path));
         await fs.write(path, next);
         return next;
@@ -257,6 +269,28 @@ describe('a tool write over an open note', () => {
     const res = await tool('update_section').handler(ctx, { documentPath: P, heading: 'Results', content: 'RESULT BODY' });
     expect(res).toMatchObject({ ok: false, code: 'section_not_found' });
     expect(await fs.read(P)).toBe(NOTE);
+  });
+
+  // The save fails, and another writer changes the file before the change goes in through
+  // the vault: that write stands, the view reads it over its editor, and the change is nowhere.
+  it('fails when the save fails and another writer changes the file before the vault write', async () => {
+    let fsRef: MemFileSystem | undefined;
+    const { fs, ctx } = openNote(P, NOTE, NOTE.replace('body a', 'body a typed'), undefined, 'fails', {}, async () => {
+      await fsRef!.write(P, OTHER);
+    });
+    fsRef = fs;
+    const res = await tool('update_section').handler(ctx, { documentPath: P, heading: 'B', content: 'NEW B' });
+    expect(res).toMatchObject({ ok: false, code: 'note_not_written' });
+    expect(await fs.read(P)).toBe(OTHER);
+  });
+
+  // The save writes nothing, the view reading the file another writer changed: the change is
+  // not in it, and the view's reading puts the file over the editor.
+  it('fails when the save writes nothing and the view reads the file another writer changed', async () => {
+    const { fs, ctx } = openNote(P, NOTE, NOTE.replace('body a', 'body a typed'), undefined, 'reloads');
+    const res = await tool('update_section').handler(ctx, { documentPath: P, heading: 'B', content: 'NEW B' });
+    expect(res).toMatchObject({ ok: false, code: 'note_not_written' });
+    expect(await fs.read(P)).toBe(OTHER);
   });
 
   // A README whose checklist section was typed and not saved yet, the save failing: the new

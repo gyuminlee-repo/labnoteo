@@ -43,8 +43,10 @@ function setup(disk: string, save: Save) {
       view.file = null;
       return;
     }
-    // The save writes the editor's text and another plugin changes the file right after.
+    // The save writes the editor's text, held then as last saved as Obsidian does, and another
+    // plugin changes the file right after.
     if (save === 'formatOnSave') {
+      view.lastSavedData = state.editor;
       state.disk = state.editor.replace('status: ongoing', 'status: formatted');
       state.writes.push('save', 'other');
       return;

@@ -121,16 +121,20 @@ async function writeInOpenEditor(
   } catch {
     // The file is looked at below either way.
   }
-  // A save that ended with the view still on the note wrote the editor's text (assumed of
-  // TextFileView.save: the API documents getViewData as what a save writes): the file holds the
-  // change even when another plugin changed it right after. Else a file no longer as it was
+  // A save that wrote, ending with the view still on the note, wrote the editor's text (assumed
+  // of TextFileView.save: the API documents getViewData as what a save writes; Obsidian 1.15.0
+  // then holds that text as last saved, and a save that writes nothing, its view reading the
+  // note again, holds null): the file holds the change even when another plugin changed it
+  // right after. Else a file no longer as it was
   // holds the save when it reads as the editor's text (the change, and anything typed
   // meanwhile); else another writer changed it and the change is not known to be there. It is not applied again then, which could put it in twice with a
   // save landing late: false, and the editor keeps the change, which Obsidian may save later.
   const lf = (text: string) => text.replace(/\r\n?/g, '\n');
   const landed = (text: string) => lf(text) === after || lf(text) === lf(view.editor.getValue());
   const now = await app.vault.read(file);
-  if (now !== disk) return (saved && openSourceView(app, file.path) === view) || landed(now);
+  const savedAs: unknown = (view as unknown as { lastSavedData?: unknown }).lastSavedData;
+  const wrote = saved && openSourceView(app, file.path) === view && typeof savedAs === 'string' && savedAs !== disk;
+  if (now !== disk) return wrote || landed(now);
   // The file as it was. A view still on the note that holds the file's text as last read or
   // saved (Obsidian 1.15.0 puts it back when a save fails, and says so itself, keeping a
   // backup) saves its editor, the change in it, on its next save: the change is the editor's,
@@ -138,18 +142,19 @@ async function writeInOpenEditor(
   // which could come out otherwise or be refused, and be told for what the note ends as. A view
   // that left the note, or reads it again (its text then null), does not keep the editor's
   // text: the change is made of the file's.
-  const keeps =
-    view.file?.path === file.path && typeof (view as unknown as { lastSavedData?: unknown }).lastSavedData === 'string';
+  const keeps = view.file?.path === file.path && typeof savedAs === 'string';
   let final = disk;
   let applied = false;
   // Applied to the file, once, only as it was before the save; changed meanwhile (a save
-  // landing late, say), that write stands.
+  // landing late, another writer), that write stands, and the change is there only if it
+  // reads so: the view, its failed save having left it not dirty, reads that file over its
+  // editor, change and all.
   await app.vault.process(file, data => {
     if (data !== disk) return (final = data);
     applied = true;
     return (final = keeps ? after : transform(data));
   });
-  return keeps || (applied ? final !== disk : landed(final));
+  return applied ? keeps || final !== disk : landed(final);
 }
 
 /** A run of the text, [start, end), replaced by `text`. */
