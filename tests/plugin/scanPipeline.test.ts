@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { App } from 'obsidian';
 import { zipSync, strToU8 } from 'fflate';
-import { TFile, TFolder } from '../stubs/obsidian';
+import { MarkdownView, TFile, TFolder } from '../stubs/obsidian';
 import type { LabnoteHost } from '../../packages/labnoteo-core/src';
 import { createTranslator, formatMessage } from '../../packages/labnoteo-core/src/i18n/translator';
 import type { Translator } from '../../packages/labnoteo-core/src/i18n/translator';
@@ -752,5 +752,46 @@ describe('scans written into a note that may or may not have them', () => {
     } finally {
       forced.write = undefined;
     }
+  });
+});
+
+// The same, written into an open note for real: its save fails as another writer changes the
+// file. A scan whose unit operation the editor's text no longer has is not in the note either
+// way: queued as always, while the others stay filed, to be checked.
+describe('scans written into an open note whose save fails as it changes', () => {
+  it('queues a scan the note as written has no unit operation for, and keeps the others', async () => {
+    const disk = buildNote(ID, ['UHW010', 'UHW020', 'UHW030']);
+    const typed = buildNote(ID, ['UHW010', 'UHW020']);
+    const s = setup({ [NOTE]: disk }, {
+      'a.jpg': [page(pagePayload({ unitOpIndex: 2, opId: 'UHW020' }), 'aaaaaaaaaaaa'), page(pagePayload({ unitOpIndex: 3, opId: 'UHW030' }), 'bbbbbbbbbbbb')],
+    });
+    let text = typed;
+    const view = new MarkdownView();
+    view.file = new TFile(NOTE);
+    view.lastSavedData = disk;
+    view.editor = {
+      getValue: () => text,
+      offsetToPos: (offset: number) => offset,
+      replaceRange: (r: string, from: number, to: number) => {
+        text = text.slice(0, from) + r + text.slice(to);
+      },
+    };
+    view.getViewData = () => text;
+    view.writeData = async () => {
+      s.text.set(NOTE, `${disk}\nother\n`);
+      throw new Error('disk full');
+    };
+    Object.assign(s.app, { workspace: { getLeavesOfType: () => [{ view }] } });
+    const warnings: string[] = [];
+    (s.host as unknown as { notify: (level: string, msg: string) => void }).notify = (level, msg) => {
+      if (level === 'warn') warnings.push(msg);
+    };
+    const [kept, gone] = await s.pipeline.run([input('a.jpg')]);
+    expect(kept).toMatchObject({ status: 'filed', uncertain: true });
+    expect(s.binary.has(kept.imagePath!)).toBe(true);
+    expect(gone).toMatchObject({ status: 'unmatched', reason: 'no-unit-op' });
+    expect(gone.uncertain).toBeUndefined();
+    expect(listUnmatched(s.app as never).map(f => f.path)).toEqual([gone.unmatchedPath]);
+    expect(warnings).toHaveLength(1);
   });
 });

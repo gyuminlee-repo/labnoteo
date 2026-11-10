@@ -1839,6 +1839,8 @@ export async function renumberWorkflowsCommand(
 
   const moved: WorkflowRename[] = [];
   let added = 0;
+  // The README's checklist as the renumbering left it: false when it did not get it (said).
+  let readmeDone = true;
   let csvSkipped = 0;
   // Live folder listing, so a CSV is never moved onto a name taken mid-run.
   const names = new Set(existing);
@@ -1864,12 +1866,20 @@ export async function renumberWorkflowsCommand(
             : relinkMissing(content);
         const { names, notes } = await readWorkflowFolder(host, labnoteDir);
         const titles = workflowLabels(notes);
-        const written = await processNoteThroughVault(app, host, readmePath, content => {
+        const sync = (content: string): string => {
           const plan = planWorkflowChecklistSync(relink(content), names, titles, undefined, labnoteDir);
           added = plan.added.length;
           return plan.content;
-        });
-        if (!written) added = 0;
+        };
+        const written = await processNoteThroughVault(app, host, readmePath, sync);
+        if (written === 'uncertain') {
+          readmeDone = false;
+          host.notify('warn', host.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', readmePath));
+        } else if (!written && (await changeNotWritten(app, host, readmePath, sync))) {
+          readmeDone = false;
+          host.notify('warn', host.t('{0} was not written: it was still being saved, or it changed while the change went in. Try again in a moment.', readmePath));
+        }
+        if (written !== true) added = 0;
       }
     } finally {
       await readmeSync.release(labnoteDir, { dropRenames: true });
@@ -1892,7 +1902,7 @@ export async function renumberWorkflowsCommand(
   if (added > 0) {
     host.notify('info', host.t('Added {0} workflow file(s) to the README checklist.', String(added)));
   }
-  if (relinked > 0 && renames.length === 0) {
+  if (readmeDone && relinked > 0 && renames.length === 0) {
     host.notify('info', host.t('Pointed {0} README checklist entry(ies) back at their file.', String(relinked)));
   }
   if (csvSkipped > 0) {
@@ -2427,7 +2437,7 @@ export async function syncWorkflowChecklistCommand(
 
   // Links are shortened first, so the entries to remove are matched in that form.
   const removeLinks = remove.map(link => normalizeChecklistLink(link, labnoteDir));
-  await processNoteThroughVault(app, host, readmePath, content => {
+  const sync = (content: string): string => {
     const shortened = normalizeWorkflowChecklistLinks(content, labnoteDir).content;
     return normalizeWorkflowChecklistLabels(
       dedupeWorkflowChecklistEntries(
@@ -2443,23 +2453,33 @@ export async function syncWorkflowChecklistCommand(
         labnoteDir
       )
     );
-  });
-  const parts = [
-    host.t(
-      'Workflow checklist updated: {0} added, {1} removed.',
-      String(plan.added.length),
-      String(remove.length + pruned)
-    ),
-  ];
+  };
+  const written = await processNoteThroughVault(app, host, readmePath, sync);
+  // The checklist is said as updated only when the README got it (or needed nothing).
+  const listed = written === true || (written === false && !(await changeNotWritten(app, host, readmePath, sync)));
+  if (written === 'uncertain') {
+    host.notify('warn', host.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', readmePath));
+  } else if (!listed) {
+    host.notify('warn', host.t('{0} was not written: it was still being saved, or it changed while the change went in. Try again in a moment.', readmePath));
+  }
+  const parts = listed
+    ? [
+        host.t(
+          'Workflow checklist updated: {0} added, {1} removed.',
+          String(plan.added.length),
+          String(remove.length + pruned)
+        ),
+      ]
+    : [];
   if (movedBack > 0) parts.push(host.t('{0} note(s) moved back to the experiment folder.', String(movedBack)));
   if (notesUpdated > 0) parts.push(host.t('{0} note(s) updated.', String(notesUpdated)));
-  if (relabel.length > 0) parts.push(host.t('{0} label(s) updated.', String(relabel.length)));
-  if (duplicates.length > 0) parts.push(host.t('{0} duplicate entry(ies) removed.', String(duplicates.length)));
-  if (relinked > 0) parts.push(host.t('{0} checklist link(s) fixed.', String(relinked)));
+  if (listed && relabel.length > 0) parts.push(host.t('{0} label(s) updated.', String(relabel.length)));
+  if (listed && duplicates.length > 0) parts.push(host.t('{0} duplicate entry(ies) removed.', String(duplicates.length)));
+  if (listed && relinked > 0) parts.push(host.t('{0} checklist link(s) fixed.', String(relinked)));
   if (samplesBrought > 0) {
     parts.push(host.t('Brought {0} local sample(s) into {1}.', String(samplesBrought), posix.basename(labnoteDir)));
   }
-  host.notify('info', parts.join(' '));
+  if (parts.length > 0) host.notify('info', parts.join(' '));
   clashNotice();
 }
 

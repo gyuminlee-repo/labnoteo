@@ -361,8 +361,9 @@ describe('a tool write over an open note', () => {
   });
 
   // The save fails as another writer changes the file, and the view has read that over its
-  // editor by the time the save is looked at: the change is gone, not written.
-  it('fails when the view has read another writer\'s file over its editor once its save failed', async () => {
+  // editor by the time the save is looked at: whether that file has the change cannot be told
+  // (here it has not), so it may or may not be there.
+  it('says the change may or may not be there when the view has read another writer\'s file over its editor', async () => {
     const { fs, editor, view, ctx } = openNote(P, NOTE, NOTE.replace('body a', 'body a typed'), undefined, 'fails', {}, async n => {
       if (n === 1) await fs.write(P, OTHER);
     });
@@ -378,9 +379,33 @@ describe('a tool write over an open note', () => {
       }
     };
     const res = await tool('update_section').handler(ctx, { documentPath: P, heading: 'B', content: 'NEW B' });
-    expect(res).toMatchObject({ ok: false, code: 'note_not_written', params: [P] });
+    expect(res).toMatchObject({ ok: true, code: 'note_write_uncertain', params: [P] });
     expect(await fs.read(P)).toBe(OTHER);
     expect(editor.getValue()).toBe(OTHER);
+  });
+
+  // The same, the other writer a formatter that rewrote the editor's text, change and all: the
+  // file has the change, which no more than the case before can be told on return.
+  it('says the change may or may not be there when a formatter rewrote it and the view read that', async () => {
+    let formatted = '';
+    const { fs, editor, view, ctx } = openNote(P, NOTE, NOTE.replace('body a', 'body a typed'), undefined, 'fails', {}, async n => {
+      if (n !== 1) return;
+      formatted = editor.getValue().replace('title: T', 'title:  T');
+      await fs.write(P, formatted);
+    });
+    const save = view.save.bind(view);
+    view.save = async () => {
+      try {
+        await save();
+      } catch (err) {
+        view.lastSavedData = formatted;
+        editor.replaceRange(formatted, 0, editor.getValue().length);
+        throw err;
+      }
+    };
+    const res = await tool('update_section').handler(ctx, { documentPath: P, heading: 'B', content: 'NEW B' });
+    expect(res).toMatchObject({ ok: true, code: 'note_write_uncertain', params: [P] });
+    expect((await fs.read(P)).split('NEW B').length - 1).toBe(1);
   });
 
   // A README whose save fails as another writer changes it: the workflow is made, its listing

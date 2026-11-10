@@ -379,10 +379,10 @@ export class ScanPipeline {
         const written = await processNoteThroughVault(this.deps.app, this.deps.host, notePath, apply);
         if (written === 'uncertain') {
           // The entries may be in the note, or kept by its editor for its next save: their
-          // images stay, and nothing is queued, which would file them twice.
+          // images stay, and they are not queued, which would file them twice. Scans the text
+          // written had no unit operation for are not in it: queued below, as always.
           this.deps.host.notify('warn', this.deps.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', notePath));
-          for (const item of items) item.result.uncertain = true;
-          continue;
+          for (const item of items) if (!missed.has(item)) item.result.uncertain = true;
         } else if (!written && (await changeNotWritten(this.deps.app, this.deps.host, notePath, apply))) {
           // Not written: a save of the open note did not end in time.
           failure = this.deps.t('The scans were not written into the note: it was still being saved, or it changed while they went in.');

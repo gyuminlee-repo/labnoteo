@@ -144,7 +144,8 @@ async function writeInOpenEditor(
     // change, and saves it on its next save.
     const keeps = view.file?.path === file.path && typeof savedAs === 'string';
     // A failed save whose view has read the file another writer changed already, its editor
-    // now that file: the change is gone.
+    // now that file: the change is there only if that file has it, which this cannot tell (a
+    // formatter may have rewritten the editor's text, change and all, or another edit not).
     const readOver = !saved && typeof savedAs === 'string' && savedAs !== disk && editorNow === lf(savedAs);
     return { saved, atSave, now, wrote, keeps, readOver };
   };
@@ -152,19 +153,19 @@ async function writeInOpenEditor(
   // note: the editor's text, the change in it, even when another plugin changed the file right
   // after), or when it reads as the change or as the editor's text as the save left it.
   // Else another writer changed it. A save that wrote nothing, its view reading the file again
-  // or gone: the change is not there, false. A save that failed, its view having read that file
-  // over its editor already: false too. Else 'uncertain'. The view does not read a change made
-  // while it saves, and its editor keeps the change for its next save, over that writer's text;
-  // a change made once the save is over it reads, over its editor, after a read of the file of
-  // its own, which may not have ended yet. Read merged with typing, the editor differs from the
-  // file whether the merge kept the change or dropped it (a part it could not place): not told
-  // apart here either. The change is not applied again, which could put it in twice.
+  // or gone: the change is not there, false. A save that failed: 'uncertain'. The view does not
+  // read a change made while it saves, and its editor keeps the change for its next save, over
+  // that writer's text; a change made once the save is over it reads, over its editor, after a
+  // read of the file of its own, which may not have ended yet. Read over the editor, the file
+  // may or may not have the change (rewritten by a formatter, say); read merged with typing, the
+  // editor differs from the file whether the merge kept the change or dropped it (a part it
+  // could not place). The change is not applied again, which could put it in twice.
   const landed = (text: string, atSave: string) => lf(text) === after || lf(text) === atSave;
-  // A view that read the file over its editor has the two alike, the change in neither: not
-  // taken for the file reading as the editor.
+  // A view that read the file over its editor has the two alike, whether or not the file has the
+  // change: not taken for the file reading as the editor.
   const changedMeanwhile = (at: { saved: boolean; atSave: string; now: string; wrote: boolean; readOver: boolean }) => {
     if (at.wrote || lf(at.now) === after) return true;
-    if (at.readOver) return false;
+    if (at.readOver) return 'uncertain' as const;
     if (landed(at.now, at.atSave)) return true;
     return at.saved ? false : ('uncertain' as const);
   };

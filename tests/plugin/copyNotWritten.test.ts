@@ -152,3 +152,25 @@ describe('the dates of a copied workflow note', () => {
     expect(notices.filter(n => n.level === 'info').map(n => n.msg)[0]).toMatch(/^Reset the dates of the copy 001_WD010_A\.labnote\.md/);
   });
 });
+
+// A copied workflow note's issue markers given new IDs while Obsidian is still saving it past
+// the wait: nothing is written, so it is not said as done but as not written.
+describe('the issue markers of a copied workflow note', () => {
+  it('a save that does not end in time: not said as done, said as not written', async () => {
+    const start = '# A\n@issue;ISS-a;x\n';
+    const files = new Map([[NOTE, start]]);
+    const { p, notices } = plugin(files, NOTE, 'before');
+    Object.assign(p, {
+      unloaded: false,
+      copiedWorkflows: new Set([NOTE]),
+      waitForNoModal: async () => true,
+      barcode: { reassignCopiedId: async () => 'refused' },
+    });
+    await (p as unknown as { offerCopiedWorkflowFix(f: TFile): Promise<void> }).offerCopiedWorkflowFix(new TFile(NOTE));
+    expect(files.get(NOTE)).toBe(start);
+    expect(notices).toEqual([
+      { level: 'warn', msg: `${NOTE} was not written: it was still being saved, or it changed while the change went in. Try again in a moment.` },
+    ]);
+  }, OPEN_SAVE_WAIT_MS + 10000);
+});
+
