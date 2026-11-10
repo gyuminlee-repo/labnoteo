@@ -69,10 +69,21 @@ export async function processInOpenCrlfEditor(
   transform: (content: string) => string,
   deadline?: number
 ): Promise<boolean | undefined> {
+  const result = await writeInOpenCrlfEditor(app, file, transform, deadline);
+  return result === 'timedOut' ? false : result;
+}
+
+/** {@link processInOpenCrlfEditor}, saying 'timedOut' for nothing written past the wait. */
+async function writeInOpenCrlfEditor(
+  app: App,
+  file: TFile,
+  transform: (content: string) => string,
+  deadline?: number
+): Promise<boolean | undefined | 'timedOut'> {
   // A save still under way past the wait would write over the change (and would hold this
   // one's save too: Obsidian's save waits for the one under way, with no limit): nothing is
   // written, through the editor or the vault.
-  if (!(await waitForOpenSaves(app, file.path, deadline))) return false;
+  if (!(await waitForOpenSaves(app, file.path, deadline))) return 'timedOut';
   const view = openSourceView(app, file.path);
   if (!view) return undefined;
   const disk = await app.vault.read(file);
@@ -126,8 +137,10 @@ export async function processInOpenCrlfEditor(
  * Left unsaved, that buffer is saved over the write when the note is left before Obsidian has
  * read the write back (it reads the file again, and merges, a moment after the write). A view
  * whose last read is not the file as it is now is left alone: that read is the one under way.
+ * Then waits, up to `deadline`, for every save under way on it, this one or another write's:
+ * false when one is still under way, and the caller writes nothing.
  */
-export async function saveOpenEdits(app: App, file: TFile): Promise<void> {
+export async function saveOpenEdits(app: App, file: TFile, deadline?: number): Promise<boolean> {
   const views = (app.workspace?.getLeavesOfType?.('markdown') ?? [])
     .map(leaf => leaf.view)
     .filter((view): view is MarkdownView => view instanceof MarkdownView && view.file?.path === file.path)
@@ -137,16 +150,19 @@ export async function saveOpenEdits(app: App, file: TFile): Promise<void> {
       const lf = (text: string) => text.replace(/\r\n?/g, '\n');
       return typeof last === 'string' && lf(view.getViewData()) !== lf(last);
     });
-  if (views.length === 0) return;
-  const disk = await app.vault.read(file);
-  for (const view of views) {
-    if ((view as unknown as { lastSavedData?: unknown }).lastSavedData !== disk) continue;
-    try {
-      await view.save();
-    } catch {
-      // Obsidian said it could not save; the write goes on as it did.
+  if (views.length > 0) {
+    const disk = await app.vault.read(file);
+    for (const view of views) {
+      if ((view as unknown as { lastSavedData?: unknown }).lastSavedData !== disk) continue;
+      try {
+        await view.save();
+      } catch {
+        // Obsidian said it could not save; the write goes on as it did.
+      }
     }
   }
+  // A save another write started here may still be writing: it would land over this one.
+  return waitForOpenSaves(app, file.path, deadline);
 }
 
 /**
@@ -165,9 +181,24 @@ export async function openViewHasDisk(app: App, file: TFile): Promise<boolean> {
  * was not written there (or the editor needed none); true after `app.vault.process`.
  */
 export async function processNote(app: App, file: TFile, transform: (content: string) => string): Promise<boolean> {
-  const inEditor = await processInOpenCrlfEditor(app, file, transform);
-  if (inEditor !== undefined) return inEditor;
-  await saveOpenEdits(app, file);
+  return (await processNoteResult(app, file, transform)) === 'written';
+}
+
+/**
+ * {@link processNote}, saying why nothing was written: 'timedOut' when a save of the open note
+ * did not end in time, 'notWritten' otherwise (the editor needed no change, or another writer
+ * changed the file meanwhile).
+ */
+export async function processNoteResult(
+  app: App,
+  file: TFile,
+  transform: (content: string) => string
+): Promise<'written' | 'notWritten' | 'timedOut'> {
+  const deadline = Date.now() + OPEN_SAVE_WAIT_MS;
+  const inEditor = await writeInOpenCrlfEditor(app, file, transform, deadline);
+  if (inEditor === 'timedOut') return 'timedOut';
+  if (inEditor !== undefined) return inEditor ? 'written' : 'notWritten';
+  if (!(await saveOpenEdits(app, file, deadline))) return 'timedOut';
   await app.vault.process(file, transform);
-  return true;
+  return 'written';
 }

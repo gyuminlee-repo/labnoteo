@@ -12,7 +12,7 @@ import type { LabnoteHost } from '@labnoteo/core';
 import { listFiledScans, parseFrontMatterYaml } from '@labnoteo/core';
 import { generateNoteId, isValidNoteId, NOTE_ID_KEY, noteIdUnwritable, readNoteId, readRawNoteId, setNoteId } from '@labnoteo/core/lib/noteId';
 import { noteIdFromFiledScanEmbed } from '../scan/imageStore';
-import { processNote, waitForOpenSaves } from '../openEditorWrite';
+import { processNoteResult } from '../openEditorWrite';
 
 /** Notes that get a barcode: lab notes (`*.labnote.md`). */
 export const isBarcodeNote = (path: string): boolean => path.toLowerCase().endsWith('.labnote.md');
@@ -213,22 +213,19 @@ export class NoteIdService {
    * Write `id` as the note's `labnote_id` and read it back. setNoteId leaves a
    * value written over several lines (or with an anchor, tag or alias) as it
    * is; then the user is told and false comes back, so no caller goes on with
-   * an ID the note does not carry. A note that would take the ID but did not get
-   * it while a save of it is still under way (one that did not end in time) is
-   * told that instead.
+   * an ID the note does not carry. A note not written because a save of it did
+   * not end in time is told that instead.
    */
   private async writeId(file: TFile, id: string): Promise<boolean> {
     // Known first, so the write is not taken for a change made elsewhere (#443);
     // the ID it was is known again when the write did not take.
     const before = this.known?.get(file.path);
     this.known?.set(file.path, id);
-    await processNote(this.app, file, data => setNoteId(data, id));
-    const now = await this.app.vault.read(file);
-    if (readNoteId(now) === id) return true;
+    const result = await processNoteResult(this.app, file, data => setNoteId(data, id));
+    if (result !== 'timedOut' && readNoteId(await this.app.vault.read(file)) === id) return true;
     if (before === undefined) this.known?.delete(file.path);
     else this.known?.set(file.path, before);
-    // A value the note takes, and a save of it still under way: that save is why.
-    if (readNoteId(setNoteId(now, id)) === id && !(await waitForOpenSaves(this.app, file.path, Date.now()))) {
+    if (result === 'timedOut') {
       this.host.notify(
         'warn',
         this.host.t('{0} was still being saved, so its labnote_id was not written. Try again in a moment.', file.path)

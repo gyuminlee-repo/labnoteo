@@ -12,17 +12,22 @@ import { OPEN_SAVE_WAIT_MS } from '../../src/openEditorWrite';
 const P = 'labnote/001_Test/001_WD010_A.labnote.md';
 const t = (key: string, ...args: unknown[]) => args.reduce<string>((s, a, i) => s.replace(`{${i}}`, String(a)), key);
 
-async function assign(text: string, saving: boolean) {
+async function assign(text: string, saving: boolean | 'endsAtLimit') {
+  const started = Date.now();
   const files = new Map([[P, text]]);
   const notices: { level: string; msg: string }[] = [];
   const tf = new TFile(P);
-  const view = { file: tf, savePromise: saving ? new Promise(() => {}) : null };
+  const view: { file: TFile; savePromise: Promise<unknown> | null } = { file: tf, savePromise: saving ? new Promise(() => {}) : null };
   const app = {
     workspace: { getLeavesOfType: () => [{ view }] },
     vault: {
       getAbstractFileByPath: () => tf,
       getMarkdownFiles: () => [],
-      read: async () => files.get(P)!,
+      read: async () => {
+        // The save ends just as the write gives up waiting for it.
+        if (saving === 'endsAtLimit' && Date.now() - started >= OPEN_SAVE_WAIT_MS) view.savePromise = null;
+        return files.get(P)!;
+      },
       process: async (_f: TFile, fn: (s: string) => string) => {
         files.set(P, fn(files.get(P)!));
         return files.get(P)!;
@@ -39,6 +44,15 @@ describe('a note ID not written', () => {
   it('while a save of the open note does not end in time: that is the warning', async () => {
     const text = '---\ntitle: A\n---\n# A\n';
     const r = await assign(text, true);
+    expect(r.id).toBeUndefined();
+    expect(r.text).toBe(text);
+    expect(r.notices).toEqual([{ level: 'warn', msg: `${P} was still being saved, so its labnote_id was not written. Try again in a moment.` }]);
+  }, OPEN_SAVE_WAIT_MS + 10000);
+
+  // Said from what the write met, not from a look afterwards: the save is over by then.
+  it('a save that ends right after the wait gave up: still that warning', async () => {
+    const text = '---\ntitle: A\n---\n# A\n';
+    const r = await assign(text, 'endsAtLimit');
     expect(r.id).toBeUndefined();
     expect(r.text).toBe(text);
     expect(r.notices).toEqual([{ level: 'warn', msg: `${P} was still being saved, so its labnote_id was not written. Try again in a moment.` }]);

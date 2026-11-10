@@ -2452,10 +2452,11 @@ export async function writeNoteThroughVault(
 ): Promise<boolean> {
   const file = app.vault.getFileByPath(notePath);
   if (file instanceof TFile) {
+    const deadline = Date.now() + OPEN_SAVE_WAIT_MS;
     // Open in an editor with CRLF in its file: written there, LF as the editor holds it.
-    const inEditor = await processInOpenCrlfEditor(app, file, () => content.replace(/\r\n?/g, '\n'));
+    const inEditor = await processInOpenCrlfEditor(app, file, () => content.replace(/\r\n?/g, '\n'), deadline);
     if (inEditor !== undefined) return inEditor;
-    await saveOpenEdits(app, file);
+    if (!(await saveOpenEdits(app, file, deadline))) return false;
     await app.vault.process(file, () => content);
   } else {
     await host.fs.write(notePath, content);
@@ -2493,7 +2494,7 @@ export async function processNoteThroughVault(
     // Open in an editor with CRLF in its file: applied there ({@link processInOpenCrlfEditor}).
     const inEditor = await processInOpenCrlfEditor(app, file, transform, deadline);
     if (inEditor !== undefined) return inEditor;
-    await saveOpenEdits(app, file);
+    if (!(await saveOpenEdits(app, file, deadline))) return false;
     await app.vault.process(file, data => transform(data));
   } else {
     await host.fs.write(notePath, next);
