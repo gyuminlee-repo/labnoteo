@@ -620,7 +620,7 @@ describe('embedLinkPath', () => {
 });
 
 // Obsidian still saving the open note past the wait: nothing is written into it, so no scan
-// counts as filed or undone and no image goes to the trash; the scans stay to be filed again.
+// counts as filed or undone; a scan not filed is in the unmatched queue, to be assigned again.
 describe('scans while a save of the open note does not end in time', () => {
   const T = OPEN_SAVE_WAIT_MS + 10000;
   const stuck = (s: ReturnType<typeof setup>) => {
@@ -628,17 +628,30 @@ describe('scans while a save of the open note does not end in time', () => {
     Object.assign(s.app, { workspace: { getLeavesOfType: () => [{ view }] } });
   };
 
-  it('an import: failed, the note unchanged, the image kept', async () => {
+  it('an import: failed, the note unchanged, the image in the unmatched queue', async () => {
     const note = buildNote(ID, ['UHW010', 'UHW020']);
     const s = setup({ [NOTE]: note }, { 'a.jpg': [page(pagePayload(), 'aaaaaaaaaaaa')] });
     stuck(s);
     const [result] = await s.pipeline.run([input('a.jpg')]);
-    expect(result.status).toBe('error');
+    expect(result).toMatchObject({ status: 'error', message: 'Error: the note was still being saved, so the scans were not written into it' });
     expect(s.text.get(NOTE)).toBe(note);
-    expect(s.binary.has(result.imagePath!)).toBe(true);
-    expect(s.trashed).toEqual([]);
+    expect(result.imagePath).toBeUndefined();
+    expect([...s.binary.keys()]).toEqual([result.unmatchedPath]);
+    expect(result.unmatchedPath).toMatch(/^_labnote-scans\/unmatched\//);
+    expect(listUnmatched(s.app as never).map(f => f.path)).toEqual([result.unmatchedPath]);
     expect(s.edits).toEqual([]);
   }, T);
+
+  // A write that throws is the same failure: the scan is queued, not left unlinked in the note folder.
+  it('an import whose note write throws: the image in the unmatched queue', async () => {
+    const note = buildNote(ID, ['UHW010', 'UHW020']);
+    const s = setup({ [NOTE]: note }, { 'a.jpg': [page(pagePayload(), 'aaaaaaaaaaaa')] });
+    Object.assign(s.app.vault, { process: async () => { throw new Error('disk full'); } });
+    const [result] = await s.pipeline.run([input('a.jpg')]);
+    expect(result).toMatchObject({ status: 'error', message: 'Error: disk full' });
+    expect([...s.binary.keys()]).toEqual([result.unmatchedPath]);
+    expect(listUnmatched(s.app as never).map(f => f.path)).toEqual([result.unmatchedPath]);
+  });
 
   it('filed by hand: failed, the queued image kept', async () => {
     const QUEUED = '_labnote-scans/unmatched/20261021-021738_unknown_photo1.jpg';
@@ -653,8 +666,9 @@ describe('scans while a save of the open note does not end in time', () => {
       { page: 1, pageCount: 1 }
     );
     expect(result.status).toBe('error');
-    expect(s.binary.has(QUEUED)).toBe(true);
-    expect(s.trashed).toEqual([]);
+    // The queued image stays, the one in the queue; nothing else is left.
+    expect([...s.binary.keys()]).toEqual([QUEUED]);
+    expect(result.unmatchedPath).toBe(QUEUED);
     expect(s.text.get(NOTE)).toBe(note);
   }, T);
 

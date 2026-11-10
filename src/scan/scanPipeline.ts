@@ -336,7 +336,7 @@ export class ScanPipeline {
     );
   }
 
-  private async unmatched(page: DecodedPage, base: ScanResult, reason: UnmatchedReason): Promise<ScanResult> {
+  private async unmatched(page: DecodedPage, base: ScanResult, reason?: UnmatchedReason): Promise<ScanResult> {
     const payload = base.payload && isPagePayload(base.payload) ? base.payload : undefined;
     const name = unmatchedFileName(timestamp(), page.source, base.payload?.noteId, page.sourcePage, {
       payload,
@@ -369,45 +369,56 @@ export class ScanPipeline {
         }
         return out;
       };
+      let failure: string | undefined;
       try {
         if (
           !(await processNoteThroughVault(this.deps.app, this.deps.host, notePath, apply)) &&
           (await changeNotWritten(this.deps.host, notePath, apply))
         ) {
-          // Not written (a save of the open note did not end in time): failed, as a write
-          // that throws, so no scan counts as filed and none of its images is trashed.
-          throw new Error('the note was still being saved, so the scans were not written into it');
+          // Not written: a save of the open note did not end in time.
+          failure = 'Error: the note was still being saved, so the scans were not written into it';
+        } else {
+          this.deps.markUserEdit(notePath);
         }
-        this.deps.markUserEdit(notePath);
       } catch (err) {
-        console.error('[labnoteo] could not file scans in', notePath, err);
-        for (const item of items) Object.assign(item.result, { status: 'error', message: String(err) });
+        failure = String(err);
+      }
+      if (failure !== undefined) {
+        // Each scan goes to the unmatched queue, to be assigned from there, and says why it failed.
+        console.error('[labnoteo] could not file scans in', notePath, failure);
+        for (const item of items) {
+          await this.requeue(item);
+          if (item.result.status === 'unmatched') Object.assign(item.result, { status: 'error', message: failure });
+        }
         continue;
       }
       // The note changed between reading and writing so that the unit operation is gone.
-      for (const [item, reason] of missed) {
-        try {
-          const image = this.deps.app.vault.getAbstractFileByPath(item.result.imagePath!);
-          if (!(image instanceof TFile)) throw new Error('Saved scan image is missing');
-          const queued = await this.unmatched({
-            source: item.result.source,
-            sourcePage: item.result.sourcePage,
-            hash: item.entry.hash,
-            blank: false,
-            render: () => this.deps.app.vault.readBinary(image),
-          }, item.result, reason);
-          Object.assign(item.result, queued);
-          try {
-            await this.deps.app.fileManager.trashFile(image);
-            delete item.result.imagePath;
-          } catch (err) {
-            // The copy is queued already; the saved image stays, and imagePath says where.
-            console.warn('[labnoteo] could not trash a scan queued as unmatched', image.path, err);
-          }
-        } catch (err) {
-          Object.assign(item.result, { status: 'error', message: String(err) });
-        }
+      for (const [item, reason] of missed) await this.requeue(item, reason);
+    }
+  }
+
+  /** Put a scan saved for a note into the unmatched queue instead, and trash the saved image. */
+  private async requeue(item: Pending, reason?: UnmatchedReason): Promise<void> {
+    try {
+      const image = this.deps.app.vault.getAbstractFileByPath(item.result.imagePath!);
+      if (!(image instanceof TFile)) throw new Error('Saved scan image is missing');
+      const queued = await this.unmatched({
+        source: item.result.source,
+        sourcePage: item.result.sourcePage,
+        hash: item.entry.hash,
+        blank: false,
+        render: () => this.deps.app.vault.readBinary(image),
+      }, item.result, reason);
+      Object.assign(item.result, queued);
+      try {
+        await this.deps.app.fileManager.trashFile(image);
+        delete item.result.imagePath;
+      } catch (err) {
+        // The copy is queued already; the saved image stays, and imagePath says where.
+        console.warn('[labnoteo] could not trash a scan queued as unmatched', image.path, err);
       }
+    } catch (err) {
+      Object.assign(item.result, { status: 'error', message: String(err) });
     }
   }
 
@@ -456,13 +467,13 @@ export class ScanPipeline {
     const result = await this.filePage(decoded, {}, pending, new Set(), new Map(), new Set());
     await this.flush(pending);
     if (result.status === 'filed' || result.status === 'duplicate') await app.fileManager.trashFile(image);
-    if (result.status === 'unmatched' && result.unmatchedPath) {
-      // The image is still in the queue; the copy filePage made there is not needed.
+    if ((result.status === 'unmatched' || result.status === 'error') && result.unmatchedPath) {
+      // The image is still in the queue; the copy filePage or flush made there is not needed.
       const copy = app.vault.getAbstractFileByPath(result.unmatchedPath);
       if (copy instanceof TFile && copy !== image) await app.fileManager.trashFile(copy);
       result.unmatchedPath = image.path;
     }
-    if (result.status === 'unmatched' && result.imagePath) {
+    if ((result.status === 'unmatched' || result.status === 'error') && result.imagePath) {
       // flush could not trash the image it saved; the queued image stands for it.
       const saved = app.vault.getAbstractFileByPath(result.imagePath);
       try {
