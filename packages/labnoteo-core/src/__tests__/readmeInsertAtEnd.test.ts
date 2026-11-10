@@ -23,3 +23,21 @@ describe('the first entry of a Related Workflows section at the end of the READM
     }
   );
 });
+
+// The same README with no final line break: the blank line goes above the entry all the same,
+// and the README still ends without a line break. A blank line here holds spaces, since an
+// empty last line would be the heading's own line break.
+const noFinalBreak = [
+  ['the heading', ['# E', '## Related Workflows'], ['# E', '## Related Workflows', '', ENTRY]],
+  ['the instruction blockquote', ['## Related Workflows', '> Instructions'], ['## Related Workflows', '> Instructions', '', ENTRY]],
+  ['a blank line', ['## Related Workflows', '  '], ['## Related Workflows', '  ', '', ENTRY]],
+] as const;
+
+describe('the first entry of a Related Workflows section ending a README with no final line break', () => {
+  it.each(noFinalBreak.flatMap(([name, md, out]) => endings.map(([n, nl]) => [name, n, md.join(nl), out.join(nl)] as const)))(
+    'goes a blank line below %s and no line break is added at the end (%s)',
+    (_name, _n, md, out) => {
+      expect(insertWorkflowChecklistEntries(md, [A])).toBe(out);
+    }
+  );
+});

@@ -706,7 +706,11 @@ export function insertWorkflowChecklistEntries(
     // Keep a blank line between the new entry and whatever follows it. Past the last
     // line the empty element a final newline leaves was passed over as a blank line,
     // as main did: that blank line stays above the entry, and the final newline after it.
-    const blankAbove = at === lines.length && at - 1 > header && lines[at - 1] === '';
+    // A README with no final line break gets the same blank line above the entry at its
+    // end, and still ends without one.
+    const blankAbove =
+      at === lines.length &&
+      (lines[at - 1] === '' ? at - 1 > header : !/[\r\n]$/.test(readmeContent));
     insertAt(at, at < lines.length && lines[at].trim() !== '', blankAbove);
   }
   return joinSplitKeepingCr(readmeContent, lines);
