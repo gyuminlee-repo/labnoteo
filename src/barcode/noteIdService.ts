@@ -12,7 +12,7 @@ import type { LabnoteHost } from '@labnoteo/core';
 import { listFiledScans, parseFrontMatterYaml } from '@labnoteo/core';
 import { generateNoteId, isValidNoteId, NOTE_ID_KEY, noteIdUnwritable, readNoteId, readRawNoteId, setNoteId } from '@labnoteo/core/lib/noteId';
 import { noteIdFromFiledScanEmbed } from '../scan/imageStore';
-import { processNoteResult } from '../openEditorWrite';
+import { openEditorText, processNoteResult } from '../openEditorWrite';
 
 /** Notes that get a barcode: lab notes (`*.labnote.md`). */
 export const isBarcodeNote = (path: string): boolean => path.toLowerCase().endsWith('.labnote.md');
@@ -222,7 +222,10 @@ export class NoteIdService {
     const before = this.known?.get(file.path);
     this.known?.set(file.path, id);
     const result = await processNoteResult(this.app, file, data => setNoteId(data, id));
-    if (result !== 'timedOut' && readNoteId(await this.app.vault.read(file)) === id) return true;
+    // Read back as the note is: in an open editor that keeps a change its save could not write
+    // yet, the editor's text, which the view saves next.
+    const read = async () => (await openEditorText(this.app, file.path)) ?? (await this.app.vault.read(file));
+    if (result !== 'timedOut' && readNoteId(await read()) === id) return true;
     if (before === undefined) this.known?.delete(file.path);
     else this.known?.set(file.path, before);
     if (result === 'timedOut') {
@@ -232,7 +235,7 @@ export class NoteIdService {
       );
       return false;
     }
-    const now = await this.app.vault.read(file);
+    const now = await read();
     if (setNoteId(now, id) === now) {
       // The note as it is would not take the ID: its labnote_id is written in a form left as it is.
       this.warnUnwritable(file);

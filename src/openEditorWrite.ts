@@ -425,8 +425,9 @@ export async function openViewHasDisk(app: App, file: TFile): Promise<boolean> {
  */
 export async function openEditorText(app: App, path: string): Promise<string | undefined> {
   const view = openSourceView(app, path);
+  if (!view) return undefined;
   const file = app.vault.getFileByPath(path);
-  if (!view || !file) return undefined;
+  if (!file) return undefined;
   const disk = await app.vault.read(file);
   const text = view.editor.getValue();
   const lastSaved: unknown = (view as unknown as { lastSavedData?: unknown }).lastSavedData;
