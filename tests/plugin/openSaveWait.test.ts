@@ -8,7 +8,7 @@ import type { App } from 'obsidian';
 import { MarkdownView, TFile } from '../stubs/obsidian';
 import type { LabnoteHost } from '@labnoteo/core';
 import { processNoteThroughVault } from '../../src/commands';
-import { OPEN_SAVE_WAIT_MS } from '../../src/openEditorWrite';
+import { OPEN_SAVE_WAIT_MS, processNote } from '../../src/openEditorWrite';
 
 const P = 'labnote/001_Test/README.labnote.md';
 
@@ -81,13 +81,15 @@ describe('the wait for saves under way on an open note', () => {
     expect(state.order).toEqual(['process']);
   });
 
-  it('writes only after every save, one started in a view after its first included', async () => {
-    const { app, host, state, views } = setup(2, 'a\r\nb\r\n');
-    void saving(views[0], 20, state, 'first save').then(() => void saving(views[0], 40, state, 'second save'));
-    void saving(views[1], 30, state, 'other view save');
-    expect(await processNoteThroughVault(app, host, P, c => c.replace('b', 'B'))).toBe(true);
-    expect(state.order.slice(0, 3)).toEqual(['first save', 'other view save', 'second save']);
-    expect(state.order.slice(3)).not.toContain('first save');
-    expect(state.disk.replace(/\r\n?/g, '\n')).toBe('a\nB\n');
+  // The first view's save ends, then the other's, and only then the first starts another.
+  it('writes only after every save, one started in a view already waited for included', async () => {
+    // An LF note: the write goes through the vault right after the wait.
+    const { app, state, views } = setup(2, 'a\nb\n');
+    void saving(views[0], 20, state, 'first save');
+    void saving(views[1], 30, state, 'other view save').then(() => void saving(views[0], 30, state, 'second save'));
+    // A direct note write, which waits once.
+    await processNote(app, new TFile(P) as never, c => c.replace('b', 'B'));
+    expect(state.order).toEqual(['first save', 'other view save', 'second save', 'process']);
+    expect(state.disk).toBe('a\nB\n');
   });
 });
