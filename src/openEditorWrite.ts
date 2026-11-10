@@ -129,26 +129,32 @@ async function writeInOpenEditor(
     }
     const atSave = lf(view.editor.getValue());
     const now = await app.vault.read(file);
-    const savedAs: unknown = (view as unknown as { lastSavedData?: unknown }).lastSavedData;
+    const lastSavedData = (): unknown => (view as unknown as { lastSavedData?: unknown }).lastSavedData;
+    const savedAs = lastSavedData();
     const wrote = saved && openSourceView(app, file.path) === view && typeof savedAs === 'string' && savedAs !== disk;
     // The view still on the note, holding the file's text as last saved: its editor keeps the
     // change, and saves it on its next save.
     const keeps = view.file?.path === file.path && typeof savedAs === 'string';
     // A failed save whose view still holds the text the change was put over, not the file now
     // there (Obsidian does not read a change made while it saves, nor later): its editor keeps
-    // the change, and its next save writes it over that file.
-    const unread = !saved && keeps && savedAs === disk && now !== disk && atSave !== lf(disk);
+    // the change, and its next save writes it over that file. A change made once the save was
+    // over the view does read, over its editor: given a turn for that, it holds that file then.
+    let unread = !saved && keeps && savedAs === disk && now !== disk && atSave !== lf(disk);
+    if (unread) {
+      await new Promise(resolve => setTimeout(resolve, 0));
+      unread = lastSavedData() === disk;
+    }
     return { atSave, now, wrote, keeps, unread };
   };
   // A file no longer as it was holds the change when the save wrote (the view still on the
   // note: the editor's text, the change in it, even when another plugin changed the file right
   // after), or when it reads as the change or as the editor's text as the save left it; else
   // another writer changed it and the change is not known to be there. It is not applied again
-  // then, which could put it in twice with a save landing late: false, and the editor keeps the
-  // change, which Obsidian may save later.
+  // then, which could put it in twice with a save landing late: false, the view reading that
+  // file over its editor; one that has not read it keeps the change for its next save.
   const landed = (text: string, atSave: string) => lf(text) === after || lf(text) === atSave;
   let at = await save();
-  if (at.now !== disk) return at.wrote || landed(at.now, at.atSave);
+  if (at.now !== disk) return at.wrote || landed(at.now, at.atSave) || at.unread;
   // The file as it was, the save having failed (Obsidian says so itself, keeping a backup) or
   // written nothing. A view still on the note keeps the change in its editor: it is saved once
   // more, not written through the vault, which the view would merge with what was typed during
@@ -158,7 +164,9 @@ async function writeInOpenEditor(
   // that over its editor, which no write can tell).
   if (at.keeps) {
     // A save Obsidian started meanwhile would hold this one with no limit: waited for as any.
-    if (!(await waitForOpenSaves(app, file.path, until))) return 'timedOut';
+    // Past the wait, that save, made of the editor's text, has the change in it, and the editor
+    // keeps it: written, not to be asked for again (which would put an insertion in twice).
+    if (!(await waitForOpenSaves(app, file.path, until))) return at.keeps;
     at = await save();
     // Another writer changed the file while it was saved again: the view, saving, did not read
     // that, and keeps the change.

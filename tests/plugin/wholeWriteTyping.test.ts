@@ -224,10 +224,11 @@ describe('a tool write over an open note', () => {
     expect(await fs.read(P)).toBe(NOTE);
   }, OPEN_SAVE_WAIT_MS + 10000);
 
-  // The save fails, and Obsidian starts a save of its own that does not end before the note
-  // is saved again: that one is waited for no longer than any, nothing written.
-  it('fails when a save Obsidian starts before the note is saved again does not end in time', async () => {
-    const { fs, view, ctx } = openNote(P, NOTE, NOTE.replace('body a', 'body a typed'), undefined, 'fails');
+  // The save fails, and Obsidian starts a save of its own, of the editor with the change in it,
+  // that does not end before the note is saved again: that one is waited for no longer than
+  // any, and the change, in the editor and in that save, is not to be asked for again.
+  it('reports the change the editor keeps when a save Obsidian starts before it is saved again does not end in time', async () => {
+    const { fs, view, editor, ctx } = openNote(P, NOTE, NOTE.replace('body a', 'body a typed'), undefined, 'fails');
     const save = view.save.bind(view);
     let saves = 0;
     view.save = async () => {
@@ -238,10 +239,25 @@ describe('a tool write over an open note', () => {
       }
     };
     const res = await tool('update_section').handler(ctx, { documentPath: P, heading: 'B', content: 'NEW B' });
-    expect(res).toMatchObject({ ok: false, code: 'note_not_written', params: [P] });
+    expect(res.ok).toBe(true);
     expect(saves).toBe(1);
+    expect(editor.getValue()).toContain('## B\n\nNEW B');
     expect(await fs.read(P)).toBe(NOTE);
   }, OPEN_SAVE_WAIT_MS + 10000);
+
+  // The first save fails, another writer changing the file while it is saved: the view, saving,
+  // does not read that, so its editor keeps the change for its next save.
+  it('reports the change the editor keeps when another writer changes the file as it is first saved', async () => {
+    let fsRef: MemFileSystem | undefined;
+    const { fs, editor, ctx } = openNote(P, NOTE, NOTE.replace('body a', 'body a typed'), undefined, 'fails', {}, async n => {
+      if (n === 1) await fsRef!.write(P, OTHER);
+    });
+    fsRef = fs;
+    const res = await tool('update_section').handler(ctx, { documentPath: P, heading: 'B', content: 'NEW B' });
+    expect(res.ok).toBe(true);
+    expect(editor.getValue()).toContain('## B\n\nNEW B');
+    expect(await fs.read(P)).toBe(OTHER);
+  });
 
   // A change the editor holds, its save failing, asked for again: it is in the note as the
   // note is (the editor's), not said to be not written for the file still without it.
@@ -323,14 +339,18 @@ describe('a tool write over an open note', () => {
   // not dirty after its failed save, reads that over its editor: the change is in neither,
   // however alike they read.
   it('fails when the save fails and the view reads another writer\'s file over its editor', async () => {
-    let at: { fs: MemFileSystem; editor: ReturnType<typeof cmEditor> } | undefined;
-    const { fs, editor, ctx } = openNote(P, NOTE, NOTE.replace('body a', 'body a typed'), undefined, 'fails', {}, async n => {
+    let at: { fs: MemFileSystem; editor: ReturnType<typeof cmEditor>; view: MarkdownView } | undefined;
+    const { fs, editor, view, ctx } = openNote(P, NOTE, NOTE.replace('body a', 'body a typed'), undefined, 'fails', {}, async n => {
       if (n !== 1) return;
       await at!.fs.write(P, OTHER);
-      // Read over the editor once the save is over, as onModify does (it waits out a save).
-      setTimeout(() => at!.editor.replaceRange(OTHER, 0, at!.editor.getValue().length), 0);
+      // Its event handled once the save is over: the view reads the file over its editor and
+      // holds it as last saved, as onModify does.
+      setTimeout(() => {
+        at!.view.lastSavedData = OTHER;
+        at!.editor.replaceRange(OTHER, 0, at!.editor.getValue().length);
+      }, 0);
     });
-    at = { fs, editor };
+    at = { fs, editor, view };
     const res = await tool('update_section').handler(ctx, { documentPath: P, heading: 'B', content: 'NEW B' });
     expect(res).toMatchObject({ ok: false, code: 'note_not_written' });
     await new Promise(resolve => setTimeout(resolve, 5));
