@@ -32,6 +32,8 @@ async function setup(nl: string, open: 'source' | 'preview' | 'closed') {
       editor.text = editor.text.slice(0, from) + text + editor.text.slice(to);
     },
   };
+  // What the view holds is the editor's text, as Obsidian's getViewData gives it.
+  view.getViewData = () => editor.text;
   // Saving writes the editor's text to the file, as Obsidian does.
   view.save = async () => {
     view.saved++;

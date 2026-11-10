@@ -16,6 +16,8 @@ function setup(disk: string, open: boolean, save: 'writes' | 'fails' | 'writes n
   view.file = new TFile(NOTE);
   // Read as Obsidian reads it: the file's own text.
   view.lastSavedData = disk;
+  // What the view holds is the editor's text, as Obsidian's getViewData gives it.
+  view.getViewData = () => state.editor;
   // Saving writes the editor's text to the file, as Obsidian does; or fails, or (the view
   // closing) ends without writing.
   view.save = async () => {

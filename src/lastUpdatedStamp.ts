@@ -11,6 +11,7 @@ import * as posix from '@labnoteo/core/posix';
 import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
 import { isValidWorkflowPath } from '@labnoteo/core/lib/workflowStructure';
 import { processNoteThroughVault, writeNoteThroughVault } from './commands';
+import { openViewHasDisk } from './openEditorWrite';
 
 /**
  * Rewrites a note's `last_updated_date`; identity when the setting is off.
@@ -34,7 +35,8 @@ export function experimentReadmeOf(path: string): string | undefined {
 /**
  * Stamp one note. An open editor (source or live preview) is edited in place,
  * changing only the date span, so the caret stays put and unsaved typing is
- * not overwritten; otherwise the file is rewritten through the vault.
+ * not overwritten; otherwise the file is rewritten through the vault, as is an
+ * open note whose file changed since its editor last read it.
  */
 export async function stampNote(
   app: App,
@@ -46,6 +48,8 @@ export async function stampNote(
     const view = leaf.view;
     if (!(view instanceof MarkdownView) || view.file?.path !== path) continue;
     if (view.getMode() !== 'source') continue;
+    // A change to the file Obsidian has yet to read back: stamped in the file, not the editor.
+    if (view.file && !(await openViewHasDisk(app, view.file))) break;
     const editor = view.editor;
     const before = editor.getValue();
     const edit = minimalReplacement(before, stamp(before, path));

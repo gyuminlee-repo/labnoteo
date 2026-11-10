@@ -112,7 +112,7 @@ import {
   writeNoteThroughVault,
   type ReadmeSyncControl,
 } from './commands';
-import { processNote } from './openEditorWrite';
+import { openViewHasDisk, processNote } from './openEditorWrite';
 import { loadWorkflows } from '@labnoteo/core/lib/workflowDataLoader';
 import * as posix from '@labnoteo/core/posix';
 import {
@@ -2650,11 +2650,14 @@ export default class LabnotePlugin extends Plugin {
         const path = file.path;
         const prev = this.unitOpTocTimers.get(path);
         if (prev !== undefined) window.clearTimeout(prev);
-        const handle = window.setTimeout(() => {
+        const handle = window.setTimeout(async () => {
           this.unitOpTocTimers.delete(path);
           // The editor may have switched to another note since the edit.
           if (info.file?.path !== path) return;
           if (this.lastChangeFromHistory.get(path)) return;
+          // A change to the file Obsidian has yet to read back: left to the next edit.
+          if (!(await openViewHasDisk(this.app, file))) return;
+          if (info.file?.path !== path) return;
           const before = editor.getValue();
           const after = this.settings.autoSyncUnitOpToc
             ? rebuildUnitOpToc(before)

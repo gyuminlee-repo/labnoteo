@@ -121,12 +121,51 @@ export async function processInOpenCrlfEditor(
 }
 
 /**
+ * Save what a view open on `file` holds that the file does not have yet (typing, or an edit a
+ * plugin made, in the two seconds before Obsidian saves it), before a write through the vault.
+ * Left unsaved, that buffer is saved over the write when the note is left before Obsidian has
+ * read the write back (it reads the file again, and merges, a moment after the write). A view
+ * whose last read is not the file as it is now is left alone: that read is the one under way.
+ */
+export async function saveOpenEdits(app: App, file: TFile): Promise<void> {
+  const views = (app.workspace?.getLeavesOfType?.('markdown') ?? [])
+    .map(leaf => leaf.view)
+    .filter((view): view is MarkdownView => view instanceof MarkdownView && view.file?.path === file.path)
+    .filter(view => {
+      const last: unknown = (view as unknown as { lastSavedData?: unknown }).lastSavedData;
+      return typeof last === 'string' && view.getViewData() !== last;
+    });
+  if (views.length === 0) return;
+  const disk = await app.vault.read(file);
+  for (const view of views) {
+    if ((view as unknown as { lastSavedData?: unknown }).lastSavedData !== disk) continue;
+    try {
+      await view.save();
+    } catch {
+      // Obsidian said it could not save; the write goes on as it did.
+    }
+  }
+}
+
+/**
+ * Whether a view open on `file` (source or live preview) has read the file as it is now, or
+ * has not read it at all. False while Obsidian has yet to read a change to the file back:
+ * an edit made in the editor then is merged with that change by text, which can garble both.
+ */
+export async function openViewHasDisk(app: App, file: TFile): Promise<boolean> {
+  const view = openSourceView(app, file.path);
+  const last: unknown = view ? (view as unknown as { lastSavedData?: unknown }).lastSavedData : null;
+  return typeof last !== 'string' || last === (await app.vault.read(file));
+}
+
+/**
  * {@link processInOpenCrlfEditor}, else `app.vault.process` as before. False when the change
  * was not written there (or the editor needed none); true after `app.vault.process`.
  */
 export async function processNote(app: App, file: TFile, transform: (content: string) => string): Promise<boolean> {
   const inEditor = await processInOpenCrlfEditor(app, file, transform);
   if (inEditor !== undefined) return inEditor;
+  await saveOpenEdits(app, file);
   await app.vault.process(file, transform);
   return true;
 }

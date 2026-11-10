@@ -52,7 +52,7 @@ import {
 import { ISSUE_SYNC_WORKFLOW_PATH, SETUP_DOC_PATH } from './scaffold/assets';
 import * as posix from '@labnoteo/core/posix';
 import { workflowAliasModal } from './modals';
-import { OPEN_SAVE_WAIT_MS, openSourceView, processInOpenCrlfEditor, waitForOpenSaves } from './openEditorWrite';
+import { OPEN_SAVE_WAIT_MS, openSourceView, processInOpenCrlfEditor, saveOpenEdits, waitForOpenSaves } from './openEditorWrite';
 import { getObsidianLanguage } from './i18n';
 import {
   createLabnoteStructure,
@@ -2455,6 +2455,7 @@ export async function writeNoteThroughVault(
     // Open in an editor with CRLF in its file: written there, LF as the editor holds it.
     const inEditor = await processInOpenCrlfEditor(app, file, () => content.replace(/\r\n?/g, '\n'));
     if (inEditor !== undefined) return inEditor;
+    await saveOpenEdits(app, file);
     await app.vault.process(file, () => content);
   } else {
     await host.fs.write(notePath, content);
@@ -2492,6 +2493,7 @@ export async function processNoteThroughVault(
     // Open in an editor with CRLF in its file: applied there ({@link processInOpenCrlfEditor}).
     const inEditor = await processInOpenCrlfEditor(app, file, transform, deadline);
     if (inEditor !== undefined) return inEditor;
+    await saveOpenEdits(app, file);
     await app.vault.process(file, data => transform(data));
   } else {
     await host.fs.write(notePath, next);
