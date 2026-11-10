@@ -22,8 +22,10 @@ export function openSourceView(app: App, path: string): MarkdownView | undefined
 
 /**
  * Apply `transform` to the note in the editor it is open in, when its file has a CR, and save
- * it. Returns whether the note changed, or undefined when it is not such a note: the caller
- * then writes through the vault as before.
+ * it. Text typed in the editor and not saved yet is saved with the change, not lost. When the
+ * save fails or does not reach the file (the view closing, say), the same change is written
+ * through the vault; the editor already holds it. Returns whether the note changed, or
+ * undefined when it is not such a note: the caller then writes through the vault as before.
  */
 export async function processInOpenCrlfEditor(
   app: App,
@@ -31,13 +33,21 @@ export async function processInOpenCrlfEditor(
   transform: (content: string) => string
 ): Promise<boolean | undefined> {
   const view = openSourceView(app, file.path);
-  if (!view || !(await app.vault.read(file)).includes('\r')) return undefined;
+  if (!view) return undefined;
+  const disk = await app.vault.read(file);
+  if (!disk.includes('\r')) return undefined;
   const before = view.editor.getValue();
-  const edit = minimalReplacement(before, transform(before));
+  const after = transform(before);
+  const edit = minimalReplacement(before, after);
   if (!edit) return false;
   view.editor.replaceRange(edit.text, view.editor.offsetToPos(edit.start), view.editor.offsetToPos(edit.end));
-  await view.save();
-  return true;
+  try {
+    await view.save();
+    if ((await app.vault.read(file)).replace(/\r\n/g, '\n') === after) return true;
+  } catch {
+    // Written through the vault below.
+  }
+  return (await app.vault.process(file, transform)) !== disk;
 }
 
 /** {@link processInOpenCrlfEditor}, else `app.vault.process` as before. */

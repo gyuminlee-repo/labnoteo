@@ -30,6 +30,11 @@ async function setup(nl: string, open: 'source' | 'preview' | 'closed') {
       editor.text = editor.text.slice(0, from) + text + editor.text.slice(to);
     },
   };
+  // Saving writes the editor's text to the file, as Obsidian does.
+  view.save = async () => {
+    view.saved++;
+    await fs.write(README, editor.text);
+  };
   const app = {
     workspace: { getLeavesOfType: () => (open === 'closed' ? [] : [{ view }]) },
     vault: {

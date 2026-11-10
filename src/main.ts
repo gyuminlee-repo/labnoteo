@@ -2777,7 +2777,8 @@ export default class LabnotePlugin extends Plugin {
       now: () => Date.now(),
       process: async (path, fn) => {
         const file = vault.getAbstractFileByPath(path);
-        if (file instanceof TFile) await processNote(this.app, file, fn);
+        // To the file, not the editor: the tidy reads offsets in the file as the Outline wrote it.
+        if (file instanceof TFile) await vault.process(file, fn);
       },
     });
 
