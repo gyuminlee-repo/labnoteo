@@ -190,7 +190,7 @@ function failureReasonText(plugin: LabnotePlugin, code: string, params: readonly
     case 'section_not_found':
       return plugin.t('The note has no "{0}" section.', a);
     case 'note_not_written':
-      return plugin.t('{0} was still being saved, so the change was not written. Try again in a moment.', a);
+      return plugin.t('{0} was not written: it was still being saved, or it changed while the change went in. Try again in a moment.', a);
     default:
       return undefined;
   }

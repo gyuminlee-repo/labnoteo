@@ -150,10 +150,13 @@ class NoteLeft<T> extends Error {
   }
 }
 
-/** The note was not written: Obsidian was still saving it when the wait ran out. */
+/**
+ * The note was not written: Obsidian was still saving it when the wait ran out, or another
+ * writer changed it while the change went in.
+ */
 function noteNotWritten(path: string): ToolError {
   return {
-    error: `${path} was still being saved, so the change was not written. Try again in a moment.`,
+    error: `${path} was not written: it was still being saved, or it changed while the change went in. Try again in a moment.`,
     code: 'note_not_written',
     params: [path],
   };

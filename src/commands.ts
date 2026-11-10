@@ -1105,7 +1105,7 @@ async function changeFrontMatter<T>(
       true
     );
     if (last && (written || last.text === last.input)) return { data: last.data };
-    host.notify('warn', host.t('{0} was still being saved, so the change was not written. Try again in a moment.', readmePath));
+    host.notify('warn', host.t('{0} was not written: it was still being saved, or it changed while the change went in. Try again in a moment.', readmePath));
   } catch (err) {
     if (!(err instanceof FrontMatterUnreadable)) throw err;
     host.notify(

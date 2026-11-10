@@ -284,6 +284,21 @@ describe('a tool write over an open note', () => {
     expect(await fs.read(P)).toBe(OTHER);
   });
 
+  // The save fails, and another writer changes the file, which the view, not dirty after its
+  // failed save, reads over its editor: the change is in neither, however alike they read.
+  it('fails when the save fails and the view reads another writer\'s file over its editor', async () => {
+    let at: { fs: MemFileSystem; editor: ReturnType<typeof cmEditor> } | undefined;
+    const { fs, editor, ctx } = openNote(P, NOTE, NOTE.replace('body a', 'body a typed'), undefined, 'fails', {}, async () => {
+      await at!.fs.write(P, OTHER);
+      at!.editor.replaceRange(OTHER, 0, at!.editor.getValue().length);
+    });
+    at = { fs, editor };
+    const res = await tool('update_section').handler(ctx, { documentPath: P, heading: 'B', content: 'NEW B' });
+    expect(res).toMatchObject({ ok: false, code: 'note_not_written' });
+    expect(await fs.read(P)).toBe(OTHER);
+    expect(editor.getValue()).toBe(OTHER);
+  });
+
   // The save writes nothing, the view reading the file another writer changed: the change is
   // not in it, and the view's reading puts the file over the editor.
   it('fails when the save writes nothing and the view reads the file another writer changed', async () => {

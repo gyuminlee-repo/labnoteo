@@ -121,16 +121,20 @@ async function writeInOpenEditor(
   } catch {
     // The file is looked at below either way.
   }
+  // The editor's text as the save left it, the change in it (a view does not read the file
+  // again while it saves): a file reading so later holds the change. Taken now, not when the
+  // file is looked at, by which time the view may have read another writer's file over it.
+  const atSave = view.editor.getValue().replace(/\r\n?/g, '\n');
   // A save that wrote, ending with the view still on the note, wrote the editor's text (assumed
   // of TextFileView.save: the API documents getViewData as what a save writes; Obsidian 1.15.0
   // then holds that text as last saved, and a save that writes nothing, its view reading the
   // note again, holds null): the file holds the change even when another plugin changed it
   // right after. Else a file no longer as it was
-  // holds the save when it reads as the editor's text (the change, and anything typed
-  // meanwhile); else another writer changed it and the change is not known to be there. It is not applied again then, which could put it in twice with a
+  // holds the save when it reads as the editor's text as the save left it (the change, and
+  // anything typed meanwhile); else another writer changed it and the change is not known to be there. It is not applied again then, which could put it in twice with a
   // save landing late: false, and the editor keeps the change, which Obsidian may save later.
   const lf = (text: string) => text.replace(/\r\n?/g, '\n');
-  const landed = (text: string) => lf(text) === after || lf(text) === lf(view.editor.getValue());
+  const landed = (text: string) => lf(text) === after || lf(text) === atSave;
   const now = await app.vault.read(file);
   const savedAs: unknown = (view as unknown as { lastSavedData?: unknown }).lastSavedData;
   const wrote = saved && openSourceView(app, file.path) === view && typeof savedAs === 'string' && savedAs !== disk;

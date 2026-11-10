@@ -61,7 +61,7 @@ export async function openUserGuide(
       return false;
     }
     if (!written) {
-      host.notify('warn', host.t('{0} was still being saved, so the change was not written. Try again in a moment.', QUICKSTART_DOC_PATH));
+      host.notify('warn', host.t('{0} was not written: it was still being saved, or it changed while the change went in. Try again in a moment.', QUICKSTART_DOC_PATH));
     }
     return written;
   };
