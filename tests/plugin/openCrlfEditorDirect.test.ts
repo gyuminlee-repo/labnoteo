@@ -18,12 +18,13 @@ function setup(disk: string, open: boolean, save: 'writes' | 'fails' | 'writes n
   view.lastSavedData = disk;
   // What the view holds is the editor's text, as Obsidian's getViewData gives it.
   view.getViewData = () => state.editor;
-  // Saving writes the editor's text to the file, as Obsidian does; or fails, or (the view
-  // closing) ends without writing.
+  // Saving writes the editor's text to the file, as Obsidian does; or fails (Obsidian then puts
+  // back the text it last saved), or ends without writing because the view left the note.
   view.save = async () => {
     view.saved++;
     if (save === 'fails') throw new Error('save failed');
     if (save === 'writes') state.disk = state.editor;
+    else view.file = null;
   };
   view.editor = {
     getValue: () => state.editor,
@@ -56,10 +57,21 @@ describe('processNote', () => {
   });
 
   // The editor holds the change either way; the file gets it through the vault.
-  it.each(['fails', 'writes nothing'] as const)('writes the change through the vault when the save %s', async save => {
-    const { app, view, state } = setup('---\r\ntitle: x\r\n---\r\nbody\r\n', true, save);
+  // The view keeps the note and its editor the change, which it saves next: the file gets the
+  // editor's text, as that save would write it.
+  it('writes the editor text through the vault when the save fails', async () => {
+    const { app, view, state } = setup('---\r\ntitle: x\r\n---\r\nbody\r\n', true, 'fails');
     expect(await processInOpenEditor(app, new TFile(NOTE) as never, data => data.replace('body', 'text'))).toBe(true);
     expect(state.editor).toBe('---\ntitle: x\n---\ntext\n');
+    expect(state.disk).toBe('---\ntitle: x\n---\ntext\n');
+    expect(view.saved).toBe(1);
+    expect(state.processed).toBe(1);
+  });
+
+  // The view left the note: its editor's text is not saved, the change is made of the file's.
+  it('writes the change through the vault when the save writes nothing, the view gone', async () => {
+    const { app, view, state } = setup('---\r\ntitle: x\r\n---\r\nbody\r\n', true, 'writes nothing');
+    expect(await processInOpenEditor(app, new TFile(NOTE) as never, data => data.replace('body', 'text'))).toBe(true);
     expect(state.disk).toBe('---\r\ntitle: x\r\n---\r\ntext\r\n');
     expect(view.saved).toBe(1);
     expect(state.processed).toBe(1);

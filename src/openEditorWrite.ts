@@ -62,8 +62,9 @@ export async function waitForOpenSaves(app: App, path: string, deadline = Date.n
  * Apply `transform` to the note in the editor it is open in (source or live preview), with no
  * await between reading the editor's text and putting the change in, and save it. Nothing is written while a save Obsidian has under way on it does not end in time
  * ({@link waitForOpenSaves}): false. Text typed in the editor and not saved yet is saved with the change, not lost. When the
- * save fails or leaves the file as it was (the view closing, say), the change is applied to
- * the file through the vault, once, and only to the file as it was before the save. Returns whether the file changed, or undefined when
+ * save fails or leaves the file as it was, the file gets the editor's text with the change
+ * while the view keeps the note, else (the view left it) the change made of the file's text;
+ * through the vault, once, and only to the file as it was before the save. Returns whether the file changed, or undefined when
  * it is not such a note: the caller then writes through the vault as before.
  */
 export async function processInOpenEditor(
@@ -130,6 +131,15 @@ async function writeInOpenEditor(
   const landed = (text: string) => lf(text) === after || lf(text) === lf(view.editor.getValue());
   const now = await app.vault.read(file);
   if (now !== disk) return (saved && openSourceView(app, file.path) === view) || landed(now);
+  // The file as it was. A view still on the note that holds the file's text as last read or
+  // saved (Obsidian 1.15.0 puts it back when a save fails, and says so itself, keeping a
+  // backup) saves its editor, the change in it, on its next save: the change is the editor's,
+  // and the file gets that text now rather than the change made again of the file's text,
+  // which could come out otherwise or be refused, and be told for what the note ends as. A view
+  // that left the note, or reads it again (its text then null), does not keep the editor's
+  // text: the change is made of the file's.
+  const keeps =
+    view.file?.path === file.path && typeof (view as unknown as { lastSavedData?: unknown }).lastSavedData === 'string';
   let final = disk;
   let applied = false;
   // Applied to the file, once, only as it was before the save; changed meanwhile (a save
@@ -137,9 +147,9 @@ async function writeInOpenEditor(
   await app.vault.process(file, data => {
     if (data !== disk) return (final = data);
     applied = true;
-    return (final = transform(data));
+    return (final = keeps ? after : transform(data));
   });
-  return applied ? final !== disk : landed(final);
+  return keeps || (applied ? final !== disk : landed(final));
 }
 
 /** A run of the text, [start, end), replaced by `text`. */

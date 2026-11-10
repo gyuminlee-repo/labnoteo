@@ -41,10 +41,18 @@ function cmEditor(text: string, cursor = text.length) {
 
 /**
  * `path` open in a source view over `disk`, with `typed` in its editor not saved yet and the
- * cursor at `cursor` (the end by default). `save`: 'fails' throws, 'stuck' never ends.
+ * cursor at `cursor` (the end by default). `save`: 'fails' throws, 'stuck' never ends, 'leaves'
+ * ends without writing, the view gone from the note. `files`: others in the vault.
  */
-function openNote(path: string, disk: string, typed: string, cursor = typed.length, save: 'writes' | 'fails' | 'stuck' = 'writes') {
-  const fs = new MemFileSystem({ [path]: disk });
+function openNote(
+  path: string,
+  disk: string,
+  typed: string,
+  cursor = typed.length,
+  save: 'writes' | 'fails' | 'stuck' | 'leaves' = 'writes',
+  files: Record<string, string> = {}
+) {
+  const fs = new MemFileSystem({ ...files, [path]: disk });
   const tf = new TFile(path);
   const view = new MarkdownView();
   const editor = cmEditor(typed, cursor);
@@ -57,6 +65,11 @@ function openNote(path: string, disk: string, typed: string, cursor = typed.leng
     await fs.write(path, t);
   };
   if (save === 'stuck') view.savePromise = new Promise(() => {});
+  if (save === 'leaves') {
+    view.save = async () => {
+      view.file = null;
+    };
+  }
   const app = {
     workspace: { getLeavesOfType: () => [{ view }], getActiveFile: () => tf },
     vault: {
@@ -198,13 +211,60 @@ describe('a tool write over an open note', () => {
     expect(await fs.read(P)).toBe(NOTE);
   });
 
-  // The editor's save fails: the change is made again of the file, and that is what is reported.
-  it('reports the change written last when it is made more than once', async () => {
-    const { fs, ctx } = openNote(P, NOTE, NOTE.replace('body b', 'body b typed'), undefined, 'fails');
+  // The editor's save fails with the view still on the note: the editor keeps the change and
+  // saves it next, so that is what is reported, and what the file gets now.
+  it('reports the change the editor holds when its save fails', async () => {
+    const typed = NOTE.replace('body b', 'body b typed');
+    const { fs, editor, ctx } = openNote(P, NOTE, typed, undefined, 'fails');
     const res = await tool('update_section').handler(ctx, { documentPath: P, heading: 'B', content: 'NEW B' });
     expect(res.ok).toBe(true);
-    expect((res.data as { previousBody: string }).previousBody).toBe('body b');
-    expect(await fs.read(P)).toBe(stamp(NOTE).replace('## B\nbody b', '## B\n\nNEW B'));
+    expect((res.data as { previousBody: string }).previousBody).toBe('body b typed');
+    expect(editor.getValue()).toBe(stamp(typed).replace('## B\nbody b typed', '## B\n\nNEW B'));
+    expect(await fs.read(P)).toBe(editor.getValue());
+  });
+
+  // A section typed and not saved yet, filled by the tool, the save failing: the change the
+  // editor holds is the result, not the file's refusal of it.
+  it('fills a section typed and not saved when the save fails, as the editor has it', async () => {
+    const typed = `${NOTE}## Results\n(typing)\n`;
+    const { fs, editor, ctx } = openNote(P, NOTE, typed, undefined, 'fails');
+    const res = await tool('update_section').handler(ctx, { documentPath: P, heading: 'Results', content: 'RESULT BODY' });
+    expect(res.ok).toBe(true);
+    expect(editor.getValue()).toContain('RESULT BODY');
+    expect(await fs.read(P)).toBe(editor.getValue());
+  });
+
+  // A heading one of two in the file, told apart in the editor: the same.
+  it('changes the one section of the editor when the file has two, the save failing', async () => {
+    const disk = NOTE.replace('## B\nbody b', '## B\nbody b\n\n## B\nother');
+    const typed = disk.replace('## B\nother', '## Bx\nother');
+    const { fs, editor, ctx } = openNote(P, disk, typed, undefined, 'fails');
+    const res = await tool('update_section').handler(ctx, { documentPath: P, heading: 'B', content: 'NEW B' });
+    expect(res.ok).toBe(true);
+    expect(editor.getValue()).toContain('NEW B');
+    expect(await fs.read(P)).toBe(editor.getValue());
+  });
+
+  // The view left the note: its editor's change is not saved, and the file's text refuses the
+  // change, so the tool fails and the file stays as it was.
+  it('fails when the view left the note and the file refuses the change', async () => {
+    const { fs, ctx } = openNote(P, NOTE, `${NOTE}## Results\n(typing)\n`, undefined, 'leaves');
+    const res = await tool('update_section').handler(ctx, { documentPath: P, heading: 'Results', content: 'RESULT BODY' });
+    expect(res).toMatchObject({ ok: false, code: 'section_not_found' });
+    expect(await fs.read(P)).toBe(NOTE);
+  });
+
+  // A README whose checklist section was typed and not saved yet, the save failing: the new
+  // workflow is listed as the editor has it.
+  it('lists a new workflow in a checklist section typed and not saved, the save failing', async () => {
+    const README = 'labnote/001_Test/README.labnote.md';
+    const disk = ['---', 'title: T', '---', '# T', ''].join('\n');
+    const typed = `${disk}\n## Related Workflows\n`;
+    const { fs, editor, ctx } = openNote(README, disk, typed, undefined, 'fails');
+    const res = await tool('create_workflow').handler(ctx, { documentPath: README, workflowId: 'WD010' });
+    expect(res).toMatchObject({ ok: true, data: { registered: true } });
+    expect(editor.getValue()).toMatch(/## Related Workflows\n+- \[ \] \[WD010 /);
+    expect(await fs.read(README)).toBe(editor.getValue());
   });
 });
 
