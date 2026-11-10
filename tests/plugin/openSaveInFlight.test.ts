@@ -156,7 +156,7 @@ describe("a write while Obsidian's own save of the open note is writing", () => 
     else {
       expect(notices.filter(n => n.level === 'info')).toEqual([]);
       expect(notices.filter(n => n.level === 'warn').map(n => n.msg)).toEqual([
-        `The labnote_id of ${P} could not be written, so its value was left as it is: write it on one line (labnote_id: LN-…) and try again.`,
+        `${P} was still being saved, so its labnote_id was not written. Try again in a moment.`,
       ]);
     }
   }, OPEN_SAVE_WAIT_MS + 10000);
