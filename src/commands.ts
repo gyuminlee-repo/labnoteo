@@ -714,7 +714,7 @@ export async function changeExperimentStatusCommand(
   }
   const updated = setFrontMatterKeys(parsed.text, changes);
 
-  await writeNoteThroughVault(app, host, readmePath, stamp(updated, readmePath));
+  await writeNoteThroughVault(app, host, readmePath, updated, parsed.text, c => stamp(c, readmePath));
   let message = host.t('Experiment status changed ({0}): {1} → {2}.', folderName, current ?? host.t('(none)'), chosen);
   if (cleared) {
     message += ` ${host.t('Discussion flag cleared.')}`;
@@ -1138,7 +1138,9 @@ export async function toggleDiscussionFlagCommand(
     app,
     host,
     readmePath,
-    stamp(setFrontMatterKeys(parsed.text, { [DISCUSS_FLAG_KEY]: next ? true : undefined }), readmePath)
+    setFrontMatterKeys(parsed.text, { [DISCUSS_FLAG_KEY]: next ? true : undefined }),
+    parsed.text,
+    c => stamp(c, readmePath)
   );
 
   const state = await issueAutomationState(host);
@@ -2440,6 +2442,10 @@ export function unlinkableWorkflowNotice(host: Pick<LabnoteHost, 't'>, names: re
  * time ({@link waitForOpenSaves}), or the editor already held the content.
  * (Data files such as `{Type}.json` keep using the adapter directly.)
  *
+ * `finish` (the last_updated_date stamp, say) is applied to the note as written, after that
+ * merge, not to `content`: put in first, it would make the change span every line from it to
+ * the change, and typing there would be taken for touching it.
+ *
  * Exported as the `writeNote` hook for `ToolContext`: AI tools edit notes the
  * user may have open, and writing those through the adapter would be silently
  * undone the next time the editor flushed its buffer.
@@ -2449,7 +2455,8 @@ export async function writeNoteThroughVault(
   host: LabnoteHost,
   notePath: string,
   content: string,
-  base?: string
+  base?: string,
+  finish: (content: string) => string = c => c
 ): Promise<boolean> {
   const file = app.vault.getFileByPath(notePath);
   if (file instanceof TFile) {
@@ -2461,15 +2468,15 @@ export async function writeNoteThroughVault(
     const inEditor = await processInOpenEditor(
       app,
       file,
-      (text, read) => overUnsaved(text, base === undefined ? read : lf(base), lf(content)),
+      (text, read) => finish(overUnsaved(text, base === undefined ? read : lf(base), lf(content))),
       deadline
     );
     if (inEditor !== undefined) return inEditor;
     // A save another write started on the note may still be writing: it would land over this one.
     if (!(await waitForOpenSaves(app, file.path, deadline))) return false;
-    await app.vault.process(file, () => content);
+    await app.vault.process(file, () => finish(content));
   } else {
-    await host.fs.write(notePath, content);
+    await host.fs.write(notePath, finish(content));
   }
   return true;
 }

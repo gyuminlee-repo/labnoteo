@@ -144,22 +144,158 @@ async function writeInOpenEditor(
 
 /**
  * `content`, a whole note made from `base`, over `text`, which is `base` with typing not saved
- * yet: the typing stays where it does not touch what `content` changes. Where it does, or
- * with no `base`, `content` as it is.
+ * yet: each piece of typing is put into `content` where its surroundings are found there, as
+ * Obsidian merges a note changed on disk with its editor (by patches with context:
+ * diff-match-patch). The surroundings are taken long enough to be found once; of several
+ * places, the one whose surroundings agree most, then the nearest. Typing none of whose
+ * surroundings or of the text it replaced are left in `content` is left out: there `content`
+ * stands. With no `base`, `content` as it is.
  */
 export function overUnsaved(text: string, base: string | undefined, content: string): string {
   if (base === undefined) return content;
-  const typed = minimalReplacement(base, text);
-  const change = minimalReplacement(base, content);
-  if (!typed) return content;
-  if (!change) return text;
-  if (change.end <= typed.start) {
-    return base.slice(0, change.start) + change.text + base.slice(change.end, typed.start) + typed.text + base.slice(typed.end);
+  let out = content;
+  // Where `out` has the base text at `s` (`shift`), and `text` has it (`typed`).
+  let shift = 0;
+  let typed = 0;
+  for (const edit of typedEdits(base, text)) {
+    const at = place(text.slice(0, edit.s + typed), base.slice(edit.s, edit.e), base.slice(edit.e), out, edit.s + shift);
+    typed += edit.t.length - (edit.e - edit.s);
+    // Left out where `content` no longer has the text the typing replaced.
+    if (at === undefined || out.slice(at, at + (edit.e - edit.s)) !== base.slice(edit.s, edit.e)) continue;
+    out = out.slice(0, at) + edit.t + out.slice(at + (edit.e - edit.s));
+    shift = at - edit.s + edit.t.length - (edit.e - edit.s);
   }
-  if (typed.end <= change.start) {
-    return base.slice(0, typed.start) + typed.text + base.slice(typed.end, change.start) + change.text + base.slice(change.end);
+  return out;
+}
+
+/** Context taken around a piece of typing: at least this much, more until it is found once. */
+const CONTEXT_STEP = 4;
+const CONTEXT_MAX = 64;
+
+/**
+ * Where in `out` the text `mid` (what the typing replaced) stands between the end of `before`
+ * and the start of `after`. The context is taken longer until it is found once; found more
+ * than once, or only with one side of it (typing next to what `content` changed), the place
+ * whose surroundings agree most with the context, then the nearest `near`.
+ */
+function place(before: string, mid: string, after: string, out: string, near: number): number | undefined {
+  const found = (pre: string, post: string) => {
+    const at: number[] = [];
+    const pattern = pre + mid + post;
+    if (pattern === '') return at;
+    for (let k = out.indexOf(pattern); k !== -1; k = out.indexOf(pattern, k + 1)) at.push(k + pre.length);
+    return at;
+  };
+  const best = (at: number[], pre: string, post: string) => {
+    const agree = (x: number) => {
+      let n = 0;
+      for (let i = 0; i < pre.length; i++) if (out[x - pre.length + i] === pre[i]) n++;
+      for (let i = 0; i < post.length; i++) if (out[x + mid.length + i] === post[i]) n++;
+      return n;
+    };
+    let pick: number | undefined;
+    let score = -1;
+    for (const x of at) {
+      const n = agree(x);
+      if (n > score || (n === score && pick !== undefined && Math.abs(x - near) < Math.abs(pick - near))) {
+        pick = x;
+        score = n;
+      }
+    }
+    return pick;
+  };
+  let last: { at: number[]; pre: string; post: string } | undefined;
+  for (let pad = CONTEXT_STEP; ; pad += CONTEXT_STEP) {
+    const pre = before.slice(Math.max(0, before.length - pad));
+    const post = after.slice(0, pad);
+    const at = found(pre, post);
+    const longest = (pre.length === before.length && post.length === after.length) || pad >= CONTEXT_MAX;
+    if (at.length === 1) return at[0];
+    if (at.length > 1 && !longest) {
+      last = { at, pre, post };
+      continue;
+    }
+    if (at.length > 1) return best(at, pre, post);
+    // Not found with this much context: the copies found with less, else less of it, one side
+    // or both (typing next to what `content` changed), else the start or the end it was at.
+    if (last) return best(last.at, pre, post);
+    if (after === '') return out.length - mid.length;
+    if (before === '') return 0;
+    for (let k = pad; k > 0; k--) {
+      const p = before.slice(Math.max(0, before.length - k));
+      const q = after.slice(0, k);
+      const at = [...found(p, q), ...found(p, ''), ...found('', q)];
+      if (at.length) return best(at, '', '');
+    }
+    return undefined;
   }
-  return content;
+}
+
+/** The pieces of change that make `text` of `base`: runs of `base`, [s, e), replaced by `t`. */
+function typedEdits(base: string, text: string): { s: number; e: number; t: string }[] {
+  const lines = (x: string) => x.split(/(?<=\n)/);
+  const b = lines(base);
+  const offsets = [0];
+  for (const line of b) offsets.push(offsets[offsets.length - 1] + line.length);
+  const out: { s: number; e: number; t: string }[] = [];
+  for (const h of hunks(b, lines(text))) {
+    const from = offsets[h.s];
+    const region = base.slice(from, offsets[h.e]);
+    for (const c of hunks([...region], [...h.t.join('')])) {
+      out.push({ s: from + c.s, e: from + c.e, t: c.t.join('') });
+    }
+  }
+  return out;
+}
+
+/** A run of `a` units, [s, e), replaced by `t`. */
+interface Hunk {
+  s: number;
+  e: number;
+  t: string[];
+}
+
+/** Above this many cells a longest common subsequence is not worked out: one hunk instead. */
+const DIFF_CELLS_MAX = 4_000_000;
+
+/** The runs of `a` that `b` replaces, from a longest common subsequence of their units. */
+function hunks(a: string[], b: string[]): Hunk[] {
+  let p = 0;
+  while (p < a.length && p < b.length && a[p] === b[p]) p++;
+  let q = 0;
+  while (q < a.length - p && q < b.length - p && a[a.length - 1 - q] === b[b.length - 1 - q]) q++;
+  const n = a.length - p - q;
+  const m = b.length - p - q;
+  if (n === 0 && m === 0) return [];
+  if ((n + 1) * (m + 1) > DIFF_CELLS_MAX) return [{ s: p, e: p + n, t: b.slice(p, p + m) }];
+  const w = m + 1;
+  const L = new Int32Array((n + 1) * w);
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      L[i * w + j] = a[p + i] === b[p + j] ? L[(i + 1) * w + j + 1] + 1 : Math.max(L[(i + 1) * w + j], L[i * w + j + 1]);
+    }
+  }
+  const out: Hunk[] = [];
+  let cur: Hunk | null = null;
+  let i = 0;
+  let j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && a[p + i] === b[p + j]) {
+      if (cur) out.push(cur);
+      cur = null;
+      i++;
+      j++;
+      continue;
+    }
+    cur ??= { s: p + i, e: p + i, t: [] };
+    if (j < m && (i >= n || L[i * w + j + 1] >= L[(i + 1) * w + j])) cur.t.push(b[p + j++]);
+    else {
+      i++;
+      cur.e = p + i;
+    }
+  }
+  if (cur) out.push(cur);
+  return out;
 }
 
 /**

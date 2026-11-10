@@ -98,7 +98,8 @@ export async function writeNoteStamped(
     await writeNoteThroughVault(app, host, path, content, base);
     return;
   }
-  await writeNoteThroughVault(app, host, path, stamp(content, path), base);
+  // Stamped once merged with typing made meanwhile ({@link writeNoteThroughVault}).
+  await writeNoteThroughVault(app, host, path, content, base, c => stamp(c, path));
   const readme = experimentReadmeOf(path);
   if (readme) await stampNote(app, host, readme, stamp);
 }
