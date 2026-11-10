@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import type { App } from 'obsidian';
 import { MarkdownView, TFile } from '../stubs/obsidian';
-import type { LabnoteHost } from '@labnoteo/core';
+import { createLabnoteTools, MemFileSystem, type LabnoteHost } from '@labnoteo/core';
 import { writeNoteStamped } from '../../src/lastUpdatedStamp';
 import { overUnsaved } from '../../src/openEditorWrite';
 
@@ -74,5 +74,37 @@ describe('overUnsaved, pieces of typing apart', () => {
   });
   it('keeps typing on the line a change is on, apart from it', () => {
     expect(overUnsaved('title: T typed, date: 01\n', 'title: T, date: 01\n', 'title: T, date: 10\n')).toBe('title: T typed, date: 10\n');
+  });
+});
+
+// update_section appending to Notes while the user types at the end of Notes: the note as saved
+// ends partway through a word, the editor has typed on past it. The typing goes on from where it
+// was, the appended text after it; the tool's own layout (a blank line under the heading) stays.
+describe('a section appended to where the user is typing', () => {
+  const head = '---\nstatus: ongoing\nlast_updated_date: 2026-11-01\n---\n# 841_UpdIn_LF\n\n## Plan\nPlan v0.\n\n## Notes\nKeep notes.\n\n';
+  const saved = head + 'k0 k1 k2 k3 k4 k5 k6 k7 k8 k9 k10 k11 k12 k';
+  const typed = head + 'k0 k1 k2 k3 k4 k5 k6 k7 k8 k9 k10 k11 k12 k13 k14 k15 ';
+  const P2 = 'labnote/841_UpdIn_LF/README.labnote.md';
+
+  async function appendNotes(): Promise<{ content: string; base?: string }> {
+    const fs = new MemFileSystem();
+    await fs.write(P2, saved);
+    let got: { content: string; base?: string } | undefined;
+    const ctx = { fs, workspaceRoot: '.', globalSampleFolder: 'resources/labsamples',
+      writeNote: async (_p: string, content: string, base?: string) => void (got = { content, base }) };
+    const t = createLabnoteTools().find(x => x.name === 'update_section')!;
+    const res = await t.handler(ctx, { documentPath: P2, heading: 'Notes', content: 'Appended by tool.', mode: 'append' });
+    expect(res.ok).toBe(true);
+    return got!;
+  }
+
+  it('keeps the typed word whole and puts the appended text after the typing', async () => {
+    const { content, base } = await appendNotes();
+    expect(base).toBe(saved);
+    // The blank line under "## Notes" is the tool's: its content has it with no typing at all.
+    expect(content).toContain('## Notes\n\nKeep notes.\n');
+    expect(overUnsaved(typed, saved, content)).toBe(
+      content.replace('k12 k\n\nAppended by tool.\n', 'k12 k13 k14 k15 \n\nAppended by tool.\n')
+    );
   });
 });
