@@ -241,8 +241,20 @@ describe('renumberWorkflowsCommand with unlisted files (#56)', () => {
     await h.fs.write(`${DIR}/002_WT100_Moved.labnote.md`, 'x');
     const before = README_BEFORE.replace(`- [ ] [WT020 C 형광 측정](./${C_OLD})\n`, '');
     await h.fs.write(README, before);
-    const view = { file: { path: README }, savePromise: new Promise(() => {}) };
+    // The save starts once the README entry is planned: after the write's first wait.
+    const view: { file: { path: string }; savePromise: Promise<unknown> | null } = { file: { path: README }, savePromise: null };
     Object.assign(h.app.workspace, { getLeavesOfType: () => [{ view }] });
+    const settle = h.sync.settle;
+    let armed = false;
+    h.sync.settle = async () => {
+      armed = true;
+      return settle();
+    };
+    const getFile = h.app.vault.getFileByPath.bind(h.app.vault);
+    h.app.vault.getFileByPath = (path: string) => {
+      if (armed && path === README) view.savePromise ??= new Promise(() => {});
+      return getFile(path);
+    };
 
     await renumberWorkflowsCommand(h.app, h.host, h.sync);
 

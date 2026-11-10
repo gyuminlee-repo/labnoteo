@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { createWorkflowContent } from '@labnoteo/core/lib/workflowStructure';
-import { TFile, TFolder } from '../stubs/obsidian';
+import { MarkdownView, TFile, TFolder } from '../stubs/obsidian';
 import { OPEN_SAVE_WAIT_MS } from '../../src/openEditorWrite';
 
 // main.ts brings in every view and suggester; the stub has no base class for those.
@@ -34,12 +34,31 @@ const COPY = 'labnote/002_Copy';
 const README = `${COPY}/README.labnote.md`;
 const NOTE = `${COPY}/001_WD010_A.labnote.md`;
 const t = (key: string, ...args: unknown[]) => args.reduce<string>((s, a, i) => s.replace(`{${i}}`, String(a)), key);
-type When = 'none' | 'before' | 'during';
+type When = 'none' | 'before' | 'during' | 'otherWriter';
 
 /** A plugin on `files`, with a save of `path` under way from the start, from its first read, or never. */
 function plugin(files: Map<string, string>, path: string, when: When) {
   const notices: { level: string; msg: string }[] = [];
-  const view = { file: new TFile(path), savePromise: when === 'before' ? new Promise(() => {}) : null } as { file: TFile; savePromise: Promise<unknown> | null };
+  let view = { file: new TFile(path), savePromise: when === 'before' ? new Promise(() => {}) : null } as { file: TFile; savePromise: Promise<unknown> | null };
+  if (when === 'otherWriter') {
+    // Open in source mode with CRLF in its file; its save fails while another writer changes the file.
+    const open = new MarkdownView();
+    let text = files.get(path)!.replace(/\r\n/g, '\n');
+    open.file = new TFile(path);
+    open.lastSavedData = files.get(path)!;
+    open.editor = {
+      getValue: () => text,
+      offsetToPos: (offset: number) => offset,
+      replaceRange: (r: string, from: number, to: number) => {
+        text = text.slice(0, from) + r + text.slice(to);
+      },
+    };
+    open.save = async () => {
+      files.set(path, files.get(path)!.replace('title: WD010 A', 'title: Other'));
+      throw new Error('save failed');
+    };
+    view = open as unknown as typeof view;
+  }
   const folder = Object.assign(new TFolder(), { path: COPY, name: '002_Copy', children: [...files.keys()].map(p => new TFile(p)) });
   const app = {
     workspace: { getLeavesOfType: () => [{ view }] },
@@ -104,6 +123,17 @@ describe('the dates of a copied workflow note', () => {
     await (p as unknown as { resetCopyDates(f: TFile): Promise<void> }).resetCopyDates(new TFile(NOTE));
     return { notices, note: files.get(NOTE)! };
   };
+
+  // The change goes into the editor, whose save fails while another writer changes the file:
+  // not known to be in it, so not said.
+  it('another writer meanwhile: not said as reset', async () => {
+    const crlf = start.replace(/\n/g, '\r\n');
+    const files = new Map([[NOTE, crlf]]);
+    const { p, notices } = plugin(files, NOTE, 'otherWriter');
+    await (p as unknown as { resetCopyDates(f: TFile): Promise<void> }).resetCopyDates(new TFile(NOTE));
+    expect(files.get(NOTE)).toBe(crlf.replace('title: WD010 A', 'title: Other'));
+    expect(notices.filter(n => n.level === 'info')).toEqual([]);
+  });
 
   it('a save that does not end in time: not written, not said as reset', async () => {
     const { notices, note } = await run('before');
