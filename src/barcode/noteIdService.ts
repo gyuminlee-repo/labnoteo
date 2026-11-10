@@ -222,6 +222,11 @@ export class NoteIdService {
     const before = this.known?.get(file.path);
     this.known?.set(file.path, id);
     const result = await processNoteResult(this.app, file, data => setNoteId(data, id));
+    if (result === 'uncertain') {
+      // It may land yet: still known as the ID, so its landing is not taken for a change made elsewhere.
+      this.host.notify('warn', this.host.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', file.path));
+      return false;
+    }
     // Read back as the note is: in an open editor that keeps a change its save could not write
     // yet, the editor's text, which the view saves next.
     const read = async () => (await openEditorText(this.app, file.path)) ?? (await this.app.vault.read(file));

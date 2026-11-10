@@ -122,17 +122,22 @@ describe('a change to an open CRLF note reaches the file once, however its save 
   });
 
   // Another writer changed the file: the change is not known to be in it, so it is not applied
-  // again (it could land twice with a late save) and no write is reported. Its change stands.
-  describe.each(['otherThenFails', 'otherThenNothing'] as const)('another writer changes the file meanwhile (save: %s)', save => {
+  // again (it could land twice with a late save). Its change stands. A save that failed: the
+  // change may or may not be there (the view's editor may keep it), said so; one that wrote
+  // nothing, the view gone: not written.
+  describe.each([
+    ['otherThenFails', 'uncertain', 'uncertain'],
+    ['otherThenNothing', 'notWritten', false],
+  ] as const)('another writer changes the file meanwhile (save: %s)', (save, registered, written) => {
     it('a new workflow entry', async () => {
       const { app, host, state } = setup(readme('\r\n'), save);
-      expect(await registerWorkflowInReadme(app, host, README, { title: 'WD020 New', fileName: '002_WD020_New.labnote.md' })).toBe('notWritten');
+      expect(await registerWorkflowInReadme(app, host, README, { title: 'WD020 New', fileName: '002_WD020_New.labnote.md' })).toBe(registered);
       expect(count(state.disk, /WD020 New/g)).toBe(0);
       expect(state.disk).toContain('status: other');
     });
     it('a change counted by its caller', async () => {
       const { app, host, state } = setup(readme('\r\n'), save);
-      expect(await processNoteThroughVault(app, host, README, c => c.replace('# Test', '# Renamed'))).toBe(false);
+      expect(await processNoteThroughVault(app, host, README, c => c.replace('# Test', '# Renamed'))).toBe(written);
       expect(count(state.disk, /Renamed/g)).toBe(0);
       expect(state.disk).toContain('status: other');
     });

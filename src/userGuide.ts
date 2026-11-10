@@ -40,7 +40,7 @@ export function guideVersion(text: string): string | undefined {
 export async function openUserGuide(
   host: LabnoteHost,
   pluginVersion: string,
-  processFile: (path: string, change: (text: string) => string) => Promise<boolean> = async (path, change) => {
+  processFile: (path: string, change: (text: string) => string) => Promise<boolean | 'uncertain'> = async (path, change) => {
     await host.fs.write(path, change((await host.fs.exists(path)) ? await host.fs.read(path) : ''));
     return true;
   }
@@ -58,6 +58,10 @@ export async function openUserGuide(
         'warn',
         host.t('The user guide changed while you were deciding, so it was not updated. Run "{0}" again to update it.', host.t('Open user guide'))
       );
+      return false;
+    }
+    if (written === 'uncertain') {
+      host.notify('warn', host.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', QUICKSTART_DOC_PATH));
       return false;
     }
     if (!written) {

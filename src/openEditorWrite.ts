@@ -67,12 +67,19 @@ export async function waitForOpenSaves(app: App, path: string, deadline = Date.n
  * through the vault, once, and only to the file as it was before the save. Returns whether the file changed, or undefined when
  * it is not such a note: the caller then writes through the vault as before.
  */
+/**
+ * Whether a change went into a note: 'uncertain' when its open editor's save failed as another
+ * writer changed the file, so it may or may not be there (and is not to be asked for again
+ * before the note is looked at, which could put it in twice).
+ */
+export type NoteWritten = boolean | 'uncertain';
+
 export async function processInOpenEditor(
   app: App,
   file: TFile,
   transform: (content: string) => string,
   deadline?: number
-): Promise<boolean | undefined> {
+): Promise<NoteWritten | undefined> {
   const result = await writeInOpenEditor(app, file, transform, deadline);
   return result === 'timedOut' ? false : result;
 }
@@ -83,7 +90,7 @@ async function writeInOpenEditor(
   file: TFile,
   transform: (content: string) => string,
   deadline?: number
-): Promise<boolean | undefined | 'timedOut'> {
+): Promise<NoteWritten | undefined | 'timedOut'> {
   // A save still under way past the wait would write over the change (and would hold this
   // one's save too: Obsidian's save waits for the one under way, with no limit): nothing is
   // written, through the editor or the vault.
@@ -129,32 +136,27 @@ async function writeInOpenEditor(
     }
     const atSave = lf(view.editor.getValue());
     const now = await app.vault.read(file);
-    const lastSavedData = (): unknown => (view as unknown as { lastSavedData?: unknown }).lastSavedData;
-    const savedAs = lastSavedData();
+    const savedAs: unknown = (view as unknown as { lastSavedData?: unknown }).lastSavedData;
     const wrote = saved && openSourceView(app, file.path) === view && typeof savedAs === 'string' && savedAs !== disk;
     // The view still on the note, holding the file's text as last saved: its editor keeps the
     // change, and saves it on its next save.
     const keeps = view.file?.path === file.path && typeof savedAs === 'string';
-    // A failed save whose view still holds the text the change was put over, not the file now
-    // there (Obsidian does not read a change made while it saves, nor later): its editor keeps
-    // the change, and its next save writes it over that file. A change made once the save was
-    // over the view does read, over its editor: given a turn for that, it holds that file then.
-    let unread = !saved && keeps && savedAs === disk && now !== disk && atSave !== lf(disk);
-    if (unread) {
-      await new Promise(resolve => setTimeout(resolve, 0));
-      unread = lastSavedData() === disk;
-    }
-    return { atSave, now, wrote, keeps, unread };
+    return { saved, atSave, now, wrote, keeps };
   };
   // A file no longer as it was holds the change when the save wrote (the view still on the
   // note: the editor's text, the change in it, even when another plugin changed the file right
-  // after), or when it reads as the change or as the editor's text as the save left it; else
-  // another writer changed it and the change is not known to be there. It is not applied again
-  // then, which could put it in twice with a save landing late: false, the view reading that
-  // file over its editor; one that has not read it keeps the change for its next save.
+  // after), or when it reads as the change or as the editor's text as the save left it.
+  // Else another writer changed it. A save that wrote nothing, its view reading the file again
+  // or gone: the change is not there, false. A save that failed: 'uncertain'. The view does not
+  // read a change made while it saves, and its editor keeps the change for its next save, over
+  // that writer's text; a change made once the save is over it reads, over its editor, merged
+  // with typing or not, after a read of the file of its own. Which of the two, and when that
+  // read ends, cannot be known now. The change is not applied again, which could put it in twice.
   const landed = (text: string, atSave: string) => lf(text) === after || lf(text) === atSave;
+  const changedMeanwhile = (at: { saved: boolean; atSave: string; now: string; wrote: boolean }) =>
+    at.wrote || landed(at.now, at.atSave) ? true : at.saved ? false : ('uncertain' as const);
   let at = await save();
-  if (at.now !== disk) return at.wrote || landed(at.now, at.atSave) || at.unread;
+  if (at.now !== disk) return changedMeanwhile(at);
   // The file as it was, the save having failed (Obsidian says so itself, keeping a backup) or
   // written nothing. A view still on the note keeps the change in its editor: it is saved once
   // more, not written through the vault, which the view would merge with what was typed during
@@ -168,9 +170,7 @@ async function writeInOpenEditor(
     // keeps it: written, not to be asked for again (which would put an insertion in twice).
     if (!(await waitForOpenSaves(app, file.path, until))) return at.keeps;
     at = await save();
-    // Another writer changed the file while it was saved again: the view, saving, did not read
-    // that, and keeps the change.
-    if (at.now !== disk) return at.wrote || landed(at.now, at.atSave) || at.unread;
+    if (at.now !== disk) return changedMeanwhile(at);
     return at.keeps;
   }
   // A view that left the note, or reads it again, does not keep the editor's text: the change
@@ -461,17 +461,19 @@ export async function processNote(app: App, file: TFile, transform: (content: st
 
 /**
  * {@link processNote}, saying why nothing was written: 'timedOut' when a save of the open note
- * did not end in time, 'notWritten' otherwise (the editor needed no change, or another writer
- * changed the file meanwhile).
+ * did not end in time, 'uncertain' when the open note's save failed as another writer changed
+ * it ({@link NoteWritten}), 'notWritten' otherwise (the editor needed no change, or another
+ * writer changed the file meanwhile).
  */
 export async function processNoteResult(
   app: App,
   file: TFile,
   transform: (content: string) => string
-): Promise<'written' | 'notWritten' | 'timedOut'> {
+): Promise<'written' | 'notWritten' | 'timedOut' | 'uncertain'> {
   const deadline = Date.now() + OPEN_SAVE_WAIT_MS;
   const inEditor = await writeInOpenEditor(app, file, transform, deadline);
   if (inEditor === 'timedOut') return 'timedOut';
+  if (inEditor === 'uncertain') return 'uncertain';
   if (inEditor !== undefined) return inEditor ? 'written' : 'notWritten';
   // A save another write started on the note may still be writing: it would land over this one.
   if (!(await waitForOpenSaves(app, file.path, deadline))) return 'timedOut';

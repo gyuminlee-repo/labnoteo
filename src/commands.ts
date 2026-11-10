@@ -52,7 +52,7 @@ import {
 import { ISSUE_SYNC_WORKFLOW_PATH, SETUP_DOC_PATH } from './scaffold/assets';
 import * as posix from '@labnoteo/core/posix';
 import { workflowAliasModal } from './modals';
-import { OPEN_SAVE_WAIT_MS, openEditorText, openSourceView, processInOpenEditor, waitForOpenSaves } from './openEditorWrite';
+import { OPEN_SAVE_WAIT_MS, openEditorText, openSourceView, processInOpenEditor, waitForOpenSaves, type NoteWritten } from './openEditorWrite';
 import { getObsidianLanguage } from './i18n';
 import {
   createLabnoteStructure,
@@ -1104,6 +1104,10 @@ async function changeFrontMatter<T>(
       },
       true
     );
+    if (written === 'uncertain') {
+      host.notify('warn', host.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', readmePath));
+      return undefined;
+    }
     if (last && (written || last.text === last.input)) return { data: last.data };
     host.notify('warn', host.t('{0} was not written: it was still being saved, or it changed while the change went in. Try again in a moment.', readmePath));
   } catch (err) {
@@ -1273,6 +1277,8 @@ function notifyWorkflowCreated(host: LabnoteHost, created: CreatedWorkflow): voi
         host.t('Sync workflow checklist with folder')
       )
     );
+  } else if (created.registered === 'uncertain') {
+    host.notify('warn', host.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', posix.join(posix.dirname(created.path), README)));
   } else if (created.registered === 'noSection') {
     host.notify(
       'warn',
@@ -1350,7 +1356,7 @@ async function createWorkflowFile(
 }
 
 /** What {@link registerWorkflowInReadme} did. */
-export type WorkflowRegistration = 'registered' | 'noSection' | 'noReadme' | 'notWritten';
+export type WorkflowRegistration = 'registered' | 'noSection' | 'noReadme' | 'notWritten' | 'uncertain';
 
 /**
  * Add a new workflow to the README "Related Workflows" checklist
@@ -1380,7 +1386,9 @@ export async function registerWorkflowInReadme(
       readmePath
     );
   };
-  if (await processNoteThroughVault(app, host, readmePath, add)) return 'registered';
+  const written = await processNoteThroughVault(app, host, readmePath, add);
+  if (written === 'uncertain') return 'uncertain';
+  if (written) return 'registered';
   // Nothing written: the entry is there already, or the README did not get it.
   return (await changeNotWritten(app, host, readmePath, add)) ? 'notWritten' : 'registered';
 }
@@ -2028,7 +2036,7 @@ export async function retitleWorkflowAfterRename(
 ): Promise<boolean> {
   const notePath = posix.join(dir, to);
   if (!(await host.fs.exists(notePath))) return false;
-  return processNoteThroughVault(app, host, notePath, content => planWorkflowRetitle(content, to, from)?.content ?? content);
+  return (await processNoteThroughVault(app, host, notePath, content => planWorkflowRetitle(content, to, from)?.content ?? content)) === true;
 }
 
 /** A workflow note's text, or undefined when it cannot be read (moved or deleted meanwhile). */
@@ -2125,12 +2133,13 @@ export async function addWorkflowFileToChecklist(
   const readmePath = posix.join(labnoteDir, README);
   if (!(await host.fs.exists(readmePath))) return false;
   const titles = new Map([[fileName, await readWorkflowLabel(host, labnoteDir, fileName)]]);
-  return processNoteThroughVault(
+  const written = await processNoteThroughVault(
     app,
     host,
     readmePath,
     content => planWorkflowChecklistSync(content, [fileName], titles, undefined, labnoteDir).content
   );
+  return written === true;
 }
 
 /**
@@ -2502,7 +2511,7 @@ export async function processNoteThroughVault(
   notePath: string,
   transform: (content: string) => string,
   asWritten = false
-): Promise<boolean> {
+): Promise<NoteWritten> {
   // A save Obsidian has under way on the open note first, so it does not write over this;
   // one deadline for the whole write.
   const deadline = Date.now() + OPEN_SAVE_WAIT_MS;
@@ -2539,7 +2548,7 @@ export async function processOrCreateNote(
   host: LabnoteHost,
   notePath: string,
   transform: (content: string) => string
-): Promise<boolean> {
+): Promise<NoteWritten> {
   if (await host.fs.exists(notePath)) return processNoteThroughVault(app, host, notePath, transform, true);
   await host.fs.write(notePath, transform(''));
   return true;

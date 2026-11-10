@@ -176,7 +176,7 @@ export async function runAgent(
       );
       executed.push(
         res.ok
-          ? { call, outcome: 'done', mutates: !!tool.mutates }
+          ? { call, outcome: 'done', mutates: !!tool.mutates, ...(res.code ? { code: res.code, params: res.params } : {}) }
           : { call, outcome: 'failed', mutates: !!tool.mutates, error: res.error, code: res.code, params: res.params }
       );
     }

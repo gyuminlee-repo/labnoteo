@@ -101,11 +101,13 @@ export interface ToolContext {
    * editor, with what was typed and not saved yet), and may be called more
    * than once: the last call is the one written. A note that does not exist is
    * made of `''`. Resolves false when nothing was written though the note
-   * would change (a save of the open note did not end in time). `lone`: what the
+   * would change (a save of the open note did not end in time), 'uncertain'
+   * when it may or may not have been (the open note's save failed as another
+   * writer changed it): not to be asked for again unread. `lone`: what the
    * host changes in other notes along with this one (the date of the experiment
    * README, say) is left out, the caller writing those notes itself next.
    */
-  processNote?(path: string, change: (text: string) => string, lone?: boolean): Promise<boolean>;
+  processNote?(path: string, change: (text: string) => string, lone?: boolean): Promise<boolean | 'uncertain'>;
   /**
    * Whether inserting a unit operation sorts the note's unit operation list
    * into note order, as the "Auto-sync unit operation TOC" setting does in the
@@ -129,7 +131,7 @@ async function processNote(
   path: string,
   change: (text: string) => string,
   lone = false
-): Promise<boolean> {
+): Promise<boolean | 'uncertain'> {
   if (ctx.processNote) return ctx.processNote(path, change, lone);
   const text = (await ctx.fs.exists(path)) ? await ctx.fs.read(path) : '';
   await ctx.fs.write(path, change(text));
@@ -163,17 +165,34 @@ function noteNotWritten(path: string): ToolError {
 }
 
 /**
+ * The note may or may not have the change: its save failed as another writer changed it.
+ * Reported with what the tool did, not as a failure: a caller retrying a failure on its own
+ * could put the change in twice. The code lets a host word it for the person watching.
+ */
+function noteWriteUncertain(path: string, warnings: string[] = []): Pick<ToolResult, 'warnings' | 'code' | 'params'> {
+  return {
+    warnings: [
+      ...warnings,
+      `${path} may or may not have the change: it was being saved when another change reached it. Read the note before calling this again, and call it again only if the change is not there. Tell the user.`,
+    ],
+    code: 'note_write_uncertain',
+    params: [path],
+  };
+}
+
+/**
  * Change a note as it is when written ({@link processNote}): `make` gives the
  * new text and what the tool reports of it, from the last call, the one
  * written. A refusal it throws comes back as the error, and nothing is written.
+ * `uncertain`: the note may or may not have the change ({@link noteWriteUncertain}).
  */
 async function changeNote<T>(
   ctx: ToolContext,
   path: string,
   make: (text: string) => { text: string; data: T }
-): Promise<{ data: T } | ToolError> {
+): Promise<{ data: T; uncertain?: true } | ToolError> {
   let last: { input: string; text: string; data: T } | undefined;
-  let written: boolean;
+  let written: boolean | 'uncertain';
   try {
     written = await processNote(ctx, path, text => {
       last = { input: text, ...make(text) };
@@ -184,6 +203,7 @@ async function changeNote<T>(
     if (err instanceof NoteLeft) return { data: err.data as T };
     throw err;
   }
+  if (last && written === 'uncertain') return { data: last.data, uncertain: true };
   // Not written, though the note would change: the save of the open note did not end in time.
   if (!last || (!written && last.text !== last.input)) return noteNotWritten(path);
   return { data: last.data };
@@ -1401,6 +1421,7 @@ export function createLabnoteTools(): ToolDef[] {
         if ('error' in done) return { ok: false, ...done };
         const { documentPath, heading, target, index, total, append, removed } = done.data;
         return {
+          ...(done.uncertain ? noteWriteUncertain(documentPath) : {}),
           ok: true,
           data: {
             documentPath,
@@ -1482,8 +1503,11 @@ export function createLabnoteTools(): ToolDef[] {
         // may be — both go through the hook so the host owns note writes.
         const content = createWorkflowContent(info, experimenter, alias, { locale: ctx.locale });
         // The README is written next, with what goes with a new note in it (its date): one change.
-        if (!(await processNote(ctx, workflowPath, () => content, true))) {
-          return { ok: false, ...noteNotWritten(workflowPath) };
+        const made = await processNote(ctx, workflowPath, () => content, true);
+        if (!made) return { ok: false, ...noteNotWritten(workflowPath) };
+        if (made === 'uncertain') {
+          const result = withWarnings({ ok: true, data: { path: workflowPath, fileName, registered: false } });
+          return { ...result, ...noteWriteUncertain(workflowPath, result.warnings) };
         }
 
         const title = [info.id, info.name, alias].filter(Boolean).join(' ');
@@ -1492,6 +1516,10 @@ export function createLabnoteTools(): ToolDef[] {
           if (!hasWorkflowChecklistSection(readme)) throw new NoteLeft(false);
           return { text: insertWorkflowChecklistEntries(readme, [{ done: false, title, fileName }]), data: true };
         });
+        if (!('error' in listed) && listed.uncertain) {
+          const result = withWarnings({ ok: true, data: { path: workflowPath, fileName, registered: 'uncertain' } });
+          return { ...result, ...noteWriteUncertain(readmePath, result.warnings) };
+        }
         if ('error' in listed) {
           return withWarnings({
             ok: true,
@@ -1581,7 +1609,7 @@ export function createLabnoteTools(): ToolDef[] {
         const { at, sameAliasAs, next } = done.data;
 
         const heading = `[${op.id} ${op.name}]${alias ? ` ${alias}` : ''}`;
-        return {
+        const result: ToolResult = {
           ok: true,
           data: {
             documentPath,
@@ -1601,6 +1629,7 @@ export function createLabnoteTools(): ToolDef[] {
               }
             : {}),
         };
+        return done.uncertain ? { ...result, ...noteWriteUncertain(documentPath, result.warnings) } : result;
       },
       async describe(ctx, args) {
         const resolved = await resolveUnitOpInsert(ctx, args);

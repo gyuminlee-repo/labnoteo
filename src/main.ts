@@ -112,7 +112,7 @@ import {
   changeNotWritten,
   type ReadmeSyncControl,
 } from './commands';
-import { openEditorText, openViewHasDisk, processNote } from './openEditorWrite';
+import { openEditorText, openViewHasDisk, processNote, type NoteWritten } from './openEditorWrite';
 import { loadWorkflows } from '@labnoteo/core/lib/workflowDataLoader';
 import * as posix from '@labnoteo/core/posix';
 import {
@@ -2250,9 +2250,11 @@ export default class LabnotePlugin extends Plugin {
       count = r.count;
       return r.content;
     };
-    if (!(await processNoteThroughVault(this.app, this.host, readmePath, relink))) {
-      // Not written (a save of the open README did not end in time): said as when not done.
-      if (await changeNotWritten(this.app, this.host, readmePath, relink)) {
+    const written = await processNoteThroughVault(this.app, this.host, readmePath, relink);
+    if (written !== true) {
+      // Not written (a save of the open README did not end in time), or not known to be: said
+      // as when not done, which asks for a check.
+      if (written === 'uncertain' || (await changeNotWritten(this.app, this.host, readmePath, relink))) {
         this.host.notify(
           'warn',
           this.t(
@@ -2707,7 +2709,7 @@ export default class LabnotePlugin extends Plugin {
   }
 
   /** `processNote` hook for AI tools: changes the note as it is when written, stamping lab notes. */
-  processNoteStamped(path: string, change: (content: string) => string, lone?: boolean): Promise<boolean> {
+  processNoteStamped(path: string, change: (content: string) => string, lone?: boolean): Promise<NoteWritten> {
     return processNoteStamped(this.app, this.host, path, change, this.stampLastUpdated, lone);
   }
 

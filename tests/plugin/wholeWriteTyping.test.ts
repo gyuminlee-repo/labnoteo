@@ -240,21 +240,22 @@ describe('a tool write over an open note', () => {
     };
     const res = await tool('update_section').handler(ctx, { documentPath: P, heading: 'B', content: 'NEW B' });
     expect(res.ok).toBe(true);
+    expect(res.code).toBeUndefined();
     expect(saves).toBe(1);
     expect(editor.getValue()).toContain('## B\n\nNEW B');
     expect(await fs.read(P)).toBe(NOTE);
   }, OPEN_SAVE_WAIT_MS + 10000);
 
-  // The first save fails, another writer changing the file while it is saved: the view, saving,
-  // does not read that, so its editor keeps the change for its next save.
-  it('reports the change the editor keeps when another writer changes the file as it is first saved', async () => {
+  // The first save fails, another writer changing the file while it is saved: as when it is
+  // saved again, the change may or may not be there. Here the editor keeps it.
+  it('says the change may or may not be there when another writer changes the file as it is first saved', async () => {
     let fsRef: MemFileSystem | undefined;
     const { fs, editor, ctx } = openNote(P, NOTE, NOTE.replace('body a', 'body a typed'), undefined, 'fails', {}, async n => {
       if (n === 1) await fsRef!.write(P, OTHER);
     });
     fsRef = fs;
     const res = await tool('update_section').handler(ctx, { documentPath: P, heading: 'B', content: 'NEW B' });
-    expect(res.ok).toBe(true);
+    expect(res).toMatchObject({ ok: true, code: 'note_write_uncertain', params: [P] });
     expect(editor.getValue()).toContain('## B\n\nNEW B');
     expect(await fs.read(P)).toBe(OTHER);
   });
@@ -320,25 +321,26 @@ describe('a tool write over an open note', () => {
     expect(await fs.read(P)).toBe(NOTE);
   });
 
-  // Both saves fail, and another writer changes the file while it is saved again: the view,
-  // saving, does not read that (Obsidian skips a change made while it saves), so its editor
-  // keeps the change, and its next save writes it over that file.
-  it('reports the change the editor keeps when another writer changes the file as it is saved again', async () => {
+  // Both saves fail, and another writer changes the file while it is saved again: whether the
+  // view read that over its editor cannot be known on return, so the change may or may not be
+  // there: said so, with what was done. Here the view did not (Obsidian skips a change made
+  // while it saves), and the editor keeps the change.
+  it('says the change may or may not be there when another writer changes the file as it is saved again', async () => {
     let fsRef: MemFileSystem | undefined;
     const { fs, editor, ctx } = openNote(P, NOTE, NOTE.replace('body a', 'body a typed'), undefined, 'fails', {}, async n => {
       if (n === 2) await fsRef!.write(P, OTHER);
     });
     fsRef = fs;
     const res = await tool('update_section').handler(ctx, { documentPath: P, heading: 'B', content: 'NEW B' });
-    expect(res.ok).toBe(true);
+    expect(res).toMatchObject({ ok: true, code: 'note_write_uncertain', params: [P] });
     expect(editor.getValue()).toContain('## B\n\nNEW B');
     expect(await fs.read(P)).toBe(OTHER);
   });
 
-  // The save fails, and another writer changes the file before it is saved again; the view,
-  // not dirty after its failed save, reads that over its editor: the change is in neither,
-  // however alike they read.
-  it('fails when the save fails and the view reads another writer\'s file over its editor', async () => {
+  // The save fails, and another writer changes the file as it does; the view, not dirty after
+  // its failed save, reads that over its editor once the save is over: the change is in
+  // neither, however alike they read, and is not said to be there.
+  it('says the change may or may not be there when the view reads another writer\'s file over its editor', async () => {
     let at: { fs: MemFileSystem; editor: ReturnType<typeof cmEditor>; view: MarkdownView } | undefined;
     const { fs, editor, view, ctx } = openNote(P, NOTE, NOTE.replace('body a', 'body a typed'), undefined, 'fails', {}, async n => {
       if (n !== 1) return;
@@ -352,10 +354,53 @@ describe('a tool write over an open note', () => {
     });
     at = { fs, editor, view };
     const res = await tool('update_section').handler(ctx, { documentPath: P, heading: 'B', content: 'NEW B' });
-    expect(res).toMatchObject({ ok: false, code: 'note_not_written' });
+    expect(res).toMatchObject({ ok: true, code: 'note_write_uncertain', params: [P] });
     await new Promise(resolve => setTimeout(resolve, 5));
     expect(await fs.read(P)).toBe(OTHER);
     expect(editor.getValue()).toBe(OTHER);
+  });
+
+  // The same, the view's reading ending a few milliseconds later (it reads the file first):
+  // not said to be there either.
+  it('says the change may or may not be there when the view reads another writer\'s file late', async () => {
+    let at: { fs: MemFileSystem; editor: ReturnType<typeof cmEditor>; view: MarkdownView } | undefined;
+    const { fs, editor, view, ctx } = openNote(P, NOTE, NOTE.replace('body a', 'body a typed'), undefined, 'fails', {}, async n => {
+      if (n !== 1) return;
+      await at!.fs.write(P, OTHER);
+      setTimeout(() => {
+        at!.view.lastSavedData = OTHER;
+        at!.editor.replaceRange(OTHER, 0, at!.editor.getValue().length);
+      }, 3);
+    });
+    at = { fs, editor, view };
+    const res = await tool('update_section').handler(ctx, { documentPath: P, heading: 'B', content: 'NEW B' });
+    expect(res).toMatchObject({ ok: true, code: 'note_write_uncertain', params: [P] });
+    await new Promise(resolve => setTimeout(resolve, 10));
+    expect(editor.getValue()).toBe(OTHER);
+  });
+
+  // The same, the view merging the file with typing it had, so its editor keeps the change: not
+  // said to be there, nor asked for again, and in the note once when the view saves next.
+  it('says the change may or may not be there when the view merges another writer\'s file into its editor', async () => {
+    let at: { fs: MemFileSystem; editor: ReturnType<typeof cmEditor>; view: MarkdownView } | undefined;
+    const { fs, editor, view, ctx } = openNote(P, NOTE, NOTE.replace('body a', 'body a typed'), undefined, 'fails', {}, async n => {
+      if (n !== 1) return;
+      await at!.fs.write(P, OTHER);
+      setTimeout(() => {
+        at!.view.lastSavedData = OTHER;
+        at!.editor.replaceRange(OTHER, 0, 0);
+      }, 0);
+    });
+    at = { fs, editor, view };
+    const res = await tool('update_section').handler(ctx, { documentPath: P, heading: 'B', content: 'NEW B' });
+    expect(res).toMatchObject({ ok: true, code: 'note_write_uncertain', params: [P] });
+    await new Promise(resolve => setTimeout(resolve, 5));
+    expect(editor.getValue()).toContain('NEW B');
+    view.writeData = async (_f: TFile, t: string) => fs.write(P, t);
+    await view.save();
+    const end = await fs.read(P);
+    expect(end.split('NEW B').length - 1).toBe(1);
+    expect(end).toContain(OTHER);
   });
 
   // The save writes nothing, the view reading the file another writer changed: the change is

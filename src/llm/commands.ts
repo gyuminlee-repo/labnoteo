@@ -136,7 +136,7 @@ export function toolRunNotice(plugin: LabnotePlugin, executed: AgentRun['execute
   if (c.denied > 0) parts.push(plugin.t('{0} denied by you', String(c.denied)));
   if (c.failed > 0) parts.push(plugin.t('{0} failed', String(c.failed)));
   const summary = plugin.t('AI tool calls: {0}.', parts.join(', '));
-  const why = failureReasons(plugin, executed);
+  const why = [failureReasons(plugin, executed), ...uncertainWrites(plugin, executed)].filter(Boolean).join(' ');
   const text = why ? `${summary} ${why}` : summary;
   return c.changed > 0 ? text : `${text} ${plugin.t('Nothing in the vault changed.')}`;
 }
@@ -189,6 +189,8 @@ function failureReasonText(plugin: LabnotePlugin, code: string, params: readonly
       );
     case 'section_not_found':
       return plugin.t('The note has no "{0}" section.', a);
+    case 'note_write_uncertain':
+      return plugin.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', a);
     case 'note_not_written':
       return plugin.t('{0} was not written: it was still being saved, or it changed while the change went in. Try again in a moment.', a);
     default:
@@ -218,6 +220,13 @@ function failureReasons(plugin: LabnotePlugin, executed: AgentRun['executed']): 
   const more = failed.length - named.length;
   const list = more > 0 ? `${named.join('; ')}; ${plugin.t('+{0} more', String(more))}` : named.join('; ');
   return plugin.t('Failed: {0}.', list);
+}
+
+/** Changes done that a note may or may not have (its save failed as another change reached it). */
+function uncertainWrites(plugin: LabnotePlugin, executed: AgentRun['executed']): string[] {
+  return executed
+    .filter(e => e.outcome === 'done' && e.code === 'note_write_uncertain')
+    .map(e => failureReasonText(plugin, 'note_write_uncertain', e.params ?? []) ?? '');
 }
 
 async function complete(

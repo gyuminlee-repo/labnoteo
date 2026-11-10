@@ -11,7 +11,7 @@ import * as posix from '@labnoteo/core/posix';
 import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
 import { isValidWorkflowPath } from '@labnoteo/core/lib/workflowStructure';
 import { processNoteThroughVault, processOrCreateNote } from './commands';
-import { openViewHasDisk } from './openEditorWrite';
+import { openViewHasDisk, type NoteWritten } from './openEditorWrite';
 
 /**
  * Rewrites a note's `last_updated_date`; identity when the setting is off.
@@ -96,7 +96,7 @@ export async function processNoteStamped(
   change: (content: string) => string,
   stamp: StampNote,
   lone = false
-): Promise<boolean> {
+): Promise<NoteWritten> {
   const lab = isLabNotePath(path);
   const made = lab ? (c: string) => stamp(change(c), path) : change;
   const written = await processOrCreateNote(app, host, path, made);

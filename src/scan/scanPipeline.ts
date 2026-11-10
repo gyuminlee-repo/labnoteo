@@ -371,10 +371,10 @@ export class ScanPipeline {
       };
       let failure: string | undefined;
       try {
-        if (
-          !(await processNoteThroughVault(this.deps.app, this.deps.host, notePath, apply)) &&
-          (await changeNotWritten(this.deps.app, this.deps.host, notePath, apply))
-        ) {
+        const written = await processNoteThroughVault(this.deps.app, this.deps.host, notePath, apply);
+        if (written === 'uncertain') {
+          failure = this.deps.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', notePath);
+        } else if (!written && (await changeNotWritten(this.deps.app, this.deps.host, notePath, apply))) {
           // Not written: a save of the open note did not end in time.
           failure = this.deps.t('The scans were not written into the note: it was still being saved, or it changed while they went in.');
         } else {
@@ -497,7 +497,9 @@ export class ScanPipeline {
       return out.md;
     };
     const written = await processNoteThroughVault(this.deps.app, this.deps.host, result.notePath, remove);
-    // Not written (a save of the open note did not end in time): the entry and its image stay.
+    // Not written (a save of the open note did not end in time), or not known to be: the entry
+    // and its image stay.
+    if (written === 'uncertain') return false;
     if (!written && (await changeNotWritten(this.deps.app, this.deps.host, result.notePath, remove))) return false;
     const image = result.imagePath ? this.deps.app.vault.getAbstractFileByPath(result.imagePath) : null;
     if (image instanceof TFile) await this.deps.app.fileManager.trashFile(image);
@@ -526,8 +528,11 @@ export class ScanPipeline {
       }
       return out;
     };
-    // Not written (a save of the open note did not end in time): the entries and images stay.
-    if (!(await processNoteThroughVault(app, host, notePath, remove)) && (await changeNotWritten(app, host, notePath, remove))) return 0;
+    // Not written (a save of the open note did not end in time), or not known to be: the entries
+    // and images stay.
+    const written = await processNoteThroughVault(app, host, notePath, remove);
+    if (written === 'uncertain') return 0;
+    if (!written && (await changeNotWritten(app, host, notePath, remove))) return 0;
     for (const image of images) await app.fileManager.trashFile(image);
     if (count > 0) this.deps.markUserEdit(notePath);
     result.previous = [];
