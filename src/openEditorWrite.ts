@@ -114,51 +114,61 @@ async function writeInOpenEditor(
   const after = transform(before).replace(/\r\n?/g, '\n');
   if (after === before) return false;
   putInEditor(view.editor, before, after);
-  let saved = false;
-  try {
-    await view.save();
-    saved = true;
-  } catch {
-    // The file is looked at below either way.
-  }
-  // The editor's text as the save left it, the change in it (a view does not read the file
-  // again while it saves): a file reading so later holds the change. Taken now, not when the
-  // file is looked at, by which time the view may have read another writer's file over it.
-  const atSave = view.editor.getValue().replace(/\r\n?/g, '\n');
-  // A save that wrote, ending with the view still on the note, wrote the editor's text (assumed
-  // of TextFileView.save: the API documents getViewData as what a save writes; Obsidian 1.15.0
-  // then holds that text as last saved, and a save that writes nothing, its view reading the
-  // note again, holds null): the file holds the change even when another plugin changed it
-  // right after. Else a file no longer as it was
-  // holds the save when it reads as the editor's text as the save left it (the change, and
-  // anything typed meanwhile); else another writer changed it and the change is not known to be there. It is not applied again then, which could put it in twice with a
-  // save landing late: false, and the editor keeps the change, which Obsidian may save later.
   const lf = (text: string) => text.replace(/\r\n?/g, '\n');
-  const landed = (text: string) => lf(text) === after || lf(text) === atSave;
-  const now = await app.vault.read(file);
-  const savedAs: unknown = (view as unknown as { lastSavedData?: unknown }).lastSavedData;
-  const wrote = saved && openSourceView(app, file.path) === view && typeof savedAs === 'string' && savedAs !== disk;
-  if (now !== disk) return wrote || landed(now);
-  // The file as it was. A view still on the note that holds the file's text as last read or
-  // saved (Obsidian 1.15.0 puts it back when a save fails, and says so itself, keeping a
-  // backup) saves its editor, the change in it, on its next save: the change is the editor's,
-  // and the file gets that text now rather than the change made again of the file's text,
-  // which could come out otherwise or be refused, and be told for what the note ends as. A view
-  // that left the note, or reads it again (its text then null), does not keep the editor's
-  // text: the change is made of the file's.
-  const keeps = view.file?.path === file.path && typeof savedAs === 'string';
+  // Saved, and looked at as the save left it: whether it wrote (Obsidian 1.15.0 holds what a
+  // save wrote as last saved, puts the text before back when it fails, and a save that writes
+  // nothing, its view reading the note again, holds null), the editor's text then (a view does
+  // not read the file again while it saves, so the change is in it), and the file.
+  const save = async () => {
+    let saved = false;
+    try {
+      await view.save();
+      saved = true;
+    } catch {
+      // The file is looked at below either way.
+    }
+    const atSave = lf(view.editor.getValue());
+    const now = await app.vault.read(file);
+    const savedAs: unknown = (view as unknown as { lastSavedData?: unknown }).lastSavedData;
+    const wrote = saved && openSourceView(app, file.path) === view && typeof savedAs === 'string' && savedAs !== disk;
+    // The view still on the note, holding the file's text as last saved: its editor keeps the
+    // change, and saves it on its next save.
+    const keeps = view.file?.path === file.path && typeof savedAs === 'string';
+    return { atSave, now, wrote, keeps };
+  };
+  // A file no longer as it was holds the change when the save wrote (the view still on the
+  // note: the editor's text, the change in it, even when another plugin changed the file right
+  // after), or when it reads as the change or as the editor's text as the save left it; else
+  // another writer changed it and the change is not known to be there. It is not applied again
+  // then, which could put it in twice with a save landing late: false, and the editor keeps the
+  // change, which Obsidian may save later.
+  const landed = (text: string, atSave: string) => lf(text) === after || lf(text) === atSave;
+  let at = await save();
+  if (at.now !== disk) return at.wrote || landed(at.now, at.atSave);
+  // The file as it was, the save having failed (Obsidian says so itself, keeping a backup) or
+  // written nothing. A view still on the note keeps the change in its editor: it is saved once
+  // more, not written through the vault, which the view would merge with what was typed during
+  // the save, the base being the file before the change, and so put an insertion in twice.
+  // Still failing, the editor keeps the change for the view's next save: written, as far as
+  // can be known now (a writer changing the file later has the view, no longer dirty, read
+  // that over its editor, which no write can tell).
+  if (at.keeps) {
+    at = await save();
+    if (at.now !== disk) return at.wrote || landed(at.now, at.atSave);
+    return at.keeps;
+  }
+  // A view that left the note, or reads it again, does not keep the editor's text: the change
+  // is made of the file's, through the vault, once, only to the file as it was before the
+  // save; changed meanwhile (a save landing late, another writer), that write stands, and the
+  // change is there only if it reads so.
   let final = disk;
   let applied = false;
-  // Applied to the file, once, only as it was before the save; changed meanwhile (a save
-  // landing late, another writer), that write stands, and the change is there only if it
-  // reads so: the view, its failed save having left it not dirty, reads that file over its
-  // editor, change and all.
   await app.vault.process(file, data => {
     if (data !== disk) return (final = data);
     applied = true;
-    return (final = keeps ? after : transform(data));
+    return (final = transform(data));
   });
-  return applied ? keeps || final !== disk : landed(final);
+  return applied ? final !== disk : landed(final, at.atSave);
 }
 
 /** A run of the text, [start, end), replaced by `text`. */

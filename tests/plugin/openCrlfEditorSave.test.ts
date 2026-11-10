@@ -34,6 +34,12 @@ function setup(disk: string, save: Save) {
     },
   };
   view.save = async () => {
+    // A save landing late lands by the time the note is saved again.
+    if (state.pending === 'afterProcess') {
+      state.pending = undefined;
+      land();
+      return;
+    }
     // Another writer changes the file while the save fails, or while the view closes and the
     // save writes nothing.
     if (save === 'otherThenFails' || save === 'otherThenNothing') {

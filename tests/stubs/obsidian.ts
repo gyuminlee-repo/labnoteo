@@ -159,9 +159,14 @@ export class MarkdownView {
     if (!this.file) return;
     const text = this.getViewData();
     if (this.lastSavedData !== text && this.lastSavedData !== null) {
+      const previous = this.lastSavedData;
       this.data = text;
       this.lastSavedData = text;
-      this.savePromise = this.writeData(this.file, text);
+      // A write that fails puts back the text last saved, as Obsidian 1.15.0's writeData does.
+      this.savePromise = this.writeData(this.file, text).catch(err => {
+        this.lastSavedData = previous;
+        throw err;
+      });
       try {
         await this.savePromise;
       } finally {

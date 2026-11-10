@@ -57,15 +57,16 @@ describe('processNote', () => {
   });
 
   // The editor holds the change either way; the file gets it through the vault.
-  // The view keeps the note and its editor the change, which it saves next: the file gets the
-  // editor's text, as that save would write it.
-  it('writes the editor text through the vault when the save fails', async () => {
-    const { app, view, state } = setup('---\r\ntitle: x\r\n---\r\nbody\r\n', true, 'fails');
+  // The view keeps the note and its editor the change: saved once more, not written through
+  // the vault; still failing, the editor keeps it for the view's next save.
+  it('saves once more, not through the vault, when the save fails', async () => {
+    const disk = '---\r\ntitle: x\r\n---\r\nbody\r\n';
+    const { app, view, state } = setup(disk, true, 'fails');
     expect(await processInOpenEditor(app, new TFile(NOTE) as never, data => data.replace('body', 'text'))).toBe(true);
     expect(state.editor).toBe('---\ntitle: x\n---\ntext\n');
-    expect(state.disk).toBe('---\ntitle: x\n---\ntext\n');
-    expect(view.saved).toBe(1);
-    expect(state.processed).toBe(1);
+    expect(state.disk).toBe(disk);
+    expect(view.saved).toBe(2);
+    expect(state.processed).toBe(0);
   });
 
   // The view left the note: its editor's text is not saved, the change is made of the file's.
