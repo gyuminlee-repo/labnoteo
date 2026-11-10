@@ -129,6 +129,13 @@ export class MarkdownView {
     return this.data;
   }
 
+  /** How many times the note was saved (`save`). */
+  saved = 0;
+
+  async save(): Promise<void> {
+    this.saved++;
+  }
+
   getState(): Record<string, unknown> {
     return { mode: this.mode };
   }

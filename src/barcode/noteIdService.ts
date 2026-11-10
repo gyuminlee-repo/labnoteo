@@ -12,6 +12,7 @@ import type { LabnoteHost } from '@labnoteo/core';
 import { listFiledScans, parseFrontMatterYaml } from '@labnoteo/core';
 import { generateNoteId, isValidNoteId, NOTE_ID_KEY, noteIdUnwritable, readNoteId, readRawNoteId, setNoteId } from '@labnoteo/core/lib/noteId';
 import { noteIdFromFiledScanEmbed } from '../scan/imageStore';
+import { processNote } from '../openEditorWrite';
 
 /** Notes that get a barcode: lab notes (`*.labnote.md`). */
 export const isBarcodeNote = (path: string): boolean => path.toLowerCase().endsWith('.labnote.md');
@@ -219,7 +220,7 @@ export class NoteIdService {
     // the ID it was is known again when the write did not take.
     const before = this.known?.get(file.path);
     this.known?.set(file.path, id);
-    await this.app.vault.process(file, data => setNoteId(data, id));
+    await processNote(this.app, file, data => setNoteId(data, id));
     if (readNoteId(await this.app.vault.read(file)) === id) return true;
     if (before === undefined) this.known?.delete(file.path);
     else this.known?.set(file.path, before);

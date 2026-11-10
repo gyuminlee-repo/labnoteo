@@ -52,6 +52,7 @@ import {
 import { ISSUE_SYNC_WORKFLOW_PATH, SETUP_DOC_PATH } from './scaffold/assets';
 import * as posix from '@labnoteo/core/posix';
 import { workflowAliasModal } from './modals';
+import { openSourceView, processInOpenCrlfEditor } from './openEditorWrite';
 import { getObsidianLanguage } from './i18n';
 import {
   createLabnoteStructure,
@@ -1297,7 +1298,11 @@ export type WorkflowRegistration = 'registered' | 'noSection' | 'noReadme';
  * (non-destructive) and stamp the README's `last_updated_date`: creating a
  * workflow is a change to the experiment. Applied through the vault to the
  * README as it is at write time, so an open README editor neither overwrites it
- * nor loses its own unsaved text. Writes nothing without a README or without
+ * nor loses its own unsaved text. A README open in an editor whose file has CRLF
+ * line ends is the exception: Obsidian holds it as LF and saves that over a write
+ * through the vault, so the entry goes into the editor and the README is saved as
+ * LF there ({@link processNoteThroughVault}); its CRLF is not kept, as Obsidian
+ * keeps it for no open note. Writes nothing without a README or without
  * the section to list it in (#298), and says which. A date the reader set by
  * hand in the README today is left as it is, as `stamp` decides (#363).
  */
@@ -2432,7 +2437,10 @@ export async function writeNoteThroughVault(
 ): Promise<void> {
   const file = app.vault.getFileByPath(notePath);
   if (file instanceof TFile) {
-    await app.vault.process(file, () => content);
+    // Open in an editor with CRLF in its file: written there, LF as the editor holds it.
+    if ((await processInOpenCrlfEditor(app, file, () => content.replace(/\r\n/g, '\n'))) === undefined) {
+      await app.vault.process(file, () => content);
+    }
   } else {
     await host.fs.write(notePath, content);
   }
@@ -2440,11 +2448,7 @@ export async function writeNoteThroughVault(
 
 /** The editor `path` is open in, in source or live preview mode. */
 function openSourceEditor(app: App, path: string): Editor | undefined {
-  for (const leaf of app.workspace.getLeavesOfType('markdown')) {
-    const view = leaf.view;
-    if (view instanceof MarkdownView && view.file?.path === path && view.getMode() === 'source') return view.editor;
-  }
-  return undefined;
+  return openSourceView(app, path)?.editor;
 }
 
 /**
@@ -2465,6 +2469,9 @@ export async function processNoteThroughVault(
   if (next === current) return false;
   const file = app.vault.getFileByPath(notePath);
   if (file instanceof TFile) {
+    // Open in an editor with CRLF in its file: applied there ({@link processInOpenCrlfEditor}).
+    const inEditor = await processInOpenCrlfEditor(app, file, transform);
+    if (inEditor !== undefined) return inEditor;
     await app.vault.process(file, data => transform(data));
   } else {
     await host.fs.write(notePath, next);

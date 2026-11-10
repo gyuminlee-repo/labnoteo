@@ -111,6 +111,7 @@ import {
   writeNoteThroughVault,
   type ReadmeSyncControl,
 } from './commands';
+import { processNote } from './openEditorWrite';
 import { loadWorkflows } from '@labnoteo/core/lib/workflowDataLoader';
 import * as posix from '@labnoteo/core/posix';
 import {
@@ -1857,7 +1858,7 @@ export default class LabnotePlugin extends Plugin {
     // Before any prompt, so cancelling one still leaves no shared issue ID (#89).
     const markers = reassignIssueMarkerIds(await this.app.vault.read(file)).count;
     if (markers > 0) {
-      await this.app.vault.process(file, data => reassignIssueMarkerIds(data).content);
+      await processNote(this.app, file, data => reassignIssueMarkerIds(data).content);
       this.host.notify(
         'info',
         this.t(
@@ -1991,7 +1992,7 @@ export default class LabnotePlugin extends Plugin {
       if (reassigned.count > 0 || stripped.count > 0) {
         markers += reassigned.count;
         scans += stripped.count;
-        await this.app.vault.process(note, data => removeAllScanEntries(reassignIssueMarkerIds(data).content).md);
+        await processNote(this.app, note, data => removeAllScanEntries(reassignIssueMarkerIds(data).content).md);
       }
       // Recorded first, so no question about the shared ID comes while the copy is
       // handled. A note ID that cannot be written was said and stays as it is; the copy is then
@@ -2037,7 +2038,7 @@ export default class LabnotePlugin extends Plugin {
         .filter((v): v is string | number => typeof v === 'string' || typeof v === 'number')
         .map(String);
       const nextId = nextExperimentId(id, taken);
-      await this.app.vault.process(readme, data => setExperimentReadmeId(data, nextId));
+      await processNote(this.app, readme, data => setExperimentReadmeId(data, nextId));
       this.host.notify(
         'info',
         nextId
@@ -2174,7 +2175,7 @@ export default class LabnotePlugin extends Plugin {
       ));
     if (this.unloaded || folder.path !== copyPath) return;
     const today = getSeoulDateString();
-    await this.app.vault.process(readme, data => {
+    await processNote(this.app, readme, data => {
       const reset = resetCopiedExperimentReadme(data, newTitle, today);
       return markRetry ? setRetryOf(reset, retryOfLink(retryTarget)) : reset;
     });
@@ -2184,7 +2185,7 @@ export default class LabnotePlugin extends Plugin {
       for (const note of markdownFilesIn(folder)) {
         if (!parseWorkflowFileName(note.name)) continue;
         let changed = false;
-        await this.app.vault.process(note, data => {
+        await processNote(this.app, note, data => {
           const next = resetCopiedWorkflowDates(data, today);
           changed = next !== data;
           return next;
@@ -2291,7 +2292,7 @@ export default class LabnotePlugin extends Plugin {
     let changed = false;
     let scans = 0;
     let outputIds: string[] = [];
-    await this.app.vault.process(file, data => {
+    await processNote(this.app, file, data => {
       const dated = resetCopiedWorkflowDates(data, today);
       changed = dated !== data;
       const stripped = removeAllScanEntries(dated);
@@ -2396,7 +2397,7 @@ export default class LabnotePlugin extends Plugin {
     }
     // Dropped first so the rename below is not taken for a rename by hand.
     this.copiedWorkflows.delete(copyPath);
-    await this.app.vault.process(file, data => rewriteWorkflowTitle(data, heading.id, heading.name, alias));
+    await processNote(this.app, file, data => rewriteWorkflowTitle(data, heading.id, heading.name, alias));
     await this.resetCopyDates(file);
     await this.app.fileManager.renameFile(file, target);
     if (await addWorkflowFileToChecklist(this.app, this.host, dir, fileName)) {
@@ -2411,7 +2412,7 @@ export default class LabnotePlugin extends Plugin {
     const settled = await this.waitForNoModal();
     if (this.unloaded || !settled || file.path !== path) return;
     // Before asking (#194): the title and heading follow the new name even if the copy is not listed.
-    await this.app.vault.process(file, data => planWorkflowRetitle(data, file.name)?.content ?? data);
+    await processNote(this.app, file, data => planWorkflowRetitle(data, file.name)?.content ?? data);
     const ok = await this.host.confirm(this.t('Add "{0}" to the README checklist?', file.name), {
       confirmLabel: this.t('Add to checklist'),
     });
@@ -2776,7 +2777,7 @@ export default class LabnotePlugin extends Plugin {
       now: () => Date.now(),
       process: async (path, fn) => {
         const file = vault.getAbstractFileByPath(path);
-        if (file instanceof TFile) await vault.process(file, fn);
+        if (file instanceof TFile) await processNote(this.app, file, fn);
       },
     });
 
