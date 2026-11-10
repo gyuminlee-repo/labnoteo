@@ -2186,12 +2186,13 @@ export default class LabnotePlugin extends Plugin {
       for (const note of markdownFilesIn(folder)) {
         if (!parseWorkflowFileName(note.name)) continue;
         let changed = false;
-        await processNote(this.app, note, data => {
+        const written = await processNote(this.app, note, data => {
           const next = resetCopiedWorkflowDates(data, today);
           changed = next !== data;
           return next;
         });
-        if (changed) redated++;
+        // Not written (a save of the open note did not end in time): not counted as redated.
+        if (written && changed) redated++;
       }
     }
     if (target !== folder.path) await this.app.fileManager.renameFile(folder, target);
