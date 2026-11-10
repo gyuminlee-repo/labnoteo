@@ -75,6 +75,24 @@ describe('overUnsaved, pieces of typing apart', () => {
   it('keeps typing on the line a change is on, apart from it', () => {
     expect(overUnsaved('title: T typed, date: 01\n', 'title: T, date: 01\n', 'title: T, date: 10\n')).toBe('title: T typed, date: 10\n');
   });
+  // Letters typed close together in one word are one piece of typing, put by the context around
+  // the word; taken letter by letter, each had too little context and went to the wrong copy.
+  it('keeps typing close together in a word as one piece, by the context of the word', () => {
+    const base = 'x\nx\n- [ ] item\n- [ ] item\ntext a b\n';
+    const content = 'x\nx\ntext a\n## Notes\nResult: ok\n- [ ] item\n- [ ] item\ntext a b\n';
+    expect(overUnsaved('x\nx\n- [ ] i\ntem\n- [ ] item\nt\n\next a b\n', base, content)).toBe(
+      'x\nx\ntext a\n## Notes\nResult: ok\n- [ ] i\ntem\n- [ ] item\nt\n\next a b\n'
+    );
+  });
+  // Text replaced on a line is one piece, not an insertion here and a deletion of the same text
+  // further on: split, the deletion went with the far copy and the change landed inside it.
+  it('keeps a replacement on one line as one piece', () => {
+    const base = '\n### [UHW010 Op]\n\n### [UHW010 Op]\n';
+    const content = '\n### [UHW010 Op]\n\nx\nNEW 1\n### [UHW010 Op]\n';
+    expect(overUnsaved('\n### [UHW01p]\n\n### [UHW010 \n\nOp]\n', base, content)).toBe(
+      '\n### [UHW01p]\n\nx\nNEW 1\n### [UHW010 \n\nOp]\n'
+    );
+  });
 });
 
 // update_section appending to Notes while the user types at the end of Notes: the note as saved

@@ -157,15 +157,33 @@ export function overUnsaved(text: string, base: string | undefined, content: str
   // Where `out` has the base text at `s` (`shift`), and `text` has it (`typed`).
   let shift = 0;
   let typed = 0;
-  for (const edit of typedEdits(base, text)) {
+  const put = (edit: Piece) => {
     const at = place(text.slice(0, edit.s + typed), base.slice(edit.s, edit.e), base.slice(edit.e), out, edit.s + shift);
-    typed += edit.t.length - (edit.e - edit.s);
-    // Left out where `content` no longer has the text the typing replaced.
-    if (at === undefined || out.slice(at, at + (edit.e - edit.s)) !== base.slice(edit.s, edit.e)) continue;
+    // Not where `content` no longer has the text the typing replaced.
+    if (at === undefined || out.slice(at, at + (edit.e - edit.s)) !== base.slice(edit.s, edit.e)) return false;
     out = out.slice(0, at) + edit.t + out.slice(at + (edit.e - edit.s));
     shift = at - edit.s + edit.t.length - (edit.e - edit.s);
+    return true;
+  };
+  for (const edit of typedEdits(base, text)) {
+    // A piece made of several that does not go in as one (`content` changed what lies between
+    // them): each of them on its own.
+    if (put(edit) || !edit.parts) typed += edit.t.length - (edit.e - edit.s);
+    else
+      for (const part of edit.parts) {
+        put(part);
+        typed += part.t.length - (part.e - part.s);
+      }
   }
   return out;
+}
+
+/** A piece of change: a run of `base`, [s, e), replaced by `t`; made of `parts` when merged. */
+interface Piece {
+  s: number;
+  e: number;
+  t: string;
+  parts?: Piece[];
 }
 
 /** Context taken around a piece of typing: at least this much, more until it is found once. */
@@ -232,17 +250,34 @@ function place(before: string, mid: string, after: string, out: string, near: nu
 }
 
 /** The pieces of change that make `text` of `base`: runs of `base`, [s, e), replaced by `t`. */
-function typedEdits(base: string, text: string): { s: number; e: number; t: string }[] {
+function typedEdits(base: string, text: string): Piece[] {
   const lines = (x: string) => x.split(/(?<=\n)/);
   const b = lines(base);
   const offsets = [0];
   for (const line of b) offsets.push(offsets[offsets.length - 1] + line.length);
-  const out: { s: number; e: number; t: string }[] = [];
+  const out: Piece[] = [];
   for (const h of hunks(b, lines(text))) {
     const from = offsets[h.s];
     const region = base.slice(from, offsets[h.e]);
     for (const c of hunks([...region], [...h.t.join('')])) {
       out.push({ s: from + c.s, e: from + c.e, t: c.t.join('') });
+    }
+  }
+  // Two pieces with a stretch between them no longer than either piece are one, as
+  // diff-match-patch's semantic cleanup has it: typing in a word is one piece, not its letters.
+  const size = (x: Piece) => Math.max(x.e - x.s, x.t.length);
+  for (let merged = true; merged; ) {
+    merged = false;
+    for (let k = 1; k < out.length; k++) {
+      const a = out[k - 1];
+      const b = out[k];
+      const gap = b.s - a.e;
+      if (gap <= size(a) && gap <= size(b)) {
+        const parts = [...(a.parts ?? [a]), ...(b.parts ?? [b])];
+        out.splice(k - 1, 2, { s: a.s, e: b.e, t: a.t + base.slice(a.e, b.s) + b.t, parts });
+        merged = true;
+        break;
+      }
     }
   }
   return out;
@@ -288,7 +323,7 @@ function hunks(a: string[], b: string[]): Hunk[] {
       continue;
     }
     cur ??= { s: p + i, e: p + i, t: [] };
-    if (j < m && (i >= n || L[i * w + j + 1] >= L[(i + 1) * w + j])) cur.t.push(b[p + j++]);
+    if (j < m && (i >= n || L[i * w + j + 1] > L[(i + 1) * w + j])) cur.t.push(b[p + j++]);
     else {
       i++;
       cur.e = p + i;
