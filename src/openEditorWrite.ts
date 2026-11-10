@@ -132,8 +132,10 @@ export async function saveOpenEdits(app: App, file: TFile): Promise<void> {
     .map(leaf => leaf.view)
     .filter((view): view is MarkdownView => view instanceof MarkdownView && view.file?.path === file.path)
     .filter(view => {
+      // Line ends alone are not an edit: the editor holds a CRLF file as LF.
       const last: unknown = (view as unknown as { lastSavedData?: unknown }).lastSavedData;
-      return typeof last === 'string' && view.getViewData() !== last;
+      const lf = (text: string) => text.replace(/\r\n?/g, '\n');
+      return typeof last === 'string' && lf(view.getViewData()) !== lf(last);
     });
   if (views.length === 0) return;
   const disk = await app.vault.read(file);
