@@ -56,7 +56,7 @@ describe('a workflow created while the open README is still being saved', () => 
     expect(notices.filter(n => n.level === 'warn')).toEqual([
       {
         level: 'warn',
-        msg: 'README.labnote.md was still being saved, so 001_WD020_New.labnote.md was not added to its checklist. Run "Sync workflow checklist with folder" in a moment to add it.',
+        msg: 'README.labnote.md was not written: it was still being saved, or it changed while the entry went in, so 001_WD020_New.labnote.md was not added to its checklist. Run "Sync workflow checklist with folder" in a moment to add it.',
       },
     ]);
     expect(notices.filter(n => n.level === 'info')).toEqual([{ level: 'info', msg: 'Workflow created: 001_WD020_New.labnote.md' }]);

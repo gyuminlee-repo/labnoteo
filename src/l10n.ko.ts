@@ -522,8 +522,8 @@ const obsidianKo: Record<string, string> = {
     '"{0}"은(는) 보관함 폴더를 포함한 경로가 {1}자로, Windows가 허용하는 {2}자를 넘습니다. Windows에서 열거나 git으로 받을 때 실패할 수 있으니 보관함을 더 짧은 경로의 폴더로 옮기거나 이름을 줄이세요.',
   'Yes': '예',
   'Workflow created: {0}': '워크플로가 생성되었습니다: {0}',
-  'README.labnote.md was still being saved, so {0} was not added to its checklist. Run "{1}" in a moment to add it.':
-    'README.labnote.md를 아직 저장하는 중이라 {0}을(를) 체크리스트에 넣지 못했습니다. 잠시 뒤 "{1}"을(를) 실행하면 들어갑니다.',
+  'README.labnote.md was not written: it was still being saved, or it changed while the entry went in, so {0} was not added to its checklist. Run "{1}" in a moment to add it.':
+    'README.labnote.md를 쓰지 못해 {0}을(를) 체크리스트에 넣지 못했습니다. 아직 저장하는 중이었거나 항목을 넣는 사이에 파일이 바뀌었습니다. 잠시 뒤 "{1}"을(를) 실행하면 넣을 수 있습니다.',
   'This experiment has no README.labnote.md, so the workflow was not added to a checklist.':
     '이 실험에는 README.labnote.md가 없어 워크플로를 체크리스트에 등록하지 못했습니다.',
   'Unit operation inserted: {0} {1}': '유닛 오퍼레이션이 삽입되었습니다: {0} {1}',
@@ -1285,7 +1285,8 @@ const obsidianKo: Record<string, string> = {
   'Slack gave no download link (the file may be deleted, or hidden by the free plan limit).':
     'Slack이 내려받기 링크를 주지 않았습니다(삭제됐거나 무료 요금제 한도로 숨겨진 파일일 수 있습니다).',
   'Slack refused the download (check the files:read permission).': 'Slack이 내려받기를 거부했습니다(files:read 권한을 확인하세요).',
-  'The note was still being saved, so the scans were not written into it.': '노트를 아직 저장하는 중이라 스캔을 넣지 못했습니다.',
+  'The scans were not written into the note: it was still being saved, or it changed while they went in.':
+    '스캔을 노트에 넣지 못했습니다. 노트를 아직 저장하는 중이었거나 넣는 사이에 노트가 바뀌었습니다.',
   'Slack had more messages than one check reads; the oldest may have been skipped.':
     '한 번에 읽는 양보다 Slack 메시지가 많았습니다. 가장 오래된 메시지는 건너뛰었을 수 있습니다.',
   'The Slack bot cannot add the 👀 reaction (reactions:write). Fine on one PC, but do not link a second one.':

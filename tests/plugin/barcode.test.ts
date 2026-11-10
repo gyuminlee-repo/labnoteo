@@ -480,7 +480,9 @@ describe('NoteIdService', () => {
 
       expect(await svc.checkIdChange(fileOf('a.labnote.md'))).toBe(true);
       expect(readNoteId(files.get('a.labnote.md')!.text)).toBe('LN-CCCCCCCC');
-      expect(notices.some(n => n.includes('could not be written'))).toBe(true);
+      // The note would take the ID, so the write itself did not go in: not the form of its value.
+      expect(notices.some(n => n.includes('was not written: it was still being saved, or it changed'))).toBe(true);
+      expect(notices.some(n => n.includes('could not be written'))).toBe(false);
       expect(notices.some(n => n.includes('has the note ID'))).toBe(false);
       expect(await svc.checkIdChange(fileOf('a.labnote.md'))).toBe(false);
       expect(asked).toHaveLength(1);

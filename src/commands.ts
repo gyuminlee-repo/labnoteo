@@ -1268,7 +1268,7 @@ function notifyWorkflowCreated(host: LabnoteHost, created: CreatedWorkflow): voi
     host.notify(
       'warn',
       host.t(
-        'README.labnote.md was still being saved, so {0} was not added to its checklist. Run "{1}" in a moment to add it.',
+        'README.labnote.md was not written: it was still being saved, or it changed while the entry went in, so {0} was not added to its checklist. Run "{1}" in a moment to add it.',
         created.fileName,
         host.t('Sync workflow checklist with folder')
       )

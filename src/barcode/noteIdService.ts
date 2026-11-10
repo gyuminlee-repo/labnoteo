@@ -214,7 +214,7 @@ export class NoteIdService {
    * value written over several lines (or with an anchor, tag or alias) as it
    * is; then the user is told and false comes back, so no caller goes on with
    * an ID the note does not carry. A note not written because a save of it did
-   * not end in time is told that instead.
+   * not end in time, or another writer changed it meanwhile, is told that instead.
    */
   private async writeId(file: TFile, id: string): Promise<boolean> {
     // Known first, so the write is not taken for a change made elsewhere (#443);
@@ -230,8 +230,15 @@ export class NoteIdService {
         'warn',
         this.host.t('{0} was still being saved, so its labnote_id was not written. Try again in a moment.', file.path)
       );
-    } else {
+      return false;
+    }
+    const now = await this.app.vault.read(file);
+    if (setNoteId(now, id) === now) {
+      // The note as it is would not take the ID: its labnote_id is written in a form left as it is.
       this.warnUnwritable(file);
+    } else {
+      // It would: another writer changed it while the ID went in.
+      this.host.notify('warn', this.host.t('{0} was not written: it was still being saved, or it changed while the change went in. Try again in a moment.', file.path));
     }
     return false;
   }

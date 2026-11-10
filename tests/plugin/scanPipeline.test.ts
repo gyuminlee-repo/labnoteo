@@ -640,7 +640,7 @@ describe('scans while a save of the open note does not end in time', () => {
     const s = setup({ [NOTE]: note }, { 'a.jpg': [page(pagePayload(), 'aaaaaaaaaaaa')] });
     stuck(s);
     const [result] = await s.pipeline.run([input('a.jpg')]);
-    expect(result).toMatchObject({ status: 'error', message: 'The note was still being saved, so the scans were not written into it.' });
+    expect(result).toMatchObject({ status: 'error', message: 'The scans were not written into the note: it was still being saved, or it changed while they went in.' });
     expect(s.text.get(NOTE)).toBe(note);
     expect(result.imagePath).toBeUndefined();
     expect([...s.binary.keys()]).toEqual([result.unmatchedPath]);
@@ -654,7 +654,7 @@ describe('scans while a save of the open note does not end in time', () => {
       createTranslator(obsidianKo as Record<string, string>));
     stuck(s);
     const [result] = await s.pipeline.run([input('a.jpg')]);
-    expect(result).toMatchObject({ status: 'error', message: '노트를 아직 저장하는 중이라 스캔을 넣지 못했습니다.' });
+    expect(result).toMatchObject({ status: 'error', message: '스캔을 노트에 넣지 못했습니다. 노트를 아직 저장하는 중이었거나 넣는 사이에 노트가 바뀌었습니다.' });
   }, T);
 
   // A write that throws is the same failure: the scan is queued, not left unlinked in the note folder.
