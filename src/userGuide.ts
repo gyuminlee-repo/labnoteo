@@ -32,13 +32,39 @@ export function guideVersion(text: string): string | undefined {
  * release wrote, after asking when someone edited it (the old file is kept
  * as {@link QUICKSTART_BACKUP_PATH}, or a free name beside it). An edited block of this release, a copy
  * without the markers, or one a newer plugin recorded is opened as it is.
- * `write` goes through the vault so an open editor of the guide follows.
+ * `processFile` changes a file as it is when written ('' when it does not exist), through the
+ * vault so an open editor of the guide follows; false when it wrote nothing that it should
+ * have. The guide is judged again there: changed meanwhile so the answer asked for no longer
+ * fits it, it is left as it is and the user told to open it again.
  */
 export async function openUserGuide(
   host: LabnoteHost,
   pluginVersion: string,
-  write: (path: string, content: string) => Promise<unknown> = (path, content) => host.fs.write(path, content)
+  processFile: (path: string, change: (text: string) => string) => Promise<boolean> = async (path, change) => {
+    await host.fs.write(path, change((await host.fs.exists(path)) ? await host.fs.read(path) : ''));
+    return true;
+  }
 ): Promise<void> {
+  const write = (path: string, content: string) => processFile(path, () => content);
+  // The guide changed as `fits` asks of the text written over: left as it is, and said so.
+  const update = async (fits: (text: string) => boolean, change: (text: string) => string): Promise<boolean> => {
+    let refused = false;
+    const written = await processFile(QUICKSTART_DOC_PATH, text => {
+      refused = !fits(text);
+      return refused ? text : change(text);
+    });
+    if (refused) {
+      host.notify(
+        'warn',
+        host.t('The user guide changed while you were deciding, so it was not updated. Run "{0}" again to update it.', host.t('Open user guide'))
+      );
+      return false;
+    }
+    if (!written) {
+      host.notify('warn', host.t('{0} was still being saved, so the change was not written. Try again in a moment.', QUICKSTART_DOC_PATH));
+    }
+    return written;
+  };
   const record = await readInstallRecord(host);
   const newer = record.pluginVersion !== undefined && compareVersions(record.pluginVersion, pluginVersion) > 0;
   const remember = (): Promise<void> => {
@@ -69,9 +95,10 @@ export async function openUserGuide(
     );
     if (ok) {
       await write(backup, current);
-      await write(QUICKSTART_DOC_PATH, rebuildBrokenManagedFile(current, QUICKSTART_ASSET));
-      await remember();
-      host.notify('info', host.t('Updated the user guide to labnoteo {0}. The previous file is kept as {1}.', pluginVersion, backup));
+      if (await update(managedBlockBroken, text => rebuildBrokenManagedFile(text, QUICKSTART_ASSET))) {
+        await remember();
+        host.notify('info', host.t('Updated the user guide to labnoteo {0}. The previous file is kept as {1}.', pluginVersion, backup));
+      }
     }
   } else if (!newer) {
     const current = await host.fs.read(QUICKSTART_DOC_PATH);
@@ -94,14 +121,17 @@ export async function openUserGuide(
         ));
       if (replace) {
         if (backup !== undefined) await write(backup, current);
-        await write(QUICKSTART_DOC_PATH, upsertManagedBlock(current, QUICKSTART_ASSET.content));
-        await remember();
-        host.notify(
-          'info',
-          backup === undefined
-            ? host.t('Updated the user guide to labnoteo {0}.', pluginVersion)
-            : host.t('Updated the user guide to labnoteo {0}. The previous file is kept as {1}.', pluginVersion, backup)
-        );
+        const sameStatus = (text: string) =>
+          managedBlockStatus(text, QUICKSTART_ASSET, record.files[QUICKSTART_DOC_PATH]) === status;
+        if (await update(sameStatus, text => upsertManagedBlock(text, QUICKSTART_ASSET.content))) {
+          await remember();
+          host.notify(
+            'info',
+            backup === undefined
+              ? host.t('Updated the user guide to labnoteo {0}.', pluginVersion)
+              : host.t('Updated the user guide to labnoteo {0}. The previous file is kept as {1}.', pluginVersion, backup)
+          );
+        }
       }
     }
   }

@@ -10,7 +10,7 @@
  * saves that buffer). A note that is not open in source or live preview mode, or whose view
  * has not read the file as it is now, is written through the vault as before.
  */
-import { MarkdownView, type App, type TFile } from 'obsidian';
+import { MarkdownView, type App, type Editor, type TFile } from 'obsidian';
 import { minimalReplacement } from '@labnoteo/core';
 
 /** The view `path` is open in, in source or live preview mode. */
@@ -69,7 +69,7 @@ export async function waitForOpenSaves(app: App, path: string, deadline = Date.n
 export async function processInOpenEditor(
   app: App,
   file: TFile,
-  transform: (content: string, base?: string) => string,
+  transform: (content: string) => string,
   deadline?: number
 ): Promise<boolean | undefined> {
   const result = await writeInOpenEditor(app, file, transform, deadline);
@@ -80,7 +80,7 @@ export async function processInOpenEditor(
 async function writeInOpenEditor(
   app: App,
   file: TFile,
-  transform: (content: string, base?: string) => string,
+  transform: (content: string) => string,
   deadline?: number
 ): Promise<boolean | undefined | 'timedOut'> {
   // A save still under way past the wait would write over the change (and would hold this
@@ -108,11 +108,11 @@ async function writeInOpenEditor(
   // empty editor over a file with text is taken for one still loading all the same.
   const lastSaved: unknown = (view as unknown as { lastSavedData?: unknown }).lastSavedData;
   if (lastSaved !== disk || (before === '' && disk.trim() !== '')) return undefined;
-  // What the view last read, as the editor holds it: the text unsaved typing was made on.
-  const after = transform(before, disk.replace(/\r\n?/g, '\n'));
-  const edit = minimalReplacement(before, after);
-  if (!edit) return false;
-  view.editor.replaceRange(edit.text, view.editor.offsetToPos(edit.start), view.editor.offsetToPos(edit.end));
+  // Made of the editor's text, typing not saved yet and all: nothing to merge it with. LF, as
+  // the editor holds a note.
+  const after = transform(before).replace(/\r\n?/g, '\n');
+  if (after === before) return false;
+  putInEditor(view.editor, before, after);
   let saved = false;
   try {
     await view.save();
@@ -142,145 +142,63 @@ async function writeInOpenEditor(
   return applied ? final !== disk : landed(final);
 }
 
-/**
- * `content`, a whole note made from `base`, over `text`, which is `base` with typing not saved
- * yet: each piece of typing is put into `content` where its surroundings are found there, as
- * Obsidian merges a note changed on disk with its editor (by patches with context:
- * diff-match-patch). The surroundings are taken long enough to be found once; of several
- * places, the one whose surroundings agree most, then the nearest. Typing none of whose
- * surroundings or of the text it replaced are left in `content` is left out: there `content`
- * stands. With no `base`, `content` as it is.
- */
-export function overUnsaved(text: string, base: string | undefined, content: string): string {
-  if (base === undefined) return content;
-  let out = content;
-  // Where `out` has the base text at `s` (`shift`), and `text` has it (`typed`).
-  let shift = 0;
-  let typed = 0;
-  const put = (edit: Piece) => {
-    const at = place(text.slice(0, edit.s + typed), base.slice(edit.s, edit.e), base.slice(edit.e), out, edit.s + shift);
-    // Not where `content` no longer has the text the typing replaced.
-    if (at === undefined || out.slice(at, at + (edit.e - edit.s)) !== base.slice(edit.s, edit.e)) return false;
-    out = out.slice(0, at) + edit.t + out.slice(at + (edit.e - edit.s));
-    shift = at - edit.s + edit.t.length - (edit.e - edit.s);
-    return true;
-  };
-  for (const edit of typedEdits(base, text)) {
-    // A piece made of several that does not go in as one (`content` changed what lies between
-    // them): each of them on its own.
-    if (put(edit) || !edit.parts) typed += edit.t.length - (edit.e - edit.s);
-    else
-      for (const part of edit.parts) {
-        put(part);
-        typed += part.t.length - (part.e - part.s);
-      }
-  }
-  return out;
+/** A run of the text, [start, end), replaced by `text`. */
+interface TextEdit {
+  start: number;
+  end: number;
+  text: string;
 }
-
-/** A piece of change: a run of `base`, [s, e), replaced by `t`; made of `parts` when merged. */
-interface Piece {
-  s: number;
-  e: number;
-  t: string;
-  parts?: Piece[];
-}
-
-/** Context taken around a piece of typing: at least this much, more until it is found once. */
-const CONTEXT_STEP = 4;
-const CONTEXT_MAX = 64;
 
 /**
- * Where in `out` the text `mid` (what the typing replaced) stands between the end of `before`
- * and the start of `after`. The context is taken longer until it is found once; found more
- * than once, or only with one side of it (typing next to what `content` changed), the place
- * whose surroundings agree most with the context, then the nearest `near`.
+ * The changes that make `after` of `before`, each where it is: by lines, a line both keep
+ * between two changes keeping them two, then each cut to the characters it changes. Put into
+ * the editor one by one, a cursor between two changes stays by the text it was at, and one
+ * where text is only put in stays before it, rather than going to the start or the end of one
+ * replacement from the first change to the last. Applied in order they make `after`.
  */
-function place(before: string, mid: string, after: string, out: string, near: number): number | undefined {
-  const found = (pre: string, post: string) => {
-    const at: number[] = [];
-    const pattern = pre + mid + post;
-    if (pattern === '') return at;
-    for (let k = out.indexOf(pattern); k !== -1; k = out.indexOf(pattern, k + 1)) at.push(k + pre.length);
-    return at;
-  };
-  const best = (at: number[], pre: string, post: string) => {
-    const agree = (x: number) => {
-      let n = 0;
-      for (let i = 0; i < pre.length; i++) if (out[x - pre.length + i] === pre[i]) n++;
-      for (let i = 0; i < post.length; i++) if (out[x + mid.length + i] === post[i]) n++;
-      return n;
-    };
-    let pick: number | undefined;
-    let score = -1;
-    for (const x of at) {
-      const n = agree(x);
-      if (n > score || (n === score && pick !== undefined && Math.abs(x - near) < Math.abs(pick - near))) {
-        pick = x;
-        score = n;
-      }
-    }
-    return pick;
-  };
-  let last: { at: number[]; pre: string; post: string } | undefined;
-  for (let pad = CONTEXT_STEP; ; pad += CONTEXT_STEP) {
-    const pre = before.slice(Math.max(0, before.length - pad));
-    const post = after.slice(0, pad);
-    const at = found(pre, post);
-    const longest = (pre.length === before.length && post.length === after.length) || pad >= CONTEXT_MAX;
-    if (at.length === 1) return at[0];
-    if (at.length > 1 && !longest) {
-      last = { at, pre, post };
-      continue;
-    }
-    if (at.length > 1) return best(at, pre, post);
-    // Not found with this much context: the copies found with less, else less of it, one side
-    // or both (typing next to what `content` changed), else the start or the end it was at.
-    if (last) return best(last.at, pre, post);
-    if (after === '') return out.length - mid.length;
-    if (before === '') return 0;
-    for (let k = pad; k > 0; k--) {
-      const p = before.slice(Math.max(0, before.length - k));
-      const q = after.slice(0, k);
-      const at = [...found(p, q), ...found(p, ''), ...found('', q)];
-      if (at.length) return best(at, '', '');
-    }
-    return undefined;
-  }
-}
-
-/** The pieces of change that make `text` of `base`: runs of `base`, [s, e), replaced by `t`. */
-function typedEdits(base: string, text: string): Piece[] {
-  const lines = (x: string) => x.split(/(?<=\n)/);
-  const b = lines(base);
+export function editsBetween(before: string, after: string): TextEdit[] {
+  const lines = (x: string) => (x === '' ? [] : x.split(/(?<=\n)/));
+  const a = lines(before);
   const offsets = [0];
-  for (const line of b) offsets.push(offsets[offsets.length - 1] + line.length);
-  const out: Piece[] = [];
-  for (const h of hunks(b, lines(text))) {
-    const from = offsets[h.s];
-    const region = base.slice(from, offsets[h.e]);
-    for (const c of hunks([...region], [...h.t.join('')])) {
-      out.push({ s: from + c.s, e: from + c.e, t: c.t.join('') });
-    }
+  for (const line of a) offsets.push(offsets[offsets.length - 1] + line.length);
+  return hunks(a, lines(after)).map(h => {
+    const start = offsets[h.s];
+    const end = offsets[h.e];
+    const text = h.t.join('');
+    let p = 0;
+    while (p < end - start && p < text.length && before[start + p] === text[p]) p++;
+    let q = 0;
+    while (q < end - start - p && q < text.length - p && before[end - 1 - q] === text[text.length - 1 - q]) q++;
+    return { start: start + p, end: end - q, text: text.slice(p, text.length - q) };
+  });
+}
+
+/** `edits` ({@link editsBetween}) applied to `text`. */
+function applyEdits(text: string, edits: TextEdit[]): string {
+  let out = '';
+  let at = 0;
+  for (const e of edits) {
+    out += text.slice(at, e.start) + e.text;
+    at = e.end;
   }
-  // Two pieces with a stretch between them no longer than either piece are one, as
-  // diff-match-patch's semantic cleanup has it: typing in a word is one piece, not its letters.
-  const size = (x: Piece) => Math.max(x.e - x.s, x.t.length);
-  for (let merged = true; merged; ) {
-    merged = false;
-    for (let k = 1; k < out.length; k++) {
-      const a = out[k - 1];
-      const b = out[k];
-      const gap = b.s - a.e;
-      if (gap <= size(a) && gap <= size(b)) {
-        const parts = [...(a.parts ?? [a]), ...(b.parts ?? [b])];
-        out.splice(k - 1, 2, { s: a.s, e: b.e, t: a.t + base.slice(a.e, b.s) + b.t, parts });
-        merged = true;
-        break;
-      }
-    }
+  return out + text.slice(at);
+}
+
+/**
+ * Put `after` into `editor`, which holds `before`, change by change ({@link editsBetween}),
+ * in one transaction: one undo step. The text made is `after` whatever the changes.
+ */
+function putInEditor(editor: Editor, before: string, after: string): void {
+  let edits = editsBetween(before, after);
+  if (applyEdits(before, edits) !== after) {
+    const one = minimalReplacement(before, after);
+    edits = one ? [one] : [];
   }
-  return out;
+  // Positions in the text before any change, as a transaction takes them.
+  const changes = edits.map(e => ({ from: editor.offsetToPos(e.start), to: editor.offsetToPos(e.end), text: e.text }));
+  if (typeof editor.transaction === 'function') editor.transaction({ changes });
+  // An editor without transactions (a test's): the last change first, so the others stay put.
+  else for (const c of changes.reverse()) editor.replaceRange(c.text, c.from, c.to);
 }
 
 /** A run of `a` units, [s, e), replaced by `t`. */
@@ -290,47 +208,113 @@ interface Hunk {
   t: string[];
 }
 
-/** Above this many cells a longest common subsequence is not worked out: one hunk instead. */
+/**
+ * Above this many cells a longest common subsequence is not worked out: the lines found once
+ * on both sides split the runs instead, and a run with none is one hunk.
+ */
 const DIFF_CELLS_MAX = 4_000_000;
 
 /** The runs of `a` that `b` replaces, from a longest common subsequence of their units. */
 function hunks(a: string[], b: string[]): Hunk[] {
-  let p = 0;
-  while (p < a.length && p < b.length && a[p] === b[p]) p++;
-  let q = 0;
-  while (q < a.length - p && q < b.length - p && a[a.length - 1 - q] === b[b.length - 1 - q]) q++;
-  const n = a.length - p - q;
-  const m = b.length - p - q;
-  if (n === 0 && m === 0) return [];
-  if ((n + 1) * (m + 1) > DIFF_CELLS_MAX) return [{ s: p, e: p + n, t: b.slice(p, p + m) }];
+  const out: Hunk[] = [];
+  hunksIn(a, 0, a.length, b, 0, b.length, out);
+  return out;
+}
+
+/** {@link hunks} of a[a0, a1) and b[b0, b1), put in `out`. */
+function hunksIn(a: string[], a0: number, a1: number, b: string[], b0: number, b1: number, out: Hunk[]): void {
+  while (a0 < a1 && b0 < b1 && a[a0] === b[b0]) {
+    a0++;
+    b0++;
+  }
+  while (a1 > a0 && b1 > b0 && a[a1 - 1] === b[b1 - 1]) {
+    a1--;
+    b1--;
+  }
+  const n = a1 - a0;
+  const m = b1 - b0;
+  if (n === 0 && m === 0) return;
+  if (n > 0 && m > 0 && (n + 1) * (m + 1) > DIFF_CELLS_MAX) {
+    const anchors = uniqueCommon(a, a0, a1, b, b0, b1);
+    if (anchors.length > 0) {
+      let i = a0;
+      let j = b0;
+      for (const [x, y] of anchors) {
+        hunksIn(a, i, x, b, j, y, out);
+        i = x + 1;
+        j = y + 1;
+      }
+      hunksIn(a, i, a1, b, j, b1, out);
+      return;
+    }
+  }
+  if (n === 0 || m === 0 || (n + 1) * (m + 1) > DIFF_CELLS_MAX) {
+    out.push({ s: a0, e: a1, t: b.slice(b0, b1) });
+    return;
+  }
   const w = m + 1;
   const L = new Int32Array((n + 1) * w);
   for (let i = n - 1; i >= 0; i--) {
     for (let j = m - 1; j >= 0; j--) {
-      L[i * w + j] = a[p + i] === b[p + j] ? L[(i + 1) * w + j + 1] + 1 : Math.max(L[(i + 1) * w + j], L[i * w + j + 1]);
+      L[i * w + j] = a[a0 + i] === b[b0 + j] ? L[(i + 1) * w + j + 1] + 1 : Math.max(L[(i + 1) * w + j], L[i * w + j + 1]);
     }
   }
-  const out: Hunk[] = [];
   let cur: Hunk | null = null;
   let i = 0;
   let j = 0;
   while (i < n || j < m) {
-    if (i < n && j < m && a[p + i] === b[p + j]) {
+    if (i < n && j < m && a[a0 + i] === b[b0 + j]) {
       if (cur) out.push(cur);
       cur = null;
       i++;
       j++;
       continue;
     }
-    cur ??= { s: p + i, e: p + i, t: [] };
-    if (j < m && (i >= n || L[i * w + j + 1] > L[(i + 1) * w + j])) cur.t.push(b[p + j++]);
+    cur ??= { s: a0 + i, e: a0 + i, t: [] };
+    if (j < m && (i >= n || L[i * w + j + 1] > L[(i + 1) * w + j])) cur.t.push(b[b0 + j++]);
     else {
       i++;
-      cur.e = p + i;
+      cur.e = a0 + i;
     }
   }
   if (cur) out.push(cur);
-  return out;
+}
+
+/**
+ * The units found once in a[a0, a1) and once in b[b0, b1), as pairs of their places, the
+ * longest run of them in the same order on both sides (patience diff).
+ */
+function uniqueCommon(a: string[], a0: number, a1: number, b: string[], b0: number, b1: number): [number, number][] {
+  const count = (x: string[], from: number, to: number) => {
+    const seen = new Map<string, number>();
+    for (let k = from; k < to; k++) seen.set(x[k], seen.has(x[k]) ? -1 : k);
+    return seen;
+  };
+  const inA = count(a, a0, a1);
+  const inB = count(b, b0, b1);
+  const pairs: [number, number][] = [];
+  for (const [unit, x] of inA) {
+    const y = inB.get(unit);
+    if (x !== -1 && y !== undefined && y !== -1) pairs.push([x, y]);
+  }
+  pairs.sort((p, q) => p[0] - q[0]);
+  // Longest increasing run of `y`: the tail of each length, and where each pair came from.
+  const tails: number[] = [];
+  const prev: number[] = [];
+  for (let k = 0; k < pairs.length; k++) {
+    let lo = 0;
+    let hi = tails.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (pairs[tails[mid]][1] < pairs[k][1]) lo = mid + 1;
+      else hi = mid;
+    }
+    prev[k] = lo > 0 ? tails[lo - 1] : -1;
+    tails[lo] = k;
+  }
+  const run: [number, number][] = [];
+  for (let k = tails.length ? tails[tails.length - 1] : -1; k !== -1; k = prev[k]) run.push(pairs[k]);
+  return run.reverse();
 }
 
 /**
@@ -342,6 +326,22 @@ export async function openViewHasDisk(app: App, file: TFile): Promise<boolean> {
   const view = openSourceView(app, file.path);
   const last: unknown = view ? (view as unknown as { lastSavedData?: unknown }).lastSavedData : null;
   return typeof last !== 'string' || last === (await app.vault.read(file));
+}
+
+/**
+ * The text of the note at `path` as a write to it now finds it ({@link processInOpenEditor}):
+ * the editor's, typing not saved yet included, when it is open in source or live preview mode
+ * and its view holds the file as it is now. Undefined otherwise: the file's.
+ */
+export async function openEditorText(app: App, path: string): Promise<string | undefined> {
+  const view = openSourceView(app, path);
+  const file = app.vault.getFileByPath(path);
+  if (!view || !file) return undefined;
+  const disk = await app.vault.read(file);
+  const text = view.editor.getValue();
+  const lastSaved: unknown = (view as unknown as { lastSavedData?: unknown }).lastSavedData;
+  if (lastSaved !== disk || (text === '' && disk.trim() !== '')) return undefined;
+  return text;
 }
 
 /**

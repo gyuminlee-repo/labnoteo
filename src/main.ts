@@ -108,11 +108,11 @@ import {
   rebuildExperimentReadmeFile,
   unlinkableWorkflowNotice,
   processNoteThroughVault,
+  processOrCreateNote,
   changeNotWritten,
-  writeNoteThroughVault,
   type ReadmeSyncControl,
 } from './commands';
-import { openViewHasDisk, processNote } from './openEditorWrite';
+import { openEditorText, openViewHasDisk, processNote } from './openEditorWrite';
 import { loadWorkflows } from '@labnoteo/core/lib/workflowDataLoader';
 import * as posix from '@labnoteo/core/posix';
 import {
@@ -168,7 +168,7 @@ import { CaretGuard } from './caretGuard';
 import { LastUpdatedTracker } from './lastUpdatedTracker';
 import { IssueMarkerIndex, markerExperimentDir } from './issueMarkerIndex';
 import { SampleIdIndex } from './sampleIdIndex';
-import { isLabNotePath, stampNoteAndReadme, writeNoteStamped } from './lastUpdatedStamp';
+import { isLabNotePath, processNoteStamped, stampNoteAndReadme } from './lastUpdatedStamp';
 import { createOutlineDropTidy, type OutlineDropSnapshot } from './outlineDropTidy';
 import { WorkflowTreeView, WORKFLOW_VIEW_TYPE } from './views/workflowView';
 import { SampleTreeView, SAMPLE_VIEW_TYPE } from './views/sampleView';
@@ -2705,9 +2705,22 @@ export default class LabnotePlugin extends Plugin {
     this.lastUpdatedTracker.clear();
   }
 
-  /** `writeNote` hook for AI tools: writes through the vault, stamping lab notes. */
-  writeNoteStamped(path: string, content: string, base?: string): Promise<void> {
-    return writeNoteStamped(this.app, this.host, path, content, this.stampLastUpdated, base);
+  /** `processNote` hook for AI tools: changes the note as it is when written, stamping lab notes. */
+  processNoteStamped(path: string, change: (content: string) => string): Promise<boolean> {
+    return processNoteStamped(this.app, this.host, path, change, this.stampLastUpdated);
+  }
+
+  /**
+   * The vault's files for AI tools: a note open in source or live preview mode reads as its
+   * editor holds it, typing not saved yet included, the text a tool's change is made of
+   * ({@link processNoteStamped}), so the approval shows what the change replaces.
+   */
+  toolFs(): VaultFileSystem {
+    const fs = this.fs;
+    const app = this.app;
+    return Object.assign(Object.create(fs) as VaultFileSystem, {
+      read: async (path: string) => (await openEditorText(app, path)) ?? fs.read(path),
+    });
   }
 
   /**
@@ -3006,8 +3019,8 @@ export default class LabnotePlugin extends Plugin {
       id: 'open-user-guide',
       name: this.paletteName('Open user guide'),
       callback: () =>
-        void openUserGuide(this.host, this.manifest.version, (path, content) =>
-          writeNoteThroughVault(this.app, this.host, path, content)
+        void openUserGuide(this.host, this.manifest.version, (path, change) =>
+          processOrCreateNote(this.app, this.host, path, change)
         ),
     });
   }

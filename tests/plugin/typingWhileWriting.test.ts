@@ -12,7 +12,7 @@ import { describe, it, expect } from 'vitest';
 import type { App } from 'obsidian';
 import { MarkdownView, TFile } from '../stubs/obsidian';
 import type { LabnoteHost } from '@labnoteo/core';
-import { processNoteThroughVault, writeNoteThroughVault } from '../../src/commands';
+import { processNoteThroughVault } from '../../src/commands';
 import { processNote } from '../../src/openEditorWrite';
 import { stampNote } from '../../src/lastUpdatedStamp';
 
@@ -111,9 +111,8 @@ async function run(nl: string, op: Op) {
   for (let i = 0; i < 5; i++) await tick();
   const addEntry = (c: string) => c.replace('## Related Workflows' + (c.includes('\r') ? '\r\n' : '\n'), m => `${m}${ENTRY}${c.includes('\r') ? '\r\n' : '\n'}`);
   if (op === 'writeWhole') {
-    // As the create_workflow tool: the README read, the entry added, the whole note written.
-    const read = await host.fs.read(P);
-    await writeNoteThroughVault(app, host, P, addEntry(read), read);
+    // As the create_workflow tool: the entry added to the README as it is when written.
+    await processNoteThroughVault(app, host, P, addEntry, true);
   } else if (op === 'process') {
     await processNoteThroughVault(app, host, P, addEntry);
   } else if (op === 'direct') {

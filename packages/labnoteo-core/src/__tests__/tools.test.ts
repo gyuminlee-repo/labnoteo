@@ -1123,12 +1123,26 @@ describe('insert_unit_operation', () => {
 
   it('writes the note once through the hook', async () => {
     const calls: string[] = [];
-    const writeNote = async (path: string, content: string) => {
+    const processNote = async (path: string, change: (text: string) => string) => {
       calls.push(path);
-      await fs.write(path, content);
+      await fs.write(path, change(await fs.read(path)));
+      return true;
     };
-    expect(await insert({ ...ctx, writeNote }, { documentPath: NOTE_PATH, opId: 'UHW010' })).toMatchObject({ ok: true });
+    expect(await insert({ ...ctx, processNote }, { documentPath: NOTE_PATH, opId: 'UHW010' })).toMatchObject({ ok: true });
     expect(calls).toEqual([NOTE_PATH]);
+  });
+
+  // Placed in the note as it is when written, not as it was read before.
+  it('places the block in the note the hook hands it', async () => {
+    await insert(ctx, { documentPath: NOTE_PATH, opId: 'UHW010' });
+    // The heading of the block there, with an alias typed and not saved yet.
+    const processNote = async (path: string, change: (text: string) => string) => {
+      await fs.write(path, change((await fs.read(path)).replace(/^(#+ \[UHW010 [^\]]*\])$/m, '$1 typed')));
+      return true;
+    };
+    const res = await insert({ ...ctx, processNote }, { documentPath: NOTE_PATH, opId: 'UHW020' });
+    expect(res.ok).toBe(true);
+    expect((res.data as { after: string }).after).toMatch(/^\[UHW010 .*\] typed$/);
   });
 
   it('previews the block and its place without writing, catalog files included', async () => {
@@ -1235,16 +1249,19 @@ describe('ToolDef.mutates', () => {
 
 // A note the AI edits may be open in the host's editor, whose buffer would
 // overwrite a raw filesystem write on its next flush. Hosts that have an
-// editor-aware write path supply it as `ctx.writeNote`.
-describe('ctx.writeNote hook', () => {
-  /** Records calls and applies them, so later reads see the change. */
-  const spyHook = (target: MemFileSystem) => {
-    const calls: Array<{ path: string; content: string; base?: string }> = [];
+// editor-aware write path supply it as `ctx.processNote`, which makes the change
+// of the note as it is when written (in an editor, typing not saved yet included).
+describe('ctx.processNote hook', () => {
+  /** Records calls and applies them to `text(path)`, the note as the host has it, so later reads see the change. */
+  const spyHook = (target: MemFileSystem, text = (path: string) => target.read(path), written = true) => {
+    const calls: Array<{ path: string; content: string }> = [];
     return {
       calls,
-      writeNote: async (path: string, content: string, base?: string) => {
-        calls.push({ path, content, base });
-        await target.write(path, content);
+      processNote: async (path: string, change: (text: string) => string) => {
+        const content = change((await target.exists(path)) ? await text(path) : '');
+        calls.push({ path, content });
+        if (written) await target.write(path, content);
+        return written;
       },
     };
   };
@@ -1254,15 +1271,45 @@ describe('ctx.writeNote hook', () => {
     await fs.write(NOTE_PATH, '## [WD010 Design]\n\n#### Method\n\nold\n');
 
     const res = await tool('update_section').handler(
-      { ...ctx, writeNote: hook.writeNote },
+      { ...ctx, processNote: hook.processNote },
       { documentPath: NOTE_PATH, heading: 'Method', content: 'NEW' }
     );
 
     expect(res.ok).toBe(true);
     expect(hook.calls.map(c => c.path)).toEqual([NOTE_PATH]);
-    // The note as read to make the content, so the host can keep typing made since.
-    expect(hook.calls[0].base).toBe('## [WD010 Design]\n\n#### Method\n\nold\n');
     expect(await fs.read(NOTE_PATH)).toContain('NEW');
+  });
+
+  it('update_section changes the note as the hook has it, and reports from that', async () => {
+    await fs.write(NOTE_PATH, '## [WD010 Design]\n\n#### Method\n\nold\n');
+    const hook = spyHook(fs, async path => (await fs.read(path)).replace('old', 'old typed'));
+    const res = await tool('update_section').handler(
+      { ...ctx, processNote: hook.processNote },
+      { documentPath: NOTE_PATH, heading: 'Method', content: 'NEW' }
+    );
+    expect(res).toMatchObject({ ok: true, data: { previousBody: 'old typed' } });
+  });
+
+  it('update_section refuses a section the note as the hook has it lacks, writing nothing', async () => {
+    await fs.write(NOTE_PATH, '## [WD010 Design]\n\n#### Method\n\nold\n');
+    const hook = spyHook(fs, async path => (await fs.read(path)).replace('#### Method', '#### Meth'));
+    const res = await tool('update_section').handler(
+      { ...ctx, processNote: hook.processNote },
+      { documentPath: NOTE_PATH, heading: 'Method', content: 'NEW' }
+    );
+    expect(res).toMatchObject({ ok: false, code: 'section_not_found' });
+    expect(hook.calls).toEqual([]);
+    expect(await fs.read(NOTE_PATH)).toContain('old');
+  });
+
+  it('update_section fails when the hook could not write the change', async () => {
+    await fs.write(NOTE_PATH, '## [WD010 Design]\n\n#### Method\n\nold\n');
+    const hook = spyHook(fs, undefined, false);
+    const res = await tool('update_section').handler(
+      { ...ctx, processNote: hook.processNote },
+      { documentPath: NOTE_PATH, heading: 'Method', content: 'NEW' }
+    );
+    expect(res).toMatchObject({ ok: false, code: 'note_not_written', params: [NOTE_PATH] });
   });
 
   it('create_workflow routes both the new file and the README through the hook', async () => {
@@ -1270,19 +1317,16 @@ describe('ctx.writeNote hook', () => {
     await ensureWorkflowResources(fs, '.');
     const wf = (await loadWorkflows(fs, '.')).workflows[0];
     const readmePath = `${NOTE_DIR}/README.labnote.md`;
-    const readmeBefore = await fs.read(readmePath);
     const hook = spyHook(fs);
 
     const res = await tool('create_workflow').handler(
-      { ...ctx, writeNote: hook.writeNote },
+      { ...ctx, processNote: hook.processNote },
       { documentPath: readmePath, workflowId: wf.id }
     );
 
     expect(res.ok).toBe(true);
     const { path } = res.data as { path: string };
     expect(hook.calls.map(c => c.path)).toEqual([path, readmePath]);
-    // The new file has none; the README its text as read.
-    expect(hook.calls.map(c => c.base)).toEqual([undefined, readmeBefore]);
   });
 
   it('falls back to fs.write when no hook is supplied', async () => {
@@ -1299,7 +1343,7 @@ describe('ctx.writeNote hook', () => {
   it('is not used for sample data files, which are not notes', async () => {
     const hook = spyHook(fs);
     const res = await tool('create_sample').handler(
-      { ...ctx, writeNote: hook.writeNote },
+      { ...ctx, processNote: hook.processNote },
       { type: 'DNA', id: 'DNA-1', documentPath: NOTE_PATH }
     );
     expect(res.ok).toBe(true);

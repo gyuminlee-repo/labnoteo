@@ -32,6 +32,24 @@ function makeHost(files: Record<string, string> = {}, confirmResult = true) {
 }
 
 describe('openUserGuide', () => {
+  // The answer was asked of the guide as it was; changed meanwhile so it no longer fits, the
+  // guide is left as it is now and the user told to open it again.
+  it('leaves a broken guide fixed while the dialog was open, and says so', async () => {
+    const broken = `옛 설명서\n${MANAGED_BLOCK_END}\n\n연구실 규칙\n`;
+    const fixed = managedFileContent(QUICKSTART_ASSET);
+    const { fs, host, asHost } = makeHost({ [QUICKSTART_DOC_PATH]: broken });
+    host.confirm.mockImplementation(async () => {
+      await fs.write(QUICKSTART_DOC_PATH, fixed);
+      return true;
+    });
+
+    await openUserGuide(asHost, '1.0.0');
+
+    expect(await fs.read(QUICKSTART_DOC_PATH)).toBe(fixed);
+    expect(host.notify).toHaveBeenCalledWith('warn', expect.stringContaining('The user guide changed while you were deciding'));
+    expect(host.openFile).toHaveBeenCalledWith(QUICKSTART_DOC_PATH);
+  });
+
   it('writes only QUICKSTART.md when it is missing, then opens it', async () => {
     const { fs, host, asHost } = makeHost();
     expect(QUICKSTART_DOC_CONTENT.length).toBeGreaterThan(0);

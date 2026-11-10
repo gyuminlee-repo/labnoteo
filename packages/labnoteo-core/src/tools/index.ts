@@ -96,8 +96,14 @@ export interface ToolContext {
    * layer supplies a hook that routes through the vault instead, which the
    * editor observes. Hosts without that problem can leave it unset — handlers
    * fall back to {@link ToolContext.fs}.
+   *
+   * `change` makes the new note of the note as it is when written (in an open
+   * editor, with what was typed and not saved yet), and may be called more
+   * than once: the last call is the one written. A note that does not exist is
+   * made of `''`. Resolves false when nothing was written though the note
+   * would change (a save of the open note did not end in time).
    */
-  writeNote?(path: string, content: string, base?: string): Promise<void>;
+  processNote?(path: string, change: (text: string) => string): Promise<boolean>;
   /**
    * Whether inserting a unit operation sorts the note's unit operation list
    * into note order, as the "Auto-sync unit operation TOC" setting does in the
@@ -113,16 +119,64 @@ export interface ToolContext {
 }
 
 /**
- * Write a markdown note through {@link ToolContext.writeNote} when the host
- * provides it, otherwise straight to the filesystem. `base` is the note as read
- * to make `content`: a host can keep what was typed in it since.
+ * Rewrite a markdown note through {@link ToolContext.processNote} when the host
+ * provides it, otherwise on the filesystem.
  */
-async function writeNote(ctx: ToolContext, path: string, content: string, base?: string): Promise<void> {
-  if (ctx.writeNote) {
-    await ctx.writeNote(path, content, base);
-    return;
+async function processNote(ctx: ToolContext, path: string, change: (text: string) => string): Promise<boolean> {
+  if (ctx.processNote) return ctx.processNote(path, change);
+  const text = (await ctx.fs.exists(path)) ? await ctx.fs.read(path) : '';
+  await ctx.fs.write(path, change(text));
+  return true;
+}
+
+/** Thrown by a change that refuses the note as it is when written: nothing is written. */
+class NoteChangeRefused extends Error {
+  constructor(readonly refusal: ToolError) {
+    super(refusal.error);
   }
-  await ctx.fs.write(path, content);
+}
+
+/** Thrown by a change that leaves the note as it is, with what it found. */
+class NoteLeft<T> extends Error {
+  constructor(readonly data: T) {
+    super('note left as it is');
+  }
+}
+
+/** The note was not written: Obsidian was still saving it when the wait ran out. */
+function noteNotWritten(path: string): ToolError {
+  return {
+    error: `${path} was still being saved, so the change was not written. Try again in a moment.`,
+    code: 'note_not_written',
+    params: [path],
+  };
+}
+
+/**
+ * Change a note as it is when written ({@link processNote}): `make` gives the
+ * new text and what the tool reports of it, from the last call, the one
+ * written. A refusal it throws comes back as the error, and nothing is written.
+ */
+async function changeNote<T>(
+  ctx: ToolContext,
+  path: string,
+  make: (text: string) => { text: string; data: T }
+): Promise<{ data: T } | ToolError> {
+  let last: { input: string; text: string; data: T } | undefined;
+  let written: boolean;
+  try {
+    written = await processNote(ctx, path, text => {
+      last = { input: text, ...make(text) };
+      return last.text;
+    });
+  } catch (err) {
+    if (err instanceof NoteChangeRefused) return err.refusal;
+    if (err instanceof NoteLeft) return { data: err.data as T };
+    throw err;
+  }
+  // Not written, though the note would change: the save of the open note did not end in time.
+  if (!last || (!written && last.text !== last.input)) return noteNotWritten(path);
+  return { data: last.data };
 }
 
 export interface ToolResult {
@@ -369,6 +423,20 @@ async function resolveSectionTarget(
   ctx: ToolContext,
   args: Record<string, unknown>
 ): Promise<ResolvedSectionTarget | ToolError> {
+  const call = await resolveSectionCall(ctx, args);
+  if ('error' in call) return call;
+  return sectionTargetIn(call, await ctx.fs.read(call.documentPath), args);
+}
+
+/** An `update_section` call checked for itself, before the note is read. */
+interface SectionCall {
+  documentPath: string;
+  heading: string;
+  content: string;
+  append: boolean;
+}
+
+async function resolveSectionCall(ctx: ToolContext, args: Record<string, unknown>): Promise<SectionCall | ToolError> {
   const documentPath = safePath(ctx, args, 'documentPath');
   const heading = str(args, 'heading');
   const rawContent = typeof args.content === 'string' ? args.content : undefined;
@@ -403,7 +471,12 @@ async function resolveSectionTarget(
   if (!(await ctx.fs.exists(documentPath))) {
     return { error: `File not found: ${documentPath}` };
   }
-  const md = await ctx.fs.read(documentPath);
+  return { documentPath, heading, content, append };
+}
+
+/** The one target section of `call` in the note `md`, and the body to write there. */
+function sectionTargetIn(call: SectionCall, md: string, args: Record<string, unknown>): ResolvedSectionTarget | ToolError {
+  const { documentPath, heading, content, append } = call;
   const found = pickSection(md, heading, args);
   if ('error' in found) return found;
   const { target, index, total } = found;
@@ -768,6 +841,15 @@ async function resolveUnitOpInsert(
   ctx: ToolContext,
   args: Record<string, unknown>
 ): Promise<ResolvedUnitOpInsert | ToolError> {
+  const call = await resolveUnitOpCall(ctx, args);
+  if ('error' in call) return call;
+  return { ...call, ...unitOpInsertIn(call, await ctx.fs.read(call.documentPath)) };
+}
+
+/** An `insert_unit_operation` call checked for itself, before the note is read. */
+type UnitOpCall = Pick<ResolvedUnitOpInsert, 'documentPath' | 'op' | 'opType' | 'alias'>;
+
+async function resolveUnitOpCall(ctx: ToolContext, args: Record<string, unknown>): Promise<UnitOpCall | ToolError> {
   const documentPath = safePath(ctx, args, 'documentPath');
   const opId = str(args, 'opId');
   if (!documentPath) {
@@ -828,15 +910,17 @@ async function resolveUnitOpInsert(
       ),
     };
   }
+  return { documentPath, op, opType: foundHw ? 'hw' : 'sw', ...(alias ? { alias } : {}) };
+}
+
+/** Where in the note `text` the block of `call` goes, and the block of the same ID and alias there. */
+function unitOpInsertIn(call: UnitOpCall, text: string): Pick<ResolvedUnitOpInsert, 'md' | 'at' | 'sameAliasAs'> {
+  const { op, alias } = call;
   // A deleted section heading is put back first, so the preview shows where the block really goes (#564).
-  const md = ensureUnitOpSection(await ctx.fs.read(documentPath));
-  const twin = findSameAliasUnitOp(listUnitOpBlocks(md), op.id, op.name, alias);
+  const md = ensureUnitOpSection(text);
+  const twin = findSameAliasUnitOp(listUnitOpBlocks(md), op.id, op.name, alias ?? '');
   return {
-    documentPath,
     md,
-    op,
-    opType: foundHw ? 'hw' : 'sw',
-    ...(alias ? { alias } : {}),
     at: findUnitOpInsertPointAt(md, md.length),
     ...(twin ? { sameAliasAs: `[${twin.opId} ${twin.opName}]${twin.alias ? ` ${twin.alias}` : ''}` } : {}),
   };
@@ -1294,13 +1378,18 @@ export function createLabnoteTools(): ToolDef[] {
         required: ['documentPath', 'heading', 'content'],
       },
       async handler(ctx, args) {
-        const resolved = await resolveSectionTarget(ctx, args);
-        if ('error' in resolved) return { ok: false, ...resolved };
-        const { documentPath, heading, content, md, target, index, total, append } = resolved;
-
-        const { ok, md: next, removed } = replaceSectionBodyAt(md, target.line, content);
-        if (!ok) return { ok: false, error: `Section not found: ${heading}` };
-        await writeNote(ctx, documentPath, next, md);
+        const call = await resolveSectionCall(ctx, args);
+        if ('error' in call) return { ok: false, ...call };
+        // Found and replaced in the note as it is when written: typing not saved yet included.
+        const done = await changeNote(ctx, call.documentPath, md => {
+          const resolved = sectionTargetIn(call, md, args);
+          if ('error' in resolved) throw new NoteChangeRefused(resolved);
+          const { ok, md: next, removed } = replaceSectionBodyAt(md, resolved.target.line, resolved.content);
+          if (!ok) throw new NoteChangeRefused({ error: `Section not found: ${call.heading}` });
+          return { text: next, data: { ...resolved, removed } };
+        });
+        if ('error' in done) return { ok: false, ...done };
+        const { documentPath, heading, target, index, total, append, removed } = done.data;
         return {
           ok: true,
           data: {
@@ -1381,15 +1470,24 @@ export function createLabnoteTools(): ToolDef[] {
         const workflowPath = posix.join(labnoteDir, fileName);
         // The new workflow file cannot be open yet, but the README very well
         // may be — both go through the hook so the host owns note writes.
-        await writeNote(
-          ctx,
-          workflowPath,
-          createWorkflowContent(info, experimenter, alias, { locale: ctx.locale })
-        );
+        const content = createWorkflowContent(info, experimenter, alias, { locale: ctx.locale });
+        if (!(await processNote(ctx, workflowPath, () => content))) {
+          return { ok: false, ...noteNotWritten(workflowPath) };
+        }
 
-        const readme = await ctx.fs.read(readmePath);
+        const title = [info.id, info.name, alias].filter(Boolean).join(' ');
         // A README whose section was renamed beyond recognition lists nothing (#298).
-        if (!hasWorkflowChecklistSection(readme)) {
+        const listed = await changeNote(ctx, readmePath, readme => {
+          if (!hasWorkflowChecklistSection(readme)) throw new NoteLeft(false);
+          return { text: insertWorkflowChecklistEntries(readme, [{ done: false, title, fileName }]), data: true };
+        });
+        if ('error' in listed) {
+          return withWarnings({
+            ok: true,
+            data: { path: workflowPath, fileName, registered: false, warning: listed.error },
+          });
+        }
+        if (!listed.data) {
           return withWarnings({
             ok: true,
             data: {
@@ -1401,9 +1499,6 @@ export function createLabnoteTools(): ToolDef[] {
             },
           });
         }
-        const title = [info.id, info.name, alias].filter(Boolean).join(' ');
-        await writeNote(ctx, readmePath, insertWorkflowChecklistEntries(readme, [{ done: false, title, fileName }]), readme);
-
         return withWarnings({ ok: true, data: { path: workflowPath, fileName, registered: true } });
       },
       async describe(ctx, args) {
@@ -1442,29 +1537,35 @@ export function createLabnoteTools(): ToolDef[] {
         required: ['documentPath', 'opId'],
       },
       async handler(ctx, args) {
-        const resolved = await resolveUnitOpInsert(ctx, args);
-        if ('error' in resolved) return { ok: false, ...resolved };
-        const { documentPath, md, op, opType, alias, at, sameAliasAs } = resolved;
+        const call = await resolveUnitOpCall(ctx, args);
+        if ('error' in call) return { ok: false, ...call };
+        const { documentPath, op, opType, alias } = call;
 
         await ensureWorkflowResources(ctx.fs, ctx.workspaceRoot);
         // The note's own experimenter first, then the README author, as in the app (#404).
         const readmePath = posix.join(posix.dirname(documentPath), README_NAME);
         const author = (await ctx.fs.exists(readmePath)) ? parseExperimenterFromReadme(await ctx.fs.read(readmePath)) : '';
-        const experimenter = parseExperimenterFromNote(md) || author;
         const info = {
           opId: op.id,
           opName: op.name,
           opDescription: op.description ?? '',
           descriptionExtra: alias ? ` ${alias}` : undefined,
         };
-        const meta = { experimenter, dateTime: getSeoulDateTimeString() };
-        const block =
-          opType === 'sw'
-            ? buildSwUnitOpMarkdown(info, { ...meta, software: op.software })
-            : buildHwUnitOpMarkdown(info, { ...meta, equipment: op.equipment });
-        const inserted = md.slice(0, at.offset) + block + md.slice(at.offset);
-        const next = syncUnitOpTocAfterInsert(inserted, at.offset, ctx.sortUnitOpToc ?? true);
-        await writeNote(ctx, documentPath, next, md);
+        const dateTime = getSeoulDateTimeString();
+        // Placed in the note as it is when written: typing not saved yet included.
+        const done = await changeNote(ctx, documentPath, text => {
+          const { md, at, sameAliasAs } = unitOpInsertIn(call, text);
+          const meta = { experimenter: parseExperimenterFromNote(md) || author, dateTime };
+          const block =
+            opType === 'sw'
+              ? buildSwUnitOpMarkdown(info, { ...meta, software: op.software })
+              : buildHwUnitOpMarkdown(info, { ...meta, equipment: op.equipment });
+          const inserted = md.slice(0, at.offset) + block + md.slice(at.offset);
+          const next = syncUnitOpTocAfterInsert(inserted, at.offset, ctx.sortUnitOpToc ?? true);
+          return { text: next, data: { at, sameAliasAs, next } };
+        });
+        if ('error' in done) return { ok: false, ...done };
+        const { at, sameAliasAs, next } = done.data;
 
         const heading = `[${op.id} ${op.name}]${alias ? ` ${alias}` : ''}`;
         return {

@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import type { App } from 'obsidian';
 import { MarkdownView, TFile } from '../stubs/obsidian';
-import { overUnsaved, processInOpenEditor, processNote } from '../../src/openEditorWrite';
+import { processInOpenEditor, processNote } from '../../src/openEditorWrite';
 
 const NOTE = 'labnote/001_Test/001_WD010_A.labnote.md';
 
@@ -102,24 +102,5 @@ describe('processNote', () => {
     expect(view.saved).toBe(1);
     expect(state.processed).toBe(0);
     expect(state.disk).toBe('---\ntitle: x\n---\ntext\ntyped\n');
-  });
-});
-
-// A whole note made from `base`, over typing made since: kept where it does not touch the change.
-describe('overUnsaved', () => {
-  const base = 'a\nb\nc\n';
-  it.each([
-    ['typing after the change', 'a\nb\nc\ntyped\n', 'a\nB\nc\n', 'a\nB\nc\ntyped\n'],
-    ['typing before the change', 'typed\na\nb\nc\n', 'a\nb\nC\n', 'typed\na\nb\nC\n'],
-    ['no typing', base, 'a\nB\nc\n', 'a\nB\nc\n'],
-    ['no change', 'a\nb\nc\ntyped\n', base, 'a\nb\nc\ntyped\n'],
-    ['typing right after what the change rewrites', 'a\nbX\nc\n', 'a\nB\nc\n', 'a\nBX\nc\n'],
-    ['typing in what the change rewrites: the content', 'a\nY\nc\n', 'a\nB\nc\n', 'a\nB\nc\n'],
-  ] as const)('%s', (_name, text, content, expected) => {
-    expect(overUnsaved(text, base, content)).toBe(expected);
-  });
-
-  it('without a base, the content', () => {
-    expect(overUnsaved('anything', undefined, 'content')).toBe('content');
   });
 });

@@ -9,7 +9,7 @@ import type { App } from 'obsidian';
 import { MarkdownView, TFile } from '../stubs/obsidian';
 import type { LabnoteHost } from '@labnoteo/core';
 import { MemFileSystem } from '../../packages/labnoteo-core/src/fs/memFileSystem';
-import { registerWorkflowInReadme, writeNoteThroughVault } from '../../src/commands';
+import { processNoteThroughVault, registerWorkflowInReadme } from '../../src/commands';
 
 const README = 'labnote/001_Test/README.labnote.md';
 const ENTRY = '- [ ] [WD020 New](./002_WD020_New.labnote.md)';
@@ -66,7 +66,7 @@ describe('a write to a note open in an editor while its file has CRLF', () => {
 
   it('writes the whole note in the editor, as LF, and saves it', async () => {
     const { app, host, view, editor, processed } = await setup('\r\n', 'source');
-    await writeNoteThroughVault(app, host, README, ['# New', 'text', ''].join('\r\n'));
+    await processNoteThroughVault(app, host, README, () => ['# New', 'text', ''].join('\r\n'), true);
     expect(editor.text).toBe('# New\ntext\n');
     expect(view.saved).toBe(1);
     expect(processed).toEqual([]);

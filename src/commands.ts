@@ -52,7 +52,7 @@ import {
 import { ISSUE_SYNC_WORKFLOW_PATH, SETUP_DOC_PATH } from './scaffold/assets';
 import * as posix from '@labnoteo/core/posix';
 import { workflowAliasModal } from './modals';
-import { OPEN_SAVE_WAIT_MS, openSourceView, overUnsaved, processInOpenEditor, waitForOpenSaves } from './openEditorWrite';
+import { OPEN_SAVE_WAIT_MS, openSourceView, processInOpenEditor, waitForOpenSaves } from './openEditorWrite';
 import { getObsidianLanguage } from './i18n';
 import {
   createLabnoteStructure,
@@ -712,9 +712,12 @@ export async function changeExperimentStatusCommand(
       cleared = true;
     }
   }
-  const updated = setFrontMatterKeys(parsed.text, changes);
-
-  await writeNoteThroughVault(app, host, readmePath, updated, parsed.text, c => stamp(c, readmePath));
+  // The chosen status, put on the README as it is when written.
+  const written = await changeFrontMatter(app, host, readmePath, text => ({
+    text: stamp(setFrontMatterKeys(text, changes), readmePath),
+    data: undefined,
+  }));
+  if (!written) return;
   let message = host.t('Experiment status changed ({0}): {1} → {2}.', folderName, current ?? host.t('(none)'), chosen);
   if (cleared) {
     message += ` ${host.t('Discussion flag cleared.')}`;
@@ -1070,6 +1073,53 @@ export async function issueAutomationState(host: LabnoteHost): Promise<'none' | 
   return (await isVaultGitRepository(host)) ? 'ready' : 'no-git';
 }
 
+/** Thrown by a front-matter edit whose YAML cannot be read as the note is when written. */
+class FrontMatterUnreadable extends Error {}
+
+/**
+ * Change the front matter of the README at `readmePath` as it is when written (an open
+ * editor's text, typing not saved yet included), its YAML read again there: unreadable, the
+ * README is left alone with the warning {@link readNoteForFrontMatterEdit} gives. `change`
+ * gives the new text and what to report of it, from the call written. Undefined, with a
+ * warning, when nothing was written: the YAML, or a save of the open note that did not end
+ * in time.
+ */
+async function changeFrontMatter<T>(
+  app: App,
+  host: LabnoteHost,
+  readmePath: string,
+  change: (text: string, frontMatter: Record<string, unknown>) => { text: string; data: T }
+): Promise<{ data: T } | undefined> {
+  let last: { input: string; text: string; data: T } | undefined;
+  try {
+    const written = await processNoteThroughVault(
+      app,
+      host,
+      readmePath,
+      text => {
+        const { frontMatter, parseError } = parseFrontMatterYaml(text.replace(/\r\n/g, '\n'));
+        if (parseError) throw new FrontMatterUnreadable(parseError);
+        last = { input: text, ...change(text, frontMatter) };
+        return last.text;
+      },
+      true
+    );
+    if (last && (written || last.text === last.input)) return { data: last.data };
+    host.notify('warn', host.t('{0} was still being saved, so the change was not written. Try again in a moment.', readmePath));
+  } catch (err) {
+    if (!(err instanceof FrontMatterUnreadable)) throw err;
+    host.notify(
+      'warn',
+      host.t(
+        'Front matter of {0} could not be read, so it was left unchanged. Fix the YAML and try again: {1}',
+        readmePath,
+        err.message
+      )
+    );
+  }
+  return undefined;
+}
+
 /**
  * Read an experiment README for a front-matter edit, refusing to continue when
  * the YAML cannot be parsed.
@@ -1133,15 +1183,13 @@ export async function toggleDiscussionFlagCommand(
   const parsed = await readNoteForFrontMatterEdit(host, readmePath);
   if (!parsed) return;
 
-  const next = !isDiscussFlagged(parsed.frontMatter);
-  await writeNoteThroughVault(
-    app,
-    host,
-    readmePath,
-    setFrontMatterKeys(parsed.text, { [DISCUSS_FLAG_KEY]: next ? true : undefined }),
-    parsed.text,
-    c => stamp(c, readmePath)
-  );
+  // Turned over as the README is when written: what it says then decides on or off.
+  const written = await changeFrontMatter(app, host, readmePath, (text, frontMatter) => {
+    const on = !isDiscussFlagged(frontMatter);
+    return { text: stamp(setFrontMatterKeys(text, { [DISCUSS_FLAG_KEY]: on ? true : undefined }), readmePath), data: on };
+  });
+  if (!written) return;
+  const next = written.data;
 
   const state = await issueAutomationState(host);
   let message: string;
@@ -2430,57 +2478,6 @@ export function unlinkableWorkflowNotice(host: Pick<LabnoteHost, 't'>, names: re
 // (reconcileWorkflowChecklist / removeWorkflowFromReadme / removeSourcesForDocument);
 // these helpers sequence the Obsidian-side reads/writes.
 
-/**
- * Write note content, preferring the Vault API so an already-open README
- * refreshes immediately. A note open in an editor gets it there, keeping what
- * was typed since `base`, the note as read to make `content` (since the editor
- * last read the file when there is none), where that typing does not touch what
- * `content` changes. `vault.process` fires only a 'modify' event (never
- * rename/delete), so it cannot re-enter the workflow README sync listeners.
- * Falls back to the adapter when the file is not (yet) in the vault index.
- * Returns false when nothing was written: a save of the open note did not end in
- * time ({@link waitForOpenSaves}), or the editor already held the content.
- * (Data files such as `{Type}.json` keep using the adapter directly.)
- *
- * `finish` (the last_updated_date stamp, say) is applied to the note as written, after that
- * merge, not to `content`: put in first, it would make the change span every line from it to
- * the change, and typing there would be taken for touching it.
- *
- * Exported as the `writeNote` hook for `ToolContext`: AI tools edit notes the
- * user may have open, and writing those through the adapter would be silently
- * undone the next time the editor flushed its buffer.
- */
-export async function writeNoteThroughVault(
-  app: App,
-  host: LabnoteHost,
-  notePath: string,
-  content: string,
-  base?: string,
-  finish: (content: string) => string = c => c
-): Promise<boolean> {
-  const file = app.vault.getFileByPath(notePath);
-  if (file instanceof TFile) {
-    const deadline = Date.now() + OPEN_SAVE_WAIT_MS;
-    // Open in an editor: written there ({@link processInOpenEditor}), LF as the editor holds it.
-    // Over what was typed since `base` (the note as the caller read it to make `content`), else
-    // since the editor last read the file: typing the caller's content does not have.
-    const lf = (text: string) => text.replace(/\r\n?/g, '\n');
-    const inEditor = await processInOpenEditor(
-      app,
-      file,
-      (text, read) => finish(overUnsaved(text, base === undefined ? read : lf(base), lf(content))),
-      deadline
-    );
-    if (inEditor !== undefined) return inEditor;
-    // A save another write started on the note may still be writing: it would land over this one.
-    if (!(await waitForOpenSaves(app, file.path, deadline))) return false;
-    await app.vault.process(file, () => finish(content));
-  } else {
-    await host.fs.write(notePath, finish(content));
-  }
-  return true;
-}
-
 /** The editor `path` is open in, in source or live preview mode. */
 function openSourceEditor(app: App, path: string): Editor | undefined {
   return openSourceView(app, path)?.editor;
@@ -2492,21 +2489,32 @@ function openSourceEditor(app: App, path: string): Editor | undefined {
  * "update links?" prompt, and overwriting with a stale copy would undo that.
  * Does nothing (no save, no 'modify' event) when `transform` would not change
  * the note. Returns whether a write happened.
+ *
+ * `asWritten`, for a change made whole (an AI tool's, say): judged by the text it
+ * is made of when written, an open editor's with typing not saved yet, not by the
+ * file first; `transform` may refuse that text by throwing, and nothing is written.
  */
 export async function processNoteThroughVault(
   app: App,
   host: LabnoteHost,
   notePath: string,
-  transform: (content: string) => string
+  transform: (content: string) => string,
+  asWritten = false
 ): Promise<boolean> {
   // A save Obsidian has under way on the open note first, so it does not write over this;
   // one deadline for the whole write.
   const deadline = Date.now() + OPEN_SAVE_WAIT_MS;
   if (!(await waitForOpenSaves(app, notePath, deadline))) return false;
-  const current = await host.fs.read(notePath);
-  const next = transform(current);
-  if (next === current) return false;
   const file = app.vault.getFileByPath(notePath);
+  // `asWritten`: a note in the vault is not judged by the file first, which an open editor's
+  // text (typing not saved yet) may differ from; the change is made of the text it is written
+  // over, and a note not open is written through the vault even when unchanged.
+  let next = '';
+  if (!asWritten || !(file instanceof TFile)) {
+    const current = await host.fs.read(notePath);
+    next = transform(current);
+    if (next === current) return false;
+  }
   if (file instanceof TFile) {
     // Open in an editor: applied there ({@link processInOpenEditor}).
     const inEditor = await processInOpenEditor(app, file, transform, deadline);
@@ -2517,6 +2525,21 @@ export async function processNoteThroughVault(
   } else {
     await host.fs.write(notePath, next);
   }
+  return true;
+}
+
+/**
+ * {@link processNoteThroughVault} judged by the text written over (`asWritten`), or a note
+ * made of `''` when there is none yet. False when the note would change and was not written.
+ */
+export async function processOrCreateNote(
+  app: App,
+  host: LabnoteHost,
+  notePath: string,
+  transform: (content: string) => string
+): Promise<boolean> {
+  if (await host.fs.exists(notePath)) return processNoteThroughVault(app, host, notePath, transform, true);
+  await host.fs.write(notePath, transform(''));
   return true;
 }
 

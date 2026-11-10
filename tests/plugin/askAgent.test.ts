@@ -53,6 +53,7 @@ beforeEach(() => {
       confirm: vi.fn(),
     },
     markUserEdit: vi.fn(),
+    toolFs: () => undefined,
   } as unknown as LabnotePlugin;
   vi.mocked(runAgent).mockResolvedValue({ content: '**답변**', executed: [], stoppedAtLimit: false });
 });

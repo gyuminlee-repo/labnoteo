@@ -4,7 +4,7 @@
  * Until now the plugin's own AI was one-shot (prompt → text → insert) while an
  * *external* MCP client could drive the same tools in a loop. This closes that
  * gap by reusing the exact pieces the MCP path already uses — `createLabnoteTools`,
- * `ToolContext`, the `writeNote` hook, and the `mutates` confirmation policy —
+ * `ToolContext`, the `processNote` hook, and the `mutates` confirmation policy —
  * so the two entry points cannot drift in what they permit.
  *
  * The loop is deliberately small: ask the model, run whatever it asked for,

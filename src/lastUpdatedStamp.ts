@@ -10,7 +10,7 @@ import { minimalReplacement } from '@labnoteo/core';
 import * as posix from '@labnoteo/core/posix';
 import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
 import { isValidWorkflowPath } from '@labnoteo/core/lib/workflowStructure';
-import { processNoteThroughVault, writeNoteThroughVault } from './commands';
+import { processNoteThroughVault, processOrCreateNote } from './commands';
 import { openViewHasDisk } from './openEditorWrite';
 
 /**
@@ -81,25 +81,24 @@ export async function stampNoteAndReadme(
 }
 
 /**
- * The `writeNote` hook for AI tools: stamp a lab note before writing it, then
- * the experiment README of a workflow note. Resolves only once the README is
- * written, because `create_workflow` re-reads it right after. `base` is the
- * note as the tool read it ({@link writeNoteThroughVault}).
+ * The `processNote` hook for AI tools: `change` applied to the note as it is when written
+ * (an open editor's text, typing not saved yet included; a note that does not exist yet is
+ * made of `''`), a lab note stamped with it, then the experiment README of a workflow note.
+ * Resolves only once the README is written, because `create_workflow` re-reads it right
+ * after. False when the note would change and was not written: a save of the open note did
+ * not end in time.
  */
-export async function writeNoteStamped(
+export async function processNoteStamped(
   app: App,
   host: LabnoteHost,
   path: string,
-  content: string,
-  stamp: StampNote,
-  base?: string
-): Promise<void> {
-  if (!isLabNotePath(path)) {
-    await writeNoteThroughVault(app, host, path, content, base);
-    return;
-  }
-  // Stamped once merged with typing made meanwhile ({@link writeNoteThroughVault}).
-  await writeNoteThroughVault(app, host, path, content, base, c => stamp(c, path));
-  const readme = experimentReadmeOf(path);
+  change: (content: string) => string,
+  stamp: StampNote
+): Promise<boolean> {
+  const lab = isLabNotePath(path);
+  const made = lab ? (c: string) => stamp(change(c), path) : change;
+  const written = await processOrCreateNote(app, host, path, made);
+  const readme = lab ? experimentReadmeOf(path) : undefined;
   if (readme) await stampNote(app, host, readme, stamp);
+  return written;
 }

@@ -69,19 +69,19 @@ import { sampleUsages } from '../sampleActions';
 /**
  * Tool context for AI-driven edits.
  *
- * `writeNote` matters here for the same reason it does on the MCP path: the AI
+ * `processNote` matters here for the same reason it does on the MCP path: the AI
  * edits notes the user is plausibly looking at, and an adapter-level write
  * would be overwritten by the open editor's next flush.
  */
 function toolContext(plugin: LabnotePlugin): ToolContext {
   return {
-    fs: plugin.fs,
+    fs: plugin.toolFs(),
     workspaceRoot: '.',
     globalSampleFolder: plugin.settings.globalSampleFolder,
     customTypes: plugin.settings.customSampleTypes,
     locale: getObsidianLanguage(),
     sortUnitOpToc: plugin.settings.autoSyncUnitOpToc,
-    writeNote: (path, content, base) => plugin.writeNoteStamped(path, content, base),
+    processNote: (path, change) => plugin.processNoteStamped(path, change),
     findSampleUsages: (folder, type, id) => sampleUsages(plugin.app, plugin, folder, type, id),
   };
 }
@@ -189,6 +189,8 @@ function failureReasonText(plugin: LabnotePlugin, code: string, params: readonly
       );
     case 'section_not_found':
       return plugin.t('The note has no "{0}" section.', a);
+    case 'note_not_written':
+      return plugin.t('{0} was still being saved, so the change was not written. Try again in a moment.', a);
     default:
       return undefined;
   }

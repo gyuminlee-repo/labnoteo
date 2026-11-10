@@ -8,7 +8,7 @@ import { describe, it, expect } from 'vitest';
 import type { App } from 'obsidian';
 import { MarkdownView, TFile } from '../stubs/obsidian';
 import type { LabnoteHost } from '@labnoteo/core';
-import { processNoteThroughVault, registerWorkflowInReadme, writeNoteThroughVault } from '../../src/commands';
+import { processNoteThroughVault, registerWorkflowInReadme } from '../../src/commands';
 import { processNote } from '../../src/openEditorWrite';
 
 const README = 'labnote/001_Test/README.labnote.md';
@@ -156,7 +156,7 @@ describe('a change to an open CRLF note reaches the file once, however its save 
     ['a lone CR', readme('\r')],
   ])('a note written whole with a lone CR in it is written once (file: %s)', async (_name, disk) => {
     const { app, host, state } = setup(disk, 'normal');
-    await writeNoteThroughVault(app, host, README, '# T\rbody\r\n');
+    await processNoteThroughVault(app, host, README, () => '# T\rbody\r\n', true);
     expect(state.disk).toBe('# T\nbody\n');
     expect(state.writes).toEqual(['save']);
   });

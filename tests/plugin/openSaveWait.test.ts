@@ -8,7 +8,7 @@ import { describe, it, expect } from 'vitest';
 import type { App } from 'obsidian';
 import { MarkdownView, TFile } from '../stubs/obsidian';
 import type { LabnoteHost } from '@labnoteo/core';
-import { processNoteThroughVault, writeNoteThroughVault } from '../../src/commands';
+import { processNoteThroughVault } from '../../src/commands';
 import { OPEN_SAVE_WAIT_MS, processNote } from '../../src/openEditorWrite';
 
 const P = 'labnote/001_Test/README.labnote.md';
@@ -90,7 +90,7 @@ describe('the wait for saves under way on an open note', () => {
   ] as const)('a whole note written past a save that never ends: nothing written, false (%s)', async (_name, disk) => {
     const { app, host, state, views } = setup(1, disk);
     void saving(views[0], 'never', state, 'never');
-    expect(await writeNoteThroughVault(app, host, P, 'a\nB\n')).toBe(false);
+    expect(await processNoteThroughVault(app, host, P, () => 'a\nB\n', true)).toBe(false);
     expect(state.order).toEqual([]);
     expect(state.disk).toBe(disk);
   }, OPEN_SAVE_WAIT_MS + 10000);
