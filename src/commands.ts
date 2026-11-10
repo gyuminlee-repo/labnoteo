@@ -52,7 +52,7 @@ import {
 import { ISSUE_SYNC_WORKFLOW_PATH, SETUP_DOC_PATH } from './scaffold/assets';
 import * as posix from '@labnoteo/core/posix';
 import { workflowAliasModal } from './modals';
-import { openSourceView, processInOpenCrlfEditor, waitForOpenSaves } from './openEditorWrite';
+import { OPEN_SAVE_WAIT_MS, openSourceView, processInOpenCrlfEditor, waitForOpenSaves } from './openEditorWrite';
 import { getObsidianLanguage } from './i18n';
 import {
   createLabnoteStructure,
@@ -2464,15 +2464,17 @@ export async function processNoteThroughVault(
   notePath: string,
   transform: (content: string) => string
 ): Promise<boolean> {
-  // A save Obsidian has under way on the open note first, so it does not write over this.
-  await waitForOpenSaves(app, notePath);
+  // A save Obsidian has under way on the open note first, so it does not write over this;
+  // one deadline for the whole write.
+  const deadline = Date.now() + OPEN_SAVE_WAIT_MS;
+  await waitForOpenSaves(app, notePath, deadline);
   const current = await host.fs.read(notePath);
   const next = transform(current);
   if (next === current) return false;
   const file = app.vault.getFileByPath(notePath);
   if (file instanceof TFile) {
     // Open in an editor with CRLF in its file: applied there ({@link processInOpenCrlfEditor}).
-    const inEditor = await processInOpenCrlfEditor(app, file, transform);
+    const inEditor = await processInOpenCrlfEditor(app, file, transform, deadline);
     if (inEditor !== undefined) return inEditor;
     await app.vault.process(file, data => transform(data));
   } else {

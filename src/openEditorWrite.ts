@@ -27,29 +27,28 @@ export function openSourceView(app: App, path: string): MarkdownView | undefined
 export const OPEN_SAVE_WAIT_MS = 1000;
 
 /**
- * Wait for the saves under way in the views `path` is open in, up to {@link OPEN_SAVE_WAIT_MS},
- * so a write does not land before one of them and get written over by it. Obsidian 1.15.0
- * keeps a save under way in the view's `savePromise` (null when none; not in the API) and
- * its own save waits for it the same way, in a loop; that promise is awaited, not `save()`
- * called, which would write the buffer again. A view without it, or past the wait, is not
- * waited for: the write goes on as it would.
+ * Wait for the saves under way in the views `path` is open in, until none of them has one or
+ * `deadline` passes (by default {@link OPEN_SAVE_WAIT_MS} from now; one write shares its
+ * deadline across its waits), so a write does not land before one of them and get written
+ * over by it. Obsidian 1.15.0 keeps a save under way in the view's `savePromise` (null when
+ * none; not in the API) and its own save waits for it the same way, in a loop; that promise
+ * is awaited, not `save()` called, which would write the buffer again. A view without it is
+ * not waited for. Returns false when a save was still under way at the deadline: the write
+ * then goes on through the vault as it would.
  */
-export async function waitForOpenSaves(app: App, path: string): Promise<void> {
-  const deadline = Date.now() + OPEN_SAVE_WAIT_MS;
-  // An app with no workspace (a test's) has no editor open.
-  for (const leaf of app.workspace?.getLeavesOfType?.('markdown') ?? []) {
-    const view = leaf.view as unknown as { file?: { path?: string } | null; savePromise?: unknown };
-    if (view?.file?.path !== path) continue;
-    while (view.savePromise instanceof Promise) {
-      const left = deadline - Date.now();
-      if (left <= 0) return;
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      await Promise.race([
-        view.savePromise.catch(() => undefined),
-        new Promise(resolve => (timer = setTimeout(resolve, left))),
-      ]);
-      clearTimeout(timer);
-    }
+export async function waitForOpenSaves(app: App, path: string, deadline = Date.now() + OPEN_SAVE_WAIT_MS): Promise<boolean> {
+  for (;;) {
+    // An app with no workspace (a test's) has no editor open.
+    const pending = (app.workspace?.getLeavesOfType?.('markdown') ?? [])
+      .map(leaf => leaf.view as unknown as { file?: { path?: string } | null; savePromise?: unknown })
+      .filter(view => view?.file?.path === path && view.savePromise instanceof Promise)
+      .map(view => (view.savePromise as Promise<unknown>).catch(() => undefined));
+    if (pending.length === 0) return true;
+    const left = deadline - Date.now();
+    if (left <= 0) return false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([Promise.all(pending), new Promise(resolve => (timer = setTimeout(resolve, left)))]);
+    clearTimeout(timer);
   }
 }
 
@@ -63,9 +62,12 @@ export async function waitForOpenSaves(app: App, path: string): Promise<void> {
 export async function processInOpenCrlfEditor(
   app: App,
   file: TFile,
-  transform: (content: string) => string
+  transform: (content: string) => string,
+  deadline?: number
 ): Promise<boolean | undefined> {
-  await waitForOpenSaves(app, file.path);
+  // A save still under way past the wait would hold this one's save too (Obsidian's save
+  // waits for the one under way, with no limit): the change goes through the vault instead.
+  if (!(await waitForOpenSaves(app, file.path, deadline))) return undefined;
   const view = openSourceView(app, file.path);
   if (!view) return undefined;
   const disk = await app.vault.read(file);
