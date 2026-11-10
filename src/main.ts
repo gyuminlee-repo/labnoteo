@@ -112,7 +112,7 @@ import {
   changeNotWritten,
   type ReadmeSyncControl,
 } from './commands';
-import { openEditorText, openViewHasDisk, processNote, type NoteWritten } from './openEditorWrite';
+import { openEditorText, openViewHasDisk, processNote, processNoteResult, type NoteWritten } from './openEditorWrite';
 import { loadWorkflows } from '@labnoteo/core/lib/workflowDataLoader';
 import * as posix from '@labnoteo/core/posix';
 import {
@@ -1858,8 +1858,7 @@ export default class LabnotePlugin extends Plugin {
     if (this.unloaded || !this.copiedWorkflows.has(copyPath) || file.path !== copyPath) return;
     // Before any prompt, so cancelling one still leaves no shared issue ID (#89).
     const markers = reassignIssueMarkerIds(await this.app.vault.read(file)).count;
-    if (markers > 0) {
-      await processNote(this.app, file, data => reassignIssueMarkerIds(data).content);
+    if (markers > 0 && (await this.processNoteSaid(file, data => reassignIssueMarkerIds(data).content)) !== 'uncertain') {
       this.host.notify(
         'info',
         this.t(
@@ -1992,9 +1991,11 @@ export default class LabnotePlugin extends Plugin {
       const reassigned = reassignIssueMarkerIds(before);
       const stripped = removeAllScanEntries(before);
       if (reassigned.count > 0 || stripped.count > 0) {
-        markers += reassigned.count;
-        scans += stripped.count;
-        await processNote(this.app, note, data => removeAllScanEntries(reassignIssueMarkerIds(data).content).md);
+        const result = await this.processNoteSaid(note, data => removeAllScanEntries(reassignIssueMarkerIds(data).content).md);
+        if (result !== 'uncertain') {
+          markers += reassigned.count;
+          scans += stripped.count;
+        }
       }
       // Recorded first, so no question about the shared ID comes while the copy is
       // handled. A note ID that cannot be written was said and stays as it is; the copy is then
@@ -2040,8 +2041,8 @@ export default class LabnotePlugin extends Plugin {
         .filter((v): v is string | number => typeof v === 'string' || typeof v === 'number')
         .map(String);
       const nextId = nextExperimentId(id, taken);
-      await processNote(this.app, readme, data => setExperimentReadmeId(data, nextId));
-      this.host.notify(
+      const result = await this.processNoteSaid(readme, data => setExperimentReadmeId(data, nextId));
+      if (result !== 'uncertain') this.host.notify(
         'info',
         nextId
           ? this.t('Changed the copy\'s id from {0} to {1}, so the automation does not take it for the original.', id, nextId)
@@ -2177,7 +2178,7 @@ export default class LabnotePlugin extends Plugin {
       ));
     if (this.unloaded || folder.path !== copyPath) return;
     const today = getSeoulDateString();
-    await processNote(this.app, readme, data => {
+    await this.processNoteSaid(readme, data => {
       const reset = resetCopiedExperimentReadme(data, newTitle, today);
       return markRetry ? setRetryOf(reset, retryOfLink(retryTarget)) : reset;
     });
@@ -2187,13 +2188,14 @@ export default class LabnotePlugin extends Plugin {
       for (const note of markdownFilesIn(folder)) {
         if (!parseWorkflowFileName(note.name)) continue;
         let changed = false;
-        const written = await processNote(this.app, note, data => {
+        const written = await this.processNoteSaid(note, data => {
           const next = resetCopiedWorkflowDates(data, today);
           changed = next !== data;
           return next;
         });
-        // Not written (a save of the open note did not end in time): not counted as redated.
-        if (written && changed) redated++;
+        // Not written (a save of the open note did not end in time), or not known to be: not
+        // counted as redated.
+        if (written === 'written' && changed) redated++;
       }
     }
     if (target !== folder.path) await this.app.fileManager.renameFile(folder, target);
@@ -2311,15 +2313,16 @@ export default class LabnotePlugin extends Plugin {
     let changed = false;
     let scans = 0;
     let outputIds: string[] = [];
-    const written = await processNote(this.app, file, data => {
+    const written = (await this.processNoteSaid(file, data => {
       const dated = resetCopiedWorkflowDates(data, today);
       changed = dated !== data;
       const stripped = removeAllScanEntries(dated);
       scans = stripped.count;
       if (this.sampleTrackingFor(file.path)) outputIds = outputSampleIds(stripped.md, types);
       return stripped.md;
-    });
-    // Not written (a save of the open copy did not end in time): neither is said as done.
+    })) === 'written';
+    // Not written (a save of the open copy did not end in time), or not known to be (said so):
+    // neither is said as done.
     if (!written) {
       changed = false;
       scans = 0;
@@ -2709,6 +2712,16 @@ export default class LabnotePlugin extends Plugin {
   }
 
   /** `processNote` hook for AI tools: changes the note as it is when written, stamping lab notes. */
+  /**
+   * {@link processNoteResult}, warning when the note may or may not have the change (its save
+   * failed as another change reached it): not said as done then, nor asked for again.
+   */
+  private async processNoteSaid(file: TFile, transform: (content: string) => string): Promise<'written' | 'notWritten' | 'timedOut' | 'uncertain'> {
+    const result = await processNoteResult(this.app, file, transform);
+    if (result === 'uncertain') this.host.notify('warn', this.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', file.path));
+    return result;
+  }
+
   processNoteStamped(path: string, change: (content: string) => string, lone?: boolean): Promise<NoteWritten> {
     return processNoteStamped(this.app, this.host, path, change, this.stampLastUpdated, lone);
   }

@@ -80,6 +80,11 @@ export interface ScanResult {
   matchedBy?: 'index' | 'opId' | 'fingerprint';
   /** The printout carries no block fingerprint (printed before 0.123.0). */
   legacy?: boolean;
+  /**
+   * Filed in a note that may or may not have it: its save failed as another change reached
+   * it. The image stays, as the note's editor may keep the entry for its next save.
+   */
+  uncertain?: boolean;
   /** The note already had this scan, but its image was gone, so it was filed again (#432). */
   replacedMissing?: boolean;
 }
@@ -373,7 +378,11 @@ export class ScanPipeline {
       try {
         const written = await processNoteThroughVault(this.deps.app, this.deps.host, notePath, apply);
         if (written === 'uncertain') {
-          failure = this.deps.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', notePath);
+          // The entries may be in the note, or kept by its editor for its next save: their
+          // images stay, and nothing is queued, which would file them twice.
+          this.deps.host.notify('warn', this.deps.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', notePath));
+          for (const item of items) item.result.uncertain = true;
+          continue;
         } else if (!written && (await changeNotWritten(this.deps.app, this.deps.host, notePath, apply))) {
           // Not written: a save of the open note did not end in time.
           failure = this.deps.t('The scans were not written into the note: it was still being saved, or it changed while they went in.');

@@ -24,6 +24,17 @@ import {
 import { isDateInput, listUnmatched } from '../../src/scan/unmatchedModal';
 import { OPEN_SAVE_WAIT_MS } from '../../src/openEditorWrite';
 
+// What writing a note answers, forced for a test: else as written.
+const forced = vi.hoisted(() => ({ write: undefined as undefined | 'uncertain' }));
+vi.mock('../../src/commands', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../src/commands')>();
+  return {
+    ...actual,
+    processNoteThroughVault: (...args: Parameters<typeof actual.processNoteThroughVault>) =>
+      forced.write ?? actual.processNoteThroughVault(...args),
+  };
+});
+
 const EXP = 'labnote/001_Assay';
 const NOTE = `${EXP}/001_WD010_Design.labnote.md`;
 const ID = 'LN-7K3M9QX2';
@@ -711,4 +722,35 @@ describe('scans while a save of the open note does not end in time', () => {
     expect(s.binary.has(old.imagePath!)).toBe(true);
     expect(s.trashed).toEqual([]);
   }, T);
+});
+
+// The open note's save failed as another change reached it: the scans may be in the note, or
+// kept by its editor for its next save. Their images stay and nothing is queued, which would file
+// them twice; the user is told to check the note.
+describe('scans written into a note that may or may not have them', () => {
+  it('keeps the images, queues nothing and warns once', async () => {
+    const s = setup({ [NOTE]: buildNote(ID, ['UHW010', 'UHW020']) }, {
+      'a.jpg': [page(pagePayload({ page: 1 }), 'aaaaaaaaaaaa'), page(pagePayload({ page: 2 }), 'bbbbbbbbbbbb')],
+    });
+    const warnings: string[] = [];
+    (s.host as unknown as { notify: (level: string, msg: string) => void }).notify = (level, msg) => {
+      if (level === 'warn') warnings.push(msg);
+    };
+    forced.write = 'uncertain';
+    try {
+      const results = await s.pipeline.run([input('a.jpg')]);
+      expect(results.map(r => [r.status, r.uncertain])).toEqual([
+        ['filed', true],
+        ['filed', true],
+      ]);
+      expect(s.trashed).toEqual([]);
+      for (const r of results) expect(s.binary.has(r.imagePath!)).toBe(true);
+      expect(listUnmatched(s.app as never)).toEqual([]);
+      expect(warnings).toEqual([
+        `${NOTE} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.`,
+      ]);
+    } finally {
+      forced.write = undefined;
+    }
+  });
 });

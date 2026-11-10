@@ -23,9 +23,12 @@ export function describeResult(t: Translator, r: ScanResult): string {
   switch (r.status) {
     case 'filed': {
       const where = r.block ? `${r.notePath ?? ''} › ${r.block}` : (r.notePath ?? '');
-      const filed = r.replacedMissing
+      const placed = r.replacedMissing
         ? `${t('Filed in {0}', where)} ${t('The note already had this scan, but its image was deleted, so it was filed again in its place.')}`
         : t('Filed in {0}', where);
+      const filed = r.uncertain
+        ? `${placed} ${t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', r.notePath ?? '')}`
+        : placed;
       if (r.legacy) {
         return `${filed} ${t('This printout is from before 0.123.0 and does not say which block it is, so check that it went to the right one.')}`;
       }

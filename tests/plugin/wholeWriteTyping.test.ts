@@ -360,6 +360,45 @@ describe('a tool write over an open note', () => {
     expect(editor.getValue()).toBe(OTHER);
   });
 
+  // The save fails as another writer changes the file, and the view has read that over its
+  // editor by the time the save is looked at: the change is gone, not written.
+  it('fails when the view has read another writer\'s file over its editor once its save failed', async () => {
+    const { fs, editor, view, ctx } = openNote(P, NOTE, NOTE.replace('body a', 'body a typed'), undefined, 'fails', {}, async n => {
+      if (n === 1) await fs.write(P, OTHER);
+    });
+    const save = view.save.bind(view);
+    view.save = async () => {
+      try {
+        await save();
+      } catch (err) {
+        // Read right as the save ended, as onModify does once it is over.
+        view.lastSavedData = OTHER;
+        editor.replaceRange(OTHER, 0, editor.getValue().length);
+        throw err;
+      }
+    };
+    const res = await tool('update_section').handler(ctx, { documentPath: P, heading: 'B', content: 'NEW B' });
+    expect(res).toMatchObject({ ok: false, code: 'note_not_written', params: [P] });
+    expect(await fs.read(P)).toBe(OTHER);
+    expect(editor.getValue()).toBe(OTHER);
+  });
+
+  // A README whose save fails as another writer changes it: the workflow is made, its listing
+  // not known, said with registered false (a caller reading it as listed would check nothing),
+  // and create_workflow not to be called again.
+  it('says a new workflow may or may not be listed, registered false, when the README save fails as it changes', async () => {
+    const README = 'labnote/001_Test/README.labnote.md';
+    const disk = ['---', 'title: T', '---', '# T', '', '## Related Workflows', ''].join('\n');
+    let fsRef: MemFileSystem | undefined;
+    const { fs, ctx } = openNote(README, disk, disk, undefined, 'fails', {}, async n => {
+      if (n === 1) await fsRef!.write(README, disk.replace('title: T', 'title: Other'));
+    });
+    fsRef = fs;
+    const res = await tool('create_workflow').handler(ctx, { documentPath: README, workflowId: 'WD010' });
+    expect(res).toMatchObject({ ok: true, data: { registered: false }, code: 'note_write_uncertain', params: [README] });
+    expect(res.warnings?.at(-1)).toMatch(/Do not call create_workflow again/);
+  });
+
   // The same, the view's reading ending a few milliseconds later (it reads the file first):
   // not said to be there either.
   it('says the change may or may not be there when the view reads another writer\'s file late', async () => {

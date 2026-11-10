@@ -137,24 +137,37 @@ async function writeInOpenEditor(
     const atSave = lf(view.editor.getValue());
     const now = await app.vault.read(file);
     const savedAs: unknown = (view as unknown as { lastSavedData?: unknown }).lastSavedData;
+    // Looked at with `savedAs`, no await between: what the view holds as it last read or saved.
+    const editorNow = lf(view.editor.getValue());
     const wrote = saved && openSourceView(app, file.path) === view && typeof savedAs === 'string' && savedAs !== disk;
     // The view still on the note, holding the file's text as last saved: its editor keeps the
     // change, and saves it on its next save.
     const keeps = view.file?.path === file.path && typeof savedAs === 'string';
-    return { saved, atSave, now, wrote, keeps };
+    // A failed save whose view has read the file another writer changed already, its editor
+    // now that file: the change is gone.
+    const readOver = !saved && typeof savedAs === 'string' && savedAs !== disk && editorNow === lf(savedAs);
+    return { saved, atSave, now, wrote, keeps, readOver };
   };
   // A file no longer as it was holds the change when the save wrote (the view still on the
   // note: the editor's text, the change in it, even when another plugin changed the file right
   // after), or when it reads as the change or as the editor's text as the save left it.
   // Else another writer changed it. A save that wrote nothing, its view reading the file again
-  // or gone: the change is not there, false. A save that failed: 'uncertain'. The view does not
-  // read a change made while it saves, and its editor keeps the change for its next save, over
-  // that writer's text; a change made once the save is over it reads, over its editor, merged
-  // with typing or not, after a read of the file of its own. Which of the two, and when that
-  // read ends, cannot be known now. The change is not applied again, which could put it in twice.
+  // or gone: the change is not there, false. A save that failed, its view having read that file
+  // over its editor already: false too. Else 'uncertain'. The view does not read a change made
+  // while it saves, and its editor keeps the change for its next save, over that writer's text;
+  // a change made once the save is over it reads, over its editor, after a read of the file of
+  // its own, which may not have ended yet. Read merged with typing, the editor differs from the
+  // file whether the merge kept the change or dropped it (a part it could not place): not told
+  // apart here either. The change is not applied again, which could put it in twice.
   const landed = (text: string, atSave: string) => lf(text) === after || lf(text) === atSave;
-  const changedMeanwhile = (at: { saved: boolean; atSave: string; now: string; wrote: boolean }) =>
-    at.wrote || landed(at.now, at.atSave) ? true : at.saved ? false : ('uncertain' as const);
+  // A view that read the file over its editor has the two alike, the change in neither: not
+  // taken for the file reading as the editor.
+  const changedMeanwhile = (at: { saved: boolean; atSave: string; now: string; wrote: boolean; readOver: boolean }) => {
+    if (at.wrote || lf(at.now) === after) return true;
+    if (at.readOver) return false;
+    if (landed(at.now, at.atSave)) return true;
+    return at.saved ? false : ('uncertain' as const);
+  };
   let at = await save();
   if (at.now !== disk) return changedMeanwhile(at);
   // The file as it was, the save having failed (Obsidian says so itself, keeping a backup) or

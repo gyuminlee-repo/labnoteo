@@ -169,12 +169,13 @@ function noteNotWritten(path: string): ToolError {
  * Reported with what the tool did, not as a failure: a caller retrying a failure on its own
  * could put the change in twice. The code lets a host word it for the person watching.
  */
-function noteWriteUncertain(path: string, warnings: string[] = []): Pick<ToolResult, 'warnings' | 'code' | 'params'> {
+function noteWriteUncertain(
+  path: string,
+  warnings: string[] = [],
+  say = `${path} may or may not have the change: it was being saved when another change reached it. Read the note before calling this again, and call it again only if the change is not there. Tell the user.`
+): Pick<ToolResult, 'warnings' | 'code' | 'params'> {
   return {
-    warnings: [
-      ...warnings,
-      `${path} may or may not have the change: it was being saved when another change reached it. Read the note before calling this again, and call it again only if the change is not there. Tell the user.`,
-    ],
+    warnings: [...warnings, say],
     code: 'note_write_uncertain',
     params: [path],
   };
@@ -1517,8 +1518,17 @@ export function createLabnoteTools(): ToolDef[] {
           return { text: insertWorkflowChecklistEntries(readme, [{ done: false, title, fileName }]), data: true };
         });
         if (!('error' in listed) && listed.uncertain) {
-          const result = withWarnings({ ok: true, data: { path: workflowPath, fileName, registered: 'uncertain' } });
-          return { ...result, ...noteWriteUncertain(readmePath, result.warnings) };
+          // Not said as listed: a caller reading `registered` as listed would not have it checked.
+          // Listing it again is not asked for either; the sync command lists only what is missing.
+          const result = withWarnings({ ok: true, data: { path: workflowPath, fileName, registered: false } });
+          return {
+            ...result,
+            ...noteWriteUncertain(
+              readmePath,
+              result.warnings,
+              `${workflowPath} was created, but ${readmePath} may or may not list it: the README was being saved when another change reached it. Do not call create_workflow again. Tell the user to check the README checklist and, only if the workflow is not there, run "Sync workflow checklist with folder".`
+            ),
+          };
         }
         if ('error' in listed) {
           return withWarnings({
