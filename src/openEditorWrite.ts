@@ -37,11 +37,15 @@ export async function processInOpenCrlfEditor(
   const disk = await app.vault.read(file);
   if (!disk.includes('\r')) return undefined;
   const before = view.editor.getValue();
-  // A view still loading the note holds none of it yet (an empty editor; Obsidian 1.15.0 sets
-  // the view's file before it reads it, and its `data` is null until then, which the API does
-  // not document): the change is made on the file through the vault, as for a closed note.
-  // An editor with other text than the file is loaded, with text typed and not saved yet.
-  if ((view as { data: string | null }).data === null || (before === '' && disk.trim() !== '')) return undefined;
+  // Only a view that holds this file as it is now: Obsidian 1.15.0 keeps in `lastSavedData`
+  // the text it last read or saved (the file's own text, CRLF and all), null while it reads a
+  // note and the previous note's text while it switches to another. The field is not in the
+  // API: when it is missing, or is not the file's text (loading, switching, another writer
+  // having changed the file since), the change is made on the file through the vault, as for
+  // a closed note. Text typed and not saved yet leaves it as it is, so that text stays. An
+  // empty editor over a file with text is taken for one still loading all the same.
+  const lastSaved: unknown = (view as unknown as { lastSavedData?: unknown }).lastSavedData;
+  if (lastSaved !== disk || (before === '' && disk.trim() !== '')) return undefined;
   const after = transform(before);
   const edit = minimalReplacement(before, after);
   if (!edit) return false;

@@ -129,12 +129,36 @@ export class MarkdownView {
     return this.data;
   }
 
+  /**
+   * The text last read or saved, as Obsidian 1.15.0 keeps it (not in the API): the file's own
+   * text once read, null before (and after `save(true)`), what was saved after a save.
+   */
+  lastSavedData: string | null = null;
+
   /** How many times the note was saved (`save`). */
   saved = 0;
 
-  async save(): Promise<void> {
-    this.saved++;
+  /** Read `text` as the file's, as `loadFileInternal` and `setData` do. */
+  loadText(text: string): void {
+    this.lastSavedData = text;
+    this.data = text;
   }
+
+  /** As Obsidian 1.15.0: written only when it differs from what was last read or saved. */
+  async save(clear = false): Promise<void> {
+    this.saved++;
+    if (!this.file) return;
+    const text = this.getViewData();
+    if (this.lastSavedData !== text && this.lastSavedData !== null) {
+      this.data = text;
+      this.lastSavedData = text;
+      await this.writeData(this.file, text);
+    }
+    if (clear) this.lastSavedData = null;
+  }
+
+  /** Where `save` writes; a test sets it. */
+  async writeData(_file: TFile, _text: string): Promise<void> {}
 
   getState(): Record<string, unknown> {
     return { mode: this.mode };

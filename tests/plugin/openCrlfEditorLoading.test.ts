@@ -21,6 +21,8 @@ function setup(disk: string, editorText: string, data: string | null) {
   const view = new MarkdownView();
   view.file = new TFile(NOTE);
   (view as unknown as { data: string | null }).data = data;
+  // Null until the file is read; then the file's own text.
+  view.lastSavedData = data === null ? null : disk;
   view.editor = {
     getValue: () => state.editor,
     offsetToPos: (offset: number) => offset,

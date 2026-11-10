@@ -14,6 +14,8 @@ function setup(disk: string, open: boolean, save: 'writes' | 'fails' | 'writes n
   const state = { disk, editor: disk.replace(/\r\n/g, '\n'), processed: 0 };
   const view = new MarkdownView();
   view.file = new TFile(NOTE);
+  // Read as Obsidian reads it: the file's own text.
+  view.lastSavedData = disk;
   // Saving writes the editor's text to the file, as Obsidian does; or fails, or (the view
   // closing) ends without writing.
   view.save = async () => {

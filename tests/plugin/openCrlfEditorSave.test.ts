@@ -24,6 +24,8 @@ function setup(disk: string, save: Save) {
   };
   const view = new MarkdownView();
   view.file = new TFile(README);
+  // Read as Obsidian reads it: the file's own text.
+  view.lastSavedData = disk;
   view.editor = {
     getValue: () => state.editor,
     offsetToPos: (offset: number) => offset,

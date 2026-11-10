@@ -22,6 +22,8 @@ async function setup(nl: string, open: 'source' | 'preview' | 'closed') {
   const editor = { text: lines.join('\n') };
   const view = new MarkdownView();
   view.file = new TFile(README);
+  // Read as Obsidian reads it: the file's own text.
+  view.lastSavedData = lines.join(nl);
   if (open !== 'closed') view.mode = open;
   view.editor = {
     getValue: () => editor.text,
