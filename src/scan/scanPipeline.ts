@@ -20,7 +20,7 @@ import { getSeoulDateString } from '@labnoteo/core/lib/dateUtils';
 import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
 import { isPagePayload, unitOpFingerprint, type PagePayload, type ScanPayload } from '@labnoteo/core/lib/scanPayload';
 import * as posix from '@labnoteo/core/posix';
-import { processNoteThroughVault } from '../commands';
+import { changeNotWritten, processNoteThroughVault } from '../commands';
 import type { NoteIdService } from '../barcode/noteIdService';
 import {
   SCANS_SUBFOLDER,
@@ -370,7 +370,14 @@ export class ScanPipeline {
         return out;
       };
       try {
-        await processNoteThroughVault(this.deps.app, this.deps.host, notePath, apply);
+        if (
+          !(await processNoteThroughVault(this.deps.app, this.deps.host, notePath, apply)) &&
+          (await changeNotWritten(this.deps.host, notePath, apply))
+        ) {
+          // Not written (a save of the open note did not end in time): failed, as a write
+          // that throws, so no scan counts as filed and none of its images is trashed.
+          throw new Error('the note was still being saved, so the scans were not written into it');
+        }
         this.deps.markUserEdit(notePath);
       } catch (err) {
         console.error('[labnoteo] could not file scans in', notePath, err);
@@ -473,11 +480,14 @@ export class ScanPipeline {
     if (result.status !== 'filed' || !result.notePath || !result.hash) return false;
     const hash = result.hash;
     let removed = false;
-    await processNoteThroughVault(this.deps.app, this.deps.host, result.notePath, content => {
+    const remove = (content: string): string => {
       const out = removeScanEntry(content, hash);
       removed = out.removed;
       return out.md;
-    });
+    };
+    const written = await processNoteThroughVault(this.deps.app, this.deps.host, result.notePath, remove);
+    // Not written (a save of the open note did not end in time): the entry and its image stay.
+    if (!written && (await changeNotWritten(this.deps.host, result.notePath, remove))) return false;
     const image = result.imagePath ? this.deps.app.vault.getAbstractFileByPath(result.imagePath) : null;
     if (image instanceof TFile) await this.deps.app.fileManager.trashFile(image);
     if (removed) this.deps.markUserEdit(result.notePath);
@@ -495,7 +505,7 @@ export class ScanPipeline {
       // An earlier entry may link the name this scan's image took (#433).
       .filter((f): f is TFile => f instanceof TFile && f.path !== result.imagePath);
     let count = 0;
-    await processNoteThroughVault(app, host, notePath, content => {
+    const remove = (content: string): string => {
       count = 0;
       let out = content;
       for (const p of result.previous!) {
@@ -504,7 +514,9 @@ export class ScanPipeline {
         out = r.md;
       }
       return out;
-    });
+    };
+    // Not written (a save of the open note did not end in time): the entries and images stay.
+    if (!(await processNoteThroughVault(app, host, notePath, remove)) && (await changeNotWritten(host, notePath, remove))) return 0;
     for (const image of images) await app.fileManager.trashFile(image);
     if (count > 0) this.deps.markUserEdit(notePath);
     result.previous = [];

@@ -1214,6 +1214,15 @@ function notifyWorkflowCreated(host: LabnoteHost, created: CreatedWorkflow): voi
       'warn',
       host.t('This experiment has no README.labnote.md, so the workflow was not added to a checklist.')
     );
+  } else if (created.registered === 'notWritten') {
+    host.notify(
+      'warn',
+      host.t(
+        'README.labnote.md was still being saved, so {0} was not added to its checklist. Run "{1}" in a moment to add it.',
+        created.fileName,
+        host.t('Sync workflow checklist with folder')
+      )
+    );
   } else if (created.registered === 'noSection') {
     host.notify(
       'warn',
@@ -1325,10 +1334,8 @@ export async function registerWorkflowInReadme(
     );
   };
   if (await processNoteThroughVault(app, host, readmePath, add)) return 'registered';
-  // Nothing written: the entry is there already, or the README did not get it (a save of
-  // the open README did not end in time).
-  const now = await host.fs.read(readmePath);
-  return add(now) === now ? 'registered' : 'notWritten';
+  // Nothing written: the entry is there already, or the README did not get it.
+  return (await changeNotWritten(host, readmePath, add)) ? 'notWritten' : 'registered';
 }
 
 /**
@@ -1802,11 +1809,12 @@ export async function renumberWorkflowsCommand(
             : relinkMissing(content);
         const { names, notes } = await readWorkflowFolder(host, labnoteDir);
         const titles = workflowLabels(notes);
-        await processNoteThroughVault(app, host, readmePath, content => {
+        const written = await processNoteThroughVault(app, host, readmePath, content => {
           const plan = planWorkflowChecklistSync(relink(content), names, titles, undefined, labnoteDir);
           added = plan.added.length;
           return plan.content;
         });
+        if (!written) added = 0;
       }
     } finally {
       await readmeSync.release(labnoteDir, { dropRenames: true });
@@ -2489,6 +2497,20 @@ export async function processNoteThroughVault(
     await host.fs.write(notePath, next);
   }
   return true;
+}
+
+/**
+ * After {@link processNoteThroughVault} returned false: whether the note still lacks the
+ * change `transform` makes, so the change was not written (a save of the open note did not
+ * end in time, or another writer changed the note meanwhile) rather than had nothing to do.
+ */
+export async function changeNotWritten(
+  host: LabnoteHost,
+  notePath: string,
+  transform: (content: string) => string
+): Promise<boolean> {
+  const now = await host.fs.read(notePath);
+  return transform(now) !== now;
 }
 
 /**

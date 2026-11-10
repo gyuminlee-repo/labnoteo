@@ -120,7 +120,13 @@ export async function processInOpenCrlfEditor(
   return applied ? final !== disk : landed(final);
 }
 
-/** {@link processInOpenCrlfEditor}, else `app.vault.process` as before. */
-export async function processNote(app: App, file: TFile, transform: (content: string) => string): Promise<void> {
-  if ((await processInOpenCrlfEditor(app, file, transform)) === undefined) await app.vault.process(file, transform);
+/**
+ * {@link processInOpenCrlfEditor}, else `app.vault.process` as before. False when the change
+ * was not written there (or the editor needed none); true after `app.vault.process`.
+ */
+export async function processNote(app: App, file: TFile, transform: (content: string) => string): Promise<boolean> {
+  const inEditor = await processInOpenCrlfEditor(app, file, transform);
+  if (inEditor !== undefined) return inEditor;
+  await app.vault.process(file, transform);
+  return true;
 }

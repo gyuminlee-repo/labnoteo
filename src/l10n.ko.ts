@@ -516,6 +516,8 @@ const obsidianKo: Record<string, string> = {
     '"{0}"은(는) 보관함 폴더를 포함한 경로가 {1}자로, Windows가 허용하는 {2}자를 넘습니다. Windows에서 열거나 git으로 받을 때 실패할 수 있으니 보관함을 더 짧은 경로의 폴더로 옮기거나 이름을 줄이세요.',
   'Yes': '예',
   'Workflow created: {0}': '워크플로가 생성되었습니다: {0}',
+  'README.labnote.md was still being saved, so {0} was not added to its checklist. Run "{1}" in a moment to add it.':
+    'README.labnote.md를 아직 저장하는 중이라 {0}을(를) 체크리스트에 넣지 못했습니다. 잠시 뒤 "{1}"을(를) 실행하면 들어갑니다.',
   'This experiment has no README.labnote.md, so the workflow was not added to a checklist.':
     '이 실험에는 README.labnote.md가 없어 워크플로를 체크리스트에 등록하지 못했습니다.',
   'Unit operation inserted: {0} {1}': '유닛 오퍼레이션이 삽입되었습니다: {0} {1}',

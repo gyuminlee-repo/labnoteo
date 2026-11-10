@@ -20,6 +20,7 @@ import {
   type ScanInput,
 } from '../../src/scan/scanPipeline';
 import { isDateInput, listUnmatched } from '../../src/scan/unmatchedModal';
+import { OPEN_SAVE_WAIT_MS } from '../../src/openEditorWrite';
 
 const EXP = 'labnote/001_Assay';
 const NOTE = `${EXP}/001_WD010_Design.labnote.md`;
@@ -616,4 +617,69 @@ describe('embedLinkPath', () => {
     expect(embedLinkPath('![](<images/scans/a b.jpg>)')).toBe('images/scans/a b.jpg');
     expect(embedLinkPath('plain text')).toBeUndefined();
   });
+});
+
+// Obsidian still saving the open note past the wait: nothing is written into it, so no scan
+// counts as filed or undone and no image goes to the trash; the scans stay to be filed again.
+describe('scans while a save of the open note does not end in time', () => {
+  const T = OPEN_SAVE_WAIT_MS + 5000;
+  const stuck = (s: ReturnType<typeof setup>) => {
+    const view = { file: { path: NOTE }, savePromise: new Promise(() => {}) };
+    Object.assign(s.app, { workspace: { getLeavesOfType: () => [{ view }] } });
+  };
+
+  it('an import: failed, the note unchanged, the image kept', async () => {
+    const note = buildNote(ID, ['UHW010', 'UHW020']);
+    const s = setup({ [NOTE]: note }, { 'a.jpg': [page(pagePayload(), 'aaaaaaaaaaaa')] });
+    stuck(s);
+    const [result] = await s.pipeline.run([input('a.jpg')]);
+    expect(result.status).toBe('error');
+    expect(s.text.get(NOTE)).toBe(note);
+    expect(s.binary.has(result.imagePath!)).toBe(true);
+    expect(s.trashed).toEqual([]);
+    expect(s.edits).toEqual([]);
+  }, T);
+
+  it('filed by hand: failed, the queued image kept', async () => {
+    const QUEUED = '_labnote-scans/unmatched/20261021-021738_unknown_photo1.jpg';
+    const note = buildNote(ID, ['UHW010', 'UHW020']);
+    const s = setup({ [NOTE]: note }, {});
+    s.binary.set(QUEUED, new Uint8Array([9, 9, 9]).buffer);
+    stuck(s);
+    const result = await s.pipeline.fileManually(
+      new TFile(QUEUED) as unknown as Parameters<ScanPipeline['fileManually']>[0],
+      new TFile(NOTE) as unknown as Parameters<ScanPipeline['fileManually']>[1],
+      1,
+      { page: 1, pageCount: 1 }
+    );
+    expect(result.status).toBe('error');
+    expect(s.binary.has(QUEUED)).toBe(true);
+    expect(s.trashed).toEqual([]);
+    expect(s.text.get(NOTE)).toBe(note);
+  }, T);
+
+  it('undo: not undone, the entry and its image kept', async () => {
+    const s = setup({ [NOTE]: buildNote(ID, ['UHW010', 'UHW020']) }, { 'a.jpg': [page(pagePayload(), 'aaaaaaaaaaaa')] });
+    const [result] = await s.pipeline.run([input('a.jpg')]);
+    stuck(s);
+    expect(await s.pipeline.undo(result)).toBe(false);
+    expect(s.text.get(NOTE)).toContain('aaaaaaaaaaaa');
+    expect(s.binary.has(result.imagePath!)).toBe(true);
+    expect(s.trashed).toEqual([]);
+  }, T);
+
+  it('the earlier scan of a page: not removed, its entry and image kept', async () => {
+    const s = setup(
+      { [NOTE]: buildNote(ID, ['UHW010', 'UHW020']) },
+      { 'old.jpg': [page(pagePayload(), 'aaaaaaaaaaaa')], 'new.jpg': [page(pagePayload(), 'bbbbbbbbbbbb', { render: async () => new Uint8Array([7, 8, 9]).buffer })] }
+    );
+    const [old] = await s.pipeline.run([input('old.jpg')]);
+    const [next] = await s.pipeline.run([input('new.jpg')]);
+    expect(next.previous?.length).toBe(1);
+    stuck(s);
+    expect(await s.pipeline.removePrevious(next)).toBe(0);
+    expect(listFiledScans(s.text.get(NOTE)!).map(f => f.hash).sort()).toEqual(['aaaaaaaaaaaa', 'bbbbbbbbbbbb']);
+    expect(s.binary.has(old.imagePath!)).toBe(true);
+    expect(s.trashed).toEqual([]);
+  }, T);
 });

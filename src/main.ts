@@ -108,6 +108,7 @@ import {
   rebuildExperimentReadmeFile,
   unlinkableWorkflowNotice,
   processNoteThroughVault,
+  changeNotWritten,
   writeNoteThroughVault,
   type ReadmeSyncControl,
 } from './commands';
@@ -2242,11 +2243,25 @@ export default class LabnotePlugin extends Plugin {
     if (!(this.app.vault.getAbstractFileByPath(readmePath) instanceof TFile)) return;
     const names = folder.children.filter((c): c is TFile => c instanceof TFile).map(c => c.name);
     let count = 0;
-    await processNoteThroughVault(this.app, this.host, readmePath, content => {
+    const relink = (content: string): string => {
       const r = relinkCopiedExperimentChecklist(content, dir, names);
       count = r.count;
       return r.content;
-    });
+    };
+    if (!(await processNoteThroughVault(this.app, this.host, readmePath, relink))) {
+      // Not written (a save of the open README did not end in time): said as when not done.
+      if (await changeNotWritten(this.host, readmePath, relink)) {
+        this.host.notify(
+          'warn',
+          this.t(
+            'Check that the checklist of {0} links to its own notes, not the original\'s; run "{1}" to fix it.',
+            folder.name,
+            this.t('Sync workflow checklist with folder')
+          )
+        );
+      }
+      return;
+    }
     if (count > 0) {
       this.host.notify(
         'info',
@@ -2292,7 +2307,7 @@ export default class LabnotePlugin extends Plugin {
     let changed = false;
     let scans = 0;
     let outputIds: string[] = [];
-    await processNote(this.app, file, data => {
+    const written = await processNote(this.app, file, data => {
       const dated = resetCopiedWorkflowDates(data, today);
       changed = dated !== data;
       const stripped = removeAllScanEntries(dated);
@@ -2300,6 +2315,11 @@ export default class LabnotePlugin extends Plugin {
       if (this.sampleTrackingFor(file.path)) outputIds = outputSampleIds(stripped.md, types);
       return stripped.md;
     });
+    // Not written (a save of the open copy did not end in time): neither is said as done.
+    if (!written) {
+      changed = false;
+      scans = 0;
+    }
     if (changed) {
       this.host.notify(
         'info',
