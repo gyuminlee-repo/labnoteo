@@ -83,20 +83,22 @@ export async function stampNoteAndReadme(
 /**
  * The `writeNote` hook for AI tools: stamp a lab note before writing it, then
  * the experiment README of a workflow note. Resolves only once the README is
- * written, because `create_workflow` re-reads it right after.
+ * written, because `create_workflow` re-reads it right after. `base` is the
+ * note as the tool read it ({@link writeNoteThroughVault}).
  */
 export async function writeNoteStamped(
   app: App,
   host: LabnoteHost,
   path: string,
   content: string,
-  stamp: StampNote
+  stamp: StampNote,
+  base?: string
 ): Promise<void> {
   if (!isLabNotePath(path)) {
-    await writeNoteThroughVault(app, host, path, content);
+    await writeNoteThroughVault(app, host, path, content, base);
     return;
   }
-  await writeNoteThroughVault(app, host, path, stamp(content, path));
+  await writeNoteThroughVault(app, host, path, stamp(content, path), base);
   const readme = experimentReadmeOf(path);
   if (readme) await stampNote(app, host, readme, stamp);
 }

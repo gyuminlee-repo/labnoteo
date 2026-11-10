@@ -110,13 +110,13 @@ describe('the wait for saves under way on an open note', () => {
 
   // The first view's save ends, then the other's, and only then the first starts another.
   it('writes only after every save, one started in a view already waited for included', async () => {
-    // An LF note: the write goes through the vault right after the wait.
+    // The write goes into the editor right after the wait, and the note is saved.
     const { app, state, views } = setup(2, 'a\nb\n');
     void saving(views[0], 20, state, 'first save');
     void saving(views[1], 30, state, 'other view save').then(() => void saving(views[0], 30, state, 'second save'));
     // A direct note write, which waits once.
     await processNote(app, new TFile(P) as never, c => c.replace('b', 'B'));
-    expect(state.order).toEqual(['first save', 'other view save', 'second save', 'process']);
+    expect(state.order).toEqual(['first save', 'other view save', 'second save', 'save']);
     expect(state.disk).toBe('a\nB\n');
   });
 });

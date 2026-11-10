@@ -1,8 +1,8 @@
 /**
- * A note open in an editor while its file has CRLF line ends: Obsidian holds it as LF in the
- * editor and saves that buffer over the file later, so a write made through the vault in
- * between is lost. Such a write goes into the editor and the note is saved; a note that is
- * not open, or open with LF in its file, is written through the vault as before.
+ * A note open in an editor: Obsidian holds it in the editor (a CRLF file as LF) and saves that
+ * buffer over the file later, so a write made through the vault in between can be lost. Such
+ * a write goes into the editor and the note is saved, to the same bytes a write through the
+ * vault gives an LF file; a note that is not open is written through the vault as before.
  */
 import { describe, it, expect } from 'vitest';
 import type { App } from 'obsidian';
@@ -72,9 +72,17 @@ describe('a write to a note open in an editor while its file has CRLF', () => {
     expect(processed).toEqual([]);
   });
 
-  // The rest is written through the vault as before, byte for byte.
+  // Open with LF in its file: in the editor too, to the bytes the vault would write.
+  it('adds the entry in the editor of a README with LF in its file, to the bytes of a write through the vault', async () => {
+    const { app, host, fs, view, processed } = await setup('\n', 'source');
+    expect(await registerWorkflowInReadme(app, host, README, { title: 'WD020 New', fileName: '002_WD020_New.labnote.md' })).toBe('registered');
+    expect(await fs.read(README)).toBe([...lines.slice(0, -1), '', ENTRY, ''].join('\n'));
+    expect(view.saved).toBe(1);
+    expect(processed).toEqual([]);
+  });
+
+  // A note not open is written through the vault as before, byte for byte.
   it.each([
-    ['open with LF in its file', '\n', 'source'],
     ['not open, CRLF in its file', '\r\n', 'closed'],
     ['not open, LF in its file', '\n', 'closed'],
   ] as const)('writes through the vault when %s', async (_name, nl, open) => {

@@ -52,7 +52,7 @@ import {
 import { ISSUE_SYNC_WORKFLOW_PATH, SETUP_DOC_PATH } from './scaffold/assets';
 import * as posix from '@labnoteo/core/posix';
 import { workflowAliasModal } from './modals';
-import { OPEN_SAVE_WAIT_MS, openSourceView, processInOpenCrlfEditor, saveOpenEdits, waitForOpenSaves } from './openEditorWrite';
+import { OPEN_SAVE_WAIT_MS, openSourceView, overUnsaved, processInOpenEditor, waitForOpenSaves } from './openEditorWrite';
 import { getObsidianLanguage } from './i18n';
 import {
   createLabnoteStructure,
@@ -1305,13 +1305,10 @@ export type WorkflowRegistration = 'registered' | 'noSection' | 'noReadme' | 'no
 /**
  * Add a new workflow to the README "Related Workflows" checklist
  * (non-destructive) and stamp the README's `last_updated_date`: creating a
- * workflow is a change to the experiment. Applied through the vault to the
- * README as it is at write time, so an open README editor neither overwrites it
- * nor loses its own unsaved text. A README open in an editor whose file has CRLF
- * line ends is the exception: Obsidian holds it as LF and saves that over a write
- * through the vault, so the entry goes into the editor and the README is saved as
- * LF there ({@link processNoteThroughVault}); its CRLF is not kept, as Obsidian
- * keeps it for no open note. Writes nothing without a README or without
+ * workflow is a change to the experiment. Applied to the README as it is at
+ * write time: a README open in an editor gets the entry in the editor, with its
+ * unsaved text, and is saved there ({@link processNoteThroughVault}); a CRLF
+ * file is then LF, as Obsidian keeps CRLF for no open note. Writes nothing without a README or without
  * the section to list it in (#298), and says which; 'notWritten' when the entry was
  * not written (a save of the open README did not end in time). A date the reader set by
  * hand in the README today is left as it is, as `stamp` decides (#363).
@@ -2433,7 +2430,10 @@ export function unlinkableWorkflowNotice(host: Pick<LabnoteHost, 't'>, names: re
 
 /**
  * Write note content, preferring the Vault API so an already-open README
- * refreshes immediately. `vault.process` fires only a 'modify' event (never
+ * refreshes immediately. A note open in an editor gets it there, keeping what
+ * was typed since `base`, the note as read to make `content` (since the editor
+ * last read the file when there is none), where that typing does not touch what
+ * `content` changes. `vault.process` fires only a 'modify' event (never
  * rename/delete), so it cannot re-enter the workflow README sync listeners.
  * Falls back to the adapter when the file is not (yet) in the vault index.
  * Returns false when nothing was written: a save of the open note did not end in
@@ -2448,15 +2448,25 @@ export async function writeNoteThroughVault(
   app: App,
   host: LabnoteHost,
   notePath: string,
-  content: string
+  content: string,
+  base?: string
 ): Promise<boolean> {
   const file = app.vault.getFileByPath(notePath);
   if (file instanceof TFile) {
     const deadline = Date.now() + OPEN_SAVE_WAIT_MS;
-    // Open in an editor with CRLF in its file: written there, LF as the editor holds it.
-    const inEditor = await processInOpenCrlfEditor(app, file, () => content.replace(/\r\n?/g, '\n'), deadline);
+    // Open in an editor: written there ({@link processInOpenEditor}), LF as the editor holds it.
+    // Over what was typed since `base` (the note as the caller read it to make `content`), else
+    // since the editor last read the file: typing the caller's content does not have.
+    const lf = (text: string) => text.replace(/\r\n?/g, '\n');
+    const inEditor = await processInOpenEditor(
+      app,
+      file,
+      (text, read) => overUnsaved(text, base === undefined ? read : lf(base), lf(content)),
+      deadline
+    );
     if (inEditor !== undefined) return inEditor;
-    if (!(await saveOpenEdits(app, file, deadline))) return false;
+    // A save another write started on the note may still be writing: it would land over this one.
+    if (!(await waitForOpenSaves(app, file.path, deadline))) return false;
     await app.vault.process(file, () => content);
   } else {
     await host.fs.write(notePath, content);
@@ -2491,10 +2501,11 @@ export async function processNoteThroughVault(
   if (next === current) return false;
   const file = app.vault.getFileByPath(notePath);
   if (file instanceof TFile) {
-    // Open in an editor with CRLF in its file: applied there ({@link processInOpenCrlfEditor}).
-    const inEditor = await processInOpenCrlfEditor(app, file, transform, deadline);
+    // Open in an editor: applied there ({@link processInOpenEditor}).
+    const inEditor = await processInOpenEditor(app, file, transform, deadline);
     if (inEditor !== undefined) return inEditor;
-    if (!(await saveOpenEdits(app, file, deadline))) return false;
+    // A save another write started on the note may still be writing: it would land over this one.
+    if (!(await waitForOpenSaves(app, file.path, deadline))) return false;
     await app.vault.process(file, data => transform(data));
   } else {
     await host.fs.write(notePath, next);

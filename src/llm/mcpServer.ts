@@ -155,7 +155,7 @@ export class LabnoteMcpServer {
       // `update_section` targets a note the user is plausibly looking at right
       // now. Going through the vault means the open editor picks the change up
       // instead of overwriting it on its next flush.
-      writeNote: (path, content) => this.plugin.writeNoteStamped(path, content),
+      writeNote: (path, content, base) => this.plugin.writeNoteStamped(path, content, base),
       findSampleUsages: (folder, type, id) => sampleUsages(this.plugin.app, this.plugin, folder, type, id),
     };
   }

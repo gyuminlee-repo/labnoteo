@@ -97,7 +97,7 @@ export interface ToolContext {
    * editor observes. Hosts without that problem can leave it unset — handlers
    * fall back to {@link ToolContext.fs}.
    */
-  writeNote?(path: string, content: string): Promise<void>;
+  writeNote?(path: string, content: string, base?: string): Promise<void>;
   /**
    * Whether inserting a unit operation sorts the note's unit operation list
    * into note order, as the "Auto-sync unit operation TOC" setting does in the
@@ -114,11 +114,12 @@ export interface ToolContext {
 
 /**
  * Write a markdown note through {@link ToolContext.writeNote} when the host
- * provides it, otherwise straight to the filesystem.
+ * provides it, otherwise straight to the filesystem. `base` is the note as read
+ * to make `content`: a host can keep what was typed in it since.
  */
-async function writeNote(ctx: ToolContext, path: string, content: string): Promise<void> {
+async function writeNote(ctx: ToolContext, path: string, content: string, base?: string): Promise<void> {
   if (ctx.writeNote) {
-    await ctx.writeNote(path, content);
+    await ctx.writeNote(path, content, base);
     return;
   }
   await ctx.fs.write(path, content);
@@ -1299,7 +1300,7 @@ export function createLabnoteTools(): ToolDef[] {
 
         const { ok, md: next, removed } = replaceSectionBodyAt(md, target.line, content);
         if (!ok) return { ok: false, error: `Section not found: ${heading}` };
-        await writeNote(ctx, documentPath, next);
+        await writeNote(ctx, documentPath, next, md);
         return {
           ok: true,
           data: {
@@ -1401,7 +1402,7 @@ export function createLabnoteTools(): ToolDef[] {
           });
         }
         const title = [info.id, info.name, alias].filter(Boolean).join(' ');
-        await writeNote(ctx, readmePath, insertWorkflowChecklistEntries(readme, [{ done: false, title, fileName }]));
+        await writeNote(ctx, readmePath, insertWorkflowChecklistEntries(readme, [{ done: false, title, fileName }]), readme);
 
         return withWarnings({ ok: true, data: { path: workflowPath, fileName, registered: true } });
       },
@@ -1463,7 +1464,7 @@ export function createLabnoteTools(): ToolDef[] {
             : buildHwUnitOpMarkdown(info, { ...meta, equipment: op.equipment });
         const inserted = md.slice(0, at.offset) + block + md.slice(at.offset);
         const next = syncUnitOpTocAfterInsert(inserted, at.offset, ctx.sortUnitOpToc ?? true);
-        await writeNote(ctx, documentPath, next);
+        await writeNote(ctx, documentPath, next, md);
 
         const heading = `[${op.id} ${op.name}]${alias ? ` ${alias}` : ''}`;
         return {

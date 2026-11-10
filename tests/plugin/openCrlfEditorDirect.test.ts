@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import type { App } from 'obsidian';
 import { MarkdownView, TFile } from '../stubs/obsidian';
-import { processInOpenCrlfEditor, processNote } from '../../src/openEditorWrite';
+import { overUnsaved, processInOpenEditor, processNote } from '../../src/openEditorWrite';
 
 const NOTE = 'labnote/001_Test/001_WD010_A.labnote.md';
 
@@ -58,15 +58,23 @@ describe('processNote', () => {
   // The editor holds the change either way; the file gets it through the vault.
   it.each(['fails', 'writes nothing'] as const)('writes the change through the vault when the save %s', async save => {
     const { app, view, state } = setup('---\r\ntitle: x\r\n---\r\nbody\r\n', true, save);
-    expect(await processInOpenCrlfEditor(app, new TFile(NOTE) as never, data => data.replace('body', 'text'))).toBe(true);
+    expect(await processInOpenEditor(app, new TFile(NOTE) as never, data => data.replace('body', 'text'))).toBe(true);
     expect(state.editor).toBe('---\ntitle: x\n---\ntext\n');
     expect(state.disk).toBe('---\r\ntitle: x\r\n---\r\ntext\r\n');
     expect(view.saved).toBe(1);
     expect(state.processed).toBe(1);
   });
 
+  it('applies the change in the editor and saves when the file has LF, to the same bytes', async () => {
+    const disk = '---\ntitle: x\n---\nbody\n';
+    const { app, view, state } = setup(disk, true);
+    await processNote(app, new TFile(NOTE) as never, data => data.replace('body', 'text'));
+    expect(state.disk).toBe(disk.replace('body', 'text'));
+    expect(view.saved).toBe(1);
+    expect(state.processed).toBe(0);
+  });
+
   it.each([
-    ['open with LF in its file', '---\ntitle: x\n---\nbody\n', true],
     ['not open', '---\r\ntitle: x\r\n---\r\nbody\r\n', false],
   ] as const)('writes through the vault when %s', async (_name, disk, open) => {
     const { app, view, state } = setup(disk, open);
@@ -76,8 +84,8 @@ describe('processNote', () => {
     expect(view.saved).toBe(0);
   });
 
-  // Held as LF in the view, with nothing typed: no edit to save first, so the CRLF stays.
-  it('does not save a view in reading mode first when only its line ends differ', async () => {
+  // In reading mode no typing comes: written through the vault, the view not saved, the CRLF kept.
+  it('writes a note open in reading mode through the vault, without saving its view', async () => {
     const disk = '---\r\ntitle: x\r\n---\r\nbody\r\n';
     const { app, view, state } = setup(disk, true);
     view.mode = 'preview';
@@ -86,12 +94,32 @@ describe('processNote', () => {
     expect(view.saved).toBe(0);
   });
 
-  // Typed and not saved yet: saved first, so the write is not saved over when the note is left.
-  it('saves a view first when it holds unsaved typing', async () => {
+  // Typed and not saved yet: the change goes in with it and the note is saved, typing and all.
+  it('writes in the editor, with the unsaved typing, and saves once', async () => {
     const { app, view, state } = setup('---\ntitle: x\n---\nbody\n', true);
     state.editor += 'typed\n';
     await processNote(app, new TFile(NOTE) as never, data => data.replace('body', 'text'));
     expect(view.saved).toBe(1);
+    expect(state.processed).toBe(0);
     expect(state.disk).toBe('---\ntitle: x\n---\ntext\ntyped\n');
+  });
+});
+
+// A whole note made from `base`, over typing made since: kept where it does not touch the change.
+describe('overUnsaved', () => {
+  const base = 'a\nb\nc\n';
+  it.each([
+    ['typing after the change', 'a\nb\nc\ntyped\n', 'a\nB\nc\n', 'a\nB\nc\ntyped\n'],
+    ['typing before the change', 'typed\na\nb\nc\n', 'a\nb\nC\n', 'typed\na\nb\nC\n'],
+    ['no typing', base, 'a\nB\nc\n', 'a\nB\nc\n'],
+    ['no change', 'a\nb\nc\ntyped\n', base, 'a\nb\nc\ntyped\n'],
+    ['typing right after what the change rewrites', 'a\nbX\nc\n', 'a\nB\nc\n', 'a\nBX\nc\n'],
+    ['typing in what the change rewrites: the content', 'a\nY\nc\n', 'a\nB\nc\n', 'a\nB\nc\n'],
+  ] as const)('%s', (_name, text, content, expected) => {
+    expect(overUnsaved(text, base, content)).toBe(expected);
+  });
+
+  it('without a base, the content', () => {
+    expect(overUnsaved('anything', undefined, 'content')).toBe('content');
   });
 });

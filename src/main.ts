@@ -2706,8 +2706,8 @@ export default class LabnotePlugin extends Plugin {
   }
 
   /** `writeNote` hook for AI tools: writes through the vault, stamping lab notes. */
-  writeNoteStamped(path: string, content: string): Promise<void> {
-    return writeNoteStamped(this.app, this.host, path, content, this.stampLastUpdated);
+  writeNoteStamped(path: string, content: string, base?: string): Promise<void> {
+    return writeNoteStamped(this.app, this.host, path, content, this.stampLastUpdated, base);
   }
 
   /**

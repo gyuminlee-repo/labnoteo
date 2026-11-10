@@ -53,7 +53,15 @@ async function run(kind: 'register' | 'id', gap: number, slow: number) {
       })()
     );
   };
-  view.editor = { getValue: () => text, offsetToPos: (o: number) => o, replaceRange: () => {} };
+  // An edit in the editor leaves the view to be saved, as Obsidian's requestSave does.
+  view.editor = {
+    getValue: () => text,
+    offsetToPos: (o: number) => o,
+    replaceRange: (t: string, from: number, to: number) => {
+      text = text.slice(0, from) + t + text.slice(to);
+      view.dirty = true;
+    },
+  };
   view.getViewData = () => text;
   // As Obsidian's save writes: the file changes a tick later, then the modify comes.
   view.writeData = async (_f: TFile, t: string) => {

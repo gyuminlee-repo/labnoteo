@@ -1239,11 +1239,11 @@ describe('ToolDef.mutates', () => {
 describe('ctx.writeNote hook', () => {
   /** Records calls and applies them, so later reads see the change. */
   const spyHook = (target: MemFileSystem) => {
-    const calls: Array<{ path: string; content: string }> = [];
+    const calls: Array<{ path: string; content: string; base?: string }> = [];
     return {
       calls,
-      writeNote: async (path: string, content: string) => {
-        calls.push({ path, content });
+      writeNote: async (path: string, content: string, base?: string) => {
+        calls.push({ path, content, base });
         await target.write(path, content);
       },
     };
@@ -1260,6 +1260,8 @@ describe('ctx.writeNote hook', () => {
 
     expect(res.ok).toBe(true);
     expect(hook.calls.map(c => c.path)).toEqual([NOTE_PATH]);
+    // The note as read to make the content, so the host can keep typing made since.
+    expect(hook.calls[0].base).toBe('## [WD010 Design]\n\n#### Method\n\nold\n');
     expect(await fs.read(NOTE_PATH)).toContain('NEW');
   });
 
@@ -1268,6 +1270,7 @@ describe('ctx.writeNote hook', () => {
     await ensureWorkflowResources(fs, '.');
     const wf = (await loadWorkflows(fs, '.')).workflows[0];
     const readmePath = `${NOTE_DIR}/README.labnote.md`;
+    const readmeBefore = await fs.read(readmePath);
     const hook = spyHook(fs);
 
     const res = await tool('create_workflow').handler(
@@ -1278,6 +1281,8 @@ describe('ctx.writeNote hook', () => {
     expect(res.ok).toBe(true);
     const { path } = res.data as { path: string };
     expect(hook.calls.map(c => c.path)).toEqual([path, readmePath]);
+    // The new file has none; the README its text as read.
+    expect(hook.calls.map(c => c.base)).toEqual([undefined, readmeBefore]);
   });
 
   it('falls back to fs.write when no hook is supplied', async () => {
