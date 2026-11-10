@@ -9,10 +9,11 @@ import type { App } from 'obsidian';
 import { MarkdownView, TFile } from '../stubs/obsidian';
 import type { LabnoteHost } from '@labnoteo/core';
 import { processNoteThroughVault, registerWorkflowInReadme, writeNoteThroughVault } from '../../src/commands';
+import { processNote } from '../../src/openEditorWrite';
 
 const README = 'labnote/001_Test/README.labnote.md';
 const readme = (nl: string) => ['---', 'status: ongoing', 'last_updated_date: 2026-01-01', '---', '# Test', '', '## Related Workflows', ''].join(nl);
-type Save = 'normal' | 'extra' | 'typed' | 'lateBeforeProcess' | 'lateAfterProcess';
+type Save = 'normal' | 'extra' | 'typed' | 'lateBeforeProcess' | 'lateAfterProcess' | 'otherThenFails' | 'otherThenNothing';
 
 function setup(disk: string, save: Save) {
   const lf = (s: string) => s.replace(/\r\n?/g, '\n');
@@ -31,6 +32,13 @@ function setup(disk: string, save: Save) {
     },
   };
   view.save = async () => {
+    // Another writer changes the file while the save fails or writes nothing.
+    if (save === 'otherThenFails' || save === 'otherThenNothing') {
+      state.disk = state.disk.replace('status: ongoing', 'status: other');
+      state.writes.push('other');
+      if (save === 'otherThenFails') throw new Error('save failed');
+      return;
+    }
     if (save === 'extra') state.editor += 'X\n';
     if (save === 'typed') state.editor += 'typed';
     if (save === 'lateBeforeProcess') state.pending = 'beforeProcess';
@@ -86,6 +94,29 @@ describe('a change to an open CRLF note reaches the file once, however its save 
     const { app, host, state } = setup(readme('\r\n'), save);
     expect(await processNoteThroughVault(app, host, README, c => c.replace(/last_updated_date: .*/, m => `${m}Z`))).toBe(true);
     expect(count(state.disk, /Z/g)).toBe(1);
+  });
+
+  // Another writer changed the file: the change is not known to be in it, so it is not applied
+  // again (it could land twice with a late save) and no write is reported. Its change stands.
+  describe.each(['otherThenFails', 'otherThenNothing'] as const)('another writer changes the file meanwhile (save: %s)', save => {
+    it('a new workflow entry', async () => {
+      const { app, host, state } = setup(readme('\r\n'), save);
+      expect(await registerWorkflowInReadme(app, host, README, { title: 'WD020 New', fileName: '002_WD020_New.labnote.md' })).toBe('registered');
+      expect(count(state.disk, /WD020 New/g)).toBe(0);
+      expect(state.disk).toContain('status: other');
+    });
+    it('a change counted by its caller', async () => {
+      const { app, host, state } = setup(readme('\r\n'), save);
+      expect(await processNoteThroughVault(app, host, README, c => c.replace('# Test', '# Renamed'))).toBe(false);
+      expect(count(state.disk, /Renamed/g)).toBe(0);
+      expect(state.disk).toContain('status: other');
+    });
+    it('a direct note change', async () => {
+      const { app, state } = setup(readme('\r\n'), save);
+      await processNote(app, new TFile(README) as never, c => c.replace('# Test', '# Renamed'));
+      expect(count(state.disk, /Renamed/g)).toBe(0);
+      expect(state.writes).toEqual(['other']);
+    });
   });
 
   it.each([

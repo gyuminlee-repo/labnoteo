@@ -47,11 +47,18 @@ export async function processInOpenCrlfEditor(
   } catch {
     // The file is looked at below either way.
   }
-  if ((await app.vault.read(file)) !== disk) return true;
+  // A file no longer as it was holds the save when it reads as the editor's text (the change,
+  // and anything typed meanwhile); else another writer changed it and the change is not
+  // known to be there. It is not applied again then, which could put it in twice with a
+  // save landing late: false, and the editor keeps the change, which Obsidian may save later.
+  const lf = (text: string) => text.replace(/\r\n?/g, '\n');
+  const landed = (text: string) => lf(text) === after || lf(text) === lf(view.editor.getValue());
+  const now = await app.vault.read(file);
+  if (now !== disk) return landed(now);
   let final = disk;
   // Changed meanwhile (a save landing late, say): that write stands.
   await app.vault.process(file, data => (final = data !== disk ? data : after));
-  return final !== disk;
+  return landed(final);
 }
 
 /** {@link processInOpenCrlfEditor}, else `app.vault.process` as before. */
