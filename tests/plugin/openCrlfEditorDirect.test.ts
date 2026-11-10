@@ -75,4 +75,23 @@ describe('processNote', () => {
     expect(state.processed).toBe(1);
     expect(view.saved).toBe(0);
   });
+
+  // Held as LF in the view, with nothing typed: no edit to save first, so the CRLF stays.
+  it('does not save a view in reading mode first when only its line ends differ', async () => {
+    const disk = '---\r\ntitle: x\r\n---\r\nbody\r\n';
+    const { app, view, state } = setup(disk, true);
+    view.mode = 'preview';
+    await processNote(app, new TFile(NOTE) as never, data => data.replace('body', 'text'));
+    expect(state.disk).toBe(disk.replace('body', 'text'));
+    expect(view.saved).toBe(0);
+  });
+
+  // Typed and not saved yet: saved first, so the write is not saved over when the note is left.
+  it('saves a view first when it holds unsaved typing', async () => {
+    const { app, view, state } = setup('---\ntitle: x\n---\nbody\n', true);
+    state.editor += 'typed\n';
+    await processNote(app, new TFile(NOTE) as never, data => data.replace('body', 'text'));
+    expect(view.saved).toBe(1);
+    expect(state.disk).toBe('---\ntitle: x\n---\ntext\ntyped\n');
+  });
 });
