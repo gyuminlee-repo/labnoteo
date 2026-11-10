@@ -131,7 +131,8 @@ export class MarkdownView {
 
   /**
    * The text last read or saved, as Obsidian 1.15.0 keeps it (not in the API): the file's own
-   * text once read, null before (and after `save(true)`), what was saved after a save.
+   * text once read, null before, what was saved after a save (null again after `save(true)`
+   * wrote; a `save(true)` with nothing to write keeps it).
    */
   lastSavedData: string | null = null;
 
@@ -153,8 +154,8 @@ export class MarkdownView {
       this.data = text;
       this.lastSavedData = text;
       await this.writeData(this.file, text);
+      if (clear) this.lastSavedData = null;
     }
-    if (clear) this.lastSavedData = null;
   }
 
   /** Where `save` writes; a test sets it. */
