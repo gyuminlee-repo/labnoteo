@@ -10,7 +10,7 @@ import { EditorSelection, EditorState } from '@codemirror/state';
 import { MarkdownView, TFile } from '../stubs/obsidian';
 import { createLabnoteTools, MemFileSystem, type LabnoteHost, type ToolContext } from '@labnoteo/core';
 import { processNoteStamped } from '../../src/lastUpdatedStamp';
-import { changeExperimentStatusCommand, toggleDiscussionFlagCommand } from '../../src/commands';
+import { changeExperimentStatusCommand, changeNotWritten, processNoteThroughVault, toggleDiscussionFlagCommand } from '../../src/commands';
 import { OPEN_SAVE_WAIT_MS, editsBetween, openEditorText, processInOpenEditor } from '../../src/openEditorWrite';
 
 const P = 'labnote/001_Test/001_WD010_A.labnote.md';
@@ -51,7 +51,7 @@ function cmEditor(text: string, cursor = text.length) {
  * cursor at `cursor` (the end by default). `save`: 'fails' throws, 'stuck' never ends, 'leaves'
  * ends without writing, the view gone from the note, 'reloads' ends without writing, another
  * writer having changed the file and the view reading it again. `files`: others in the vault.
- * `interject`: another writer, run as the second failing save writes.
+ * `interject`: another writer, run as a failing save writes (the first or the second, `n`).
  */
 function openNote(
   path: string,
@@ -60,7 +60,7 @@ function openNote(
   cursor = typed.length,
   save: 'writes' | 'fails' | 'stuck' | 'leaves' | 'reloads' = 'writes',
   files: Record<string, string> = {},
-  interject?: () => Promise<void>
+  interject?: (n: number) => Promise<void>
 ) {
   const fs = new MemFileSystem({ ...files, [path]: disk });
   const tf = new TFile(path);
@@ -73,7 +73,7 @@ function openNote(
   let failed = 0;
   view.writeData = async (_f: TFile, t: string) => {
     if (save === 'fails') {
-      if (++failed === 2) await interject?.();
+      await interject?.(++failed);
       throw new Error('disk full');
     }
     await fs.write(path, t);
@@ -224,6 +224,36 @@ describe('a tool write over an open note', () => {
     expect(await fs.read(P)).toBe(NOTE);
   }, OPEN_SAVE_WAIT_MS + 10000);
 
+  // The save fails, and Obsidian starts a save of its own that does not end before the note
+  // is saved again: that one is waited for no longer than any, nothing written.
+  it('fails when a save Obsidian starts before the note is saved again does not end in time', async () => {
+    const { fs, view, ctx } = openNote(P, NOTE, NOTE.replace('body a', 'body a typed'), undefined, 'fails');
+    const save = view.save.bind(view);
+    let saves = 0;
+    view.save = async () => {
+      try {
+        await save();
+      } finally {
+        if (++saves === 1) view.savePromise = new Promise(() => {});
+      }
+    };
+    const res = await tool('update_section').handler(ctx, { documentPath: P, heading: 'B', content: 'NEW B' });
+    expect(res).toMatchObject({ ok: false, code: 'note_not_written', params: [P] });
+    expect(saves).toBe(1);
+    expect(await fs.read(P)).toBe(NOTE);
+  }, OPEN_SAVE_WAIT_MS + 10000);
+
+  // A change the editor holds, its save failing, asked for again: it is in the note as the
+  // note is (the editor's), not said to be not written for the file still without it.
+  it('finds a change in the editor not saved yet when it is asked for again', async () => {
+    const { fs, app, host, editor } = openNote(P, NOTE, NOTE, undefined, 'fails');
+    const add = (c: string) => (c.includes('ADDED') ? c : c.replace('body c', 'body c ADDED'));
+    expect(await processNoteThroughVault(app, host, P, add)).toBe(true);
+    expect(editor.getValue()).toContain('body c ADDED');
+    expect(await fs.read(P)).toBe(NOTE);
+    expect(await changeNotWritten(app, host, P, add)).toBe(false);
+  });
+
   it('refuses a section the note no longer has as it is written, nothing written', async () => {
     const { fs, ctx } = openNote(P, NOTE, NOTE.replace('## B', '## Bx'));
     const res = await tool('update_section').handler(ctx, { documentPath: P, heading: 'B', content: 'NEW B' });
@@ -274,24 +304,28 @@ describe('a tool write over an open note', () => {
     expect(await fs.read(P)).toBe(NOTE);
   });
 
-  // The save fails, and another writer changes the file while it is saved again: that write
-  // stands, the view reads it over its editor, and the change is nowhere.
-  it('fails when the save fails and another writer changes the file while it is saved again', async () => {
+  // Both saves fail, and another writer changes the file while it is saved again: the view,
+  // saving, does not read that (Obsidian skips a change made while it saves), so its editor
+  // keeps the change, and its next save writes it over that file.
+  it('reports the change the editor keeps when another writer changes the file as it is saved again', async () => {
     let fsRef: MemFileSystem | undefined;
-    const { fs, ctx } = openNote(P, NOTE, NOTE.replace('body a', 'body a typed'), undefined, 'fails', {}, async () => {
-      await fsRef!.write(P, OTHER);
+    const { fs, editor, ctx } = openNote(P, NOTE, NOTE.replace('body a', 'body a typed'), undefined, 'fails', {}, async n => {
+      if (n === 2) await fsRef!.write(P, OTHER);
     });
     fsRef = fs;
     const res = await tool('update_section').handler(ctx, { documentPath: P, heading: 'B', content: 'NEW B' });
-    expect(res).toMatchObject({ ok: false, code: 'note_not_written' });
+    expect(res.ok).toBe(true);
+    expect(editor.getValue()).toContain('## B\n\nNEW B');
     expect(await fs.read(P)).toBe(OTHER);
   });
 
-  // The save fails, and another writer changes the file, which the view, not dirty after its
-  // failed save, reads over its editor: the change is in neither, however alike they read.
+  // The save fails, and another writer changes the file before it is saved again; the view,
+  // not dirty after its failed save, reads that over its editor: the change is in neither,
+  // however alike they read.
   it('fails when the save fails and the view reads another writer\'s file over its editor', async () => {
     let at: { fs: MemFileSystem; editor: ReturnType<typeof cmEditor> } | undefined;
-    const { fs, editor, ctx } = openNote(P, NOTE, NOTE.replace('body a', 'body a typed'), undefined, 'fails', {}, async () => {
+    const { fs, editor, ctx } = openNote(P, NOTE, NOTE.replace('body a', 'body a typed'), undefined, 'fails', {}, async n => {
+      if (n !== 1) return;
       await at!.fs.write(P, OTHER);
       // Read over the editor once the save is over, as onModify does (it waits out a save).
       setTimeout(() => at!.editor.replaceRange(OTHER, 0, at!.editor.getValue().length), 0);

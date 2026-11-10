@@ -1382,7 +1382,7 @@ export async function registerWorkflowInReadme(
   };
   if (await processNoteThroughVault(app, host, readmePath, add)) return 'registered';
   // Nothing written: the entry is there already, or the README did not get it.
-  return (await changeNotWritten(host, readmePath, add)) ? 'notWritten' : 'registered';
+  return (await changeNotWritten(app, host, readmePath, add)) ? 'notWritten' : 'registered';
 }
 
 /**
@@ -2551,11 +2551,13 @@ export async function processOrCreateNote(
  * end in time, or another writer changed the note meanwhile) rather than had nothing to do.
  */
 export async function changeNotWritten(
+  app: App,
   host: LabnoteHost,
   notePath: string,
   transform: (content: string) => string
 ): Promise<boolean> {
-  const now = await host.fs.read(notePath);
+  // As the note is: an open editor keeps a change its save could not write yet.
+  const now = (await openEditorText(app, notePath)) ?? (await host.fs.read(notePath));
   return transform(now) !== now;
 }
 

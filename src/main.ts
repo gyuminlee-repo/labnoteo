@@ -2252,7 +2252,7 @@ export default class LabnotePlugin extends Plugin {
     };
     if (!(await processNoteThroughVault(this.app, this.host, readmePath, relink))) {
       // Not written (a save of the open README did not end in time): said as when not done.
-      if (await changeNotWritten(this.host, readmePath, relink)) {
+      if (await changeNotWritten(this.app, this.host, readmePath, relink)) {
         this.host.notify(
           'warn',
           this.t(
