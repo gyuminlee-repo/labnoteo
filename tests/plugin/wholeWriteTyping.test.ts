@@ -124,7 +124,9 @@ describe('a whole note changed by a tool over typing not saved yet', () => {
     const typedLines = [...lines];
     for (const k of [100, 2500, 7500, 9900]) typedLines[k] += ` typed${k}`;
     const typed = `${typedLines.join('\n')}\n`;
-    const { fs, app, host } = openNote('notes/long.md', disk, typed);
+    // The cursor where the third piece was typed, past the change.
+    const cursor = typed.indexOf(' typed7500') + ' typed7500'.length;
+    const { fs, app, host, editor } = openNote('notes/long.md', disk, typed, cursor);
     const change = (c: string) => {
       const l = c.split('\n');
       l[5000] = 'TOOL CHANGED LINE';
@@ -132,6 +134,8 @@ describe('a whole note changed by a tool over typing not saved yet', () => {
     };
     await processNoteStamped(app, host, 'notes/long.md', change, stamp);
     expect(await fs.read('notes/long.md')).toBe(change(typed));
+    // Put in as its own edit, not one from the first piece to the last: the cursor stays.
+    expect(editor.getValue().slice(0, editor.cursor()).endsWith(' typed7500')).toBe(true);
   });
 });
 

@@ -210,9 +210,11 @@ interface Hunk {
 
 /**
  * Above this many cells a longest common subsequence is not worked out: the lines found once
- * on both sides split the runs instead, and a run with none is one hunk.
+ * on both sides split the runs instead, and a run with none is diffed as long as it differs in
+ * at most {@link DIFF_STEPS_MAX} units ({@link fewestEdits}), else it is one hunk.
  */
 const DIFF_CELLS_MAX = 4_000_000;
+const DIFF_STEPS_MAX = 1000;
 
 /** The runs of `a` that `b` replaces, from a longest common subsequence of their units. */
 function hunks(a: string[], b: string[]): Hunk[] {
@@ -248,6 +250,11 @@ function hunksIn(a: string[], a0: number, a1: number, b: string[], b0: number, b
       return;
     }
   }
+  const few = n > 0 && m > 0 && (n + 1) * (m + 1) > DIFF_CELLS_MAX ? fewestEdits(a, a0, n, b, b0, m) : undefined;
+  if (few) {
+    out.push(...few);
+    return;
+  }
   if (n === 0 || m === 0 || (n + 1) * (m + 1) > DIFF_CELLS_MAX) {
     out.push({ s: a0, e: a1, t: b.slice(b0, b1) });
     return;
@@ -278,6 +285,60 @@ function hunksIn(a: string[], a0: number, a1: number, b: string[], b0: number, b
     }
   }
   if (cur) out.push(cur);
+}
+
+/**
+ * The hunks of a[a0, a0 + n) that b[b0, b0 + m) replaces, by the fewest units put in and taken
+ * out (Myers' diff), undefined past {@link DIFF_STEPS_MAX} of them: time and memory grow with
+ * how much differs, not with the length, so a long note with a few changes is diffed in full.
+ */
+function fewestEdits(a: string[], a0: number, n: number, b: string[], b0: number, m: number): Hunk[] | undefined {
+  const max = Math.min(DIFF_STEPS_MAX, n + m);
+  const off = max + 1;
+  const v = new Int32Array(2 * max + 3);
+  // `v` before each step d, for k in [-d - 1, d + 1], to walk back.
+  const trace: Int32Array[] = [];
+  let steps = -1;
+  search: for (let d = 0; d <= max; d++) {
+    trace.push(v.slice(off - d - 1, off + d + 2));
+    for (let k = -d; k <= d; k += 2) {
+      let x = k === -d || (k !== d && v[off + k - 1] < v[off + k + 1]) ? v[off + k + 1] : v[off + k - 1] + 1;
+      let y = x - k;
+      while (x < n && y < m && a[a0 + x] === b[b0 + y]) {
+        x++;
+        y++;
+      }
+      v[off + k] = x;
+      if (x >= n && y >= m) {
+        steps = d;
+        break search;
+      }
+    }
+  }
+  if (steps < 0) return undefined;
+  // Walk back: each step one unit of `b` put in before a[x], or a[x] taken out.
+  const ops: { x: number; y: number; put: boolean }[] = [];
+  let x = n;
+  let y = m;
+  for (let d = steps; d > 0; d--) {
+    const t = trace[d];
+    const at = (k: number) => t[k + d + 1];
+    const k = x - y;
+    const put = k === -d || (k !== d && at(k - 1) < at(k + 1));
+    const px = at(put ? k + 1 : k - 1);
+    const py = px - (put ? k + 1 : k - 1);
+    ops.push({ x: px, y: py, put });
+    x = px;
+    y = py;
+  }
+  const out: Hunk[] = [];
+  for (const op of ops.reverse()) {
+    let cur = out[out.length - 1];
+    if (!cur || cur.e !== a0 + op.x) out.push((cur = { s: a0 + op.x, e: a0 + op.x, t: [] }));
+    if (op.put) cur.t.push(b[b0 + op.y]);
+    else cur.e = a0 + op.x + 1;
+  }
+  return out;
 }
 
 /**
