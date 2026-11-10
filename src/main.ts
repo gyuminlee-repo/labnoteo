@@ -2706,8 +2706,8 @@ export default class LabnotePlugin extends Plugin {
   }
 
   /** `processNote` hook for AI tools: changes the note as it is when written, stamping lab notes. */
-  processNoteStamped(path: string, change: (content: string) => string): Promise<boolean> {
-    return processNoteStamped(this.app, this.host, path, change, this.stampLastUpdated);
+  processNoteStamped(path: string, change: (content: string) => string, lone?: boolean): Promise<boolean> {
+    return processNoteStamped(this.app, this.host, path, change, this.stampLastUpdated, lone);
   }
 
   /**

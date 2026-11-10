@@ -20,14 +20,19 @@ const stamp = (c: string) => c.replace(/last_updated_date: .*/, 'last_updated_da
 /** An editor over CodeMirror's state, as Obsidian's is: a change maps the cursor as there. */
 function cmEditor(text: string, cursor = text.length) {
   let state = EditorState.create({ doc: text, selection: EditorSelection.cursor(cursor) });
+  /** How many times the editor was changed (one undo step each). */
+  const applied = { count: 0 };
   return {
+    applied,
     getValue: () => state.doc.toString(),
     offsetToPos: (o: number) => o,
     replaceRange: (t: string, from: number, to: number = from) => {
+      applied.count++;
       state = state.update({ changes: { from, to, insert: t } }).state;
     },
     // As Obsidian's `Editor.transaction`: every change at its place in the text before any.
     transaction: (tx: { changes: { from: number; to?: number; text: string }[] }) => {
+      applied.count++;
       state = state.update({ changes: tx.changes.map(c => ({ from: c.from, to: c.to ?? c.from, insert: c.text })) }).state;
     },
     /** A key typed at the cursor. */
@@ -97,7 +102,7 @@ function openNote(
     }),
     workspaceRoot: '.',
     globalSampleFolder: 'resources/labsamples',
-    processNote: (p, change) => processNoteStamped(app, host, p, change, stamp),
+    processNote: (p, change, lone) => processNoteStamped(app, host, p, change, stamp, lone),
   };
   return { fs, app, host, view, editor, ctx, notices };
 }
@@ -288,5 +293,32 @@ describe('front matter changed over typing not saved yet', () => {
     await changeExperimentStatusCommand(app, host, stamp, DIR);
     expect(await host.fs.read(README)).toBe(disk);
     expect(notices.join('\n')).toContain(`Front matter of ${README} could not be read`);
+  });
+});
+
+// A new workflow listed in its open README: the entry and the README's date go in as one change,
+// one undo step; with no checklist section, the date alone, as before.
+describe('a workflow created while its README is open', () => {
+  const README = 'labnote/001_Test/README.labnote.md';
+  const disk = ['---', 'title: T', 'last_updated_date: 2026-11-01', '---', '# T', '', '## Related Workflows', ''].join('\n');
+
+  it('changes the README editor once, entry and date together', async () => {
+    const typed = disk.replace('# T', '# T typed');
+    const { fs, editor, ctx } = openNote(README, disk, typed);
+    const res = await tool('create_workflow').handler(ctx, { documentPath: README, workflowId: 'WD010' });
+    expect(res).toMatchObject({ ok: true, data: { registered: true } });
+    expect(editor.applied.count).toBe(1);
+    expect(editor.getValue()).toContain('last_updated_date: 2026-11-10');
+    expect(editor.getValue()).toMatch(/- \[ \] \[WD010 /);
+    expect(await fs.read(README)).toBe(editor.getValue());
+  });
+
+  it('dates a README with no checklist section, once, and lists nothing', async () => {
+    const bare = disk.replace('## Related Workflows\n', '');
+    const { editor, ctx } = openNote(README, bare, bare);
+    const res = await tool('create_workflow').handler(ctx, { documentPath: README, workflowId: 'WD010' });
+    expect(res).toMatchObject({ ok: true, data: { registered: false } });
+    expect(editor.applied.count).toBe(1);
+    expect(editor.getValue()).toBe(stamp(bare));
   });
 });

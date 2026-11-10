@@ -101,9 +101,11 @@ export interface ToolContext {
    * editor, with what was typed and not saved yet), and may be called more
    * than once: the last call is the one written. A note that does not exist is
    * made of `''`. Resolves false when nothing was written though the note
-   * would change (a save of the open note did not end in time).
+   * would change (a save of the open note did not end in time). `lone`: what the
+   * host changes in other notes along with this one (the date of the experiment
+   * README, say) is left out, the caller writing those notes itself next.
    */
-  processNote?(path: string, change: (text: string) => string): Promise<boolean>;
+  processNote?(path: string, change: (text: string) => string, lone?: boolean): Promise<boolean>;
   /**
    * Whether inserting a unit operation sorts the note's unit operation list
    * into note order, as the "Auto-sync unit operation TOC" setting does in the
@@ -122,8 +124,13 @@ export interface ToolContext {
  * Rewrite a markdown note through {@link ToolContext.processNote} when the host
  * provides it, otherwise on the filesystem.
  */
-async function processNote(ctx: ToolContext, path: string, change: (text: string) => string): Promise<boolean> {
-  if (ctx.processNote) return ctx.processNote(path, change);
+async function processNote(
+  ctx: ToolContext,
+  path: string,
+  change: (text: string) => string,
+  lone = false
+): Promise<boolean> {
+  if (ctx.processNote) return ctx.processNote(path, change, lone);
   const text = (await ctx.fs.exists(path)) ? await ctx.fs.read(path) : '';
   await ctx.fs.write(path, change(text));
   return true;
@@ -1471,7 +1478,8 @@ export function createLabnoteTools(): ToolDef[] {
         // The new workflow file cannot be open yet, but the README very well
         // may be — both go through the hook so the host owns note writes.
         const content = createWorkflowContent(info, experimenter, alias, { locale: ctx.locale });
-        if (!(await processNote(ctx, workflowPath, () => content))) {
+        // The README is written next, with what goes with a new note in it (its date): one change.
+        if (!(await processNote(ctx, workflowPath, () => content, true))) {
           return { ok: false, ...noteNotWritten(workflowPath) };
         }
 
@@ -1488,6 +1496,8 @@ export function createLabnoteTools(): ToolDef[] {
           });
         }
         if (!listed.data) {
+          // Not listed: the README gets only what goes with the new note in it.
+          await processNote(ctx, readmePath, text => text);
           return withWarnings({
             ok: true,
             data: {

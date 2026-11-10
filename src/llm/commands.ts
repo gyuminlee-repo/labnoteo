@@ -81,7 +81,7 @@ function toolContext(plugin: LabnotePlugin): ToolContext {
     customTypes: plugin.settings.customSampleTypes,
     locale: getObsidianLanguage(),
     sortUnitOpToc: plugin.settings.autoSyncUnitOpToc,
-    processNote: (path, change) => plugin.processNoteStamped(path, change),
+    processNote: (path, change, lone) => plugin.processNoteStamped(path, change, lone),
     findSampleUsages: (folder, type, id) => sampleUsages(plugin.app, plugin, folder, type, id),
   };
 }

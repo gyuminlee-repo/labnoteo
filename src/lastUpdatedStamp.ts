@@ -83,7 +83,8 @@ export async function stampNoteAndReadme(
 /**
  * The `processNote` hook for AI tools: `change` applied to the note as it is when written
  * (an open editor's text, typing not saved yet included; a note that does not exist yet is
- * made of `''`), a lab note stamped with it, then the experiment README of a workflow note.
+ * made of `''`), a lab note stamped with it, then the experiment README of a workflow note
+ * unless `lone`.
  * Resolves only once the README is written, because `create_workflow` re-reads it right
  * after. False when the note would change and was not written: a save of the open note did
  * not end in time.
@@ -93,12 +94,14 @@ export async function processNoteStamped(
   host: LabnoteHost,
   path: string,
   change: (content: string) => string,
-  stamp: StampNote
+  stamp: StampNote,
+  lone = false
 ): Promise<boolean> {
   const lab = isLabNotePath(path);
   const made = lab ? (c: string) => stamp(change(c), path) : change;
   const written = await processOrCreateNote(app, host, path, made);
-  const readme = lab ? experimentReadmeOf(path) : undefined;
+  // `lone`: the caller writes the README next, which stamps it in the same change.
+  const readme = lab && !lone ? experimentReadmeOf(path) : undefined;
   if (readme) await stampNote(app, host, readme, stamp);
   return written;
 }
