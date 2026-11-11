@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { App } from 'obsidian';
 import { zipSync, strToU8 } from 'fflate';
 import { MarkdownView, TFile, TFolder } from '../stubs/obsidian';
@@ -1184,6 +1184,41 @@ describe('undo and hand filing that put the note back as it was', () => {
     // Only the queued image is left: the copy saved for the note went.
     expect([...s.binary.keys()]).toEqual([QUEUED]);
     expect(notices.filter(m => /may or may not|only in its open editor/.test(m))).toEqual([]);
+  });
+});
+
+describe('a scan is filed only when the note on disk has its entry and link', () => {
+  const QUEUED = '_labnote-scans/unmatched/20261021-021738_unknown_photo1.jpg';
+  const file = (p: string) => new TFile(p) as unknown as Parameters<ScanPipeline['fileManually']>[0];
+  afterEach(() => vi.useRealTimers());
+
+  it('a note that only names the image the scan would get is no proof: the queued image stays', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-12T09:00:00'));
+    const note = `${buildNote(ID, ['UHW010', 'UHW020'])}\nPending file name: ${ID}_u2_p1_20261112.jpg\n`;
+    const s = setup({ [NOTE]: note }, {});
+    s.binary.set(QUEUED, new Uint8Array([9, 9, 9]).buffer);
+    // The write cannot read the note, nor can the check right after it; the next read can.
+    let failNextRead = false;
+    const read = s.app.vault.read.bind(s.app.vault);
+    Object.assign(s.app.vault, {
+      process: async () => {
+        failNextRead = true;
+        throw new Error('EBUSY');
+      },
+      read: async (f: TFile) => {
+        if (f.path === NOTE && failNextRead) {
+          failNextRead = false;
+          throw new Error('EBUSY');
+        }
+        return read(f as never);
+      },
+    });
+    const result = await s.pipeline.fileManually(file(QUEUED), file(NOTE), 2, { page: 1, pageCount: 1 });
+    expect(s.text.get(NOTE)).toBe(note);
+    expect(result.status).toBe('error');
+    expect(s.binary.has(QUEUED)).toBe(true);
+    expect(s.trashed).not.toContain(QUEUED);
   });
 });
 

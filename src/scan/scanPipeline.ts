@@ -522,12 +522,14 @@ export class ScanPipeline {
       // The queued image goes only once the note on disk has the scan: one its open editor alone
       // keeps (its save failed) would be lost with the queued image if the editor is closed unsaved.
       // Trashed only when the disk is read and has the scan: unread is not saved. A scan filed is
-      // known by its image's link (the note may have renamed its section since), a duplicate by its entry.
+      // known by its entry and the link to its image under it (the note may have renamed its
+      // section since), a duplicate by its entry. Read strictly: a name merely mentioned, which
+      // keeps an image from being trashed, is no proof the scan went in.
       const name = result.status === 'filed' && result.imagePath ? posix.basename(result.imagePath) : undefined;
       const disk = !result.notePath
         ? true
         : name
-          ? await this.diskLinks(result.notePath, name)
+          ? await this.diskFiled(result.notePath, result.hash, name)
           : result.hash
             ? await this.onDisk(result.notePath, [result.hash])
             : true;
@@ -674,12 +676,17 @@ export class ScanPipeline {
     }
   }
 
-  /** Whether the note on disk links the image named `name`; 'unknown' when it cannot be read. */
-  private async diskLinks(notePath: string, name: string): Promise<boolean | 'unknown'> {
+  /**
+   * Whether the note on disk has the scan `hash` filed: its entry, with a link to the image named
+   * `name` on the embed line under it; 'unknown' when it cannot be read. The strict reading, for
+   * a success that lets the queued image go ({@link linksImage} is the loose one, for keeping).
+   */
+  private async diskFiled(notePath: string, hash: string | undefined, name: string): Promise<boolean | 'unknown'> {
     const file = this.deps.app.vault.getAbstractFileByPath(notePath);
-    if (!(file instanceof TFile)) return false;
+    if (!(file instanceof TFile) || !hash) return false;
     try {
-      return mayLinkName(await this.deps.app.vault.read(file), name);
+      const lower = name.toLowerCase();
+      return listFiledScans(await this.deps.app.vault.read(file)).some(scan => scan.hash === hash && linkedNames(scan.embed).has(lower));
     } catch (err) {
       console.warn('[labnoteo] could not read the note to see whether it links the scan', notePath, err);
       return 'unknown';
