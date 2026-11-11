@@ -54,7 +54,10 @@ export function htmlBlockLines(lines: readonly string[]): boolean[] {
     const line = lines[i].replace(/\r?\n$|\r$/, '');
     const blank = line.trim() === '';
     if (open) {
+      // The blank line ending a block is marked too: a line put right before it would join the
+      // block, so an entry is moved past it.
       if (open.end === null && blank) {
+        out[i] = true;
         open = null;
         paragraph = false;
         continue;

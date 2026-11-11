@@ -36,12 +36,18 @@ describe('lines that start no HTML block', () => {
 
   it('a lone tag after paragraph text is text; after a blank line it starts a block', () => {
     expect(htmlBlockLines(['para', '<custom-tag>', 'x'])).toEqual([false, false, false]);
-    expect(htmlBlockLines(['', '<custom-tag>', 'x', '', 'y'])).toEqual([false, true, true, false, false]);
+    expect(htmlBlockLines(['', '<custom-tag>', 'x', '', 'y'])).toEqual([false, true, true, true, false]);
   });
 
-  it('a comment ends on its own line, a div at the blank line', () => {
+  it('a comment ends on its own line, a div at the blank line (marked: a line before it joins the div)', () => {
     expect(htmlBlockLines(['<!-- one -->', 'x'])).toEqual([true, false]);
-    expect(htmlBlockLines(['<div>', 'x', '', 'y'])).toEqual([true, true, false, false]);
+    expect(htmlBlockLines(['<div>', 'x', '', 'y'])).toEqual([true, true, true, false]);
+  });
+
+  it('adds an entry past the blank line ending a div, not into the div', () => {
+    const md = '## Related Workflows\n<div>\n</div>\n- [ ] [A](./001_WD010_A.labnote.md)\n\n## Notes\n';
+    const out = insertWorkflowChecklistEntries(md, [{ done: false, title: 'D', fileName: '004_WD010_D.labnote.md' }]);
+    expect(out).toBe('## Related Workflows\n<div>\n</div>\n- [ ] [A](./001_WD010_A.labnote.md)\n\n- [ ] [D](./004_WD010_D.labnote.md)\n## Notes\n');
   });
 
   it('an autolink hides no heading: the next section keeps its entry', () => {
