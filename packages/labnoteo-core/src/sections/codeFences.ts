@@ -36,7 +36,9 @@ export function stepFence(line: string, open: OpenFence | null): OpenFence | nul
   // CommonMark: a backtick fence's info string has no backtick (```` ```a``` ```` is inline code).
   if (open === null) return run[0] === '`' && afterRun.includes('`') ? null : { char: run[0], length: run.length };
 
-  const closes = run[0] === open.char && run.length >= open.length && afterRun.trim() === '';
+  // Only spaces and tabs may follow a closing run (CommonMark): an NBSP or another Unicode space
+  // after it makes the line no closer.
+  const closes = run[0] === open.char && run.length >= open.length && /^[ \t]*$/.test(afterRun.replace(/\r?\n$|\r$/, ''));
   return closes ? null : open;
 }
 

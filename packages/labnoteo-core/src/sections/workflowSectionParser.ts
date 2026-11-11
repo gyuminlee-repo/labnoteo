@@ -217,9 +217,9 @@ export function appendUnitOpToWorkflowToc(
   // only when no fence line before it was indented: an indented one may belong
   // to a list item and end with it (CommonMark), which this reading does not see.
   // Nor after a line that may start an HTML block (`<` at up to three spaces): a
-  // fence in an HTML block is no code there. Nor when a fence closes on a line with
-  // anything but spaces and tabs after its run (an NBSP, say): this reading takes
-  // that for a closer, CommonMark does not. Nor when a line holds a lone CR: CommonMark
+  // fence in an HTML block is no code there. Nor when a fence closes on a line that is not a
+  // run of up to three spaces in with only spaces and tabs after it (a closer in a list item,
+  // say). Nor when a line holds a lone CR: CommonMark
   // ends a line there, this reading (split on LF) does not.
   if (lastEntry !== -1) {
     const opener: number[] = [];

@@ -37,6 +37,16 @@ describe('readers after a list fence', () => {
   });
 });
 
+describe('a closing run with another space after it', () => {
+  it.each(['\u00a0', '\u3000', '\u1680', '\ufeff'])('is no closer (%j), as CommonMark reads it', sp => {
+    expect(headings(`${t}\n${t}${sp}\n## In\n${t}\n## Out\n`)).toEqual(['Out']);
+  });
+
+  it('a space or tab after it still closes', () => {
+    expect(headings(`${t}\n${t} \t\n## Out\n`)).toEqual(['Out']);
+  });
+});
+
 describe('readers with a fence rule of their own', () => {
   it('reads the issue marker below a list fence, and none in a fence an info line does not close', () => {
     expect(parseIssueMarkers(`- ${t}md\n  ${t}\ntext @issue;ISS-1;topic\n`).markers.map(m => m.id)).toEqual(['ISS-1']);
