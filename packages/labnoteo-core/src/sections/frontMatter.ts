@@ -19,9 +19,26 @@ export interface FrontMatterParse {
   parseError?: string;
 }
 
-/** `md` without its leading `---` YAML front matter, when it has one. */
+/**
+ * Where the body of `md` starts after its front matter, 0 without one, as Obsidian
+ * (getFrontMatterInfo, 1.14.5) finds it: an opening `---` line, then the first `---` that
+ * starts a line and ends it (or the text); an empty block `---\n---` included. YAML that
+ * does not read is front matter all the same.
+ */
+export function frontMatterEnd(md: string): number {
+  const open = /^---\r?\n/.exec(md);
+  if (!open) return 0;
+  const close = /---(\r?\n|$)/g;
+  close.lastIndex = open[0].length;
+  for (let m = close.exec(md); m; m = close.exec(md)) {
+    if (md.charAt(m.index - 1) === '\n') return close.lastIndex;
+  }
+  return 0;
+}
+
+/** `md` without its leading `---` YAML front matter, when it has one ({@link frontMatterEnd}). */
 export function stripFrontMatter(md: string): string {
-  return md.replace(/^---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/, '');
+  return md.slice(frontMatterEnd(md));
 }
 
 /**

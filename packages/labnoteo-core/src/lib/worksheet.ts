@@ -101,6 +101,7 @@ interface RawSection {
   lines: string[];
 }
 
+// front matter: reads one unit operation block's lines, below the front matter.
 function splitSections(lines: readonly string[]): { description: string; sections: RawSection[] } {
   const sections: RawSection[] = [];
   const intro: string[] = [];

@@ -1481,7 +1481,8 @@ const WORKFLOW_HEADING_RE = /^##\s+\[([A-Z]{2}\d{3})\s+([^\]]+)\](.*)$/;
 
 /** The note's `## [ID name] alias` heading, or undefined when it has none. */
 export function parseWorkflowHeading(content: string): WorkflowHeading | undefined {
-  for (const line of content.split(/\r?\n/)) {
+  const lines = content.split(/\r?\n/);
+  for (const line of lines.slice(frontMatterLineCountOf(lines))) {
     const m = WORKFLOW_HEADING_RE.exec(line);
     if (m) return { id: m[1], name: m[2].trim(), alias: m[3].trim() };
   }
@@ -1651,7 +1652,8 @@ export function rewriteWorkflowTitle(
   }
   if (parts.heading !== false) {
     const h2 = new RegExp(`^##\\s+\\[${escapeRegExp(id)}\\s+[^\\]]+\\]`);
-    const at = lines.findIndex(l => h2.test(l));
+    const fm = frontMatterLineCountOf(lines);
+    const at = lines.findIndex((l, i) => i >= fm && h2.test(l));
     if (at !== -1) lines[at] = `## [${id} ${name}]${suffix}`;
   }
   return joinLineBuffer(buf);
@@ -2126,6 +2128,7 @@ export function unitOpsAllEnded(content: string, now: string = getSeoulDateTimeS
   return ended.length > 0 && ended.every(Boolean);
 }
 
+// front matter: reads it itself (fmEnd) to rewrite experimenter; the body is read from past it.
 export function planWorkflowExperimenterSync(
   content: string,
   author: string,

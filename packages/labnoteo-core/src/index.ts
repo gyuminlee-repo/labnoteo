@@ -49,6 +49,8 @@ export {
   replaceSectionBody,
   replaceSectionBodyAt,
   findSectionMatches,
+  listHeadings,
+  sectionBodyEnd,
   diffBodyLines,
   type SectionEditResult,
   type SectionMatch,
@@ -114,6 +116,7 @@ export {
   serializeFrontMatterEntry,
   setFrontMatterKeys,
   stripFrontMatter,
+  frontMatterLineCountOf,
   planDateInsertion,
   type DateInsertion,
 } from './sections/frontMatter';

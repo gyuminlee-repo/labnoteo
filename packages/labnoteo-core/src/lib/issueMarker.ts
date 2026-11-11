@@ -20,6 +20,7 @@
  * grammar — the plugin command that writes markers, `issue-sync` that promotes
  * them, and `validate` that reports broken ones.
  */
+import { frontMatterLineCountOf } from '../sections/frontMatter';
 import { isInFrontMatter } from '../sections/documentHead';
 
 /** Marker keyword, without the delimiter. */
@@ -741,8 +742,10 @@ export function issueSentenceRange(
 export function findEnclosingHeading(md: string, line: number): string | undefined {
   const lines = md.split('\n');
   const code = codeLines(lines);
+  // Not above the front matter's end: a `## …` YAML comment there is no heading.
+  const fm = frontMatterLineCountOf(lines);
 
-  for (let i = Math.min(line, lines.length) - 1; i >= 0; i--) {
+  for (let i = Math.min(line, lines.length) - 1; i >= fm; i--) {
     if (code[i]) continue;
     const m = lines[i].match(/^#{1,6}\s+(.*?)\s*$/);
     if (m && m[1]) return m[1];

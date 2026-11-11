@@ -125,6 +125,7 @@ export function findSectionMatches(md: string, heading: string, opts: { asNote?:
  * is the same as {@link findSectionMatches}'s fallback. Blank lines it leaves
  * at either end go too.
  */
+// front matter: content sent for a section, no note.
 export function stripRepeatedHeading(content: string, heading: string): string {
   const lines = content.split(/\r?\n/);
   const wanted = normalizeHeadingText(heading);
@@ -173,6 +174,7 @@ export function replaceSectionBody(
  * Returns `{ ok: false, md }` unchanged when that line is not a heading. CRLF
  * vs LF endings are detected and preserved.
  */
+// front matter: the heading line is given; the body runs below it.
 export function replaceSectionBodyAt(md: string, line: number, newBody: string): SectionEditResult {
   // Lines outside the body keep their own line breaks, even in mixed endings.
   const buf = splitLineBuffer(md);
@@ -193,6 +195,7 @@ export function replaceSectionBodyAt(md: string, line: number, newBody: string):
  * {@link replaceSectionBodyAt} would replace — or undefined when that line is
  * not a heading.
  */
+// front matter: the heading line is given; the body runs below it.
 export function sectionBodyAt(md: string, line: number): SectionBody | undefined {
   const lines = md.split(/\r?\n/);
   const m = lines[line]?.match(ANY_HEADING_RE);
@@ -235,6 +238,7 @@ export function diffBodyLines(before: string, after: string): { removed: string[
   return { removed, added };
 }
 
+// front matter: a section body's lines.
 function summarizeBody(body: readonly string[]): SectionBody {
   let subheadings = 0;
   let fence: OpenFence | null = null;
@@ -274,6 +278,7 @@ const THEMATIC_BREAK_RE = /^ {0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/;
  * tools is the range a replacement writes. The method body and summary
  * insertion readers (blockInsert, summaryInsert) read it line by line only.
  */
+// front matter: reads down from a heading, below the front matter.
 export function sectionBodyEnd(
   lines: readonly string[],
   headingIdx: number,

@@ -52,6 +52,7 @@ function scanHeadings(lines: readonly string[]): HeadingLine[] {
   return headings;
 }
 
+// front matter: tests a heading scanHeadings found, past the front matter.
 const isUnitOpHeading = (lines: readonly string[], h: HeadingLine): boolean =>
   h.level === 3 && UNIT_OP_HEADING_PATTERN.test(lines[h.line]);
 

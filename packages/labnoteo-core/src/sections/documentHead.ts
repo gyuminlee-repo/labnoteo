@@ -3,6 +3,7 @@
  * heading. Shared by the insert planners that must not put content in the front
  * matter or above the title (#50, #63).
  */
+import { frontMatterLineCountOf } from './frontMatter';
 export interface DocumentHead {
   /** Line index of the closing `---`, or -1 when there is no (closed) front matter. */
   fmEndLine: number;
@@ -13,16 +14,8 @@ export interface DocumentHead {
 }
 
 export function scanDocumentHead(lines: readonly string[]): DocumentHead {
-  // Front matter: first line `---`, closed by the next `---`.
-  let fmEndLine = -1;
-  if (lines[0]?.trim() === '---') {
-    for (let i = 1; i < lines.length; i++) {
-      if (lines[i].trim() === '---') {
-        fmEndLine = i;
-        break;
-      }
-    }
-  }
+  // Front matter as Obsidian finds it: its closing `---` line, or -1 without one.
+  const fmEndLine = frontMatterLineCountOf(lines) - 1;
 
   // Ignore `#` lines inside fenced code blocks and inside the front matter
   // (YAML comments look like headings).

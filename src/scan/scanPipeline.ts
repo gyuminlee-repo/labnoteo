@@ -73,10 +73,11 @@ export interface ScanResult {
   /** Scans of the same page filed before this one. */
   previous?: { hash: string; embed: string }[];
   /**
-   * Entries an undo or "delete earlier scan" took out of the open editor alone (its save
-   * failed), not yet on disk: counted as removed by the try that finds the note saved.
+   * Entries an undo (`undo`) or "delete earlier scan" (`earlier`) took out of the open editor
+   * alone (its save failed), not yet on disk: counted as removed by the same operation's try
+   * that finds the note saved, each apart.
    */
-  removedPending?: number;
+  removedPending?: { undo?: number; earlier?: number };
   /** The unit operation it was filed under, as its heading reads (`[UHW290 Name] alias`). */
   block?: string;
   /**
@@ -500,7 +501,8 @@ export class ScanPipeline {
     if (result.status === 'filed' || result.status === 'duplicate') {
       // The queued image goes only once the note on disk has the scan: one its open editor alone
       // keeps (its save failed) would be lost with the queued image if the editor is closed unsaved.
-      if (result.notePath && result.hash && !(await this.onDisk(result.notePath, [result.hash]))) {
+      // Trashed only when the disk is read and has the scan: unread is not saved.
+      if (result.notePath && result.hash && (await this.onDisk(result.notePath, [result.hash])) !== true) {
         this.deps.host.notify(
           'warn',
           this.deps.t(
@@ -550,7 +552,7 @@ export class ScanPipeline {
     // Taken out of the editor alone (its save failed): remembered, so the try that finds the
     // note saved says the scan was removed rather than gone already.
     if (written === 'kept') {
-      result.removedPending = (result.removedPending ?? 0) + (removed ? 1 : 0);
+      result.removedPending = { ...result.removedPending, undo: (result.removedPending?.undo ?? 0) + (removed ? 1 : 0) };
       return 'notWritten';
     }
     // Not written (a save of the open note did not end in time), or not known to be: the entry
@@ -563,8 +565,8 @@ export class ScanPipeline {
     const image = result.imagePath ? this.deps.app.vault.getAbstractFileByPath(result.imagePath) : null;
     if (image instanceof TFile) await this.deps.app.fileManager.trashFile(image);
     if (removed) this.deps.markUserEdit(result.notePath);
-    const done = removed || (result.removedPending ?? 0) > 0;
-    delete result.removedPending;
+    const done = removed || (result.removedPending?.undo ?? 0) > 0;
+    if (result.removedPending) delete result.removedPending.undo;
     return done;
   }
 
@@ -575,7 +577,8 @@ export class ScanPipeline {
   private async referenced(notePath: string, hashes: readonly string[]): Promise<boolean> {
     const editor = openSourceView(this.deps.app, notePath)?.editor.getValue();
     if (editor !== undefined && hashes.some(hash => removeScanEntry(editor, hash).removed)) return true;
-    return this.onDisk(notePath, hashes);
+    // A note that cannot be read is not known not to have them, so it may.
+    return (await this.onDisk(notePath, hashes)) !== false;
   }
 
   /**
@@ -597,10 +600,10 @@ export class ScanPipeline {
   }
 
   /**
-   * Whether the note on disk may still have one of the scans `hashes`: their images stay then.
-   * A note that cannot be read is not known not to, so it may.
+   * Whether the note on disk has one of the scans `hashes`; 'unknown' when it cannot be read.
+   * Each caller decides what unknown means: an image to keep stays, a scan to confirm is not.
    */
-  private async onDisk(notePath: string, hashes: readonly string[]): Promise<boolean> {
+  private async onDisk(notePath: string, hashes: readonly string[]): Promise<boolean | 'unknown'> {
     const { app } = this.deps;
     const file = app.vault.getAbstractFileByPath(notePath);
     if (!(file instanceof TFile)) return false;
@@ -609,7 +612,7 @@ export class ScanPipeline {
       return hashes.some(hash => removeScanEntry(disk, hash).removed);
     } catch (err) {
       console.warn('[labnoteo] could not read the note to see whether its scans are on disk', notePath, err);
-      return true;
+      return 'unknown';
     }
   }
 
@@ -642,7 +645,7 @@ export class ScanPipeline {
     const written = await processNoteThroughVaultOnDisk(app, host, notePath, remove);
     // Taken out of the editor alone (its save failed): remembered, as for undo.
     if (written === 'kept') {
-      result.removedPending = (result.removedPending ?? 0) + count;
+      result.removedPending = { ...result.removedPending, earlier: (result.removedPending?.earlier ?? 0) + count };
       return 'notWritten';
     }
     if (written === 'uncertain') return 'uncertain';
@@ -651,8 +654,8 @@ export class ScanPipeline {
     for (const image of images) await app.fileManager.trashFile(image);
     if (count > 0) this.deps.markUserEdit(notePath);
     result.previous = [];
-    const removed = count + (result.removedPending ?? 0);
-    delete result.removedPending;
+    const removed = count + (result.removedPending?.earlier ?? 0);
+    if (result.removedPending) delete result.removedPending.earlier;
     return { removed, trashed: images.length };
   }
 }

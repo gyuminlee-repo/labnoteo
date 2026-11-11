@@ -2,6 +2,7 @@
  * Date utility functions for Lab Note Editor
  * Pure functions that can be shared between Extension and Webview
  */
+import { frontMatterLineCountOf } from '../sections/frontMatter';
 import { escapeRegExp } from './regexUtils';
 
 /**
@@ -180,9 +181,12 @@ export function findPairedMetaDate(
   const own = lines[lineIndex] === undefined ? null : findMetaDateFieldInLine(lines[lineIndex]);
   if (!own) return undefined;
   const want: MetaDateFieldMatch['field'] = own.field === 'Start_date' ? 'End_date' : 'Start_date';
+  // Front matter is YAML: no Meta block there, and none reaches into it.
+  const fm = frontMatterLineCountOf(lines);
+  if (lineIndex < fm) return undefined;
   const isHeading = (l: string) => /^#{1,6}\s/.test(l);
   let start = lineIndex;
-  while (start > 0 && !isHeading(lines[start - 1])) start--;
+  while (start > fm && !isHeading(lines[start - 1])) start--;
   for (let i = start; i < lines.length && (i === start || !isHeading(lines[i])); i++) {
     const m = findMetaDateFieldInLine(lines[i]);
     if (m?.field === want) return { field: want, value: m.value };

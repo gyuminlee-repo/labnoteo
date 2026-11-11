@@ -13,7 +13,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
 import { readNoteId } from '@labnoteo/core/lib/noteId';
-import { findEnclosingHeading, issueTitle, parseFrontMatterYaml, type IssueMarker } from '@labnoteo/core';
+import { findEnclosingHeading, findSectionMatches, issueTitle, parseFrontMatterYaml, sectionBodyEnd, type IssueMarker } from '@labnoteo/core';
 
 /** File name of the single-source-of-truth note inside each experiment folder. */
 export const README_NAME = 'README.labnote.md';
@@ -119,29 +119,13 @@ export function deriveIssueTitle(
  * markers (`>`) are stripped so a placeholder/objective reads as plain prose.
  */
 export function getSectionBody(md: string, heading: string): string | undefined {
+  // The section core `replaceSectionBody` writes: picked and bounded as it does (front matter
+  // and code fences left out), so what is read is what is replaced.
   const lines = md.split(/\r?\n/);
-  const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const headingRe = new RegExp(`^(#{1,6})\\s+${escaped}\\s*$`);
-  let start = -1;
-  let level = 0;
-  for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(headingRe);
-    if (m) {
-      start = i + 1;
-      level = m[1].length;
-      break;
-    }
-  }
-  if (start === -1) return undefined;
-
-  const boundary = new RegExp(`^#{1,${level}}\\s`);
-  let end = lines.length;
-  for (let i = start; i < lines.length; i++) {
-    if (boundary.test(lines[i])) {
-      end = i;
-      break;
-    }
-  }
+  const [match] = findSectionMatches(md, heading);
+  if (!match) return undefined;
+  const start = match.line + 1;
+  const end = sectionBodyEnd(lines, match.line, match.level, { replacing: true });
 
   const body = lines
     .slice(start, end)

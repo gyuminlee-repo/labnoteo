@@ -46,6 +46,7 @@ const UNIT_OP_SECTION_HEADING = '## Related Unit Operations';
  * and the TOC would go between the title and its description (#564). Fenced
  * lines are skipped.
  */
+// front matter: lines from scanLines, which marks the front matter fenced.
 export function findUnitOpSection(lines: readonly { text: string; fenced: boolean }[]): number {
   const isH2 = (j: number): boolean => !lines[j].fenced && /^##\s/.test(lines[j].text);
   const named = lines.findIndex((_, j) => isH2(j) && isUnitOpSectionTitle(lines[j].text.replace(/^##\s+/, '')));
@@ -118,6 +119,7 @@ export function unitOpSectionLine(md: string): number {
 }
 
 /** Line index of the note's conclusions `##` heading (`## Conclusions and Discussion`), or -1. */
+// front matter: lines from scanLines, which marks the front matter fenced.
 function findConclusionsIdx(lines: readonly { text: string; fenced: boolean }[]): number {
   return lines.findIndex(l => {
     if (l.fenced || !/^##\s/.test(l.text)) return false;
@@ -674,6 +676,7 @@ function isReorder(scan: UnitOpTocScan): boolean {
  * a `---` followed by other content is the user's and is kept (runs of
  * back-to-back breaks are merged into one).
  */
+// front matter: lines from scanLines, which marks the front matter fenced.
 function separatorEdits(md: string, scan: UnitOpTocScan): TextEdit[] {
   const { lines, newline, headingIdx } = scan;
 
@@ -806,6 +809,7 @@ const tocEntryOpId = (text: string): string | undefined => /^\s*- \[([A-Z]+\d+)\
  * block's, else after the last entry. Unchanged when the section or the
  * heading is not found.
  */
+// front matter: lines from scanLines, which marks the front matter fenced.
 export function addUnitOpTocEntry(md: string, headingOffset: number): string {
   const scan = scanUnitOpToc(md);
   if (!scan) return md;

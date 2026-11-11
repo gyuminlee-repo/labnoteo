@@ -1057,3 +1057,72 @@ describe('a scan in an open note kept by its editor alone, the disk read failing
     expect(result).toMatchObject({ status: 'filed', uncertain: true });
   });
 });
+
+// Separate decisions on one read: an image to keep stays when the note cannot be read; a queued
+// image goes only once the note is read and has the scan. And undo and "delete earlier scan" each
+// count only the entries they took out.
+describe('a note that cannot be read, and two removals on one result', () => {
+  function openNote(s: ReturnType<typeof setup>, opts: { failSave: () => boolean; failRead?: () => boolean }) {
+    const filed = s.text.get(NOTE)!;
+    let text = filed;
+    const view = new MarkdownView();
+    view.file = new TFile(NOTE);
+    view.lastSavedData = filed;
+    view.editor = {
+      getValue: () => text,
+      offsetToPos: (offset: number) => offset,
+      replaceRange: (r: string, from: number, to: number) => {
+        text = text.slice(0, from) + r + text.slice(to);
+      },
+    };
+    view.getViewData = () => text;
+    view.writeData = async (_f: TFile, t: string) => {
+      if (opts.failSave()) throw new Error('disk full');
+      s.text.set(NOTE, t);
+    };
+    Object.assign(s.app, { workspace: { getLeavesOfType: () => [{ view }] } });
+    if (opts.failRead) {
+      const read = s.app.vault.read.bind(s.app.vault);
+      Object.assign(s.app.vault, {
+        read: async (f: TFile) => {
+          if (opts.failRead!() && f.path === NOTE) throw new Error('EBUSY');
+          return read(f as never);
+        },
+      });
+    }
+    return { view, text: () => text };
+  }
+
+  it('filed by hand into a note not saved and not readable: the queued image stays', async () => {
+    const QUEUED = '_labnote-scans/unmatched/20261021-021738_unknown_photo1.jpg';
+    const s = setup({ [NOTE]: buildNote(ID, ['UHW010', 'UHW020']) }, {});
+    s.binary.set(QUEUED, new Uint8Array([9, 9, 9]).buffer);
+    let saveTried = false;
+    openNote(s, { failSave: () => ((saveTried = true), true), failRead: () => saveTried });
+    await s.pipeline.fileManually(
+      new TFile(QUEUED) as unknown as Parameters<ScanPipeline['fileManually']>[0],
+      new TFile(NOTE) as unknown as Parameters<ScanPipeline['fileManually']>[1],
+      1,
+      { page: 1, pageCount: 1 }
+    );
+    expect(s.text.get(NOTE)).not.toContain('labnoteo-scan');
+    expect(s.binary.has(QUEUED)).toBe(true);
+    expect(s.trashed).not.toContain(QUEUED);
+  });
+
+  it('an undo kept by the editor is not counted by the earlier-scan removal after the save', async () => {
+    const s = setup(
+      { [NOTE]: buildNote(ID, ['UHW010', 'UHW020']) },
+      { 'old.jpg': [page(pagePayload(), 'aaaaaaaaaaaa')], 'new.jpg': [page(pagePayload(), 'bbbbbbbbbbbb', { render: async () => new Uint8Array([7, 8, 9]).buffer })] }
+    );
+    const [old] = await s.pipeline.run([input('old.jpg')]);
+    const [next] = await s.pipeline.run([input('new.jpg')]);
+    let fails = true;
+    const { view } = openNote(s, { failSave: () => fails });
+    expect(await s.pipeline.undo(next)).toBe('notWritten');
+    fails = false;
+    await view.save();
+    expect(await s.pipeline.removePrevious(next)).toEqual({ removed: 1, trashed: 1 });
+    expect(s.trashed).toContain(old.imagePath);
+  });
+});

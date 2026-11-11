@@ -4,6 +4,7 @@
  * lab may edit them, so only new ids and fields still holding an earlier
  * bundled value change, after the researcher confirms the list.
  */
+import { stripFrontMatter } from '@labnoteo/core';
 import * as posix from '@labnoteo/core/posix';
 import {
   BUNDLED_CATALOG_HISTORY,
@@ -109,7 +110,7 @@ function planLines(host: LabnoteHost, file: VaultCatalogFile): string[] {
  * operation heading for one of `ids` (#232): an update renames neither them
  * nor their checklist entries.
  */
-async function notesUsing(host: LabnoteHost, ids: ReadonlySet<string>): Promise<number> {
+export async function notesUsing(host: LabnoteHost, ids: ReadonlySet<string>): Promise<number> {
   const root = 'labnote';
   const pattern = [...ids].filter(id => /^[\w-]+$/.test(id)).join('|');
   if (!pattern || !(await host.fs.exists(root))) return 0;
@@ -126,7 +127,8 @@ async function notesUsing(host: LabnoteHost, ids: ReadonlySet<string>): Promise<
     }
     for (const name of names) {
       if (!name.endsWith('.labnote.md') || name === 'README.labnote.md') continue;
-      if (heading.test(await host.fs.read(posix.join(dir, name)))) count++;
+      // The body only: a `### [ID …]` YAML comment in the front matter is no unit operation.
+      if (heading.test(stripFrontMatter(await host.fs.read(posix.join(dir, name))))) count++;
     }
   }
   return count;

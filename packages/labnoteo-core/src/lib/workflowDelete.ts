@@ -6,6 +6,7 @@
  * section. The filesystem side (moving the file to trash, sample cleanup) is
  * handled by the command; this module stays pure and unit-testable.
  */
+import { frontMatterLineCount } from '../sections/frontMatter';
 import {
   decodeChecklistLink,
   dropBlankLeftByEntries,
@@ -31,6 +32,7 @@ export interface RemoveWorkflowFromReadmeResult {
  * (`[^)]+`) so non-ASCII file names — which the strict checklist parser rejects
  * — are still recognised for removal.
  */
+// front matter: one line, judged by the caller, which leaves the front matter out.
 function isChecklistLineForFile(line: string, fileName: string): boolean {
   const entryLink = workflowChecklistEntryLink(line.trim());
   if (entryLink !== undefined) return (entryLink.replace(/^\.\//, '').split('/').pop() ?? '') === fileName;
@@ -52,9 +54,10 @@ const HEADING_RE = /^(#{1,6})\s+(.*?)\s*$/;
  * in so deletion covers a superset of the add range: a stale entry under
  * `### Related Workflows` still goes.
  */
-function exactSections(lines: readonly string[], skip?: readonly boolean[]): { start: number; end: number }[] {
+// front matter: the caller passes how many lines it has (`frontMatter`), left out.
+function exactSections(lines: readonly string[], skip?: readonly boolean[], frontMatter = 0): { start: number; end: number }[] {
   const headings = lines.flatMap((line, i) => {
-    const m = skip?.[i] ? null : HEADING_RE.exec(line.replace(/\r?\n$/, ''));
+    const m = skip?.[i] || i < frontMatter ? null : HEADING_RE.exec(line.replace(/\r?\n$/, ''));
     return m ? [{ line: i, level: m[1].length, text: m[2] }] : [];
   });
   // ends[k]: line of the next heading at level 1..6 after heading k, or none (one reverse pass).
@@ -99,7 +102,9 @@ export function removeWorkflowFromReadme(
   // with those headings ignored; its pick of the first section holding an entry
   // only when the add path makes that pick too (no heading names the section).
   const { inCode, plain } = readmeFencedReadings(lines);
-  const ranges = exactSections(lines, plain).filter(r => !inCode[r.start - 1]);
+  // Front matter is YAML: no heading or entry in it is read, nor deleted.
+  const fm = frontMatterLineCount(readmeContent);
+  const ranges = exactSections(lines, plain, fm).filter(r => !inCode[r.start - 1]);
   const addPath = workflowChecklistSectionRange(readmeContent);
   const addPathNamed = addPath !== undefined && isWorkflowSectionHeading(lines[addPath.header]);
   for (const skip of [undefined, plain]) {
@@ -115,6 +120,8 @@ export function removeWorkflowFromReadme(
   }
   // Union with what main (#442) deletes, so this never removes less than main did.
   const drop = v442DeletedLines(readmeContent, lines, line => isChecklistLineForFile(line, fileName));
+  // main (#442) read the front matter as Markdown; what it would delete there stays.
+  for (const i of [...drop]) if (i < fm) drop.delete(i);
   for (const { start, end } of ranges) {
     for (let i = start; i < Math.min(end, lines.length); i++) {
       if (!inCode[i] && isChecklistLineForFile(lines[i], fileName)) drop.add(i);

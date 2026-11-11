@@ -82,6 +82,7 @@ function trimTail(lines: readonly string[], from: number, end: number): number {
   return i;
 }
 
+// front matter: takes the headings scanHeadings found, past the front matter.
 function blocksOf(lines: readonly string[], headings: readonly Heading[]): UnitOpBlock[] {
   const blocks: UnitOpBlock[] = [];
   for (const h of headings) {
@@ -361,6 +362,7 @@ export function listFiledScans(md: string): FiledScan[] {
  * Remove the scan entry with `hash` (undo, or dropping an older scan of a
  * page), and its Worksheet scans section when nothing else is left in it.
  */
+// front matter: headings from scanHeadings, past the front matter.
 export function removeScanEntry(md: string, hash: string): { md: string; removed: boolean } {
   // Lines outside the section keep their own line breaks, even in mixed endings.
   const buf = splitLineBuffer(md);

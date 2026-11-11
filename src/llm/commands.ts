@@ -26,6 +26,7 @@ import {
   planSectionAppend,
   sectionText,
   stripFrontMatter,
+  frontMatterLineCountOf,
   stripAiCallouts,
   stripTemplatePlaceholders,
   stripIssueMarkers,
@@ -374,9 +375,11 @@ async function writeMethodDraft(
 }
 
 /** The model context for one unit operation: the note's head plus that block. */
-function unitOpContext(text: string, loc: UnitOpMethodLocation): string {
+export function unitOpContext(text: string, loc: UnitOpMethodLocation): string {
   const lines = text.split('\n');
-  const firstUnitOp = lines.findIndex(l => /^###\s+\[/.test(l));
+  // A `### [ID …]` YAML comment in the front matter is no unit operation.
+  const fm = frontMatterLineCountOf(lines);
+  const firstUnitOp = lines.findIndex((l, i) => i >= fm && /^###\s+\[/.test(l));
   const head = lines.slice(0, firstUnitOp === -1 ? 40 : Math.min(firstUnitOp, 40)).join('\n');
   const block = lines.slice(loc.unitOpStartLine, loc.unitOpEndLine).join('\n');
   return `Note front matter and workflow description:\n${head.slice(0, 2000)}\n\nUnit operation:\n${block.slice(0, 4000)}`;
