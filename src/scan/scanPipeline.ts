@@ -20,7 +20,7 @@ import { getSeoulDateString } from '@labnoteo/core/lib/dateUtils';
 import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
 import { isPagePayload, unitOpFingerprint, type PagePayload, type ScanPayload } from '@labnoteo/core/lib/scanPayload';
 import * as posix from '@labnoteo/core/posix';
-import { changeNotWritten, processNoteThroughVault } from '../commands';
+import { changeNotWritten, processNoteThroughVault, processNoteThroughVaultOnDisk } from '../commands';
 import type { NoteIdService } from '../barcode/noteIdService';
 import {
   SCANS_SUBFOLDER,
@@ -508,7 +508,10 @@ export class ScanPipeline {
       removed = out.removed;
       return out.md;
     };
-    const written = await processNoteThroughVault(this.deps.app, this.deps.host, result.notePath, remove);
+    // Its image is trashed only once the note on disk no longer has the entry: one kept in the
+    // editor alone (its save failed) leaves the disk pointing at the image.
+    const written = await processNoteThroughVaultOnDisk(this.deps.app, this.deps.host, result.notePath, remove);
+    if (written === 'kept') return 'notWritten';
     // Not written (a save of the open note did not end in time), or not known to be: the entry
     // and its image stay.
     if (written === 'uncertain') return 'uncertain';
@@ -545,7 +548,8 @@ export class ScanPipeline {
     };
     // Not written (a save of the open note did not end in time), or not known to be: the entries
     // and images stay.
-    const written = await processNoteThroughVault(app, host, notePath, remove);
+    const written = await processNoteThroughVaultOnDisk(app, host, notePath, remove);
+    if (written === 'kept') return 'notWritten';
     if (written === 'uncertain') return 'uncertain';
     if (!written && (await changeNotWritten(app, host, notePath, remove))) return 'notWritten';
     for (const image of images) await app.fileManager.trashFile(image);

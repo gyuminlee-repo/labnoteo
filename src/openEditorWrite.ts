@@ -87,12 +87,30 @@ export async function waitForOpenSaves(app: App, path: string, deadline = Date.n
  */
 export type NoteWritten = boolean | 'uncertain';
 
+/**
+ * {@link NoteWritten}, telling apart 'kept': in the open note's editor, its save having failed,
+ * for its next save to write; not on disk yet. Written for what the note says; not for an
+ * undoing step that goes by the disk (an image trashed, say).
+ */
+export type NoteWrittenOnDisk = NoteWritten | 'kept';
+
 export async function processInOpenEditor(
   app: App,
   file: TFile,
   transform: (content: string) => string,
   deadline?: number
 ): Promise<NoteWritten | undefined> {
+  const result = await processInOpenEditorOnDisk(app, file, transform, deadline);
+  return result === 'kept' ? true : result;
+}
+
+/** {@link processInOpenEditor}, saying 'kept' for a change only its editor holds. */
+export async function processInOpenEditorOnDisk(
+  app: App,
+  file: TFile,
+  transform: (content: string) => string,
+  deadline?: number
+): Promise<NoteWrittenOnDisk | undefined> {
   const result = await writeInOpenEditor(app, file, transform, deadline);
   return result === 'timedOut' ? false : result;
 }
@@ -103,7 +121,7 @@ async function writeInOpenEditor(
   file: TFile,
   transform: (content: string) => string,
   deadline?: number
-): Promise<NoteWritten | undefined | 'timedOut'> {
+): Promise<NoteWrittenOnDisk | undefined | 'timedOut'> {
   // A save still under way past the wait would write over the change (and would hold this
   // one's save too: Obsidian's save waits for the one under way, with no limit): nothing is
   // written, through the editor or the vault.
@@ -212,13 +230,13 @@ async function writeInOpenEditor(
     // A save Obsidian started meanwhile would hold this one with no limit: waited for as any.
     // Past the wait, that save, made of the editor's text, has the change in it, and the editor
     // keeps it: written, not to be asked for again (which would put an insertion in twice).
-    if (!(await waitForOpenSaves(app, file.path, until))) return at.keeps;
+    if (!(await waitForOpenSaves(app, file.path, until))) return at.keeps ? 'kept' : false;
     // Gone to another note meanwhile: that note is not saved for this one; the change, left in
     // this file's editor as it switched, is looked for in the file below.
     if (onFile()) {
       at = await save();
       if (at.now !== disk) return changedMeanwhile(at);
-      return at.keeps;
+      return at.keeps ? 'kept' : false;
     }
   }
   // A view that left the note, or reads it again, does not keep the editor's text: the change
@@ -524,6 +542,7 @@ export async function processNoteResult(
   const inEditor = await writeInOpenEditor(app, file, transform, deadline);
   if (inEditor === 'timedOut') return 'timedOut';
   if (inEditor === 'uncertain') return 'uncertain';
+  if (inEditor === 'kept') return 'written';
   if (inEditor !== undefined) return inEditor ? 'written' : 'notWritten';
   // A save another write started on the note may still be writing: it would land over this one.
   if (!(await waitForOpenSaves(app, file.path, deadline))) return 'timedOut';

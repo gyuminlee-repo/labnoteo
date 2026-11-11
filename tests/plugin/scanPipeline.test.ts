@@ -22,6 +22,7 @@ import {
   type ScanInput,
 } from '../../src/scan/scanPipeline';
 import { isDateInput, listUnmatched } from '../../src/scan/unmatchedModal';
+import { undoScanResult } from '../../src/scan/resultModal';
 import { OPEN_SAVE_WAIT_MS } from '../../src/openEditorWrite';
 
 // What writing a note answers, forced for a test: else as written.
@@ -793,5 +794,49 @@ describe('scans written into an open note whose save fails as it changes', () =>
     expect(gone.uncertain).toBeUndefined();
     expect(listUnmatched(s.app as never).map(f => f.path)).toEqual([gone.unmatchedPath]);
     expect(warnings).toHaveLength(1);
+  });
+});
+
+// The note's save fails as Obsidian 1.15.0's does (the text last saved put back): an undo leaves
+// the entry in the editor alone, the disk still pointing at the image. The image stays and the
+// undo is said not written, its button kept; once the note is saved, the undo ends as usual.
+describe('undo of a scan in an open note whose save fails', () => {
+  it('keeps the image until the note on disk no longer has the scan', async () => {
+    const note = buildNote(ID, ['UHW010', 'UHW020']);
+    const s = setup({ [NOTE]: note }, { 'a.jpg': [page(pagePayload(), 'aaaaaaaaaaaa')] });
+    const [result] = await s.pipeline.run([input('a.jpg')]);
+    const filed = s.text.get(NOTE)!;
+    let text = filed;
+    let fails = true;
+    const view = new MarkdownView();
+    view.file = new TFile(NOTE);
+    view.lastSavedData = filed;
+    view.editor = {
+      getValue: () => text,
+      offsetToPos: (offset: number) => offset,
+      replaceRange: (r: string, from: number, to: number) => {
+        text = text.slice(0, from) + r + text.slice(to);
+      },
+    };
+    view.getViewData = () => text;
+    view.writeData = async (_f: TFile, t: string) => {
+      if (fails) throw new Error('disk full');
+      s.text.set(NOTE, t);
+    };
+    Object.assign(s.app, { workspace: { getLeavesOfType: () => [{ view }] } });
+    const t = ((key: string, ...args: string[]) => formatMessage(key, args)) as Translator;
+
+    expect(await undoScanResult(t, s.pipeline, result, false)).toEqual({
+      done: false,
+      message: `${NOTE} was not written: it was still being saved, or it changed while the change went in. Try again in a moment.`,
+    });
+    expect(s.trashed).toEqual([]);
+    expect(s.text.get(NOTE)).toContain('aaaaaaaaaaaa');
+
+    fails = false;
+    await view.save();
+    expect(s.text.get(NOTE)).not.toContain('aaaaaaaaaaaa');
+    expect((await undoScanResult(t, s.pipeline, result, false)).done).toBe(true);
+    expect(s.trashed).toEqual([result.imagePath]);
   });
 });

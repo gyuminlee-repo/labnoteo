@@ -35,7 +35,7 @@ vi.mock('../../src/modals', async importOriginal => ({
 }));
 
 const { default: LabnotePlugin } = await import('../../src/main');
-const { insertUnitOpAndUpdateToc } = await import('../../src/commands');
+const { insertUnitOpAndUpdateToc, insertUnitOperationCommand } = await import('../../src/commands');
 const { insertSampleReference } = await import('../../src/sampleActions');
 const { draftMethodCommand } = await import('../../src/llm/commands');
 const { aiAnswerModal } = await import('../../src/modals');
@@ -139,3 +139,39 @@ describe('a command whose edit target is on another note by the time it writes',
     expect(aiAnswerModal).toHaveBeenCalledTimes(1);
   });
 });
+
+// The alias prompt, or the picker before it, open while the view goes to another note: nothing
+// goes into that note, and it is said once, as it is.
+describe('a unit operation inserted after a prompt the view went to another note during', () => {
+  it('the alias prompt: said, the other note left as it is', async () => {
+    const { app, host, notices, goToB, text } = openOnA();
+    const p = plugin(app, host);
+    p.run(() =>
+      insertUnitOpAndUpdateToc(host, { opId: 'UHW020', opName: 'Mix', opDescription: '', opType: 'hw' } as never, async () => {
+        goToB();
+        return '';
+      })
+    );
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(notices).toEqual([{ level: 'warn', msg: SWITCHED }]);
+    expect(text()).toBe('other note\n');
+  });
+
+  it('the unit operation picker: said, the other note left as it is', async () => {
+    const { app, host, notices, goToB, text } = openOnA();
+    const picking = {
+      ...host,
+      pick: async () => {
+        goToB();
+        return { op: { id: 'UHW020', name: 'Mix', description: '' }, kind: 'hw' };
+      },
+    } as typeof host;
+    const p = plugin(app, picking);
+    vi.mocked(await import('../../src/modals')).workflowAliasModal = vi.fn(async () => '') as never;
+    p.run(() => insertUnitOperationCommand(app, picking, { sortToc: true }));
+    await new Promise(resolve => setTimeout(resolve, 200));
+    expect(notices).toEqual([{ level: 'warn', msg: SWITCHED }]);
+    expect(text()).toBe('other note\n');
+  });
+});
+

@@ -12,6 +12,7 @@
  */
 import { MarkdownView, Platform, TFile, type App, type Editor } from 'obsidian';
 import type {
+  EditTarget,
   LabnoteHost,
   WorkflowItem,
   UnitOperationItem,
@@ -52,7 +53,7 @@ import {
 import { ISSUE_SYNC_WORKFLOW_PATH, SETUP_DOC_PATH } from './scaffold/assets';
 import * as posix from '@labnoteo/core/posix';
 import { workflowAliasModal } from './modals';
-import { OPEN_SAVE_WAIT_MS, openEditorText, openSourceView, processInOpenEditor, waitForOpenSaves, type NoteWritten } from './openEditorWrite';
+import { OPEN_SAVE_WAIT_MS, openEditorText, openSourceView, processInOpenEditorOnDisk, waitForOpenSaves, type NoteWritten, type NoteWrittenOnDisk } from './openEditorWrite';
 import { getObsidianLanguage } from './i18n';
 import {
   createLabnoteStructure,
@@ -1557,12 +1558,16 @@ export async function insertUnitOpAndUpdateToc(
   host: LabnoteHost,
   input: InsertUnitOperationInput,
   askAlias?: (input: InsertUnitOperationInput) => Promise<string | undefined>,
-  opts: { sortToc: boolean; caret?: number } = { sortToc: true }
+  opts: { sortToc: boolean; caret?: number; target?: EditTarget } = { sortToc: true }
 ): Promise<boolean> {
   // Asked only where the insert will go ahead: `insertUnitOperation` refuses a
   // note that is no workflow, which would come after the alias was typed.
   let alias = input.alias;
-  const opened = host.editTarget();
+  // The note the command started on (a caller whose picker came first passes it), written to
+  // throughout: after the prompt the editor may show another note, which a target looks at on
+  // every call and refuses.
+  const opened = opts.target ?? host.editTarget();
+  const onOpened: LabnoteHost = { ...host, editTarget: () => opened };
   // Read before the alias prompt opens: a modal takes the focus, and the
   // Source-mode editor then reports the cursor at the start of the note (#544).
   // A caller whose own picker already moved it passes what it read instead.
@@ -1574,7 +1579,7 @@ export async function insertUnitOpAndUpdateToc(
 
   // Resolve the insertion point BEFORE inserting and hand it to the insert, so
   // the new heading can be found again after the whole-doc TOC rewrite.
-  const before = host.editTarget();
+  const before = opened;
   // A deleted section heading comes back first, or the list would go under the title (#564).
   if (before && isValidWorkflowPath(before.path)) {
     const fix = missingUnitOpSectionEdit(await before.getText());
@@ -1588,7 +1593,7 @@ export async function insertUnitOpAndUpdateToc(
 
   // The TOC follows before the notice, which says whether there was one (#455).
   const afterInsert = async (): Promise<boolean> => {
-    const target = host.editTarget();
+    const target = opened;
     if (!target) return false;
     const md = await target.getText();
     const updated = syncUnitOpTocAfterInsert(md, insertOffset, opts.sortToc);
@@ -1604,7 +1609,7 @@ export async function insertUnitOpAndUpdateToc(
     return unitOpSectionLine(updated) !== -1;
   };
 
-  return insertUnitOperation(host, { ...input, alias, at, afterInsert });
+  return insertUnitOperation(onOpened, { ...input, alias, at, afterInsert });
 }
 
 /** Insert a unit-operation block after the one the cursor is in + update the workflow TOC. */
@@ -1663,7 +1668,7 @@ export async function insertUnitOperationCommand(
       software: op.software,
     },
     unitOpAliasPrompt(app, host),
-    { ...opts, caret }
+    { ...opts, caret, target: opened }
   );
 }
 
@@ -2563,6 +2568,21 @@ export async function processNoteThroughVault(
   transform: (content: string) => string,
   asWritten = false
 ): Promise<NoteWritten> {
+  const written = await processNoteThroughVaultOnDisk(app, host, notePath, transform, asWritten);
+  return written === 'kept' ? true : written;
+}
+
+/**
+ * {@link processNoteThroughVault}, saying 'kept' for a change only the open note's editor holds
+ * (its save failed): for a step after it that goes by the disk and cannot be undone.
+ */
+export async function processNoteThroughVaultOnDisk(
+  app: App,
+  host: LabnoteHost,
+  notePath: string,
+  transform: (content: string) => string,
+  asWritten = false
+): Promise<NoteWrittenOnDisk> {
   // A save Obsidian has under way on the open note first, so it does not write over this;
   // one deadline for the whole write.
   const deadline = Date.now() + OPEN_SAVE_WAIT_MS;
@@ -2579,7 +2599,7 @@ export async function processNoteThroughVault(
   }
   if (file instanceof TFile) {
     // Open in an editor: applied there ({@link processInOpenEditor}).
-    const inEditor = await processInOpenEditor(app, file, transform, deadline);
+    const inEditor = await processInOpenEditorOnDisk(app, file, transform, deadline);
     if (inEditor !== undefined) return inEditor;
     // A save another write started on the note may still be writing: it would land over this one.
     if (!(await waitForOpenSaves(app, file.path, deadline))) return false;
