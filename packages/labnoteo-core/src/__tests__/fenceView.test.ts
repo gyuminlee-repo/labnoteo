@@ -31,7 +31,15 @@ describe('the fence view of a line in a container', () => {
   });
 
   it('ends the item at an HTML block start, which a lazy line cannot be', () => {
-    expect(fenceView(['- a', '<div>', `  ${t}`, 'x'])).toEqual(['a', '<div>', `  ${t}`, 'x']);
+    expect(fenceView(['- a', '<div>', '', `  ${t}`, 'x'])).toEqual(['a', '', '', `  ${t}`, 'x']);
+  });
+
+  it('reads the lines of an HTML block as empty, a backtick run there too', () => {
+    expect(fenceView(['<!--', t, '-->', `- ${t}md`, `  ${t}`])).toEqual(['', '', '', `${t}md`, t]);
+  });
+
+  it('reads a type 7 tag after an item fence its next item ended as an HTML block', () => {
+    expect(fenceView([`- ${t}md`, '- [ ] a', `  ${t}`, '</span>', t, '', 'x'])).toEqual(['', '[ ] a', '', '', '', '', 'x']);
   });
 
   it('reads a line in no container as it is', () => {

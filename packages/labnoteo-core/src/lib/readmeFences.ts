@@ -11,86 +11,23 @@
  * with its indent dropped, as under a list entry). An opener that is never
  * closed is not a fence. Each reading is one linear pass.
  */
-import { BLOCK_TAGS, closedFenceSpans, fenceView, mayHaveFences, stepFence, type OpenFence } from '../sections/codeFences';
-
-const ATTRIBUTE = `\\s+[A-Za-z_:][A-Za-z0-9_.:-]*(?:\\s*=\\s*(?:[^"'=<>\`\\s]+|'[^']*'|"[^"]*"))?`;
-/**
- * The seven CommonMark HTML block starts (up to three spaces in), each with the line that ends
- * it: types 1 to 5 end on the line holding their end mark (the start line too), 6 and 7 before a
- * blank line. Type 7 is a whole open or closing tag alone on its line, and cannot interrupt a
- * paragraph. An autolink (`<https://…>`, `<a@b.c>`) or `a < b` starts none.
- */
-const HTML_STARTS: { start: RegExp; end: RegExp | null; paragraph: boolean }[] = [
-  { start: /^ {0,3}<(?:script|pre|style|textarea)(?:\s|>|$)/i, end: /<\/(?:script|pre|style|textarea)>/i, paragraph: true },
-  { start: /^ {0,3}<!--/, end: /-->/, paragraph: true },
-  { start: /^ {0,3}<\?/, end: /\?>/, paragraph: true },
-  { start: /^ {0,3}<![A-Za-z]/, end: />/, paragraph: true },
-  { start: /^ {0,3}<!\[CDATA\[/, end: /\]\]>/, paragraph: true },
-  { start: new RegExp(`^ {0,3}</?(?:${BLOCK_TAGS})(?:\\s|/?>|$)`, 'i'), end: null, paragraph: true },
-  {
-    start: new RegExp(`^ {0,3}(?:<(?!(?:script|pre|style|textarea)\\b)[A-Za-z][A-Za-z0-9-]*(?:${ATTRIBUTE})*\\s*/?>|</[A-Za-z][A-Za-z0-9-]*\\s*>)\\s*$`, 'i'),
-    end: null,
-    paragraph: false,
-  },
-];
+import { closedFenceSpans, fenceView, htmlBlockMarks, stepFence, type OpenFence } from '../sections/codeFences';
 
 /**
- * Which lines are in an HTML block (CommonMark, read line by line): from a line starting one,
- * outside a fence, to the line ending it ({@link HTML_STARTS}). A backtick run there is HTML,
- * no fence, so it pairs with no fence below.
+ * Which lines are in an HTML block (CommonMark, read line by line, in block quotes and list
+ * items too): from a line starting one, outside a fence, to the line ending it. A backtick run
+ * there is HTML, no fence, so it pairs with no fence below.
  */
 // front matter: its callers pass the README's lines from past the front matter (removeWorkflowFromReadme, insertWorkflowChecklistEntries, dropBlankLeftByEntries).
 export function htmlBlockLines(lines: readonly string[]): boolean[] {
-  const out = new Array<boolean>(lines.length).fill(false);
-  let fence: OpenFence | null = null;
-  // The open block's end mark (types 1 to 5), or null for one ended by a blank line (6 and 7).
-  let open: { end: RegExp | null } | null = null;
-  // The line before was paragraph text, which a type 7 start does not interrupt.
-  let paragraph = false;
-  // Fences in a block quote or list item as CommonMark reads them.
-  const view = mayHaveFences(lines) ? fenceView(lines) : lines;
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].replace(/\r?\n$|\r$/, '');
-    const blank = line.trim() === '';
-    if (open) {
-      // The blank line ending a block is marked too: a line put right before it would join the
-      // block, so an entry is moved past it.
-      if (open.end === null && blank) {
-        out[i] = true;
-        open = null;
-        paragraph = false;
-        continue;
-      }
-      out[i] = true;
-      if (open.end && open.end.test(line)) open = null;
-      paragraph = false;
-      continue;
-    }
-    const next = stepFence(view[i].replace(/\r?\n$|\r$/, ''), fence);
-    if (next !== fence || fence) {
-      fence = next;
-      paragraph = false;
-      continue;
-    }
-    const kind = HTML_STARTS.find(k => k.start.test(line) && (k.paragraph || !paragraph));
-    if (kind) {
-      out[i] = true;
-      const rest = line.slice(line.indexOf('<') + 1);
-      if (kind.end === null || !kind.end.test(rest)) open = { end: kind.end };
-      paragraph = false;
-      continue;
-    }
-    // An indented line not continuing a paragraph is indented code, no paragraph.
-    if (!paragraph && /^(?: {4}|\t)/.test(line)) continue;
-    paragraph = !blank && !/^ {0,3}(?:#{1,6}(?:\s|$)|(?:[-*_][ \t]*){3,}$|=+\s*$)/.test(line);
-  }
-  return out;
+  return htmlBlockMarks(lines);
 }
 
 /** Each line as a fence reading takes it: one `inHtml` marks (in an HTML block) is no fence line. */
-function fenceReading(lines: readonly string[], indentAny: boolean, inHtml: readonly boolean[] = []): [number, number][] {
+function fenceReading(lines: readonly string[], indentAny: boolean, inHtml?: readonly boolean[]): [number, number][] {
   const read = indentAny ? (line: string) => line.trimStart() : (line: string) => line;
-  return closedFenceSpans(lines, (line, i) => (inHtml[i] ? '' : read(line)));
+  // Without `inHtml` the HTML blocks are not read, and a backtick run in one may be a fence.
+  return closedFenceSpans(lines, (line, i) => (inHtml?.[i] ? '' : read(line)), { html: inHtml !== undefined });
 }
 
 /**

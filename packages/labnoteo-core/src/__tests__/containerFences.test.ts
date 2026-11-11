@@ -49,4 +49,15 @@ describe('a README entry after a list fence', () => {
     const md = `## Related Workflows\n- ${t}md\n  ${t}\n${A}\n${t}\nx\n${t}\n`;
     expect(insertWorkflowChecklistEntries(md, [D])).toBe(`## Related Workflows\n- ${t}md\n  ${t}\n${A}\n- [ ] [D](./004_WD010_D.labnote.md)\n${t}\nx\n${t}\n`);
   });
+
+  it('adds an entry after the last one past a list fence and a lone closing tag', () => {
+    const tail = `${t}text\n## Hidden\n${t}\n`;
+    const head = `## Related Workflows\n- ${t}md\n${A}\n  ${t}\n</span>\n${t}\n\n1.  ${t}\n    x\n    ${t}\n${A}\n`;
+    expect(insertWorkflowChecklistEntries(head + tail, [D])).toBe(`${head}- [ ] [D](./004_WD010_D.labnote.md)\n${tail}`);
+  });
+
+  it('adds an entry next to the last one, not into the HTML block below a list fence', () => {
+    const head = `## Related Workflows\n${t}\n${A}\n${t}\n<!--\n${t}\n-->\n### Sub\n- ${t}\n  x\n- ${t}md\n${A}\n  ${t}\n`;
+    expect(insertWorkflowChecklistEntries(`${head}<div>\n${t}\n`, [D])).toBe(`${head}- [ ] [D](./004_WD010_D.labnote.md)\n<div>\n${t}\n`);
+  });
 });
