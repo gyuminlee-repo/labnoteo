@@ -402,7 +402,7 @@ describe('ScanPipeline.run', () => {
     const [next] = await s.pipeline.run([input('new.jpg')]);
     expect(next.imagePath).not.toBe(old.imagePath);
     expect(next.imagePath).toMatch(/_2\.jpg$/);
-    expect(await s.pipeline.removePrevious(next)).toBe(1);
+    expect(await s.pipeline.removePrevious(next)).toEqual({ removed: 1, trashed: 0 });
     expect(s.binary.has(next.imagePath!)).toBe(true);
     expect(s.trashed).toEqual([]);
     expect(listFiledScans(s.text.get(NOTE)!).map(f => f.hash)).toEqual(['bbbbbbbbbbbb']);
@@ -877,7 +877,7 @@ describe('undo and earlier-scan removal tried again while the open note still ca
     expect(s.trashed).toEqual([]);
     state.fails = false;
     await view.save();
-    expect(await s.pipeline.undo(result)).toBe(false);
+    expect(await s.pipeline.undo(result)).toBe(true);
     expect(s.trashed).toEqual([result.imagePath]);
   });
 
@@ -897,7 +897,7 @@ describe('undo and earlier-scan removal tried again while the open note still ca
     expect(s.trashed).toEqual([]);
     state.fails = false;
     await view.save();
-    expect(await s.pipeline.removePrevious(next)).toBe(0);
+    expect(await s.pipeline.removePrevious(next)).toEqual({ removed: 1, trashed: 1 });
     expect(s.trashed).toEqual([old.imagePath]);
   });
 
@@ -1012,5 +1012,48 @@ describe('a scan filed by hand to a unit operation renamed in the open editor', 
     );
     expect(result.status).toBe('filed');
     expect(text).toContain('Mixing');
+  });
+});
+
+// The open note's save failed, so the scan is in its editor alone; the disk could not be read
+// once right after, then reads without it. The image the editor links stays, and is not queued.
+describe('a scan in an open note kept by its editor alone, the disk read failing once', () => {
+  it('keeps the image the editor links', async () => {
+    const note = buildNote(ID, ['UHW010', 'UHW020']);
+    const s = setup({ [NOTE]: note }, { 'a.jpg': [page(pagePayload(), 'aaaaaaaaaaaa')] });
+    let text = note;
+    let failOnce = false;
+    const view = new MarkdownView();
+    view.file = new TFile(NOTE);
+    view.lastSavedData = note;
+    view.editor = {
+      getValue: () => text,
+      offsetToPos: (offset: number) => offset,
+      replaceRange: (r: string, from: number, to: number) => {
+        text = text.slice(0, from) + r + text.slice(to);
+      },
+    };
+    view.getViewData = () => text;
+    view.writeData = async () => {
+      failOnce = true;
+      throw new Error('disk full');
+    };
+    Object.assign(s.app, { workspace: { getLeavesOfType: () => [{ view }] } });
+    const read = s.app.vault.read.bind(s.app.vault);
+    Object.assign(s.app.vault, {
+      read: async (f: TFile) => {
+        if (failOnce && f.path === NOTE) {
+          failOnce = false;
+          throw new Error('EBUSY');
+        }
+        return read(f as never);
+      },
+    });
+    const [result] = await s.pipeline.run([input('a.jpg')]);
+    expect(text).toContain('aaaaaaaaaaaa');
+    expect(s.text.get(NOTE)).not.toContain('aaaaaaaaaaaa');
+    expect(s.binary.has(result.imagePath!)).toBe(true);
+    expect(s.trashed).toEqual([]);
+    expect(result).toMatchObject({ status: 'filed', uncertain: true });
   });
 });

@@ -56,10 +56,11 @@ describe('workflow deletion section boundaries', () => {
     });
   });
 
-  // The add path writes past a `#` heading (v0.130.0), so deletion reaches there too.
-  it('reads past a # heading as the add path does', () => {
+  // Deletion stops at a `#` heading, as 0.140.2 and main (#442) do: the entry under `# Notes`
+  // is that part's and stays. Reading and adding still go past it, as they did there.
+  it('stops at a # heading', () => {
     const md = ['## Related Workflows', entry, '# Notes', entry].join('\n');
-    expect(removeWorkflowFromReadme(md, file)).toEqual({ changed: true, content: ['## Related Workflows', '# Notes'].join('\n') });
+    expect(removeWorkflowFromReadme(md, file)).toEqual({ changed: true, content: ['## Related Workflows', '# Notes', entry].join('\n') });
   });
 
   it.each([

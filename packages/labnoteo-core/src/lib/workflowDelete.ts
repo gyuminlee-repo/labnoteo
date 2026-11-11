@@ -15,7 +15,7 @@ import {
 } from './workflowStructure';
 import { readmeFencedReadings } from './readmeFences';
 import { v442DeletedLines } from './workflowDeleteV442';
-import { normalizeHeadingText } from '../sections/sectionEdit';
+import { normalizeHeadingText, sectionBodyEnd } from '../sections/sectionEdit';
 
 export interface RemoveWorkflowFromReadmeResult {
   changed: boolean;
@@ -109,7 +109,9 @@ export function removeWorkflowFromReadme(
     // With those headings ignored the add path's own section may run on further; a section
     // the add path does not read (another pick of the first section with an entry) is not it.
     if (skip && workflow.header !== addPath?.header) continue;
-    ranges.push({ start: workflow.header + 1, end: workflow.end });
+    // Clipped at the next `#` or `##` heading, as 0.140.2 and main (#442) delete: entries under
+    // `# Notes` are that part's.
+    ranges.push({ start: workflow.header + 1, end: Math.min(workflow.end, sectionBodyEnd(lines, workflow.header, 2)) });
   }
   // Union with what main (#442) deletes, so this never removes less than main did.
   const drop = v442DeletedLines(readmeContent, lines, line => isChecklistLineForFile(line, fileName));

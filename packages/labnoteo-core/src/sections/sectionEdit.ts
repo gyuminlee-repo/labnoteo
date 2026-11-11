@@ -10,6 +10,7 @@
 import { escapeRegExp } from '../lib/regexUtils';
 import { closedFencedLines, stepFence, type OpenFence } from './codeFences';
 import { joinLineBuffer, spliceLineBuffer, splitLineBuffer } from '../util/lineEnds';
+import { frontMatterLineCountOf } from './frontMatter';
 
 export interface SectionEditResult {
   ok: boolean;
@@ -77,7 +78,7 @@ export function listHeadings(md: string): NoteHeading[] {
   // A fenced code block can contain lines that look like ATX headings; those
   // must NOT be treated as real headings.
   let fence: OpenFence | null = null;
-  for (let i = 0; i < lines.length; i++) {
+  for (let i = frontMatterLineCountOf(lines); i < lines.length; i++) {
     const next = stepFence(lines[i], fence);
     if (next !== fence) {
       fence = next;

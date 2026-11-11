@@ -2675,7 +2675,7 @@ export default class LabnotePlugin extends Plugin {
           // A change to the file Obsidian has yet to read back: left to the next edit.
           if (!(await openViewHasDisk(this.app, file))) return;
           // Looked at again after the read: an undo or edit meanwhile is left as it is.
-          if (info.file?.path !== path || this.lastChangeFromHistory.get(path) || this.unitOpTocTimers.has(path)) return;
+          if (this.unloaded || info.file?.path !== path || this.lastChangeFromHistory.get(path) || this.unitOpTocTimers.has(path)) return;
           if (editor.getValue() !== seen) return;
           const before = seen;
           const after = this.settings.autoSyncUnitOpToc
@@ -2814,8 +2814,13 @@ export default class LabnotePlugin extends Plugin {
         return;
       }
       if (decision !== 'stamp') return;
-      stampNoteAndReadme(this.app, this.host, path, this.stampLastUpdated, readme =>
-        this.lastUpdatedTracker.keepsHandSet(readme)
+      stampNoteAndReadme(
+        this.app,
+        this.host,
+        path,
+        this.stampLastUpdated,
+        readme => this.lastUpdatedTracker.keepsHandSet(readme),
+        () => !this.unloaded
       ).catch(err =>
         console.warn('[labnoteo] last_updated_date update failed:', err)
       );

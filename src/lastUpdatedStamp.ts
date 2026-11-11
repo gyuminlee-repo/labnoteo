@@ -42,7 +42,9 @@ export async function stampNote(
   app: App,
   host: LabnoteHost,
   path: string,
-  stamp: StampNote
+  stamp: StampNote,
+  /** False once the plugin is unloaded: nothing is changed after a wait then. */
+  alive: () => boolean = () => true
 ): Promise<void> {
   for (const leaf of app.workspace.getLeavesOfType('markdown')) {
     const view = leaf.view;
@@ -50,6 +52,7 @@ export async function stampNote(
     if (view.getMode() !== 'source') continue;
     // A change to the file Obsidian has yet to read back: stamped in the file, not the editor.
     if (view.file && !(await openViewHasDisk(app, view.file))) break;
+    if (!alive()) return;
     // The view may show another note, or reading mode, once the file is read: stamped in the file.
     if (view.file?.path !== path || view.getMode() !== 'source') break;
     const editor = view.editor;
@@ -60,13 +63,14 @@ export async function stampNote(
     }
     return;
   }
-  if (!(await host.fs.exists(path))) return;
+  if (!(await host.fs.exists(path)) || !alive()) return;
   const dated = (content: string) => stamp(content, path);
   // Not written (a save of the open note did not end in time): tried once more a while later,
   // so the date is not lost to one slow save; no more than once.
   if ((await processNoteThroughVault(app, host, path, dated)) !== false) return;
   if (!(await changeNotWritten(app, host, path, dated))) return;
   setTimeout(() => {
+    if (!alive()) return;
     void (async () => {
       if ((await processNoteThroughVault(app, host, path, dated)) === false && (await changeNotWritten(app, host, path, dated))) {
         console.warn('[labnoteo] last_updated_date not written, the note still being saved:', path);
@@ -87,11 +91,12 @@ export async function stampNoteAndReadme(
   host: LabnoteHost,
   path: string,
   stamp: StampNote,
-  keepReadme: (readme: string) => boolean = () => false
+  keepReadme: (readme: string) => boolean = () => false,
+  alive: () => boolean = () => true
 ): Promise<void> {
-  await stampNote(app, host, path, stamp);
+  await stampNote(app, host, path, stamp, alive);
   const readme = experimentReadmeOf(path);
-  if (readme && !keepReadme(readme)) await stampNote(app, host, readme, stamp);
+  if (readme && !keepReadme(readme) && alive()) await stampNote(app, host, readme, stamp, alive);
 }
 
 /**

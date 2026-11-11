@@ -609,6 +609,8 @@ const obsidianKo: Record<string, string> = {
     '{0}의 note ID {1}은(는) 열린 편집기에만 있습니다. 노트를 아직 저장하지 못했습니다. 인쇄하기 전에 노트를 저장하세요. 지금 인쇄한 worksheet는 노트를 찾지 못할 수 있습니다.',
   '{0} has the scan only in its open editor: the note could not be saved yet, so its image stays in the unmatched queue. Assign it again once the note is saved.':
     '{0}의 스캔은 열린 편집기에만 있습니다. 노트를 아직 저장하지 못해 이미지를 미배정 대기열에 남겼습니다. 노트를 저장한 뒤 다시 배정하세요.',
+  'Removed {0} earlier scan(s) from the note and moved {1} image(s) to the trash.':
+    '이전 스캔 {0}개를 노트에서 지우고 이미지 {1}개를 휴지통으로 옮겼습니다.',
   'The note was switched to another while the command ran, so it was not changed. Run the command again.':
     '명령이 도는 사이에 다른 노트로 바뀌어 노트를 바꾸지 않았습니다. 명령을 다시 실행해 주세요.',
   '{0} was not written: it was still being saved, so its checklist does not follow the renamed or deleted workflow notes yet. Run "{1}" to update it.':

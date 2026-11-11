@@ -2,6 +2,7 @@
  * Workflow Structure - Functions for creating workflow files and managing workflow checklist
  */
 
+import { frontMatterLineCountOf } from '../sections/frontMatter';
 import * as path from '../util/posixPath';
 import { getSeoulDateString, getSeoulDateTimeString, findMetaDateFieldInLine, classifyMetaEndDate } from './dateUtils';
 import {
@@ -534,7 +535,9 @@ export function isWorkflowSectionHeading(line: string): boolean {
  * entries under it.
  */
 function findWorkflowSection(lines: readonly string[], skip?: readonly boolean[]): { header: number; end: number } {
-  const isH2At = (i: number): boolean => !skip?.[i] && /^##\s/.test(lines[i].trim());
+  // Front matter is YAML: a `## …` comment or `- [ ]` line in it is no heading or entry.
+  const fm = frontMatterLineCountOf(lines);
+  const isH2At = (i: number): boolean => i >= fm && !skip?.[i] && /^##\s/.test(lines[i].trim());
   const endOf = (header: number): number => {
     for (let i = header + 1; i < lines.length; i++) if (isH2At(i)) return i;
     return lines.length;
@@ -544,7 +547,7 @@ function findWorkflowSection(lines: readonly string[], skip?: readonly boolean[]
   for (let i = 0; i < lines.length; i++) {
     if (!isH2At(i)) continue;
     const end = endOf(i);
-    for (let j = i + 1; j < end; j++) if (!skip?.[j] && isEntryLineAt(lines, j)) return { header: i, end };
+    for (let j = i + 1; j < end; j++) if (j >= fm && !skip?.[j] && isEntryLineAt(lines, j)) return { header: i, end };
     i = end - 1;
   }
   return { header: -1, end: lines.length };
@@ -2105,7 +2108,7 @@ export function unitOpsAllEnded(content: string, now: string = getSeoulDateTimeS
   const lines = content.split(/\r?\n/);
   const ended: boolean[] = [];
   let fence: OpenFence | null = null;
-  for (const line of lines) {
+  for (const line of lines.slice(frontMatterLineCountOf(lines))) {
     const next = stepFence(line, fence);
     if (next !== fence || fence) {
       fence = next;
@@ -2258,7 +2261,8 @@ export function outputSampleIds(content: string, types: readonly string[]): stri
   const ids: string[] = [];
   let inOutput = false;
   let fence: OpenFence | null = null;
-  for (const line of content.split(/\r?\n/)) {
+  const lines = content.split(/\r?\n/);
+  for (const line of lines.slice(frontMatterLineCountOf(lines))) {
     const next = stepFence(line, fence);
     if (next !== fence || fence) {
       fence = next;

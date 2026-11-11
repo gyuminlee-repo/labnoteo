@@ -25,6 +25,15 @@ export function stripFrontMatter(md: string): string {
 }
 
 /**
+ * {@link frontMatterLineCount} of a note split into `lines`: the lines Obsidian reads as
+ * properties (YAML), where a `## …` comment is no heading and a fence-like line opens nothing.
+ * Every parser of headings, sections and entries skips them.
+ */
+export function frontMatterLineCountOf(lines: readonly string[]): number {
+  return lines[0]?.trim() === '---' ? frontMatterLineCount(lines.join('\n')) : 0;
+}
+
+/**
  * How many lines at the top of `md` are its front matter, `---` lines included, as
  * {@link stripFrontMatter} finds it (0 without one). Obsidian reads them as properties,
  * so a fence-like line there opens no code block in the note.

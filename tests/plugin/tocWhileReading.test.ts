@@ -119,6 +119,18 @@ describe('the TOC sync of an open workflow note', () => {
     ).toBe(false);
   });
 
+  // Unloaded while the file was read: the timer already ran, so unload could not clear it; the
+  // sync looks again after the read.
+  it('leaves the editor alone when the plugin is unloaded while the file is read', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('window', globalThis);
+    expect(
+      await edited(false, (_state, plugin) => {
+        plugin.unloaded = true;
+      })
+    ).toBe(false);
+  });
+
   it('leaves the editor alone while a change to the file is to be read back', async () => {
     vi.useFakeTimers();
     vi.stubGlobal('window', globalThis);

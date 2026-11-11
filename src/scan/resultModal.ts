@@ -99,7 +99,16 @@ export async function undoScanResult(
   if (out === 'notWritten') {
     return { done: false, message: t('{0} was not written: it was still being saved, or it changed while the change went in. Try again in a moment.', path) };
   }
-  if (earlier) return { done: true, message: t('Removed {0} earlier scan(s).', String(out)) };
+  if (typeof out === 'object') {
+    // What was done, both counts: the entries out of the note and the images moved to the trash.
+    return {
+      done: true,
+      message:
+        out.removed === out.trashed
+          ? t('Removed {0} earlier scan(s).', String(out.removed))
+          : t('Removed {0} earlier scan(s) from the note and moved {1} image(s) to the trash.', String(out.removed), String(out.trashed)),
+    };
+  }
   return { done: true, message: out ? t('Removed the scan from {0}.', path) : t('The scan was no longer in the note.') };
 }
 
@@ -139,7 +148,8 @@ export class ScanResultModal extends Modal {
             .onClick(async () => {
               const { message, done } = await undoScanResult(t, this.pipeline, r, true);
               new Notice(message);
-              if (done) b.setDisabled(true);
+              // Done: nothing earlier is left to delete, so the button goes.
+              if (done) b.buttonEl.remove();
             })
         );
       }

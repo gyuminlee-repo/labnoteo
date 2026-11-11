@@ -4,6 +4,7 @@
  * Discussion` of a README), replacing the summary an earlier run put there.
  */
 import { findSectionMatches, listHeadings, sectionBodyEnd, stepFence, type OpenFence } from './sectionEdit';
+import { frontMatterLineCountOf } from './frontMatter';
 
 /** Where {@link locateSummary} found the summary's section. */
 export type SummaryPlace =
@@ -45,7 +46,7 @@ function locate(md: string, heading: string, titles: readonly string[] = []): Lo
   if (titles.length === 0) return undefined;
   let callout = -1;
   let fence: OpenFence | null = null;
-  for (let i = 0; i < lines.length; i++) {
+  for (let i = frontMatterLineCountOf(lines); i < lines.length; i++) {
     const next = stepFence(lines[i], fence);
     if (next !== fence) {
       fence = next;

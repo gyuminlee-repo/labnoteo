@@ -10,7 +10,7 @@
 import { findSectionMatches, sectionBodyEnd, stepFence, type OpenFence } from './sectionEdit';
 import { UNIT_OP_HEADING_PATTERN } from './workflowSectionParser';
 import { scanDocumentHead, isBeforeBody } from './documentHead';
-import { stripFrontMatter } from './frontMatter';
+import { frontMatterLineCountOf, stripFrontMatter } from './frontMatter';
 import { SW_PLACEHOLDERS, HW_PLACEHOLDERS } from '../lib/unitOpTemplate';
 
 /** The `#### Method` subsection of one unit operation. */
@@ -39,7 +39,7 @@ interface HeadingLine {
 function scanHeadings(lines: readonly string[]): HeadingLine[] {
   const headings: HeadingLine[] = [];
   let fence: OpenFence | null = null;
-  for (let i = 0; i < lines.length; i++) {
+  for (let i = frontMatterLineCountOf(lines); i < lines.length; i++) {
     const next = stepFence(lines[i], fence);
     if (next !== fence) {
       fence = next;

@@ -16,6 +16,7 @@ import { stepFence, type OpenFence } from './sectionEdit';
 import { joinLineBuffer, spliceLineBuffer, splitLineBuffer, type LineRef } from '../util/lineEnds';
 import { UNIT_OP_HEADING_PATTERN } from './workflowSectionParser';
 import { unitOpFingerprint } from '../lib/scanPayload';
+import { frontMatterLineCountOf } from './frontMatter';
 
 export const WORKSHEET_SCANS_HEADING = 'Worksheet scans';
 
@@ -60,7 +61,7 @@ interface Heading {
 function scanHeadings(lines: readonly string[]): Heading[] {
   const out: Heading[] = [];
   let fence: OpenFence | null = null;
-  for (let i = 0; i < lines.length; i++) {
+  for (let i = frontMatterLineCountOf(lines); i < lines.length; i++) {
     const next = stepFence(lines[i], fence);
     if (next !== fence) {
       fence = next;
@@ -285,7 +286,8 @@ export function insertScanEntries(md: string, block: UnitOpBlock | null, entries
 export function listScanHashes(md: string): Set<string> {
   const out = new Set<string>();
   let fence: OpenFence | null = null;
-  for (const line of md.split(/\r?\n/)) {
+  const lines = md.split(/\r?\n/);
+  for (const line of lines.slice(frontMatterLineCountOf(lines))) {
     const next = stepFence(line, fence);
     if (next !== fence) {
       fence = next;
@@ -306,7 +308,7 @@ export function listScanHashes(md: string): Set<string> {
 export function scanEntryLine(md: string, hash: string): number | undefined {
   let fence: OpenFence | null = null;
   const lines = md.split(/\r?\n/);
-  for (let i = 0; i < lines.length; i++) {
+  for (let i = frontMatterLineCountOf(lines); i < lines.length; i++) {
     const next = stepFence(lines[i], fence);
     if (next !== fence) {
       fence = next;
@@ -334,7 +336,7 @@ export function listFiledScans(md: string): FiledScan[] {
   const blocks = blocksOf(lines, scanHeadings(lines));
   const out: FiledScan[] = [];
   let fence: OpenFence | null = null;
-  for (let i = 0; i < lines.length; i++) {
+  for (let i = frontMatterLineCountOf(lines); i < lines.length; i++) {
     const next = stepFence(lines[i], fence);
     if (next !== fence) {
       fence = next;
