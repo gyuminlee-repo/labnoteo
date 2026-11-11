@@ -390,6 +390,7 @@ export function unitOpContext(text: string, loc: UnitOpMethodLocation): string {
  * operation's `#### Method` body (asking first when the researcher already
  * wrote one); anywhere else it goes in as a block after the cursor's line.
  */
+// front matter: strips `### ` off the unit operation heading findUnitOpMethodAt found, past the front matter.
 export async function draftMethodCommand(plugin: LabnotePlugin): Promise<void> {
   const target = plugin.host.editTarget();
   if (!target) {

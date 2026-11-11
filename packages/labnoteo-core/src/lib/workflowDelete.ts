@@ -32,7 +32,7 @@ export interface RemoveWorkflowFromReadmeResult {
  * (`[^)]+`) so non-ASCII file names — which the strict checklist parser rejects
  * — are still recognised for removal.
  */
-// front matter: one line, judged by the caller, which leaves the front matter out.
+// front matter: one line; removeWorkflowFromReadme drops each line it matched inside the front matter.
 function isChecklistLineForFile(line: string, fileName: string): boolean {
   const entryLink = workflowChecklistEntryLink(line.trim());
   if (entryLink !== undefined) return (entryLink.replace(/^\.\//, '').split('/').pop() ?? '') === fileName;

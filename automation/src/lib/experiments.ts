@@ -118,11 +118,12 @@ export function deriveIssueTitle(
  * (section runs until the next heading of the same or higher level). Blockquote
  * markers (`>`) are stripped so a placeholder/objective reads as plain prose.
  */
-export function getSectionBody(md: string, heading: string): string | undefined {
+export function getSectionBody(md: string, heading: string, { asNote = true }: { asNote?: boolean } = {}): string | undefined {
   // The section core `replaceSectionBody` writes: picked and bounded as it does (front matter
-  // and code fences left out), so what is read is what is replaced.
+  // and code fences left out), so what is read is what is replaced. `asNote: false` for a note's
+  // body, its front matter already taken off: a `---` line there is a break, not front matter.
   const lines = md.split(/\r?\n/);
-  const [match] = findSectionMatches(md, heading);
+  const [match] = findSectionMatches(md, heading, { asNote });
   if (!match) return undefined;
   const start = match.line + 1;
   const end = sectionBodyEnd(lines, match.line, match.level, { replacing: true });
@@ -141,7 +142,7 @@ export function getSectionBody(md: string, heading: string): string | undefined 
  * placeholder (so issues omit a meaningless objective). NEVER uses AI.
  */
 export function extractObjective(body: string): string | undefined {
-  const section = getSectionBody(body, OBJECTIVE_HEADING);
+  const section = getSectionBody(body, OBJECTIVE_HEADING, { asNote: false });
   if (!section) return undefined;
   const normalized = section.replace(/\s+/g, ' ').trim();
   if (normalized === '' || normalized === OBJECTIVE_PLACEHOLDER) return undefined;
@@ -285,7 +286,7 @@ export function buildDiscussionIssue(
   const status = readStringField(note.frontMatter, 'status');
   const notePath = source.path;
   const fileLine = marker.line + source.bodyLineOffset;
-  const section = findEnclosingHeading(source.body, marker.line);
+  const section = findEnclosingHeading(source.body, marker.line, { asNote: false });
 
   const labels = ['experiment', 'discussion'];
   if (status) labels.push(`status:${status}`);

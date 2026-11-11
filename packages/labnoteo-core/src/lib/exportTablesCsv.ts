@@ -3,6 +3,7 @@
  * Pure functions, no `vscode` import.
  */
 import { stepFence, type OpenFence } from '../sections/sectionEdit';
+import { frontMatterLineCount } from '../sections/frontMatter';
 
 export interface CsvTable {
   /** 0-based index of the table within the source document (0 = first table). */
@@ -196,6 +197,7 @@ const UNESCAPED_PIPE_RE = /(?:^|[^\\])\|/;
  * Whether `l` can be a row of a table at quote depth `depth`: it has a `|`
  * and is not a list item, heading, fence or rule, which start their own
  * block (#417). A table needs no `|` at the ends of its rows.
+ * front matter: one line; scanMarkdownTables reads from past the front matter.
  */
 const isTableRow = (l: QuotedLine | undefined, depth: number): boolean =>
   !!l &&
@@ -234,6 +236,7 @@ export const isTableRowLine = (line: string): boolean => isTableRow({ depth: 0, 
  * thematic break, a callout title (#205), a code block or the start of a
  * deeper quote ends the block before it.
  */
+// front matter: one line; scanMarkdownTables reads from past the front matter.
 function startsBlock(prev: QuotedLine | undefined, line: QuotedLine, prevCode: boolean): boolean {
   if (!prev || prevCode || prev.text.trim() === '' || prev.depth < line.depth) return true;
   return HEADING_RE.test(prev.text) || THEMATIC_BREAK_RE.test(prev.text) || CALLOUT_TITLE_RE.test(prev.text);
@@ -322,7 +325,8 @@ export function extractMarkdownTables(markdown: string): CsvTable[] {
  * view shows as text because nothing separates them from the paragraph above.
  */
 export function scanMarkdownTables(markdown: string): MarkdownTableScan {
-  const lines = markdown.replace(/\r\n/g, '\n').split('\n').map(unquote);
+  const text = markdown.replace(/\r\n/g, '\n');
+  const lines = text.split('\n').map(unquote);
   const commented = hiddenCommentLines(lines.map(l => l.text));
   const tables: CsvTable[] = [];
   let notRendered = 0;
@@ -333,7 +337,8 @@ export function scanMarkdownTables(markdown: string): MarkdownTableScan {
   let inIndentedCode = false;
   // The line before was code (fenced, a fence line, or indented).
   let prevCode = false;
-  let i = 0;
+  // Front matter is YAML (Obsidian reads it as properties): a `|` line there is no table.
+  let i = frontMatterLineCount(text);
   while (i < lines.length) {
     const line = lines[i];
     const prev = lines[i - 1];

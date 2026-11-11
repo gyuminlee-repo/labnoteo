@@ -4,6 +4,7 @@
  * line of text, so it cannot hide the headings below it and make a section
  * run to the end of the note (and a replacement delete what follows).
  */
+import { frontMatterLineCountOf } from './frontMatter';
 
 /** An open code fence: which character opened it, and how long the run was. */
 export interface OpenFence {
@@ -105,11 +106,8 @@ export function mayHaveFences(lines: readonly string[]): boolean {
 
 export function markdownCodeLines(lines: readonly string[]): boolean[] {
   const out = new Array<boolean>(lines.length).fill(false);
-  let i = 0;
-  if (lines[0]?.trim() === '---') {
-    const close = lines.findIndex((l, k) => k > 0 && l.trim() === '---');
-    if (close > 0) i = close + 1;
-  }
+  // From past the front matter as Obsidian finds it (lines split on \r?\n).
+  let i = frontMatterLineCountOf(lines);
   let open: OpenFence | null = null;
   for (; i < lines.length; i++) {
     const line = lines[i];

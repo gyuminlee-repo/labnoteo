@@ -21,7 +21,7 @@ const THEMATIC_BREAK_RE = /^ {0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/;
 const WORKFLOW_SECTION_NAMES = ['related workflows', '관련 워크플로'];
 
 /** `stepFence` as main had it: any backtick run opens a fence, info string or not. */
-// front matter: main (#442) as it was, kept to compare with; its caller leaves the front matter out.
+// front matter: main (#442) as it was, kept to compare with. It reads the front matter as Markdown; removeWorkflowFromReadme drops each returned line inside it.
 function stepFence(line: string, open: OpenFence | null): OpenFence | null {
   const match = line.match(FENCE_RE);
   if (!match) return open;
@@ -32,7 +32,7 @@ function stepFence(line: string, open: OpenFence | null): OpenFence | null {
   return closes ? null : open;
 }
 
-// front matter: main (#442) as it was, kept to compare with; its caller leaves the front matter out.
+// front matter: main (#442) as it was, kept to compare with. It reads the front matter as Markdown; removeWorkflowFromReadme drops each returned line inside it.
 function listHeadings(md: string): { line: number; level: number; text: string }[] {
   const lines = md.split(/\r?\n/);
   const out: { line: number; level: number; text: string }[] = [];
@@ -50,7 +50,7 @@ function listHeadings(md: string): { line: number; level: number; text: string }
   return out;
 }
 
-// front matter: main (#442) as it was, kept to compare with; its caller leaves the front matter out.
+// front matter: main (#442) as it was, kept to compare with. It reads the front matter as Markdown; removeWorkflowFromReadme drops each returned line inside it.
 function findSectionMatches(md: string, heading: string): { line: number; level: number }[] {
   const lines = md.split(/\r?\n/);
   const headingRe = new RegExp(`^(#{1,6})\\s+${escapeRegExp(heading)}\\s*$`);
@@ -63,7 +63,7 @@ function findSectionMatches(md: string, heading: string): { line: number; level:
   return found;
 }
 
-// front matter: main (#442) as it was, kept to compare with; its caller leaves the front matter out.
+// front matter: main (#442) as it was, kept to compare with. It reads the front matter as Markdown; removeWorkflowFromReadme drops each returned line inside it.
 function sectionBodyEnd(lines: readonly string[], headingIdx: number, level: number): number {
   const boundaryRe = new RegExp(`^#{1,${level}}\\s`);
   let bodyFence: OpenFence | null = null;
@@ -83,7 +83,7 @@ function sectionBodyEnd(lines: readonly string[], headingIdx: number, level: num
   return lines.length;
 }
 
-// front matter: main (#442) as it was, kept to compare with; its caller leaves the front matter out.
+// front matter: main (#442) as it was, kept to compare with. It reads the front matter as Markdown; removeWorkflowFromReadme drops each returned line inside it.
 function workflowChecklistSectionRange(readmeContent: string): { header: number; end: number } | undefined {
   const lines = readmeContent.split(/\r?\n/);
   const isH2 = (line: string): boolean => /^##\s/.test(line.trim());
@@ -110,7 +110,7 @@ function workflowChecklistSectionRange(readmeContent: string): { header: number;
  * Indices of `lines` (`readmeContent` split after each `\n`) that main's delete
  * removes for the checklist lines `isEntryFor` recognises.
  */
-// front matter: main (#442) as it was, kept to compare with; its caller leaves the front matter out.
+// front matter: main (#442) as it was, kept to compare with. It reads the front matter as Markdown; removeWorkflowFromReadme drops each returned line inside it.
 export function v442DeletedLines(
   readmeContent: string,
   lines: readonly string[],

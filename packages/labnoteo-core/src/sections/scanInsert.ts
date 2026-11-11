@@ -220,6 +220,7 @@ function parseSection(lines: readonly string[], headingLine: number, end: number
   return { headingLine, end, preface, entries };
 }
 
+// front matter: tests headings scanHeadings found, past the front matter.
 function findSection(
   lines: readonly string[],
   headings: readonly Heading[],

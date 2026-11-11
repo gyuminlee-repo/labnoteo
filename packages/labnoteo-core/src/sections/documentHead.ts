@@ -13,9 +13,10 @@ export interface DocumentHead {
   headingLines: Set<number>;
 }
 
+/** `lines` is the note split on `\n`, each CR kept as part of its line break, as every caller splits it. */
 export function scanDocumentHead(lines: readonly string[]): DocumentHead {
   // Front matter as Obsidian finds it: its closing `---` line, or -1 without one.
-  const fmEndLine = frontMatterLineCountOf(lines) - 1;
+  const fmEndLine = frontMatterLineCountOf(lines, { crKept: true }) - 1;
 
   // Ignore `#` lines inside fenced code blocks and inside the front matter
   // (YAML comments look like headings).

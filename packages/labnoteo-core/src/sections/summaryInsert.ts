@@ -46,7 +46,8 @@ function locate(md: string, heading: string, titles: readonly string[] = []): Lo
   if (titles.length === 0) return undefined;
   let callout = -1;
   let fence: OpenFence | null = null;
-  for (let i = frontMatterLineCountOf(lines); i < lines.length; i++) {
+  const fm = frontMatterLineCountOf(lines, { crKept: true });
+  for (let i = fm; i < lines.length; i++) {
     const next = stepFence(lines[i], fence);
     if (next !== fence) {
       fence = next;
@@ -56,7 +57,8 @@ function locate(md: string, heading: string, titles: readonly string[] = []): Lo
   }
   if (callout === -1) return undefined;
   const above = listHeadings(md).filter(h => h.line < callout).pop();
-  if (!above) return { lines, line: -1, end: sectionBodyEnd(lines, -1, 6), place: { kind: 'callout', heading: '' } };
+  // No heading above: the part of the note from past its front matter.
+  if (!above) return { lines, line: fm - 1, end: sectionBodyEnd(lines, fm - 1, 6), place: { kind: 'callout', heading: '' } };
   return { lines, line: above.line, end: sectionBodyEnd(lines, above.line, above.level), place: { kind: 'callout', heading: above.text } };
 }
 

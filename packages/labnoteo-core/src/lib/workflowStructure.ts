@@ -2,7 +2,7 @@
  * Workflow Structure - Functions for creating workflow files and managing workflow checklist
  */
 
-import { frontMatterLineCountOf } from '../sections/frontMatter';
+import { frontMatterLineCount, frontMatterLineCountOf } from '../sections/frontMatter';
 import * as path from '../util/posixPath';
 import { getSeoulDateString, getSeoulDateTimeString, findMetaDateFieldInLine, classifyMetaEndDate } from './dateUtils';
 import {
@@ -12,7 +12,7 @@ import {
   escapeRegExp,
   WORKFLOW_FILE_NAME_MAX,
 } from './regexUtils';
-import { frontMatterNames, lineEdits, parseFrontMatterYaml, serializeFrontMatterEntry } from '../sections/frontMatter';
+import { frontMatterNames, lineEdits, parseFrontMatterYaml, serializeFrontMatterEntry, stripFrontMatter } from '../sections/frontMatter';
 import { normalizeHeadingText, stepFence, type OpenFence } from '../sections/sectionEdit';
 import { markdownCodeLines, mayHaveFences } from '../sections/codeFences';
 import { joinLineBuffer, joinSplitKeepingCr, spliceLineBuffer, splitKeepingCr, splitLineBuffer } from '../util/lineEnds';
@@ -518,6 +518,7 @@ function isEntryLineAt(lines: readonly string[], i: number): boolean {
 const WORKFLOW_SECTION_NAMES = ['related workflows', '관련 워크플로'];
 
 /** Whether `line` is a `##` heading naming the "Related Workflows" section, as {@link findWorkflowSection} matches it. */
+// front matter: one line; its callers pass headings read past the front matter (findWorkflowSection, removeWorkflowFromReadme).
 export function isWorkflowSectionHeading(line: string): boolean {
   if (!/^##\s/.test(line.trim())) return false;
   const text = normalizeHeadingText(line.trim().replace(/^##\s+/, ''));
@@ -916,7 +917,7 @@ export function unnamedWorkflowIds(
     const heading =
       content === undefined
         ? undefined
-        : (parseWorkflowHeading(content)?.id ?? idInText(/^# (.+)$/m.exec(content)?.[1]));
+        : (parseWorkflowHeading(content)?.id ?? idInText(/^# (.+)$/m.exec(stripFrontMatter(content))?.[1]));
     const id = [idInText(title), heading, idInText(labels.get(name))].find(Boolean);
     if (id && unnamedWorkflowSafeName(name)) hints.set(name, id);
     else skipped.push(name);
@@ -1975,7 +1976,8 @@ export function dropBlankLeftByEntries(
   // No fence marker anywhere: no blank line may be code, so the readings are not run.
   const fences = mayHaveFences(lines);
   // Fences read from after the front matter (no Markdown), whose lines are no entries' neighbours.
-  const fmEnd = lines[0]?.trim() === '---' ? lines.findIndex((l, i) => i > 0 && l.trim() === '---') : -1;
+  // Lines keep their breaks (split after \n) or not (split on \n, CR kept): rejoined to the text either way.
+  const fmEnd = frontMatterLineCount(lines.join(lines[0]?.endsWith('\n') ? '' : '\n')) - 1;
   const maybeCode: boolean[] = new Array<boolean>(fmEnd + 1).fill(false);
   if (fences) {
     // Only the lines up to just past the last entry going can be the blank lines asked about.
@@ -2133,7 +2135,6 @@ export function unitOpsAllEnded(content: string, now: string = getSeoulDateTimeS
   return ended.length > 0 && ended.every(Boolean);
 }
 
-// front matter: reads it itself (fmEnd) to rewrite experimenter; the body is read from past it.
 export function planWorkflowExperimenterSync(
   content: string,
   author: string,
@@ -2149,8 +2150,9 @@ export function planWorkflowExperimenterSync(
   // Every line not rewritten keeps its own line break, even in mixed endings.
   const buf = splitLineBuffer(content);
   const { lines } = buf;
-  let fmEnd = lines.findIndex((l, i) => i > 0 && l.trim() === '---');
-  if (lines[0]?.trim() !== '---' || fmEnd === -1) return undefined;
+  // The front matter as Obsidian finds it: its closing `---` line, the body read from past it.
+  let fmEnd = frontMatterLineCountOf(lines) - 1;
+  if (fmEnd < 1) return undefined;
   for (let i = 1; i < fmEnd; i++) {
     if (!/^experimenter\s*:/.test(lines[i])) continue;
     let end = i + 1;
@@ -2234,7 +2236,8 @@ export function resetCopiedWorkflowDates(content: string, today: string): string
   // Every line not rewritten keeps its own line break, even in mixed endings.
   const buf = splitLineBuffer(content);
   const { lines } = buf;
-  const fmEnd = lines[0]?.trim() === '---' ? lines.findIndex((l, i) => i > 0 && l.trim() === '---') : -1;
+  // The front matter as Obsidian finds it: its closing `---` line (-1 without one), the body read from past it.
+  const fmEnd = frontMatterLineCountOf(lines) - 1;
   // In one pass, so a front matter of many date keys costs its length (see lineEdits).
   const { edit, apply } = lineEdits(buf);
   for (let i = 1; i < fmEnd; i++) {

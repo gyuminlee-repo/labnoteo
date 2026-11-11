@@ -101,6 +101,7 @@ function written(body: readonly string[]): boolean {
 }
 
 /** Whether `md` follows the workflow template (a `## [ID Name]` heading or unit operations). */
+// front matter: titles from sections(), past the front matter.
 function isWorkflowNote(md: string): boolean {
   return sections(md).some(s => BRACKET_HEADING_RE.test(s.title) || isTemplateSection(s));
 }
@@ -118,6 +119,7 @@ interface ResultSection {
  * operation's `Output` (#317) — what the run produced, where a lab step's
  * Output only lists the samples passed on — the note's `Conclusions and
  * Discussion`, and any section the researcher added. Empty ones included.
+ * front matter: titles from sections(), past the front matter.
  */
 function resultSectionsOf(text: string): ResultSection[] {
   const out: ResultSection[] = [];

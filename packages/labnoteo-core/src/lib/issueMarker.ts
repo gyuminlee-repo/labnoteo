@@ -576,6 +576,7 @@ export type IssueMarkerInsertion =
   | { edit: { from: number; to: number; insert: string }; cursor: number }
   | { reason: 'conflict' | 'table' | 'frontMatter' | 'codeBlock' | 'comment' };
 
+// front matter: one line; planIssueMarkerInsertion refuses an offset in the front matter first.
 const isHeadingLine = (line: string): boolean => /^ {0,3}#{1,6}(?:\s|$)/.test(line);
 const isTableRow = (line: string): boolean => /^\s*\|/.test(line);
 
@@ -738,12 +739,14 @@ export function issueSentenceRange(
  * section it came from (`Results` vs `Methods`) without copying the note.
  *
  * Headings inside code blocks are ignored, for the same reason markers are.
+ * `asNote: false` for a note's body, its front matter already taken off: a `---` line
+ * there is a break, not front matter.
  */
-export function findEnclosingHeading(md: string, line: number): string | undefined {
+export function findEnclosingHeading(md: string, line: number, { asNote = true }: { asNote?: boolean } = {}): string | undefined {
   const lines = md.split('\n');
   const code = codeLines(lines);
   // Not above the front matter's end: a `## …` YAML comment there is no heading.
-  const fm = frontMatterLineCountOf(lines, { crKept: true });
+  const fm = asNote ? frontMatterLineCountOf(lines, { crKept: true }) : 0;
 
   for (let i = Math.min(line, lines.length) - 1; i >= fm; i--) {
     if (code[i]) continue;

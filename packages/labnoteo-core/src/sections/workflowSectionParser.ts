@@ -10,7 +10,7 @@
  */
 import { normalizeHeadingText, stepFence, type OpenFence } from './sectionEdit';
 import { joinLineBuffer, spliceLineBuffer, splitLineBuffer } from '../util/lineEnds';
-import { frontMatterLineCount } from './frontMatter';
+import { frontMatterLineCount, frontMatterLineCountOf } from './frontMatter';
 
 export const UNIT_OP_HEADING_PATTERN = /^###\s+\[([A-Z]+\d+)\s+(.+?)\]\s*(.*)/;
 
@@ -433,11 +433,7 @@ const isTocEntry = (line: MdLine): boolean => !line.fenced && tocEntryOpId(line.
  * the TOC. Front matter and fenced code hold no headings.
  */
 function headingAnchors(lines: MdLine[]): Map<number, string> {
-  let start = 0;
-  if (lines[0]?.text.trim() === '---') {
-    const close = lines.findIndex((l, i) => i > 0 && l.text.trim() === '---');
-    if (close !== -1) start = close + 1;
-  }
+  const start = frontMatterLineCountOf(lines.map(l => l.text));
   const anchors = new Map<number, string>();
   const seen = new Map<string, number>();
   for (let j = start; j < lines.length; j++) {
