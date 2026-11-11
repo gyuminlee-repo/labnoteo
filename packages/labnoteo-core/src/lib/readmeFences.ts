@@ -11,11 +11,62 @@
  * with its indent dropped, as under a list entry). An opener that is never
  * closed is not a fence. Each reading is one linear pass.
  */
-import { closedFenceSpans } from '../sections/codeFences';
+import { closedFenceSpans, stepFence, type OpenFence } from '../sections/codeFences';
+
+/** A line that starts a CommonMark HTML block: `<` (up to three spaces in) then a tag, `!` or `?`. */
+const HTML_START = /^ {0,3}<[A-Za-z/!?]/;
+/** Raw-text tags (CommonMark HTML block type 1), whose block ends at their closing tag. */
+const RAW_TAG = /^ {0,3}<(script|pre|style|textarea)(?=[\s>]|$)/i;
+
+/**
+ * Which lines are in an HTML block (CommonMark, read line by line): from a line starting one,
+ * outside a fence, to the blank line ending it (a comment to its `-->`, a raw-text tag to its
+ * closing tag). A backtick run there is HTML, no fence, so it pairs with no fence below.
+ */
+export function htmlBlockLines(lines: readonly string[]): boolean[] {
+  const out = new Array<boolean>(lines.length).fill(false);
+  let fence: OpenFence | null = null;
+  let end: RegExp | null = null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].replace(/\r?\n$|\r$/, '');
+    if (end) {
+      out[i] = true;
+      if (end.test(line)) end = null;
+      continue;
+    }
+    const next = stepFence(line, fence);
+    if (next !== fence || fence) {
+      fence = next;
+      continue;
+    }
+    if (!HTML_START.test(line)) continue;
+    out[i] = true;
+    const raw = RAW_TAG.exec(line);
+    const comment = /^ {0,3}<!--/.test(line);
+    if (raw) {
+      const close = new RegExp(`</${raw[1]}>`, 'i');
+      if (!close.test(line)) end = close;
+    } else if (comment) {
+      if (!line.slice(line.indexOf('<!--') + 4).includes('-->')) end = /-->/;
+    } else {
+      end = /^\s*$/;
+    }
+  }
+  return out;
+}
+
+/** Each line as a fence reading takes it: one in an HTML block is no fence line. */
+function fenceReading(lines: readonly string[], indentAny: boolean): [number, number][] {
+  const html = htmlBlockLines(lines);
+  return closedFenceSpans(
+    lines.map((line, i) => (html[i] ? '' : line)),
+    indentAny ? line => line.trimStart() : line => line
+  );
+}
 
 /** Closed fences of `lines` as `[opener, closer]` pairs, in either reading (they may overlap). */
 export function readmeFenceSpans(lines: readonly string[]): [number, number][] {
-  return [...closedFenceSpans(lines), ...closedFenceSpans(lines, line => line.trimStart())];
+  return [...fenceReading(lines, false), ...fenceReading(lines, true)];
 }
 
 /**
@@ -30,8 +81,8 @@ export function readmeFencedReadings(lines: readonly string[]): { inCode: boolea
     for (const [open, close] of spans) out.fill(true, open, close + 1);
     return out;
   };
-  const plainSpans = closedFenceSpans(lines);
-  return { inCode: fill([...plainSpans, ...closedFenceSpans(lines, line => line.trimStart())]), plain: fill(plainSpans) };
+  const plainSpans = fenceReading(lines, false);
+  return { inCode: fill([...plainSpans, ...fenceReading(lines, true)]), plain: fill(plainSpans) };
 }
 
 /** Whether each line lies in a closed fence of {@link readmeFenceSpans}, its fence lines included. */
