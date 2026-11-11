@@ -55,25 +55,61 @@ export function htmlBlockLines(lines: readonly string[]): boolean[] {
   return out;
 }
 
-/** Each line as a fence reading takes it: one in an HTML block is no fence line. */
-function fenceReading(lines: readonly string[], indentAny: boolean): [number, number][] {
-  const html = htmlBlockLines(lines);
-  return closedFenceSpans(
-    lines.map((line, i) => (html[i] ? '' : line)),
-    indentAny ? line => line.trimStart() : line => line
-  );
+/** Each line as a fence reading takes it: one `inHtml` marks (in an HTML block) is no fence line. */
+function fenceReading(lines: readonly string[], indentAny: boolean, inHtml: readonly boolean[] = []): [number, number][] {
+  const read = indentAny ? (line: string) => line.trimStart() : (line: string) => line;
+  return closedFenceSpans(lines, (line, i) => (inHtml[i] ? '' : read(line)));
 }
 
-/** Closed fences of `lines` as `[opener, closer]` pairs, in either reading (they may overlap). */
+/**
+ * Line by line (CommonMark: a fence left open runs to the end), outside HTML blocks: `code[i]`
+ * whether line `i` is in a fence or is one, `openBefore[p]` whether a line put before line `p`
+ * would be in one. The closed readings take an opener never closed for text; this one does not.
+ */
+function lineByLineFences(lines: readonly string[], from = 0): { code: boolean[]; openBefore: boolean[] } {
+  const html = htmlBlockLines(lines.slice(from));
+  const code = new Array<boolean>(lines.length).fill(false);
+  const openBefore = new Array<boolean>(lines.length + 1).fill(false);
+  let fence: OpenFence | null = null;
+  for (let i = from; i < lines.length; i++) {
+    openBefore[i] = fence !== null;
+    if (html[i - from]) continue;
+    const next = stepFence(lines[i].replace(/\r?\n$|\r$/, ''), fence);
+    code[i] = fence !== null || next !== null;
+    fence = next;
+  }
+  openBefore[lines.length] = fence !== null;
+  return { code, openBefore };
+}
+
+/** The HTML blocks of `lines` as `[first, last]` line pairs. */
+function htmlBlockSpans(lines: readonly string[], html: readonly boolean[] = htmlBlockLines(lines)): [number, number][] {
+  const spans: [number, number][] = [];
+  html.forEach((on, i) => {
+    if (!on) return;
+    if (spans.length && spans[spans.length - 1][1] === i - 1) spans[spans.length - 1][1] = i;
+    else spans.push([i, i]);
+  });
+  return spans;
+}
+
+/**
+ * Closed fences of `lines` as `[opener, closer]` pairs, in either reading (they may overlap),
+ * and the HTML blocks: an entry goes into neither.
+ */
 export function readmeFenceSpans(lines: readonly string[]): [number, number][] {
-  return [...fenceReading(lines, false), ...fenceReading(lines, true)];
+  const html = htmlBlockLines(lines);
+  return [...fenceReading(lines, false, html), ...fenceReading(lines, true, html), ...htmlBlockSpans(lines, html)];
 }
 
 /**
  * {@link readmeFencedLines} (`inCode`, either reading) and the lines in a closed fence
  * indented up to three spaces alone (`plain`, the CommonMark reading), from the same two
  * readings: a heading in a `plain` fence is no heading, while the any-indent reading only
- * keeps lines from being touched and never hides a heading.
+ * keeps lines from being touched and never hides a heading. `inCode` also takes the fences
+ * read with an HTML block's backtick lines as fences, as before: deletion keeps from a line
+ * either way puts in code (it can only do less), while `plain` reads the HTML block as HTML,
+ * so a backtick line there hides no heading below.
  */
 export function readmeFencedReadings(lines: readonly string[]): { inCode: boolean[]; plain: boolean[] } {
   const fill = (spans: readonly [number, number][]): boolean[] => {
@@ -81,8 +117,13 @@ export function readmeFencedReadings(lines: readonly string[]): { inCode: boolea
     for (const [open, close] of spans) out.fill(true, open, close + 1);
     return out;
   };
-  const plainSpans = fenceReading(lines, false);
-  return { inCode: fill([...plainSpans, ...fenceReading(lines, true)]), plain: fill(plainSpans) };
+  // An HTML block is no Markdown either: no line in it is an entry, nor a heading.
+  const html = htmlBlockLines(lines);
+  const plainSpans = [...fenceReading(lines, false, html), ...htmlBlockSpans(lines, html)];
+  // Without an HTML block the readings that take its lines as fences are these same ones.
+  const asFences = html.some(Boolean) ? [...fenceReading(lines, false), ...fenceReading(lines, true)] : [];
+  const either = [...plainSpans, ...fenceReading(lines, true, html), ...asFences];
+  return { inCode: fill(either), plain: fill(plainSpans) };
 }
 
 /** Whether each line lies in a closed fence of {@link readmeFenceSpans}, its fence lines included. */
@@ -105,14 +146,18 @@ export function positionOutsideFences(
   at: number,
   header: number,
   limit = lines.length,
-  spans: readonly [number, number][] = readmeFenceSpans(lines)
+  spans: readonly [number, number][] = readmeFenceSpans(lines),
+  from = 0
 ): number {
   if (spans.some(([open, close]) => open < header && header <= close)) return at;
   const inside = (pos: number): [number, number][] => spans.filter(([open, close]) => open < pos && pos <= close);
   let after = at;
   for (let around = inside(after); around.length > 0; around = inside(after)) after = Math.max(...around.map(([, close]) => close + 1));
-  if (after <= limit) return after;
   let before = at;
   for (let around = inside(before); around.length > 0; around = inside(before)) before = Math.min(...around.map(([open]) => open));
-  return before;
+  const moved = after <= limit ? after : before;
+  // Not into a fence the line-by-line reading has open there (one left open, say), when `at` is
+  // in none by that reading: a closed reading's fence may be no fence at all.
+  const { openBefore } = lineByLineFences(lines, from);
+  return openBefore[moved] && !openBefore[at] ? at : moved;
 }

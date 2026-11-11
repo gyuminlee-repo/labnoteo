@@ -45,9 +45,9 @@ export function stepFence(line: string, open: OpenFence | null): OpenFence | nul
  * read through `read` first, in one linear pass. An opener that is never
  * closed is not a fence, and the lines after it are read as before.
  */
-export function closedFenceSpans(lines: readonly string[], read: (line: string) => string = line => line): [number, number][] {
+export function closedFenceSpans(lines: readonly string[], read: (line: string, index: number) => string = line => line): [number, number][] {
   const n = lines.length;
-  const openers: (OpenFence | null)[] = lines.map(line => stepFence(read(line), null));
+  const openers: (OpenFence | null)[] = lines.map((line, i) => stepFence(read(line, i), null));
   // below[char]: the closing lines below that no nearer one is as long as, farthest first, so
   // their run lengths fall: an opener's closer is the last one at least as long as it is.
   const below = new Map<string, { line: number; length: number }[]>();
@@ -64,7 +64,7 @@ export function closedFenceSpans(lines: readonly string[], read: (line: string) 
       if (at !== -1) closeAfter[i] = list[at].line;
     }
     // A bare run (nothing after it) closes any open fence of its character no longer than itself.
-    if (open && stepFence(read(lines[i]), open) === null) {
+    if (open && stepFence(read(lines[i], i), open) === null) {
       const runs = list ?? [];
       while (runs.length > 0 && runs[runs.length - 1].length <= open.length) runs.pop();
       runs.push({ line: i, length: open.length });
