@@ -13,44 +13,74 @@
  */
 import { closedFenceSpans, stepFence, type OpenFence } from '../sections/codeFences';
 
-/** A line that starts a CommonMark HTML block: `<` (up to three spaces in) then a tag, `!` or `?`. */
-const HTML_START = /^ {0,3}<[A-Za-z/!?]/;
-/** Raw-text tags (CommonMark HTML block type 1), whose block ends at their closing tag. */
-const RAW_TAG = /^ {0,3}<(script|pre|style|textarea)(?=[\s>]|$)/i;
+/** CommonMark HTML block type 6: these tag names start a block ended by a blank line. */
+const BLOCK_TAGS =
+  'address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h1|h2|h3|h4|h5|h6|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul';
+const ATTRIBUTE = `\\s+[A-Za-z_:][A-Za-z0-9_.:-]*(?:\\s*=\\s*(?:[^"'=<>\`\\s]+|'[^']*'|"[^"]*"))?`;
+/**
+ * The seven CommonMark HTML block starts (up to three spaces in), each with the line that ends
+ * it: types 1 to 5 end on the line holding their end mark (the start line too), 6 and 7 before a
+ * blank line. Type 7 is a whole open or closing tag alone on its line, and cannot interrupt a
+ * paragraph. An autolink (`<https://…>`, `<a@b.c>`) or `a < b` starts none.
+ */
+const HTML_STARTS: { start: RegExp; end: RegExp | null; paragraph: boolean }[] = [
+  { start: /^ {0,3}<(?:script|pre|style|textarea)(?:\s|>|$)/i, end: /<\/(?:script|pre|style|textarea)>/i, paragraph: true },
+  { start: /^ {0,3}<!--/, end: /-->/, paragraph: true },
+  { start: /^ {0,3}<\?/, end: /\?>/, paragraph: true },
+  { start: /^ {0,3}<![A-Za-z]/, end: />/, paragraph: true },
+  { start: /^ {0,3}<!\[CDATA\[/, end: /\]\]>/, paragraph: true },
+  { start: new RegExp(`^ {0,3}</?(?:${BLOCK_TAGS})(?:\\s|/?>|$)`, 'i'), end: null, paragraph: true },
+  {
+    start: new RegExp(`^ {0,3}(?:<(?!(?:script|pre|style|textarea)\\b)[A-Za-z][A-Za-z0-9-]*(?:${ATTRIBUTE})*\\s*/?>|</[A-Za-z][A-Za-z0-9-]*\\s*>)\\s*$`, 'i'),
+    end: null,
+    paragraph: false,
+  },
+];
 
 /**
  * Which lines are in an HTML block (CommonMark, read line by line): from a line starting one,
- * outside a fence, to the blank line ending it (a comment to its `-->`, a raw-text tag to its
- * closing tag). A backtick run there is HTML, no fence, so it pairs with no fence below.
+ * outside a fence, to the line ending it ({@link HTML_STARTS}). A backtick run there is HTML,
+ * no fence, so it pairs with no fence below.
  */
+// front matter: its callers pass the README's lines from past the front matter (removeWorkflowFromReadme, insertWorkflowChecklistEntries, dropBlankLeftByEntries).
 export function htmlBlockLines(lines: readonly string[]): boolean[] {
   const out = new Array<boolean>(lines.length).fill(false);
   let fence: OpenFence | null = null;
-  let end: RegExp | null = null;
+  // The open block's end mark (types 1 to 5), or null for one ended by a blank line (6 and 7).
+  let open: { end: RegExp | null } | null = null;
+  // The line before was paragraph text, which a type 7 start does not interrupt.
+  let paragraph = false;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].replace(/\r?\n$|\r$/, '');
-    if (end) {
+    const blank = line.trim() === '';
+    if (open) {
+      if (open.end === null && blank) {
+        open = null;
+        paragraph = false;
+        continue;
+      }
       out[i] = true;
-      if (end.test(line)) end = null;
+      if (open.end && open.end.test(line)) open = null;
+      paragraph = false;
       continue;
     }
     const next = stepFence(line, fence);
     if (next !== fence || fence) {
       fence = next;
+      paragraph = false;
       continue;
     }
-    if (!HTML_START.test(line)) continue;
-    out[i] = true;
-    const raw = RAW_TAG.exec(line);
-    const comment = /^ {0,3}<!--/.test(line);
-    if (raw) {
-      const close = new RegExp(`</${raw[1]}>`, 'i');
-      if (!close.test(line)) end = close;
-    } else if (comment) {
-      if (!line.slice(line.indexOf('<!--') + 4).includes('-->')) end = /-->/;
-    } else {
-      end = /^\s*$/;
+    const kind = HTML_STARTS.find(k => k.start.test(line) && (k.paragraph || !paragraph));
+    if (kind) {
+      out[i] = true;
+      const rest = line.slice(line.indexOf('<') + 1);
+      if (kind.end === null || !kind.end.test(rest)) open = { end: kind.end };
+      paragraph = false;
+      continue;
     }
+    // An indented line not continuing a paragraph is indented code, no paragraph.
+    if (!paragraph && /^(?: {4}|\t)/.test(line)) continue;
+    paragraph = !blank && !/^ {0,3}(?:#{1,6}(?:\s|$)|(?:[-*_][ \t]*){3,}$|=+\s*$)/.test(line);
   }
   return out;
 }
