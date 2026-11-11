@@ -4,6 +4,7 @@
  * matter or above the title (#50, #63).
  */
 import { frontMatterLineCountOf } from './frontMatter';
+import { fenceLines } from './codeFences';
 export interface DocumentHead {
   /** Line index of the closing `---`, or -1 when there is no (closed) front matter. */
   fmEndLine: number;
@@ -24,10 +25,12 @@ export function scanDocumentHead(lines: readonly string[]): DocumentHead {
   let firstHeadingLine = -1;
   let inFence = false;
   let fenceChar = '';
+  // Fences in a block quote or list item as CommonMark reads them.
+  const view = fenceLines(lines, fmEndLine + 1);
   for (let i = 0; i < lines.length; i++) {
     if (fmEndLine !== -1 && i <= fmEndLine) continue;
     const trimmed = lines[i].trimStart();
-    const fence = /^(```+|~~~+)/.exec(trimmed);
+    const fence = /^(```+|~~~+)/.exec(view[i].trimStart());
     if (fence) {
       const ch = fence[1][0];
       if (!inFence) {

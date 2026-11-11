@@ -8,7 +8,7 @@
  * unit-op blocks at the cursor and keeps the TOC in sync with these targeted
  * helpers.
  */
-import { normalizeHeadingText, stepFence, type OpenFence } from './sectionEdit';
+import { fenceLines, normalizeHeadingText, stepFence, type OpenFence } from './sectionEdit';
 import { joinLineBuffer, spliceLineBuffer, splitLineBuffer } from '../util/lineEnds';
 import { frontMatterLineCount, frontMatterLineCountOf } from './frontMatter';
 
@@ -230,8 +230,10 @@ export function appendUnitOpToWorkflowToc(
     let oddClose = false;
     // No fence in the front matter, as scanLines reads it.
     const frontMatter = frontMatterLineCount(md);
+    // Fences in a block quote or list item as CommonMark reads them.
+    const view = fenceLines(lines, frontMatter);
     for (let j = 0; j < endIdx; j++) {
-      const next: OpenFence | null = j < frontMatter ? fence : stepFence(lines[j], fence);
+      const next: OpenFence | null = j < frontMatter ? fence : stepFence(view[j], fence);
       if (next !== fence && j < lastEntry && /^\s/.test(lines[j])) indented = true;
       if (fence === null && next !== null) at = j;
       opener.push(fence !== null || next !== null ? at : -1);
@@ -406,6 +408,9 @@ function scanLines(md: string): MdLine[] {
   // Fences read as stepFence reads them, so a backtick run with a backtick in its info is text;
   // none in the front matter, which Obsidian reads as properties.
   const frontMatter = frontMatterLineCount(md);
+  // Fences in a block quote or list item as CommonMark reads them, over the lines split as below.
+  const pieces = md.split('\n');
+  const view = fenceLines(pieces.map((p, k) => (k < pieces.length - 1 && p.endsWith('\r') ? p.slice(0, -1) : p)), frontMatter);
   let fence: OpenFence | null = null;
   let start = 0;
   for (;;) {
@@ -413,7 +418,7 @@ function scanLines(md: string): MdLine[] {
     const end = nl === -1 ? md.length : nl > start && md[nl - 1] === '\r' ? nl - 1 : nl;
     const text = md.slice(start, end);
     const inFrontMatter = lines.length < frontMatter;
-    const next: OpenFence | null = inFrontMatter ? fence : stepFence(text, fence);
+    const next: OpenFence | null = inFrontMatter ? fence : stepFence(view[lines.length], fence);
     // Front matter is YAML, no Markdown: a `## …` comment in it is no heading, a `- [ID …]` no TOC entry.
     const fenced = inFrontMatter || fence !== null || next !== null;
     fence = next;

@@ -7,7 +7,7 @@
  * that unit operation's `#### Method` body; anywhere else it goes in as its own
  * block after the cursor's line. The Obsidian side only applies the result.
  */
-import { findSectionMatches, sectionBodyEnd, stepFence, type OpenFence } from './sectionEdit';
+import { fenceLines, findSectionMatches, sectionBodyEnd, stepFence, type OpenFence } from './sectionEdit';
 import { UNIT_OP_HEADING_PATTERN } from './workflowSectionParser';
 import { scanDocumentHead, isBeforeBody } from './documentHead';
 import { frontMatterLineCountOf, stripFrontMatter } from './frontMatter';
@@ -39,8 +39,11 @@ interface HeadingLine {
 function scanHeadings(lines: readonly string[]): HeadingLine[] {
   const headings: HeadingLine[] = [];
   let fence: OpenFence | null = null;
-  for (let i = frontMatterLineCountOf(lines); i < lines.length; i++) {
-    const next = stepFence(lines[i], fence);
+  const start = frontMatterLineCountOf(lines);
+  // Fences in a block quote or list item as CommonMark reads them.
+  const view = fenceLines(lines, start);
+  for (let i = start; i < lines.length; i++) {
+    const next = stepFence(view[i], fence);
     if (next !== fence) {
       fence = next;
       continue;
@@ -175,8 +178,9 @@ export function extractMethodBody(output: string): string {
 
   const kept: string[] = [];
   let fence: OpenFence | null = null;
-  for (const line of lines) {
-    const next = stepFence(line, fence);
+  const view = fenceLines(lines);
+  for (const [i, line] of lines.entries()) {
+    const next = stepFence(view[i], fence);
     const inCode = fence !== null || next !== fence;
     fence = next;
     if (!inCode && /^#{1,4}\s/.test(line)) continue;

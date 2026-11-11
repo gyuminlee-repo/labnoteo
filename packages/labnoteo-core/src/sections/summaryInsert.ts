@@ -3,7 +3,7 @@
  * section (`Conclusions and Discussion` of a workflow note, `Summary and
  * Discussion` of a README), replacing the summary an earlier run put there.
  */
-import { findSectionMatches, listHeadings, sectionBodyEnd, stepFence, type OpenFence } from './sectionEdit';
+import { fenceLines, findSectionMatches, listHeadings, sectionBodyEnd, stepFence, type OpenFence } from './sectionEdit';
 import { frontMatterLineCountOf } from './frontMatter';
 
 /** Where {@link locateSummary} found the summary's section. */
@@ -47,8 +47,10 @@ function locate(md: string, heading: string, titles: readonly string[] = []): Lo
   let callout = -1;
   let fence: OpenFence | null = null;
   const fm = frontMatterLineCountOf(lines, { crKept: true });
+  // Fences in a block quote or list item as CommonMark reads them.
+  const view = fenceLines(lines, fm);
   for (let i = fm; i < lines.length; i++) {
-    const next = stepFence(lines[i], fence);
+    const next = stepFence(view[i], fence);
     if (next !== fence) {
       fence = next;
       continue;

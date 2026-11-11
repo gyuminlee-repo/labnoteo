@@ -1,0 +1,52 @@
+/**
+ * A fence in a list item or a block quote opens and closes as CommonMark (and Obsidian) reads it:
+ * `- ```md` opens one, the `  ```` under it closes it, and the item's or quote's end closes one
+ * left open. Every fence reader goes through this, so the closer under a list marker opens no
+ * fence that would hide the headings, tables and entries below it.
+ */
+import { describe, it, expect } from 'vitest';
+import { markdownCodeLines } from '../sections/codeFences';
+import { listHeadings } from '../sections/sectionEdit';
+import { extractMarkdownTables } from '../lib/exportTablesCsv';
+import { removeWorkflowFromReadme } from '../lib/workflowDelete';
+import { insertWorkflowChecklistEntries } from '../lib/workflowStructure';
+
+const t = '```';
+const A = '- [ ] [A](./001_WD010_A.labnote.md)';
+const D = { done: false, title: 'D', fileName: '004_WD010_D.labnote.md' };
+const headings = (md: string): string[] => listHeadings(md, { asNote: false }).map(h => h.text);
+
+describe('readers after a list fence', () => {
+  it('marks the lines of a list fence as code, and none after its closer', () => {
+    expect(markdownCodeLines([`- ${t}md`, '  ## X', `  ${t}`, '## Y'])).toEqual([true, true, true, false]);
+  });
+
+  it('reads the heading below a list fence, and none in it', () => {
+    expect(headings(`## Notes\n- ${t}md\n  ## Example\n  ${t}\n## Real\n`)).toEqual(['Notes', 'Real']);
+  });
+
+  it('reads the heading after a list item that ended with its fence open', () => {
+    expect(headings(`- [ ] a\n  ${t}\n  x\nend\n## H\n${t}\n`)).toEqual(['H']);
+  });
+
+  it('exports the table below a list fence', () => {
+    expect(extractMarkdownTables(`- ${t}md\n  ${t}\n\n| a | b |\n|---|---|\n| 1 | 2 |\n`)).toHaveLength(1);
+  });
+});
+
+describe('a README entry after a list fence', () => {
+  it('deletes the entry right below the list fence, which is no code', () => {
+    const md = `## Related Workflows\n- ${t}md\n  ${t}\n${A}\n${t}\nx\n${t}\n`;
+    expect(removeWorkflowFromReadme(md, '001_WD010_A.labnote.md').content).toBe(`## Related Workflows\n- ${t}md\n  ${t}\n${t}\nx\n${t}\n`);
+  });
+
+  it('keeps an entry in the fence under the next heading', () => {
+    const md = `## Related Workflows\n- ${t}md\n  ${t}\n## A\n${t}\n${A}\n${t}\n`;
+    expect(removeWorkflowFromReadme(md, '001_WD010_A.labnote.md')).toEqual({ changed: false, content: md });
+  });
+
+  it('adds an entry next to the last one, not into the fence below', () => {
+    const md = `## Related Workflows\n- ${t}md\n  ${t}\n${A}\n${t}\nx\n${t}\n`;
+    expect(insertWorkflowChecklistEntries(md, [D])).toBe(`## Related Workflows\n- ${t}md\n  ${t}\n${A}\n- [ ] [D](./004_WD010_D.labnote.md)\n${t}\nx\n${t}\n`);
+  });
+});

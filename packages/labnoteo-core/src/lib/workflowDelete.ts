@@ -126,6 +126,9 @@ export function removeWorkflowFromReadme(
   const drop = v442DeletedLines(readmeContent, lines, line => isChecklistLineForFile(line, fileName));
   // main (#442) read the front matter as Markdown; what it would delete there stays.
   for (const i of [...drop]) if (i < fm) drop.delete(i);
+  // Nor a line in a closed fence or an HTML block as CommonMark reads them: main read a list
+  // item's fence closer (`  ```` under `- ```md`) as an opener, and the example below as entries.
+  for (const i of [...drop]) if (plain[i]) drop.delete(i);
   for (const { start, end } of ranges) {
     for (let i = start; i < Math.min(end, lines.length); i++) {
       if (!inCode[i] && isChecklistLineForFile(lines[i], fileName)) drop.add(i);

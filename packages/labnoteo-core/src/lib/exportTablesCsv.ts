@@ -2,7 +2,7 @@
  * Extracts GFM pipe tables from a Markdown body and converts them to CSV.
  * Pure functions, no `vscode` import.
  */
-import { stepFence, type OpenFence } from '../sections/sectionEdit';
+import { fenceLines, stepFence, type OpenFence } from '../sections/sectionEdit';
 import { frontMatterLineCount } from '../sections/frontMatter';
 
 export interface CsvTable {
@@ -267,8 +267,9 @@ export function hiddenCommentLines(lines: readonly string[]): boolean[] {
   const hidden: boolean[] = [];
   let fence: OpenFence | null = null;
   let open: 'html' | 'obsidian' | null = null;
-  for (const line of lines) {
-    const next = stepFence(line, fence);
+  const view = fenceLines(lines);
+  for (const [k, line] of lines.entries()) {
+    const next = stepFence(view[k], fence);
     if (next !== fence || fence) {
       fence = next;
       hidden.push(false);
@@ -326,7 +327,8 @@ export function extractMarkdownTables(markdown: string): CsvTable[] {
  */
 export function scanMarkdownTables(markdown: string): MarkdownTableScan {
   const text = markdown.replace(/\r\n/g, '\n');
-  const lines = text.split('\n').map(unquote);
+  const raw = text.split('\n');
+  const lines = raw.map(unquote);
   // Front matter is YAML (Obsidian reads it as properties): a `|` line there is no table, and no
   // fence or comment mark in it reaches the body. Comments are read from past it, as the tables.
   const fm = frontMatterLineCount(text);
@@ -336,6 +338,8 @@ export function scanMarkdownTables(markdown: string): MarkdownTableScan {
   let hidden = 0;
 
   let fence: OpenFence | null = null;
+  // Fences in a block quote or list item as CommonMark reads them.
+  const view = fenceLines(raw, fm);
   let inList = false;
   let inIndentedCode = false;
   // The line before was code (fenced, a fence line, or indented).
@@ -344,7 +348,7 @@ export function scanMarkdownTables(markdown: string): MarkdownTableScan {
   while (i < lines.length) {
     const line = lines[i];
     const prev = lines[i - 1];
-    const next = stepFence(line.text, fence);
+    const next = stepFence(view[i], fence);
     if (next !== fence || fence) {
       fence = next;
       prevCode = true;

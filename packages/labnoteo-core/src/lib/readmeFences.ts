@@ -11,7 +11,7 @@
  * with its indent dropped, as under a list entry). An opener that is never
  * closed is not a fence. Each reading is one linear pass.
  */
-import { closedFenceSpans, stepFence, type OpenFence } from '../sections/codeFences';
+import { closedFenceSpans, fenceView, mayHaveFences, stepFence, type OpenFence } from '../sections/codeFences';
 
 /** CommonMark HTML block type 6: these tag names start a block ended by a blank line. */
 const BLOCK_TAGS =
@@ -50,6 +50,8 @@ export function htmlBlockLines(lines: readonly string[]): boolean[] {
   let open: { end: RegExp | null } | null = null;
   // The line before was paragraph text, which a type 7 start does not interrupt.
   let paragraph = false;
+  // Fences in a block quote or list item as CommonMark reads them.
+  const view = mayHaveFences(lines) ? fenceView(lines) : lines;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].replace(/\r?\n$|\r$/, '');
     const blank = line.trim() === '';
@@ -67,7 +69,7 @@ export function htmlBlockLines(lines: readonly string[]): boolean[] {
       paragraph = false;
       continue;
     }
-    const next = stepFence(line, fence);
+    const next = stepFence(view[i].replace(/\r?\n$|\r$/, ''), fence);
     if (next !== fence || fence) {
       fence = next;
       paragraph = false;
@@ -104,10 +106,11 @@ function lineByLineFences(lines: readonly string[], from = 0): { code: boolean[]
   const code = new Array<boolean>(lines.length).fill(false);
   const openBefore = new Array<boolean>(lines.length + 1).fill(false);
   let fence: OpenFence | null = null;
+  const view = fenceView(lines, from);
   for (let i = from; i < lines.length; i++) {
     openBefore[i] = fence !== null;
     if (html[i - from]) continue;
-    const next = stepFence(lines[i].replace(/\r?\n$|\r$/, ''), fence);
+    const next = stepFence(view[i].replace(/\r?\n$|\r$/, ''), fence);
     code[i] = fence !== null || next !== null;
     fence = next;
   }

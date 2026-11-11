@@ -7,7 +7,7 @@
  * the sections results are written in count, plus any section the researcher
  * added themselves.
  */
-import { stepFence, type OpenFence } from '../sections/sectionEdit';
+import { fenceLines, stepFence, type OpenFence } from '../sections/sectionEdit';
 import { frontMatterLineCount } from '../sections/frontMatter';
 import { HW_PLACEHOLDERS, SW_PLACEHOLDERS } from './unitOpTemplate';
 import { stripAiCallouts } from './aiCallout';
@@ -70,8 +70,11 @@ function sections(md: string): HeadingSection[] {
   const frontMatter = frontMatterLineCount(md);
   let fence: OpenFence | null = null;
   let current: HeadingSection | null = null;
-  for (const [i, line] of md.split(/\r?\n/).entries()) {
-    const next: OpenFence | null = i < frontMatter ? fence : stepFence(line, fence);
+  const lines = md.split(/\r?\n/);
+  // Fences in a block quote or list item as CommonMark reads them.
+  const view = fenceLines(lines, frontMatter);
+  for (const [i, line] of lines.entries()) {
+    const next: OpenFence | null = i < frontMatter ? fence : stepFence(view[i], fence);
     const inFence = fence !== null || next !== null;
     fence = next;
     // Front matter is YAML: a `## …` comment in it is no heading.

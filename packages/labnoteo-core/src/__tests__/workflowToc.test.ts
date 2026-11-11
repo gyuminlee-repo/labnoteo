@@ -226,12 +226,14 @@ describe('findUnitOpInsertOffset', () => {
 });
 
 // The new entry goes after the last `- [` line, a hand-written link included; code examples aside.
-// A list fence's closer opens a fence for the
-// line-by-line readings, but no other reading takes the toc for code there, so it is read as before.
+// A list fence's closer (`  ~~~` under `- ~~~md`) closes it, as CommonMark and Obsidian read it,
+// so the `~~~` below opens a fence left open to the end: the toc is code there, and nothing is
+// written into it (read as an opener, the closer had paired with that `~~~` and the entry went
+// into the ```md example).
 describe('appendUnitOpToWorkflowToc after a list fence', () => {
-  it('appends as before when a list fence ran ahead of an unclosed fence', () => {
+  it('leaves the toc of a fence left open after a list fence alone', () => {
     const md = '\n### [UHW010 A]\n\n#### Method\n\n\n- ~~~md\n\n  ~~~\n\n---\n\n### [UHW010 A]\n\n#### Method\n\n\n~~~\n- [ ] [A](./001_WD010_A.labnote.md)\n### [UHW030 C]\n- [Protocol](https://example.org)\n\n---\n\n\n## Related Unit Operations\n- [UHW010 A](#uhw010-a)\n- [UHW010 A](#uhw010-a)\n- [UHW030 C](#uhw030-c)\n```md\n- [Protocol](https://example.org/p)\n```\n## Related Workflows\n';
-    expect(appendUnitOpToWorkflowToc(md, 'UHW020', 'B')).toBe(md.replace('- [Protocol](https://example.org/p)\n', '- [Protocol](https://example.org/p)\n- [UHW020 B](#uhw020-b)\n'));
+    expect(appendUnitOpToWorkflowToc(md, 'UHW020', 'B')).toBe(md);
   });
 });
 

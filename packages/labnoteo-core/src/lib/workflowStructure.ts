@@ -13,7 +13,7 @@ import {
   WORKFLOW_FILE_NAME_MAX,
 } from './regexUtils';
 import { frontMatterNames, lineEdits, parseFrontMatterYaml, serializeFrontMatterEntry, stripFrontMatter } from '../sections/frontMatter';
-import { normalizeHeadingText, stepFence, type OpenFence } from '../sections/sectionEdit';
+import { fenceLines, normalizeHeadingText, stepFence, type OpenFence } from '../sections/sectionEdit';
 import { markdownCodeLines, mayHaveFences } from '../sections/codeFences';
 import { joinLineBuffer, joinSplitKeepingCr, spliceLineBuffer, splitKeepingCr, splitLineBuffer } from '../util/lineEnds';
 import { positionOutsideFences, readmeFencedLines, readmeFenceSpans } from './readmeFences';
@@ -1991,15 +1991,17 @@ export function dropBlankLeftByEntries(
     const head = lines.slice(fmEnd + 1, limit);
     let plain: OpenFence | null = null;
     let anyIndent: OpenFence | null = null;
-    for (const line of head) {
+    // Fences in a block quote or list item as CommonMark reads them.
+    const headView = fenceLines(head);
+    for (const line of headView) {
       plain = stepFence(line, plain);
       anyIndent = stepFence(line.trimStart(), anyIndent);
     }
     const closed = readmeFencedLines(plain === null && anyIndent === null ? head : lines.slice(fmEnd + 1));
     const markdown = markdownCodeLines(lines.slice(0, limit).map(line => line.replace(/\r?\n$|\r$/, '')));
     let fence: OpenFence | null = null;
-    head.forEach((line, i) => {
-      const next = stepFence(line, fence);
+    head.forEach((_line, i) => {
+      const next = stepFence(headView[i], fence);
       maybeCode.push(fence !== null || next !== null || closed[i] || markdown[fmEnd + 1 + i]);
       fence = next;
     });
@@ -2119,8 +2121,12 @@ export function unitOpsAllEnded(content: string, now: string = getSeoulDateTimeS
   const lines = content.split(/\r?\n/);
   const ended: boolean[] = [];
   let fence: OpenFence | null = null;
-  for (const line of lines.slice(frontMatterLineCountOf(lines))) {
-    const next = stepFence(line, fence);
+  const start = frontMatterLineCountOf(lines);
+  // Fences in a block quote or list item as CommonMark reads them.
+  const view = fenceLines(lines, start);
+  for (const [i, line] of lines.entries()) {
+    if (i < start) continue;
+    const next = stepFence(view[i], fence);
     if (next !== fence || fence) {
       fence = next;
       continue;
@@ -2166,8 +2172,10 @@ export function planWorkflowExperimenterSync(
   type Block = { name: string; lines: number[]; empty: number; ended: boolean; future?: string; unreadable?: string };
   const blocks: Block[] = [{ name: '', lines: [], empty: 0, ended: false }];
   let fence: OpenFence | null = null;
+  // Fences in a block quote or list item as CommonMark reads them.
+  const view = fenceLines(lines, fmEnd + 1);
   for (let i = fmEnd + 1; i < lines.length; i++) {
-    const next = stepFence(lines[i], fence);
+    const next = stepFence(view[i], fence);
     if (next !== fence || fence) {
       fence = next;
       continue;
@@ -2248,8 +2256,10 @@ export function resetCopiedWorkflowDates(content: string, today: string): string
   }
   apply();
   let fence: OpenFence | null = null;
+  // Fences in a block quote or list item as CommonMark reads them.
+  const view = fenceLines(lines, fmEnd + 1);
   for (let i = fmEnd + 1; i < lines.length; i++) {
-    const next = stepFence(lines[i], fence);
+    const next = stepFence(view[i], fence);
     if (next !== fence || fence) {
       fence = next;
       continue;
@@ -2275,8 +2285,12 @@ export function outputSampleIds(content: string, types: readonly string[]): stri
   let inOutput = false;
   let fence: OpenFence | null = null;
   const lines = content.split(/\r?\n/);
-  for (const line of lines.slice(frontMatterLineCountOf(lines))) {
-    const next = stepFence(line, fence);
+  const start = frontMatterLineCountOf(lines);
+  // Fences in a block quote or list item as CommonMark reads them.
+  const view = fenceLines(lines, start);
+  for (const [i, line] of lines.entries()) {
+    if (i < start) continue;
+    const next = stepFence(view[i], fence);
     if (next !== fence || fence) {
       fence = next;
       continue;

@@ -8,7 +8,7 @@
  * and sections still holding the template placeholder print their heading only.
  */
 import { listUnitOpBlocks, WORKSHEET_SCANS_HEADING } from '../sections/scanInsert';
-import { stepFence, type OpenFence } from '../sections/sectionEdit';
+import { fenceLines, stepFence, type OpenFence } from '../sections/sectionEdit';
 import { fitRow, isTableHeaderLine, isTableRowLine, splitTableCells } from './exportTablesCsv';
 import { HW_PLACEHOLDERS, SW_PLACEHOLDERS } from './unitOpTemplate';
 import { stripAiCallouts } from './aiCallout';
@@ -107,8 +107,9 @@ function splitSections(lines: readonly string[]): { description: string; section
   const intro: string[] = [];
   let current: RawSection | null = null;
   let fence: OpenFence | null = null;
-  for (const line of lines) {
-    const next = stepFence(line, fence);
+  const view = fenceLines(lines);
+  for (const [i, line] of lines.entries()) {
+    const next = stepFence(view[i], fence);
     const inCode = fence !== null || next !== fence;
     fence = next;
     const m = !inCode && /^####\s+(.+?)\s*$/.exec(line);
@@ -170,9 +171,10 @@ export function parseWorksheetBlocks(lines: readonly string[]): WorksheetBlock[]
   let afterBlank = false;
   let fence: OpenFence | null = null;
   let code: string[] | null = null;
+  const view = fenceLines(lines);
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const next = stepFence(line, fence);
+    const next = stepFence(view[i], fence);
     if (next !== fence || fence) {
       if (!fence) {
         code = [];
@@ -304,8 +306,9 @@ const trimBlankEdges = (lines: string[]): string[] => {
  */
 function blankPlaceholders(lines: readonly string[]): string[] {
   let fence: OpenFence | null = null;
-  return lines.map(line => {
-    const next = stepFence(line, fence);
+  const view = fenceLines(lines);
+  return lines.map((line, i) => {
+    const next = stepFence(view[i], fence);
     const inCode = fence !== null || next !== fence;
     fence = next;
     return !inCode && PLACEHOLDERS.has(line.trim()) ? '' : line;

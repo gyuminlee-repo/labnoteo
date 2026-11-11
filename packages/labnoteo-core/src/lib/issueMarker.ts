@@ -21,6 +21,7 @@
  * them, and `validate` that reports broken ones.
  */
 import { frontMatterLineCountOf } from '../sections/frontMatter';
+import { fenceLines } from '../sections/codeFences';
 import { isInFrontMatter } from '../sections/documentHead';
 
 /** Marker keyword, without the delimiter. */
@@ -131,8 +132,10 @@ function codeLines(lines: readonly string[]): boolean[] {
   let inIndented = false;
   let inList = false;
   let prevBlank = true;
-  for (const line of lines) {
-    if (isFenceLine(line)) {
+  // Fences in a block quote or list item as CommonMark reads them.
+  const view = fenceLines(lines);
+  for (const [i, line] of lines.entries()) {
+    if (isFenceLine(view[i])) {
       inFence = !inFence;
       code.push(true);
       prevBlank = false;

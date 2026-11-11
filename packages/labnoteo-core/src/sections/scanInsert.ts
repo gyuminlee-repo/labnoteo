@@ -12,7 +12,7 @@
  * invisible when reading, so entries can be sorted, deduplicated and removed
  * again (undo) without depending on how the image link is written.
  */
-import { stepFence, type OpenFence } from './sectionEdit';
+import { fenceLines, stepFence, type OpenFence } from './sectionEdit';
 import { joinLineBuffer, spliceLineBuffer, splitLineBuffer, type LineRef } from '../util/lineEnds';
 import { UNIT_OP_HEADING_PATTERN } from './workflowSectionParser';
 import { unitOpFingerprint } from '../lib/scanPayload';
@@ -61,8 +61,11 @@ interface Heading {
 function scanHeadings(lines: readonly string[]): Heading[] {
   const out: Heading[] = [];
   let fence: OpenFence | null = null;
-  for (let i = frontMatterLineCountOf(lines); i < lines.length; i++) {
-    const next = stepFence(lines[i], fence);
+  const start = frontMatterLineCountOf(lines);
+  // Fences in a block quote or list item as CommonMark reads them.
+  const view = fenceLines(lines, start);
+  for (let i = start; i < lines.length; i++) {
+    const next = stepFence(view[i], fence);
     if (next !== fence) {
       fence = next;
       continue;
@@ -295,8 +298,12 @@ export function listScanHashes(md: string): Set<string> {
   const out = new Set<string>();
   let fence: OpenFence | null = null;
   const lines = md.split(/\r?\n/);
-  for (const line of lines.slice(frontMatterLineCountOf(lines))) {
-    const next = stepFence(line, fence);
+  const start = frontMatterLineCountOf(lines);
+  // Fences in a block quote or list item as CommonMark reads them.
+  const view = fenceLines(lines, start);
+  for (const [i, line] of lines.entries()) {
+    if (i < start) continue;
+    const next = stepFence(view[i], fence);
     if (next !== fence) {
       fence = next;
       continue;
@@ -316,8 +323,11 @@ export function listScanHashes(md: string): Set<string> {
 export function scanEntryLine(md: string, hash: string): number | undefined {
   let fence: OpenFence | null = null;
   const lines = md.split(/\r?\n/);
-  for (let i = frontMatterLineCountOf(lines); i < lines.length; i++) {
-    const next = stepFence(lines[i], fence);
+  const start = frontMatterLineCountOf(lines);
+  // Fences in a block quote or list item as CommonMark reads them.
+  const view = fenceLines(lines, start);
+  for (let i = start; i < lines.length; i++) {
+    const next = stepFence(view[i], fence);
     if (next !== fence) {
       fence = next;
       continue;
@@ -344,8 +354,11 @@ export function listFiledScans(md: string): FiledScan[] {
   const blocks = blocksOf(lines, scanHeadings(lines));
   const out: FiledScan[] = [];
   let fence: OpenFence | null = null;
-  for (let i = frontMatterLineCountOf(lines); i < lines.length; i++) {
-    const next = stepFence(lines[i], fence);
+  const start = frontMatterLineCountOf(lines);
+  // Fences in a block quote or list item as CommonMark reads them.
+  const view = fenceLines(lines, start);
+  for (let i = start; i < lines.length; i++) {
+    const next = stepFence(view[i], fence);
     if (next !== fence) {
       fence = next;
       continue;

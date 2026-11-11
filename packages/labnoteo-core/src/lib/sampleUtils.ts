@@ -4,6 +4,7 @@
  */
 
 import { escapeRegExp } from './regexUtils';
+import { fenceLines } from '../sections/codeFences';
 
 /**
  * Sample types available
@@ -194,10 +195,12 @@ function scanSampleListTables(
   }
   const tables: Array<SampleListTableRange & { rows: SampleListRow[] }> = [];
   let fence: string | undefined;
+  // Fences in a block quote or list item as CommonMark reads them.
+  const view = fenceLines(lines.map(l => l.text));
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].text;
     // A backtick run with a backtick after it is inline code, not a fence, as stepFence reads it.
-    const run = /^\s{0,3}(`{3,}|~{3,})([^\n]*)/.exec(line);
+    const run = /^\s{0,3}(`{3,}|~{3,})([^\n]*)/.exec(view[i]);
     const mark = run && !(run[1][0] === '`' && run[2].includes('`')) ? run[1] : undefined;
     if (mark && (!fence || (mark[0] === fence[0] && mark.length >= fence.length))) {
       fence = fence ? undefined : mark;
