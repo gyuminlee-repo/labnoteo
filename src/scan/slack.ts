@@ -17,6 +17,7 @@ import type { Translator } from '@labnoteo/core';
 import type { PcStore } from './pcStore';
 import type { ScanInput, ScanResult } from './scanPipeline';
 import { describeResult } from './resultModal';
+import { logFailure } from '../unawaited';
 
 export type SlackMode = 'dm' | 'channel';
 
@@ -192,7 +193,7 @@ export class SlackInbox {
 
   start(): void {
     this.stopped = false;
-    if (this.config()) void this.poll();
+    if (this.config()) logFailure('Slack poll', this.poll());
   }
 
   stop(): void {

@@ -8,6 +8,7 @@
 import { App, Component, MarkdownRenderer, Modal, Notice, SuggestModal, Setting } from 'obsidian';
 import type { PickItem, PromptHint, PromptOpts } from '@labnoteo/core';
 import { createObsidianTranslator } from './i18n';
+import { logFailure, sayFailure } from './unawaited';
 
 // Module-level translator for the generic button labels ('OK'/'Cancel') these
 // host-agnostic modal wrappers render. They only receive an `App`, not the
@@ -291,7 +292,7 @@ class PromptModal extends Modal {
       t.inputEl.addEventListener('keydown', ev => {
         if (ev.key === 'Enter') {
           ev.preventDefault();
-          void submit();
+          sayFailure(submit());
         }
       });
       // Focus the input on open.
@@ -303,7 +304,7 @@ class PromptModal extends Modal {
     }
 
     new Setting(contentEl).addButton(b =>
-      b.setButtonText(t('OK')).setCta().onClick(() => void submit())
+      b.setButtonText(t('OK')).setCta().onClick(() => sayFailure(submit()))
     );
   }
 
@@ -436,16 +437,16 @@ class AiAnswerModal extends Modal {
     this.setTitle(t('AI answer'));
     this.component.load();
     const body = contentEl.createDiv({ cls: 'labnote-ai-answer markdown-rendered' });
-    void MarkdownRenderer.render(this.app, this.opts.content, body, this.opts.sourcePath, this.component);
+    logFailure('rendering the answer', MarkdownRenderer.render(this.app, this.opts.content, body, this.opts.sourcePath, this.component));
 
     new Setting(contentEl)
       .addButton(b =>
         b
           .setButtonText(t('Insert into note'))
           .setCta()
-          .onClick(async () => {
+          .onClick(() => sayFailure(async () => {
             if (await this.opts.onInsert()) this.close();
-          })
+          }))
       )
       .addButton(b =>
         b.setButtonText(t('Copy')).onClick(async () => {

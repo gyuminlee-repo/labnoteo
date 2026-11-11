@@ -202,6 +202,7 @@ import { downloadPartbankCatalog } from './partbank/partbankCatalog';
 import { handleImportUri, IMPORT_ACTION } from './partbank/partbankUri';
 import { handleOpenUri, OPEN_ACTION } from './labnoteOpenUri';
 import { PartbankUsageSync } from './partbank/partbankUsageSync';
+import { logFailure, sayFailure } from './unawaited';
 
 /** The front matter of a copied experiment's README that making it a new experiment reads or resets. */
 interface CopiedReadme {
@@ -1116,7 +1117,7 @@ export default class LabnotePlugin extends Plugin {
     if (!dir || this.readmeSyncHolds.has(dir)) return;
     const from = posix.basename(oldPath);
     const to = posix.basename(newPath);
-    if (from !== to) void this.queueSampleSourceRenames(dir, new Map([[from, to]]));
+    if (from !== to) logFailure('renaming sample sources', this.queueSampleSourceRenames(dir, new Map([[from, to]])));
   }
 
   /**
@@ -1132,9 +1133,9 @@ export default class LabnotePlugin extends Plugin {
       })
       .catch(err => console.error('Labnote: renaming sample sources failed', err));
     this.sampleSourceRenames.set(dir, next);
-    void next.then(() => {
+    logFailure('renaming sample sources', next.then(() => {
       if (this.sampleSourceRenames.get(dir) === next) this.sampleSourceRenames.delete(dir);
-    });
+    }));
     return next;
   }
 
@@ -2877,7 +2878,7 @@ export default class LabnotePlugin extends Plugin {
       },
       { capture: true }
     );
-    this.registerEvent(vault.on('modify', file => void tidy.onModify(file.path)));
+    this.registerEvent(vault.on('modify', file => logFailure('tidying a modified note', tidy.onModify(file.path))));
   }
 
   /**
@@ -2921,7 +2922,7 @@ export default class LabnotePlugin extends Plugin {
     if (this.readmeSyncHolds.has(dir)) return;
     const handle = window.setTimeout(() => {
       this.readmeSyncTimers.delete(dir);
-      void this.startReadmeFlush(dir);
+      logFailure('README sync', this.startReadmeFlush(dir));
     }, 400);
     this.readmeSyncTimers.set(dir, handle);
   }
@@ -2944,9 +2945,9 @@ export default class LabnotePlugin extends Plugin {
       return q ? this.flushReadmeSync(dir, q) : 0;
     });
     this.readmeSyncInFlight.set(dir, run);
-    void run.finally(() => {
+    logFailure('README sync', run.finally(() => {
       if (this.readmeSyncInFlight.get(dir) === run) this.readmeSyncInFlight.delete(dir);
-    });
+    }));
     return run;
   }
 
@@ -3045,26 +3046,26 @@ export default class LabnotePlugin extends Plugin {
     this.registerView(WORKFLOW_VIEW_TYPE, leaf => new WorkflowTreeView(leaf, this));
     this.registerView(SAMPLE_VIEW_TYPE, leaf => new SampleTreeView(leaf, this));
 
-    this.addRibbonIcon('box', this.t('Workflows'), () => void this.activateView(WORKFLOW_VIEW_TYPE));
-    this.addRibbonIcon('test-tube', this.t('Samples'), () => void this.activateView(SAMPLE_VIEW_TYPE));
+    this.addRibbonIcon('box', this.t('Workflows'), () => sayFailure(this.activateView(WORKFLOW_VIEW_TYPE)));
+    this.addRibbonIcon('test-tube', this.t('Samples'), () => sayFailure(this.activateView(SAMPLE_VIEW_TYPE)));
 
     this.addCommand({
       id: 'open-workflow-view',
       name: this.paletteName('Open workflow view'),
-      callback: () => void this.activateView(WORKFLOW_VIEW_TYPE),
+      callback: () => sayFailure(this.activateView(WORKFLOW_VIEW_TYPE)),
     });
     this.addCommand({
       id: 'open-sample-view',
       name: this.paletteName('Open sample view'),
-      callback: () => void this.activateView(SAMPLE_VIEW_TYPE),
+      callback: () => sayFailure(this.activateView(SAMPLE_VIEW_TYPE)),
     });
     this.addCommand({
       id: 'open-user-guide',
       name: this.paletteName('Open user guide'),
       callback: () =>
-        void openUserGuide(this.host, this.manifest.version, (path, change) =>
+        sayFailure(openUserGuide(this.host, this.manifest.version, (path, change) =>
           processOrCreateNote(this.app, this.host, path, change)
-        ),
+        )),
     });
   }
 
@@ -3257,7 +3258,7 @@ export default class LabnotePlugin extends Plugin {
     if (prev !== undefined) window.clearTimeout(prev);
     const handle = window.setTimeout(() => {
       this.sampleSyncTimers.delete(file.path);
-      void this.syncSamples(file);
+      logFailure('sample sync', this.syncSamples(file));
     }, 800);
     this.sampleSyncTimers.set(file.path, handle);
   }
@@ -3313,7 +3314,7 @@ export default class LabnotePlugin extends Plugin {
    */
   refreshSampleViews(opts: { fromNoteSync?: boolean } = {}): void {
     for (const leaf of this.app.workspace.getLeavesOfType(SAMPLE_VIEW_TYPE)) {
-      if (leaf.view instanceof SampleTreeView) void leaf.view.refresh();
+      if (leaf.view instanceof SampleTreeView) logFailure('sample view refresh', leaf.view.refresh());
     }
     this.sampleIds?.invalidate();
     // A registry change can change what a note's references resolve to.
@@ -3332,7 +3333,7 @@ export default class LabnotePlugin extends Plugin {
   /** Refresh any open workflow view(s), which read the catalogs only when refreshed. */
   refreshWorkflowViews(): void {
     for (const leaf of this.app.workspace.getLeavesOfType(WORKFLOW_VIEW_TYPE)) {
-      if (leaf.view instanceof WorkflowTreeView) void leaf.view.refresh();
+      if (leaf.view instanceof WorkflowTreeView) logFailure('workflow view refresh', leaf.view.refresh());
     }
   }
 

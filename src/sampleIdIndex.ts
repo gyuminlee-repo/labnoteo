@@ -19,6 +19,7 @@ import {
   type SampleMark,
 } from '@labnoteo/core/lib/sampleStorage';
 import * as posix from '@labnoteo/core/posix';
+import { logFailure } from './unawaited';
 
 const LABNOTE_SUFFIX = '.labnote.md';
 
@@ -80,7 +81,7 @@ export class SampleIdIndex {
     let ready = true;
     for (const folder of folders) {
       if (!this.folders.has(folder)) {
-        void this.load(folder);
+        logFailure('loading the sample ID index', this.load(folder));
         ready = false;
       } else if (this.folders.get(folder) === null) {
         return undefined;
@@ -135,7 +136,7 @@ export class SampleIdIndex {
     if (this.timer !== undefined) clearTimeout(this.timer);
     this.timer = setTimeout(() => {
       this.timer = undefined;
-      void this.reloadStale();
+      logFailure('reloading the sample ID index', this.reloadStale());
     }, this.opts.delayMs ?? 200);
   }
 

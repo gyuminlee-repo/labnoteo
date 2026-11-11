@@ -32,6 +32,7 @@ import {
 } from '../sampleActions';
 import { pickModal } from '../modals';
 import { openSampleDefinition } from '../sampleDefinitionModal';
+import { logFailure, sayFailure } from '../unawaited';
 
 export const SAMPLE_VIEW_TYPE = 'labnote-sample-view';
 
@@ -146,7 +147,7 @@ export class SampleTreeView extends ItemView {
     this.refreshTimer = window.setTimeout(() => {
       this.refreshQueued = false;
       this.refreshTimer = undefined;
-      void this.refresh();
+      logFailure('sample view refresh', this.refresh());
     }, 300);
   }
 
@@ -312,7 +313,7 @@ export class SampleTreeView extends ItemView {
         .setTitle(this.plugin.t('Copy sample ID'))
         .setIcon('copy')
         .onClick(() => {
-          void navigator.clipboard.writeText(sample.id);
+          sayFailure(navigator.clipboard.writeText(sample.id));
           new Notice(this.plugin.t('Copied: {0}', sample.id));
         })
     );

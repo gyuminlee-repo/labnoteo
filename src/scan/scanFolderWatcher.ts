@@ -17,6 +17,7 @@
 import type { Translator } from '@labnoteo/core';
 import type { PcStore } from './pcStore';
 import type { RunOptions, ScanInput, ScanResult } from './scanPipeline';
+import { logFailure } from '../unawaited';
 
 export type ScanFolderMode = 'dedicated' | 'shared';
 
@@ -221,7 +222,7 @@ export class ScanFolderWatcher {
 
   private scheduleTick(ms: number): void {
     window.clearTimeout(this.retryTimer);
-    this.retryTimer = window.setTimeout(() => void this.tick(), ms);
+    this.retryTimer = window.setTimeout(() => logFailure('scan folder check', this.tick()), ms);
   }
 
   /** Read what is ready in the folder now. Returns undefined when nothing ran. */

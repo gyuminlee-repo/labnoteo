@@ -11,6 +11,7 @@ import type { SampleRecord } from '@labnoteo/core/lib/sampleStorage';
 import type LabnotePlugin from '../main';
 import { refreshOneLocation } from './partbankLocation';
 import { openExternalLink } from '../externalLink';
+import { sayFailure } from '../unawaited';
 
 /** The sample a partbank action works on. */
 export interface PartbankSampleRef {
@@ -32,13 +33,13 @@ export function addPartbankMenuItems(
     item
       .setTitle(plugin.t('Refresh storage location from partbank'))
       .setIcon('refresh-cw')
-      .onClick(() => void refreshOneLocation(plugin, sample))
+      .onClick(() => sayFailure(refreshOneLocation(plugin, sample)))
   );
   menu.addItem(item =>
     item
       .setTitle(plugin.t('Open in partbank'))
       .setIcon('external-link')
-      .onClick(() => void openInPartbank(plugin, source))
+      .onClick(() => sayFailure(openInPartbank(plugin, source)))
   );
 }
 

@@ -26,6 +26,7 @@ import { tokenFingerprint } from './llm/mcpServer';
 import { scanSettingSections, type SettingsContext } from './scan/scanSettings';
 import { partbankSettingSection } from './partbank/partbankSettings';
 import { commitOnChange, renderSettingSections, toSettingDefinitions, type SettingSection } from './settingRows';
+import { sayFailure } from './unawaited';
 
 /** How long the regenerate button waits for its confirming second click. */
 const REGENERATE_CONFIRM_MS = 5000;
@@ -148,9 +149,9 @@ export class LabnoteSettingTab extends PluginSettingTab {
                 .onClick(() => {
                   // Settings is a modal: close it or the guide opens hidden behind it.
                   (this.app as unknown as { setting?: { close(): void } }).setting?.close();
-                  void openUserGuide(this.plugin.host, this.plugin.manifest.version, (path, change) =>
+                  sayFailure(openUserGuide(this.plugin.host, this.plugin.manifest.version, (path, change) =>
                     processOrCreateNote(this.app, this.plugin.host, path, change)
-                  );
+                  ));
                 })
             );
           },
@@ -162,7 +163,7 @@ export class LabnoteSettingTab extends PluginSettingTab {
   private samplesSection(): SettingSection {
     const t = this.plugin.t;
     const s = this.plugin.settings;
-    const save = () => void this.plugin.saveSettings();
+    const save = () => sayFailure(this.plugin.saveSettings());
     return {
       heading: t('Samples'),
       rows: [
@@ -224,7 +225,7 @@ export class LabnoteSettingTab extends PluginSettingTab {
     }
     if (folder !== s.globalSampleFolder) {
       s.globalSampleFolder = folder;
-      void this.plugin.saveSettings();
+      sayFailure(this.plugin.saveSettings());
       this.scheduleGlobalFolderRefresh();
     }
     return folder;
@@ -243,7 +244,7 @@ export class LabnoteSettingTab extends PluginSettingTab {
     }
     if (endpoint !== s[key]) {
       s[key] = endpoint;
-      void this.plugin.saveSettings();
+      sayFailure(this.plugin.saveSettings());
     }
     return endpoint;
   }
@@ -257,7 +258,7 @@ export class LabnoteSettingTab extends PluginSettingTab {
         .setValue(s.customSampleTypes.join(', '))
         .onChange(v => {
           s.customSampleTypes = partitionCustomSampleTypes(v, storedTypes).save;
-          void this.plugin.saveSettings();
+          sayFailure(this.plugin.saveSettings());
           this.scheduleSampleTypesRefresh();
         });
       t.inputEl.addEventListener('blur', () => {
@@ -375,7 +376,7 @@ export class LabnoteSettingTab extends PluginSettingTab {
   private workflowsSection(): SettingSection {
     const t = this.plugin.t;
     const s = this.plugin.settings;
-    const save = () => void this.plugin.saveSettings();
+    const save = () => sayFailure(this.plugin.saveSettings());
     return {
       heading: t('Workflows'),
       rows: [
@@ -415,7 +416,7 @@ export class LabnoteSettingTab extends PluginSettingTab {
   private aiSection(): SettingSection {
     const t = this.plugin.t;
     const s = this.plugin.settings;
-    const save = () => void this.plugin.saveSettings();
+    const save = () => sayFailure(this.plugin.saveSettings());
     return {
       heading: t('AI provider'),
       rows: [
@@ -474,7 +475,7 @@ export class LabnoteSettingTab extends PluginSettingTab {
               text.setValue(s.llmApiKey).onChange(v => {
                 s.llmApiKey = v;
                 window.clearTimeout(timer);
-                timer = window.setTimeout(() => void this.plugin.saveSettings(), 500);
+                timer = window.setTimeout(() => sayFailure(this.plugin.saveSettings()), 500);
               });
             }),
         },
@@ -501,7 +502,7 @@ export class LabnoteSettingTab extends PluginSettingTab {
                 // Drive the live server from the toggle so the setting and the running
                 // state stay consistent (matching the command's behaviour).
                 s.mcpEnabled = v;
-                void this.plugin.saveSettings();
+                sayFailure(this.plugin.saveSettings());
                 if (v) this.plugin.mcpServer.start();
                 else this.plugin.mcpServer.stop();
               })
@@ -522,10 +523,10 @@ export class LabnoteSettingTab extends PluginSettingTab {
   private renderMcpToken(tokenSetting: Setting): void {
     tokenSetting
       .addButton(b =>
-        b.setButtonText(this.plugin.t('Copy token')).onClick(async () => {
+        b.setButtonText(this.plugin.t('Copy token')).onClick(() => sayFailure(async () => {
           await navigator.clipboard.writeText(this.plugin.mcpServer.ensureToken());
           new Notice(this.plugin.t('MCP token copied to clipboard.'));
-        })
+        }))
       )
       .addButton(b => {
         // Confirmed by a second click rather than a dialog: a modal opened over
@@ -534,7 +535,7 @@ export class LabnoteSettingTab extends PluginSettingTab {
           b.setButtonText(this.plugin.t('Regenerate token'));
           b.buttonEl.classList.remove('mod-warning');
         };
-        b.setButtonText(this.plugin.t('Regenerate token')).onClick(async () => {
+        b.setButtonText(this.plugin.t('Regenerate token')).onClick(() => sayFailure(async () => {
           if (!this.regenerateArm) {
             b.setButtonText(this.plugin.t('Click again to regenerate')).setWarning();
             this.regenerateArm = {
@@ -553,7 +554,7 @@ export class LabnoteSettingTab extends PluginSettingTab {
           } catch {
             new Notice(this.plugin.t('The new token could not be copied. Use "Copy token".'));
           }
-        });
+        }));
       });
     const fingerprintEl = tokenSetting.descEl.createDiv();
     const showFingerprint = (): void => {

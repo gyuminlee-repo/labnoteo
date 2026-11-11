@@ -25,6 +25,7 @@ import { ScanResultModal, summarizeResults } from '../scan/resultModal';
 import { UnmatchedModal, listUnmatched } from '../scan/unmatchedModal';
 import { isScanOfNote, SCANS_SUBFOLDER } from '../scan/imageStore';
 import { SlackInbox } from '../scan/slack';
+import { logFailure, sayFailure } from '../unawaited';
 
 export { isBarcodeNote };
 
@@ -198,10 +199,10 @@ export class BarcodeFeature {
     plugin.registerEvent(this.app.vault.on('delete', file => this.noteIds.forget(file.path)));
     if (this.watcher) {
       const watcher = this.watcher;
-      plugin.registerInterval(window.setInterval(() => void watcher.tick(), POLL_MS));
+      plugin.registerInterval(window.setInterval(() => logFailure('scan folder check', watcher.tick()), POLL_MS));
       plugin.register(() => watcher.stop());
     }
-    plugin.registerInterval(window.setInterval(() => void this.slack.poll(), this.slack.pollMs));
+    plugin.registerInterval(window.setInterval(() => logFailure('Slack poll', this.slack.poll()), this.slack.pollMs));
     plugin.register(() => this.slack.stop());
   }
 
@@ -349,7 +350,7 @@ export class BarcodeFeature {
     const open = (): void =>
       new ScanResultModal(this.app, this.t, this.pipeline, results, {
         openNote: (path, hash) => {
-          void this.openScanInNote(path, hash);
+          sayFailure(this.openScanInNote(path, hash));
           this.offerResultsAgain(open);
         },
         openUnmatched: () => this.openUnmatched(),

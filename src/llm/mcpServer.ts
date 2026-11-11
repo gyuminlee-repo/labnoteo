@@ -36,6 +36,7 @@ import type LabnotePlugin from '../main';
 import { getObsidianLanguage } from '../i18n';
 import { buildApprovalMessage, erasesRecordedLines } from './approvalMessage';
 import { sampleUsages } from '../sampleActions';
+import { logFailure } from '../unawaited';
 
 // Available in the CommonJS bundle at runtime (desktop/Electron).
 declare const require: (id: string) => unknown;
@@ -100,7 +101,7 @@ export class LabnoteMcpServer {
     this.ensureToken();
 
     const server = http.createServer((req, res) => {
-      void this.handle(req, res);
+      logFailure('MCP request', this.handle(req, res));
     });
     // Without an 'error' listener a port conflict (e.g. the same plugin running
     // in another vault already holds 3987) throws as an uncaught exception and
@@ -132,7 +133,7 @@ export class LabnoteMcpServer {
   ensureToken(): string {
     if (!this.plugin.settings.mcpToken) {
       this.plugin.settings.mcpToken = randomToken();
-      void this.plugin.saveSettings();
+      logFailure('saving the MCP token', this.plugin.saveSettings());
     }
     return this.plugin.settings.mcpToken;
   }

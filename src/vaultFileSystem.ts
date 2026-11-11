@@ -19,6 +19,7 @@
 import type { DataAdapter } from 'obsidian';
 import type { LabnoteFs } from '@labnoteo/core';
 import * as posix from '@labnoteo/core/posix';
+import { logFailure } from './unawaited';
 
 /**
  * `DataAdapter.process` is declared non-optional, but it is old enough that the
@@ -48,11 +49,11 @@ export class VaultFileSystem implements LabnoteFs {
       () => undefined
     );
     this.queues.set(key, tail);
-    void tail.then(() => {
+    logFailure('file write queue', tail.then(() => {
       // Only the current tail may clear the entry; a later queuer already
       // replaced it and is still waiting.
       if (this.queues.get(key) === tail) this.queues.delete(key);
-    });
+    }));
     return run;
   }
 

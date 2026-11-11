@@ -3,6 +3,7 @@ import { App, Modal, Notice, Setting } from 'obsidian';
 import type { Translator } from '@labnoteo/core';
 import { encodeNotePayload } from '@labnoteo/core/lib/scanPayload';
 import { qrSvg } from './qr';
+import { sayFailure } from '../unawaited';
 
 /** What the window can print: a workflow note's worksheet, and any note in full. */
 export interface BarcodePrintActions {
@@ -41,10 +42,10 @@ export class BarcodeModal extends Modal {
           ),
     });
     const buttons = new Setting(contentEl).addButton(b =>
-      b.setButtonText(t('Copy ID')).onClick(async () => {
+      b.setButtonText(t('Copy ID')).onClick(() => sayFailure(async () => {
         await navigator.clipboard.writeText(note.id);
         new Notice(t('Copied {0}.', note.id));
-      })
+      }))
     );
     const action = (label: string, run: () => void, cta: boolean): void => {
       buttons.addButton(b => {
