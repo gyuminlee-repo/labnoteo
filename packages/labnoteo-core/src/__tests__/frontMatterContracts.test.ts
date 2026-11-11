@@ -12,6 +12,9 @@ import { markdownCodeLines } from '../sections/codeFences';
 import { resolveGithubAnchor } from '../sections/workflowSectionParser';
 import { scanMarkdownTables } from '../lib/exportTablesCsv';
 import { findEnclosingHeading } from '../lib/issueMarker';
+import { removeWorkflowFromReadme } from '../lib/workflowDelete';
+import { insertWorkflowChecklistEntries } from '../lib/workflowStructure';
+import { appendUnitOpToWorkflowToc } from '../sections/workflowSectionParser';
 import { planWorkflowExperimenterSync, resetCopiedWorkflowDates, unnamedWorkflowIds } from '../lib/workflowStructure';
 
 describe('lines split on \\n with each CR kept', () => {
@@ -75,5 +78,41 @@ describe('the front matter as Obsidian finds it, where `--- ` opens none', () =>
     const note = '---\nexperimenter:\nx: |\n  --- \n  - Experimenter:\n---\n### [UHW010 Spin]\n- Experimenter:\n';
     const plan = planWorkflowExperimenterSync(note, 'Kim', '2026-11-11');
     expect(plan?.content).toContain('  - Experimenter:\n---');
+  });
+});
+
+// One reader, two scans of the same lines (headings or rows, and code or comments): both start
+// past the front matter, so a fence in its YAML reaches neither.
+describe('a fence in the front matter', () => {
+  const yaml = '---\ndescription: |\n  ```\n---\n';
+
+  it('hides no comment mark below it: a table in a comment stays hidden', () => {
+    const md = `${yaml}\n%%\n\n| secret | value |\n| --- | --- |\n| hidden | 42 |\n%%\n`;
+    expect(scanMarkdownTables(md).tables).toHaveLength(0);
+  });
+
+  it('makes no heading below it code', () => {
+    expect(findEnclosingHeading(`${yaml}## Real\nx\n`, 6)).toBe('Real');
+  });
+
+  it('pairs with no fence below it: the entry above that fence is deleted', () => {
+    const md = `${yaml}## Related Workflows\n- [ ] [A](./001_WD010_A.labnote.md)\n\n\`\`\`\ncode\n`;
+    expect(removeWorkflowFromReadme(md, '001_WD010_A.labnote.md').content).toBe(`${yaml}## Related Workflows\n\n\`\`\`\ncode\n`);
+  });
+});
+
+// The same note with and without its front matter: a writer acts on the body alike.
+describe('what the front matter holds reaches no writer of the body', () => {
+  it('a fence there moves no checklist entry into a code example below', () => {
+    const fm = '---\n```\n---\n';
+    const body = '## Related Workflows\n\n- [x] [B](./002_WD010_B.labnote.md)\n```text\nalpha\n\n- [ ] [A](./001_WD010_A.labnote.md)\n\nbeta\n```\n';
+    const items = [{ done: false, title: 'D', fileName: '004_WD010_D.labnote.md' }];
+    expect(insertWorkflowChecklistEntries(fm + body, items)).toBe(fm + insertWorkflowChecklistEntries(body, items));
+  });
+
+  it('an HTML comment there lets no TOC entry into a code example below', () => {
+    const fm = '---\n<!--\n-->\n---\n';
+    const body = '## Related Unit Operations\n\n### Notes\n~~~\n*x*\n- [ ] [A](./001_WD010_A.labnote.md)\n~~~';
+    expect(appendUnitOpToWorkflowToc(fm + body, 'UHW020', 'B')).toBe(fm + appendUnitOpToWorkflowToc(body, 'UHW020', 'B'));
   });
 });

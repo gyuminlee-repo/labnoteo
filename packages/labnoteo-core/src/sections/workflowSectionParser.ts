@@ -241,8 +241,9 @@ export function appendUnitOpToWorkflowToc(
       }
       fence = next;
     }
-    const html = lines.slice(0, lastEntry).some(l => /^ {0,3}</.test(l));
-    const loneCr = lines.slice(0, endIdx).some(l => l.includes('\r'));
+    // The front matter is YAML: a `<` line or a lone CR there is not the Markdown read here.
+    const html = lines.slice(frontMatter, lastEntry).some(l => /^ {0,3}</.test(l));
+    const loneCr = lines.slice(frontMatter, endIdx).some(l => l.includes('\r'));
     const inCode = (j: number): boolean =>
       !indented && !html && !oddClose && !loneCr && opener[j] > headingIdx && closed.has(opener[j]) && /^[`~]/.test(lines[opener[j]]);
     if (inCode(lastEntry)) {

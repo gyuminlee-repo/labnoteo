@@ -666,8 +666,10 @@ export function insertWorkflowChecklistEntries(
   if (items.length === 0 || findWorkflowSection(lines).header === -1) return readmeContent;
   // The closed fences, read once for the call and moved down with every line added
   // above or inside them: an added entry or blank line is no fence line, so reading
-  // them again would give the same fences at the moved places.
-  const spans = readmeFenceSpans(lines);
+  // them again would give the same fences at the moved places. Read from past the front matter,
+  // as the section is: a fence in its YAML pairs with none below.
+  const fm = frontMatterLineCountOf(lines, { crKept: true });
+  const spans = readmeFenceSpans(lines.slice(fm)).map(([open, close]): [number, number] => [open + fm, close + fm]);
   const shiftSpans = (pos: number, count: number): void => {
     for (const span of spans) {
       if (span[0] >= pos) span[0] += count;

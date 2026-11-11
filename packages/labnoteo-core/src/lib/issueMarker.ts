@@ -744,9 +744,10 @@ export function issueSentenceRange(
  */
 export function findEnclosingHeading(md: string, line: number, { asNote = true }: { asNote?: boolean } = {}): string | undefined {
   const lines = md.split('\n');
-  const code = codeLines(lines);
-  // Not above the front matter's end: a `## …` YAML comment there is no heading.
+  // Not above the front matter's end: a `## …` YAML comment there is no heading, and no fence
+  // in it reaches the body (code is read from past it).
   const fm = asNote ? frontMatterLineCountOf(lines, { crKept: true }) : 0;
+  const code = [...new Array<boolean>(fm).fill(false), ...codeLines(lines.slice(fm))];
 
   for (let i = Math.min(line, lines.length) - 1; i >= fm; i--) {
     if (code[i]) continue;

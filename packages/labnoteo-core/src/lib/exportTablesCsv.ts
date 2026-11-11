@@ -327,7 +327,10 @@ export function extractMarkdownTables(markdown: string): CsvTable[] {
 export function scanMarkdownTables(markdown: string): MarkdownTableScan {
   const text = markdown.replace(/\r\n/g, '\n');
   const lines = text.split('\n').map(unquote);
-  const commented = hiddenCommentLines(lines.map(l => l.text));
+  // Front matter is YAML (Obsidian reads it as properties): a `|` line there is no table, and no
+  // fence or comment mark in it reaches the body. Comments are read from past it, as the tables.
+  const fm = frontMatterLineCount(text);
+  const commented = [...new Array<boolean>(fm).fill(false), ...hiddenCommentLines(lines.slice(fm).map(l => l.text))];
   const tables: CsvTable[] = [];
   let notRendered = 0;
   let hidden = 0;
@@ -337,8 +340,7 @@ export function scanMarkdownTables(markdown: string): MarkdownTableScan {
   let inIndentedCode = false;
   // The line before was code (fenced, a fence line, or indented).
   let prevCode = false;
-  // Front matter is YAML (Obsidian reads it as properties): a `|` line there is no table.
-  let i = frontMatterLineCount(text);
+  let i = fm;
   while (i < lines.length) {
     const line = lines[i];
     const prev = lines[i - 1];

@@ -101,9 +101,13 @@ export function removeWorkflowFromReadme(
   // section nor cuts one short. The add path's section is taken as it reads it and
   // with those headings ignored; its pick of the first section holding an entry
   // only when the add path makes that pick too (no heading names the section).
-  const { inCode, plain } = readmeFencedReadings(lines);
-  // Front matter is YAML: no heading or entry in it is read, nor deleted.
+  // Front matter is YAML: no heading or entry in it is read, nor deleted, and no fence in it
+  // pairs with one below (the fences are read from past it).
   const fm = frontMatterLineCount(readmeContent);
+  const body = readmeFencedReadings(lines.slice(fm));
+  const yaml = new Array<boolean>(fm).fill(false);
+  const inCode = [...yaml, ...body.inCode];
+  const plain = [...yaml, ...body.plain];
   const ranges = exactSections(lines, plain, fm).filter(r => !inCode[r.start - 1]);
   const addPath = workflowChecklistSectionRange(readmeContent);
   const addPathNamed = addPath !== undefined && isWorkflowSectionHeading(lines[addPath.header]);
