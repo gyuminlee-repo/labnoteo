@@ -49,7 +49,8 @@ function literalText(node: ts.Node): string | undefined {
 /** Whether `node` is itself a heading pattern: a regex, a `RegExp` text, or a `startsWith('#')`. */
 function isHeadingPattern(node: ts.Node): boolean {
   if (ts.isRegularExpressionLiteral(node)) return HEADING_SOURCE.test(literalText(node) ?? '');
-  if (ts.isNewExpression(node) && node.expression.getText() === 'RegExp' && node.arguments?.[0]) {
+  // `new RegExp(…)` and `RegExp(…)` alike.
+  if ((ts.isNewExpression(node) || ts.isCallExpression(node)) && node.expression.getText() === 'RegExp' && node.arguments?.[0]) {
     return HEADING_SOURCE.test(literalText(node.arguments[0]) ?? '');
   }
   if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === 'startsWith') {
@@ -177,13 +178,19 @@ describe('parsers of note headings', () => {
       ['class method', 'class Note {\n  title(content: string) {\n    return content.split(/\\r?\\n/).find(line => line.startsWith("## "));\n  }\n}'],
       ['object method', 'export const reader = {\n  title(content: string) {\n    return content.split(/\\r?\\n/).find(line => new RegExp(`^#{1,6}\\\\s`).test(line));\n  },\n};'],
       ['named pattern', 'const H2 = /^## /;\nexport const title = (content: string) => content.split("\\n").find(l => H2.test(l));'],
+      ['RegExp called', 'export function title(content: string) {\n  return content.split("\\n").find(line => RegExp("^#{1,6}\\\\s").test(line));\n}'],
+      ['local pattern, exec', 'export function title(content: string) {\n  const re = /^#{1,6}\\s+(.*)/;\n  for (const line of content.split("\\n")) { const m = re.exec(line); if (m) return m[1]; }\n}'],
+      ['named pattern, match', 'const H = /^#+\\s/;\nexport function title(content: string) {\n  return content.split("\\n").find(line => line.match(H));\n}'],
+      ['whole text, matchAll', 'const H = /^#{2}\\s(.*)$/gm;\nexport function titles(content: string) {\n  return [...content.matchAll(H)].map(m => m[1]);\n}'],
+      ['whole text, search', 'export function firstAt(content: string) {\n  return content.search(/^#\\s/m);\n}'],
+      ['whole text, replace', 'export function drop(content: string) {\n  return content.replace(/^#+ .*$/gm, "");\n}'],
     ];
     it.each(forms)('%s', (_form, reads) => {
       expect(parsersMissingFrontMatter('x.ts', reads)).toHaveLength(1);
-      const skips = reads.replace('content.split(', 'stripFrontMatter(content).split(');
+      const skips = reads.replace('content.', 'stripFrontMatter(content).');
       expect(skips).not.toBe(reads);
       expect(parsersMissingFrontMatter('x.ts', skips)).toEqual([]);
-      const exempt = reads.replace('content.split(', '/* front matter: reads a section body. */ content.split(');
+      const exempt = reads.replace('content.', '/* front matter: reads a section body. */ content.');
       expect(parsersMissingFrontMatter('x.ts', exempt)).toEqual([]);
     });
   });
