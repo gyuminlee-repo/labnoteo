@@ -378,7 +378,10 @@ export class ScanPipeline {
       };
       let failure: string | undefined;
       try {
-        const written = await processNoteThroughVault(this.deps.app, this.deps.host, notePath, apply);
+        // An open note is judged by its editor's text, which the scans were placed against, not
+        // by the file first: a unit operation renamed there and not saved yet is still found.
+        const open = (await openEditorText(this.deps.app, notePath)) !== undefined;
+        const written = await processNoteThroughVault(this.deps.app, this.deps.host, notePath, apply, open);
         if (written === 'uncertain') {
           // The entries may be in the note, or kept by its editor for its next save: their
           // images stay, and they are not queued, which would file them twice. Scans the text
@@ -395,12 +398,21 @@ export class ScanPipeline {
         failure = String(err);
       }
       if (failure !== undefined) {
-        // Each scan goes to the unmatched queue, to be assigned from there, and says why it failed.
+        // Each scan goes to the unmatched queue, to be assigned from there, and says why it failed;
+        // but one the note on disk may have (the write failed after it landed, or the disk could
+        // not be read) keeps its image, which the entry links, and is said may be filed.
         console.error('[labnoteo] could not file scans in', notePath, failure);
+        let maybe = false;
         for (const item of items) {
+          if (!missed.has(item) && (await this.onDisk(notePath, [item.entry.hash]))) {
+            item.result.uncertain = true;
+            maybe = true;
+            continue;
+          }
           await this.requeue(item);
           if (item.result.status === 'unmatched') Object.assign(item.result, { status: 'error', message: failure });
         }
+        if (maybe) this.deps.host.notify('warn', this.deps.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', notePath));
         continue;
       }
       // The note changed between reading and writing so that the unit operation is gone.
@@ -457,7 +469,8 @@ export class ScanPipeline {
     const bytes = await app.vault.readBinary(image);
     // The queue keeps the page as JPEG; the hash of the scan as imported is in its name (#495).
     const hash = unmatchedInfoFromName(image.name).hash ?? shortHash(await sha256Hex(bytes));
-    const block = unitOpIndex > 0 ? listUnitOpBlocks(await app.vault.read(note))[unitOpIndex - 1] : undefined;
+    // As the note is, as the picker listed it and as the write will find it.
+    const block = unitOpIndex > 0 ? listUnitOpBlocks((await openEditorText(app, note.path)) ?? (await app.vault.read(note)))[unitOpIndex - 1] : undefined;
     const payload: PagePayload = {
       noteId,
       unitOpIndex: block?.index ?? 0,
@@ -541,13 +554,21 @@ export class ScanPipeline {
     return removed;
   }
 
-  /** Whether the note on disk still has one of the scans `hashes`: their images stay then. */
+  /**
+   * Whether the note on disk may still have one of the scans `hashes`: their images stay then.
+   * A note that cannot be read is not known not to, so it may.
+   */
   private async onDisk(notePath: string, hashes: readonly string[]): Promise<boolean> {
     const { app } = this.deps;
     const file = app.vault.getAbstractFileByPath(notePath);
     if (!(file instanceof TFile)) return false;
-    const disk = await app.vault.read(file);
-    return hashes.some(hash => removeScanEntry(disk, hash).removed);
+    try {
+      const disk = await app.vault.read(file);
+      return hashes.some(hash => removeScanEntry(disk, hash).removed);
+    } catch (err) {
+      console.warn('[labnoteo] could not read the note to see whether its scans are on disk', notePath, err);
+      return true;
+    }
   }
 
   /**

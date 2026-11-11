@@ -10,6 +10,7 @@ import type { NoteIdService } from '../barcode/noteIdService';
 import { unmatchedInfoFromName, UNMATCHED_FOLDER } from './imageStore';
 import type { ScanPipeline } from './scanPipeline';
 import { describeResult, unmatchedReasonText } from './resultModal';
+import { openEditorText } from '../openEditorWrite';
 
 const IMAGE_RE = /\.(jpe?g|png|webp)$/i;
 
@@ -105,7 +106,8 @@ export class UnmatchedModal extends Modal {
       { title: t('Assign to which note?'), placeholder: t('Search workflow notes') }
     );
     if (!note) return;
-    const blocks = listUnitOpBlocks(await this.app.vault.read(note));
+    // As the note is: an open editor's unit operations, saved or not, are the ones filing finds.
+    const blocks = listUnitOpBlocks((await openEditorText(this.app, note.path)) ?? (await this.app.vault.read(note)));
     const items: PickItem<number>[] = [
       ...blocks.map(b => ({ label: `${b.index}. [${b.opId} ${b.opName}]${b.alias ? ` ${b.alias}` : ''}`, value: b.index })),
       { label: t('The whole note (no unit operation)'), value: 0 },

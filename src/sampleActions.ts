@@ -7,7 +7,7 @@
  * Pure formatting/ID logic lives in `@labnoteo/core`; this module only wires
  * the modals, persists JSON via the vault fs, and surfaces notices.
  */
-import { App, MarkdownView, Notice, type Editor } from 'obsidian';
+import { App, MarkdownView, Notice, type Editor, type TFile } from 'obsidian';
 import { isOffsetBeforeBody, maskAiCallouts, planReferenceInsert, type EditTarget, type PickItem } from '@labnoteo/core';
 import {
   generateSampleId,
@@ -393,7 +393,7 @@ async function updateSampleListTables(
       });
       updated++;
     } else if (
-      await writeNoteSaid(app, plugin, note.path, content =>
+      await writeNoteSaid(app, plugin, pathOf(note), content =>
         planSampleListRowUpdate(content, headers, id, cells).reduceRight(
           (out, e) => out.slice(0, e.start) + e.text + out.slice(e.end),
           content
@@ -1290,7 +1290,12 @@ export interface ScopedNote {
   path: string;
   text: string;
   editor?: Editor;
+  /** The note's file, whose path follows a rename made meanwhile (a dialog open, say). */
+  file?: TFile;
 }
+
+/** Where `note` is now: renamed meanwhile, its file says. */
+const pathOf = (note: ScopedNote): string => note.file?.path ?? note.path;
 
 /**
  * `note`'s editor while its view still shows that note in source mode: the view may have
@@ -1315,7 +1320,7 @@ function liveEditor(app: App, note: ScopedNote): Editor | undefined {
   if (!note.editor) return undefined;
   for (const leaf of app.workspace.getLeavesOfType('markdown')) {
     const view = leaf.view;
-    if (view instanceof MarkdownView && view.editor === note.editor && view.file?.path === note.path && view.getMode() === 'source') {
+    if (view instanceof MarkdownView && view.editor === note.editor && view.file?.path === pathOf(note) && view.getMode() === 'source') {
       return note.editor;
     }
   }
@@ -1353,7 +1358,7 @@ export async function notesInSampleScope(
   for (const f of files) {
     const editor = editors.get(f.path);
     const text = editor ? editor.getValue() : await app.vault.cachedRead(f);
-    docs.push({ path: f.path, text, editor });
+    docs.push({ path: f.path, text, editor, file: f });
   }
   return docs;
 }
@@ -1485,7 +1490,7 @@ async function rewriteStaleAliases(
       });
       updated++;
     } else if (
-      await writeNoteSaid(app, plugin, note.path, content =>
+      await writeNoteSaid(app, plugin, pathOf(note), content =>
         applyAliasRewrite(content, planAliasRewrite(content, type, id, oldAlias, newAlias, sampleListHeaders(plugin)))
       )
     ) {
@@ -1633,7 +1638,7 @@ async function removeSampleListRows(
         changes: edits.map(e => ({ from: editor.offsetToPos(e.start), to: editor.offsetToPos(e.end), text: e.text })),
       });
       removed++;
-    } else if (await writeNoteSaid(app, plugin, note.path, apply)) {
+    } else if (await writeNoteSaid(app, plugin, pathOf(note), apply)) {
       removed++;
     }
   }
@@ -1742,7 +1747,7 @@ export async function changeSampleTypeInteractive(
         changes: edits.map(e => ({ from: editor.offsetToPos(e.start), to: editor.offsetToPos(e.end), text: e.text })),
       });
       updated++;
-    } else if (await writeNoteSaid(app, plugin, note.path, content => applyAliasRewrite(content, plan(content)))) {
+    } else if (await writeNoteSaid(app, plugin, pathOf(note), content => applyAliasRewrite(content, plan(content)))) {
       updated++;
     }
   }

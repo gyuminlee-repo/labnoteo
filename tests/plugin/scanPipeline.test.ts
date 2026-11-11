@@ -938,3 +938,79 @@ describe('undo and earlier-scan removal tried again while the open note still ca
     expect(again.status).toBe('duplicate');
   });
 });
+
+// The note's save went in, but the disk could not be read back right after: the scan is in the
+// note on disk, which links its image. The image stays; the scan is said may be filed.
+describe('a scan filed into an open note whose disk cannot be read after its save', () => {
+  it('keeps the image the note links, and does not queue the scan', async () => {
+    const note = buildNote(ID, ['UHW010', 'UHW020']);
+    const s = setup({ [NOTE]: note }, { 'a.jpg': [page(pagePayload(), 'aaaaaaaaaaaa')] });
+    let text = note;
+    let broken = false;
+    const view = new MarkdownView();
+    view.file = new TFile(NOTE);
+    view.lastSavedData = note;
+    view.editor = {
+      getValue: () => text,
+      offsetToPos: (offset: number) => offset,
+      replaceRange: (r: string, from: number, to: number) => {
+        text = text.slice(0, from) + r + text.slice(to);
+      },
+    };
+    view.getViewData = () => text;
+    view.writeData = async (_f: TFile, t: string) => {
+      s.text.set(NOTE, t);
+      broken = true;
+    };
+    Object.assign(s.app, { workspace: { getLeavesOfType: () => [{ view }] } });
+    const read = s.app.vault.read.bind(s.app.vault);
+    Object.assign(s.app.vault, {
+      read: async (f: TFile) => {
+        if (broken && f.path === NOTE) throw new Error('EBUSY');
+        return read(f as never);
+      },
+    });
+    const [result] = await s.pipeline.run([input('a.jpg')]);
+    expect(s.text.get(NOTE)).toContain('aaaaaaaaaaaa');
+    expect(result).toMatchObject({ status: 'filed', uncertain: true });
+    expect(s.binary.has(result.imagePath!)).toBe(true);
+    expect(s.trashed).toEqual([]);
+    expect(listUnmatched(s.app as never)).toEqual([]);
+  });
+});
+
+// A unit operation renamed in the open editor, not saved yet: filed by hand to it, the scan goes
+// there, as the picker listed it, rather than being taken for a renamed block.
+describe('a scan filed by hand to a unit operation renamed in the open editor', () => {
+  it('is filed', async () => {
+    const QUEUED = '_labnote-scans/unmatched/20261021-021738_unknown_photo1.jpg';
+    const note = buildNote(ID, ['UHW010', 'UHW020']);
+    const s = setup({ [NOTE]: note }, {});
+    s.binary.set(QUEUED, new Uint8Array([9, 9, 9]).buffer);
+    let text = note.split('Op UHW010').join('Mixing');
+    expect(text).not.toBe(note);
+    const view = new MarkdownView();
+    view.file = new TFile(NOTE);
+    view.lastSavedData = note;
+    view.editor = {
+      getValue: () => text,
+      offsetToPos: (offset: number) => offset,
+      replaceRange: (r: string, from: number, to: number) => {
+        text = text.slice(0, from) + r + text.slice(to);
+      },
+    };
+    view.getViewData = () => text;
+    view.writeData = async (_f: TFile, t: string) => {
+      s.text.set(NOTE, t);
+    };
+    Object.assign(s.app, { workspace: { getLeavesOfType: () => [{ view }] } });
+    const result = await s.pipeline.fileManually(
+      new TFile(QUEUED) as unknown as Parameters<ScanPipeline['fileManually']>[0],
+      new TFile(NOTE) as unknown as Parameters<ScanPipeline['fileManually']>[1],
+      1,
+      { page: 1, pageCount: 1 }
+    );
+    expect(result.status).toBe('filed');
+    expect(text).toContain('Mixing');
+  });
+});

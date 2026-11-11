@@ -403,8 +403,12 @@ export class NoteIdService {
     this.warnIdsOutsideLabNotes();
     for (const dup of this.unreportedDuplicates()) {
       let files = dup.files;
-      while (files.length > 1) {
-        const newest = files === dup.files ? dup.newest : newestOf(files);
+      for (;;) {
+        // As the notes are: one whose open editor has another ID already (given, its save
+        // failed) is no longer in the set, and is not given yet another.
+        files = await this.stillCarrying(dup.id, files);
+        if (files.length < 2) break;
+        const newest = newestOf(files);
         this.reported.add(duplicateKey(dup.id, files));
         // A labnote_id that cannot be written would fail the re-numbering: said once per note
         // instead of asked about each time another note joins the set, and the set is left
@@ -431,6 +435,19 @@ export class NoteIdService {
         files = files.filter(f => f.path !== newest.path);
       }
     }
+  }
+
+  /**
+   * `files` but those whose text as it is ({@link textOf}) carries another ID than `id`. One
+   * whose ID does not read from its text (written over several lines, say) stays, as the cache has it.
+   */
+  private async stillCarrying(id: string, files: readonly TFile[]): Promise<TFile[]> {
+    const out: TFile[] = [];
+    for (const f of files) {
+      const now = readNoteId((await this.textOf(f)).replace(/\r\n/g, '\n'));
+      if (now === undefined || now === id) out.push(f);
+    }
+    return out;
   }
 
   /**

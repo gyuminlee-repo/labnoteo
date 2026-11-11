@@ -2671,10 +2671,13 @@ export default class LabnotePlugin extends Plugin {
           // The editor may have switched to another note since the edit.
           if (info.file?.path !== path) return;
           if (this.lastChangeFromHistory.get(path)) return;
+          const seen = editor.getValue();
           // A change to the file Obsidian has yet to read back: left to the next edit.
           if (!(await openViewHasDisk(this.app, file))) return;
-          if (info.file?.path !== path) return;
-          const before = editor.getValue();
+          // Looked at again after the read: an undo or edit meanwhile is left as it is.
+          if (info.file?.path !== path || this.lastChangeFromHistory.get(path) || this.unitOpTocTimers.has(path)) return;
+          if (editor.getValue() !== seen) return;
+          const before = seen;
           const after = this.settings.autoSyncUnitOpToc
             ? rebuildUnitOpToc(before)
             : refreshUnitOpTocEntries(before);

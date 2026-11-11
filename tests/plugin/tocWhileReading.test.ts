@@ -44,7 +44,7 @@ function staleToc(): string {
   return md;
 }
 
-async function edited(pendingRead: boolean): Promise<boolean> {
+async function edited(pendingRead: boolean, duringRead?: (state: { editor: string }, plugin: Record<string, unknown>) => void): Promise<boolean> {
   const text = staleToc();
   expect(rebuildUnitOpToc(text)).not.toBe(text);
   const state = { editor: text, edits: 0 };
@@ -72,7 +72,13 @@ async function edited(pendingRead: boolean): Promise<boolean> {
         return {};
       },
     },
-    vault: { read: async () => (pendingRead ? `${text}\nChanged elsewhere.\n` : text) },
+    vault: {
+      read: async () => {
+        await Promise.resolve();
+        duringRead?.(state, plugin);
+        return pendingRead ? `${text}\nChanged elsewhere.\n` : text;
+      },
+    },
   };
   const plugin = Object.create(LabnotePlugin.prototype) as Record<string, unknown>;
   Object.assign(plugin, {
@@ -98,6 +104,19 @@ describe('the TOC sync of an open workflow note', () => {
     vi.useFakeTimers();
     vi.stubGlobal('window', globalThis);
     expect(await edited(false)).toBe(true);
+  });
+
+  // An undo while the file was read: the history is looked at again after it, and the editor
+  // as the undo left it is not edited.
+  it('leaves the editor alone when an undo comes while the file is read', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('window', globalThis);
+    expect(
+      await edited(false, (state, plugin) => {
+        state.editor = `${state.editor} `;
+        (plugin.lastChangeFromHistory as Map<string, boolean>).set(NOTE, true);
+      })
+    ).toBe(false);
   });
 
   it('leaves the editor alone while a change to the file is to be read back', async () => {

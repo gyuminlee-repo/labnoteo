@@ -1392,9 +1392,11 @@ export async function registerWorkflowInReadme(
   stamp: (content: string, path?: string) => string = c => c
 ): Promise<WorkflowRegistration> {
   if (!(await host.fs.exists(readmePath))) return 'noReadme';
-  if (!hasWorkflowChecklistSection(await host.fs.read(readmePath))) return 'noSection';
+  // Decided on the text the entry goes into (an open editor's, saved or not), when it goes in.
+  let noSection = false;
   const add = (readme: string) => {
-    if (!hasWorkflowChecklistSection(readme)) return readme;
+    noSection = !hasWorkflowChecklistSection(readme);
+    if (noSection) return readme;
     // Named, so a README date its reader set by hand today stands (#363).
     return stamp(
       insertWorkflowChecklistEntries(readme, [{ done: false, title: entry.title, fileName: entry.fileName }]),
@@ -1404,6 +1406,7 @@ export async function registerWorkflowInReadme(
   const written = await processNoteThroughVault(app, host, readmePath, add);
   if (written === 'uncertain') return 'uncertain';
   if (written) return 'registered';
+  if (noSection) return 'noSection';
   // Nothing written: the entry is there already, or the README did not get it.
   return (await changeNotWritten(app, host, readmePath, add)) ? 'notWritten' : 'registered';
 }

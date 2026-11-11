@@ -409,8 +409,10 @@ function scanLines(md: string): MdLine[] {
     const nl = md.indexOf('\n', start);
     const end = nl === -1 ? md.length : nl > start && md[nl - 1] === '\r' ? nl - 1 : nl;
     const text = md.slice(start, end);
-    const next: OpenFence | null = lines.length < frontMatter ? fence : stepFence(text, fence);
-    const fenced = fence !== null || next !== null;
+    const inFrontMatter = lines.length < frontMatter;
+    const next: OpenFence | null = inFrontMatter ? fence : stepFence(text, fence);
+    // Front matter is YAML, no Markdown: a `## …` comment in it is no heading, a `- [ID …]` no TOC entry.
+    const fenced = inFrontMatter || fence !== null || next !== null;
     fence = next;
     lines.push({ start, end, text, fenced });
     if (nl === -1) break;

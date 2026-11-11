@@ -74,7 +74,8 @@ function sections(md: string): HeadingSection[] {
     const next: OpenFence | null = i < frontMatter ? fence : stepFence(line, fence);
     const inFence = fence !== null || next !== null;
     fence = next;
-    const heading = inFence ? null : HEADING_RE.exec(line);
+    // Front matter is YAML: a `## …` comment in it is no heading.
+    const heading = inFence || i < frontMatter ? null : HEADING_RE.exec(line);
     if (heading) {
       current = { level: heading[1].length, title: heading[2].trim(), body: [], unitOps: i === unitOpLine };
       out.push(current);

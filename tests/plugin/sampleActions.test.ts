@@ -968,6 +968,63 @@ describe('changeSampleTypeInteractive', () => {
     expect(await fs.read(`${A}/001_WD010_A.labnote.md`)).toBe(`@plasmid;${ids[0]};pUC19;vector\n`);
   });
 
+  // The open note renamed while the question was open: its record moved, it follows, its editor
+  // (now under the new name) rewritten, not the name it had.
+  it('rewrites an open note renamed while the question was open', async () => {
+    const OLD = `${A}/001_WD010_A.labnote.md`;
+    const NEW = `${A}/001_WD010_Renamed.labnote.md`;
+    const files = new Map(
+      Object.keys(fs.snapshot())
+        .filter(p => p.endsWith('.md'))
+        .map(p => [p, new TFile(p)])
+    );
+    const tf = files.get(OLD)!;
+    let text = await fs.read(OLD);
+    const view = new MarkdownView();
+    view.file = tf;
+    view.editor = {
+      getValue: () => text,
+      offsetToPos: (offset: number) => offset,
+      transaction: (tx: { changes: { from: number; to: number; text: string }[] }) => {
+        for (const c of [...tx.changes].sort((x, y) => y.from - x.from)) text = text.slice(0, c.from) + c.text + text.slice(c.to);
+      },
+    };
+    const app = {
+      workspace: { getLeavesOfType: () => [{ view }] },
+      vault: {
+        getMarkdownFiles: () => [...files.values()],
+        cachedRead: (f: TFile) => fs.read(f.path),
+        read: (f: TFile) => fs.read(f.path),
+        getFileByPath: (p: string) => [...files.values()].find(f => f.path === p) ?? null,
+        process: async (f: TFile, fn: (s: string) => string) => {
+          const next = fn(await fs.read(f.path));
+          await fs.write(f.path, next);
+          return next;
+        },
+      },
+    } as unknown as App;
+    const p = {
+      fs,
+      t: (key: string, ...args: string[]) => key.replace(/\{(\d)\}/g, (_, i) => args[Number(i)]),
+      settings: { globalSampleFolder: GLOBAL, customSampleTypes: [] },
+      host: { fs, editTarget: () => undefined, notify: () => undefined },
+      refreshSampleViews: vi.fn(),
+    } as unknown as LabnotePlugin;
+    vi.mocked(pickModal).mockResolvedValue('Plasmid');
+    vi.mocked(confirmModal).mockImplementation(async () => {
+      await fs.write(NEW, await fs.read(OLD));
+      await fs.remove(OLD);
+      tf.path = NEW;
+      tf.name = '001_WD010_Renamed.labnote.md';
+      return true;
+    });
+
+    expect(await changeSampleTypeInteractive(app, p, { folder: FOLDER, type: 'RNA', id: 'RNA-1' })).toBe(true);
+
+    expect(JSON.parse(await fs.read(`${FOLDER}/Plasmid.json`))).toHaveProperty('Plasmid-1');
+    expect(text).toBe('@plasmid;Plasmid-1;pUC19;vector\n');
+  });
+
   it('changes nothing when declined', async () => {
     vi.mocked(pickModal).mockResolvedValue('Plasmid');
     vi.mocked(confirmModal).mockResolvedValue(false);
