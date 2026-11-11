@@ -2161,7 +2161,8 @@ export async function rebuildExperimentReadmeFile(host: LabnoteHost, dir: string
 
 /**
  * Add one workflow file of `labnoteDir` to its README checklist unless it is
- * already listed. Returns whether the README changed.
+ * already listed. Returns whether the README changed. A README not written (its save did not
+ * end in time), or that may not have been, is said, with the command that lists it.
  */
 export async function addWorkflowFileToChecklist(
   app: App,
@@ -2172,12 +2173,40 @@ export async function addWorkflowFileToChecklist(
   const readmePath = posix.join(labnoteDir, README);
   if (!(await host.fs.exists(readmePath))) return false;
   const titles = new Map([[fileName, await readWorkflowLabel(host, labnoteDir, fileName)]]);
-  const written = await processNoteThroughVault(
-    app,
-    host,
-    readmePath,
-    content => planWorkflowChecklistSync(content, [fileName], titles, undefined, labnoteDir).content
-  );
+  const add = (content: string): string => planWorkflowChecklistSync(content, [fileName], titles, undefined, labnoteDir).content;
+  const written = await processNoteThroughVault(app, host, readmePath, add);
+  if (written === 'uncertain') {
+    host.notify('warn', host.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', readmePath));
+  } else if (!written && (await changeNotWritten(app, host, readmePath, add))) {
+    host.notify(
+      'warn',
+      host.t(
+        '{0} was not written: it was still being saved, or it changed while the entry went in, so {1} was not added to its checklist. Run "{2}" in a moment to add it.',
+        readmePath,
+        fileName,
+        host.t('Sync workflow checklist with folder')
+      )
+    );
+  }
+  return written === true;
+}
+
+/**
+ * A note `transform` was written to: whether it was. Not written (its save did not end in
+ * time), or that may not have been, is said with its path, and not counted.
+ */
+async function noteWrittenSaid(
+  app: App,
+  host: LabnoteHost,
+  notePath: string,
+  transform: (content: string) => string,
+  written: NoteWritten
+): Promise<boolean> {
+  if (written === 'uncertain') {
+    host.notify('warn', host.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', notePath));
+  } else if (!written && (await changeNotWritten(app, host, notePath, transform))) {
+    host.notify('warn', host.t('{0} was not written: it was still being saved, or it changed while the change went in. Try again in a moment.', notePath));
+  }
   return written === true;
 }
 
@@ -2324,12 +2353,8 @@ export async function syncWorkflowChecklistCommand(
     if (ok) {
       for (const { name } of retitles) {
         const notePath = posix.join(labnoteDir, name);
-        const changed = await processNoteThroughVault(
-          app,
-          host,
-          notePath,
-          content => planWorkflowRetitle(content, name)?.content ?? content
-        );
+        const retitle = (content: string): string => planWorkflowRetitle(content, name)?.content ?? content;
+        const changed = await noteWrittenSaid(app, host, notePath, retitle, await processNoteThroughVault(app, host, notePath, retitle));
         if (changed) {
           updatedNotes.add(name);
           // As the note is: an open editor keeps a title its save could not write yet.
@@ -2387,13 +2412,11 @@ export async function syncWorkflowChecklistCommand(
     );
     if (ok) {
       for (const { name } of experimenters) {
-        const changed = await processNoteThroughVault(
-          app,
-          host,
-          posix.join(labnoteDir, name),
-          content => planWorkflowExperimenterSync(content, author, now)?.content ?? content
-        );
-        if (changed) updatedNotes.add(name);
+        const notePath = posix.join(labnoteDir, name);
+        const sync = (content: string): string => planWorkflowExperimenterSync(content, author, now)?.content ?? content;
+        if (await noteWrittenSaid(app, host, notePath, sync, await processNoteThroughVault(app, host, notePath, sync))) {
+          updatedNotes.add(name);
+        }
       }
     }
   }

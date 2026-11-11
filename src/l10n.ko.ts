@@ -526,6 +526,8 @@ const obsidianKo: Record<string, string> = {
   'Workflow created: {0}': '워크플로가 생성되었습니다: {0}',
   'README.labnote.md was not written: it was still being saved, or it changed while the entry went in, so {0} was not added to its checklist. Run "{1}" in a moment to add it.':
     'README.labnote.md를 쓰지 못해 {0}을(를) 체크리스트에 넣지 못했습니다. 아직 저장하는 중이었거나 항목을 넣는 사이에 파일이 바뀌었습니다. 잠시 뒤 "{1}"을(를) 실행하면 넣을 수 있습니다.',
+  '{0} was not written: it was still being saved, or it changed while the entry went in, so {1} was not added to its checklist. Run "{2}" in a moment to add it.':
+    '{0}을(를) 쓰지 못해 {1}을(를) 체크리스트에 넣지 못했습니다. 아직 저장하는 중이었거나 항목을 넣는 사이에 파일이 바뀌었습니다. 잠시 뒤 "{2}"을(를) 실행하면 넣을 수 있습니다.',
   'This experiment has no README.labnote.md, so the workflow was not added to a checklist.':
     '이 실험에는 README.labnote.md가 없어 워크플로를 체크리스트에 등록하지 못했습니다.',
   'Unit operation inserted: {0} {1}': '유닛 오퍼레이션이 삽입되었습니다: {0} {1}',
