@@ -13,6 +13,7 @@
  * again (undo) without depending on how the image link is written.
  */
 import { fenceLines, stepFence, type OpenFence } from './sectionEdit';
+import { BLOCK_TAGS } from './codeFences';
 import { joinLineBuffer, spliceLineBuffer, splitLineBuffer, type LineRef } from '../util/lineEnds';
 import { UNIT_OP_HEADING_PATTERN } from './workflowSectionParser';
 import { unitOpFingerprint } from '../lib/scanPayload';
@@ -52,6 +53,14 @@ export interface ScanEntry {
 const ANY_HEADING_RE = /^(#{1,6})\s/;
 const RULE_RE = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
 const ENTRY_RE = /^<!-- labnoteo-scan page=(\d+)\/(\d+) sha=([0-9a-f]+) -->\s*$/;
+/**
+ * A line that starts a block of its own, ending the paragraph above it (CommonMark): an ATX
+ * heading, a rule, a quote, a list item, an HTML block (types 1 to 6), or a fence.
+ */
+const BLOCK_START_RE = new RegExp(
+  `^ {0,3}(?:#{1,6}(?:[ \\t]|$)|>|[-*+][ \\t]+\\S|1[.)][ \\t]+\\S|<(?:(?:script|pre|style|textarea)(?:\\s|>|$)|!--|\\?|![A-Za-z]|!\\[CDATA\\[|/?(?:${BLOCK_TAGS})(?:\\s|/?>|$)))`,
+  'i'
+);
 
 interface Heading {
   line: number;
@@ -186,6 +195,12 @@ interface ParsedEntry {
   hash: string;
   /** New lines, or the note's own lines (carried with their line breaks). */
   lines: (string | LineRef)[];
+  /**
+   * How many of `lines` are the entry's own: its comment and the paragraph right under it (the
+   * embed and the caption). The lines after them are the researcher's (a note, a code block, a
+   * list), which stay when the entry goes.
+   */
+  own?: number;
   /** The note's blank line after the entry, which separates it from the next one. */
   gap?: LineRef;
 }
@@ -199,6 +214,7 @@ interface Section {
   entries: ParsedEntry[];
 }
 
+// front matter: a Worksheet scans section's lines, past the front matter (findSection's headings come from scanHeadings).
 function parseSection(lines: readonly string[], headingLine: number, end: number): Section {
   const entries: ParsedEntry[] = [];
   const preface: LineRef[] = [];
@@ -217,6 +233,22 @@ function parseSection(lines: readonly string[], headingLine: number, end: number
   }
   for (const e of entries) {
     while (e.lines.length > 1 && blankAt(e.lines[e.lines.length - 1])) e.gap = e.lines.pop() as LineRef;
+    // The caption, as renderScanEntry writes it, runs from a line starting with `*` to one ending
+    // with an unescaped `*`, over blank lines too (a caption holding a line break).
+    const at = (k: number): string => lines[(e.lines[k] as LineRef).line];
+    let own = 1;
+    if (own < e.lines.length && /^\s*!\[/.test(at(own))) own++;
+    if (own < e.lines.length && /^\*/.test(at(own))) {
+      let close = own;
+      while (close < e.lines.length && !/(?:^|[^\\])\*\s*$/.test(at(close).replace(/^\*/, ''))) close++;
+      if (close < e.lines.length) own = close + 1;
+    }
+    // The rest of the paragraph the comment's lines end in goes with them, as before.
+    for (; own < e.lines.length; own++) {
+      const line = at(own);
+      if (isBlank(line) || BLOCK_START_RE.test(line) || stepFence(line, null) !== null || RULE_RE.test(line)) break;
+    }
+    e.own = own;
   }
   while (preface.length && blankAt(preface[0])) preface.shift();
   while (preface.length && blankAt(preface[preface.length - 1])) preface.pop();
@@ -239,7 +271,7 @@ function findSection(
   return parseSection(lines, h.line, end);
 }
 
-function renderSection(level: number, section: Pick<Section, 'preface' | 'entries'>): (string | LineRef)[] {
+function renderSection(level: number, section: { preface: readonly (string | LineRef)[]; entries: readonly ParsedEntry[] }): (string | LineRef)[] {
   const out: (string | LineRef)[] = [`${'#'.repeat(level)} ${WORKSHEET_SCANS_HEADING}`, ''];
   if (section.preface.length) out.push(...section.preface, '');
   section.entries.forEach((e, i) => {
@@ -397,15 +429,30 @@ export function removeScanEntry(md: string, hash: string, { keepSection = false 
     const to = h.level === 4 && block ? block.contentEndLine : lines.length;
     const section = findSection(lines, headings, h.level, h.line - 1, to);
     if (!section) continue;
-    const keep = section.entries.filter(e => e.hash !== hash);
-    if (keep.length === section.entries.length) continue;
-    if (keep.length === 0 && section.preface.length === 0 && !keepSection) {
+    if (!section.entries.some(e => e.hash === hash)) continue;
+    // The entry goes with its own lines only: what the researcher wrote under it stays, after the
+    // entry kept before it, or with the section's preface.
+    const keep: ParsedEntry[] = [];
+    const preface: (string | LineRef)[] = [...section.preface];
+    for (const e of section.entries) {
+      if (e.hash !== hash) {
+        keep.push({ ...e, lines: [...e.lines] });
+        continue;
+      }
+      const rest = e.lines.slice(e.own ?? e.lines.length);
+      while (rest.length && typeof rest[0] !== 'string' && isBlank(lines[rest[0].line])) rest.shift();
+      if (rest.length === 0) continue;
+      const to = keep.length ? keep[keep.length - 1].lines : preface;
+      if (to.length) to.push('');
+      to.push(...rest);
+    }
+    if (keep.length === 0 && preface.length === 0 && !keepSection) {
       let start = section.headingLine;
       if (start > 0 && isBlank(lines[start - 1])) start--;
       spliceLineBuffer(buf, start, section.end - start);
     } else {
       // Kept with nothing in it: the heading alone, as the note had it before the scan went in.
-      const body = keep.length === 0 && section.preface.length === 0 ? [lines[section.headingLine]] : renderSection(h.level, { preface: section.preface, entries: keep });
+      const body = keep.length === 0 && preface.length === 0 ? [lines[section.headingLine]] : renderSection(h.level, { preface, entries: keep });
       spliceLineBuffer(buf, section.headingLine, section.end - section.headingLine, body);
     }
     return { md: joinLineBuffer(buf), removed: true };

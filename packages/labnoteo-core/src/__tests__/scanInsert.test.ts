@@ -325,3 +325,29 @@ describe('scan removal and an entry comment in code', () => {
     expect(r.count).toBe(left(md) - left(r.md));
   });
 });
+
+// Only an entry's comment and the paragraph under it (embed, caption) go when it is removed: a
+// code block, a paragraph or a list the researcher wrote under it stays.
+describe('removing a scan keeps what the researcher wrote under it', () => {
+  const entry = (h: string, page: number) => [`<!-- labnoteo-scan page=${page}/2 sha=${h} -->`, `![[${h}.jpg]]`, `*${h}*`];
+  const mine = ['~~~', 'KEEP', '~~~', 'user text', '- item'];
+  const md = ['## Worksheet scans', '', ...entry('aa', 1), ...mine, '', ...entry('bb', 2), ''].join('\n');
+
+  it('removeScanEntry: the lines stay where they were', () => {
+    expect(removeScanEntry(md, 'aa').md).toBe(['## Worksheet scans', '', ...mine, '', ...entry('bb', 2), ''].join('\n'));
+  });
+
+  it('removeAllScanEntries: the section stays with them', () => {
+    expect(removeAllScanEntries(md)).toEqual({ md: ['## Worksheet scans', '', ...mine, '', ''].join('\n'), count: 2 });
+  });
+
+  it('an undo that keeps the section keeps them too', () => {
+    expect(removeScanEntry(md, 'aa', { keepSection: true }).md).toBe(['## Worksheet scans', '', ...mine, '', ...entry('bb', 2), ''].join('\n'));
+  });
+
+  it('a later entry keeps the lines of the one removed before it', () => {
+    const two = ['## Worksheet scans', '', ...entry('bb', 2), '', ...entry('aa', 1), '', 'user text', ''].join('\n');
+    expect(removeScanEntry(two, 'aa').md).toBe(['## Worksheet scans', '', ...entry('bb', 2), '', 'user text', ''].join('\n'));
+  });
+});
+
