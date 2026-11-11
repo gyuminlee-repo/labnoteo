@@ -12,14 +12,43 @@ import { addWorkflowFileToChecklist, syncWorkflowChecklistCommand, type ReadmeSy
 
 // What the open editor's write comes to, for the note under test: as the module does, or forced.
 // Both entry points are forced, so the same test runs on code that calls either.
-const forced = vi.hoisted(() => ({ path: '', result: undefined as unknown }));
+const forced = vi.hoisted(() => ({ path: '', result: undefined as unknown, landed: false, events: [] as string[] }));
 vi.mock('../../src/openEditorWrite', async importActual => {
   const actual = await importActual<Record<string, unknown>>();
   const force = (name: string) => {
     const real = actual[name] as ((app: unknown, file: TFile, ...rest: unknown[]) => Promise<unknown>) | undefined;
-    return real && (async (app: unknown, file: TFile, ...rest: unknown[]) => (file.path === forced.path ? forced.result : real(app, file, ...rest)));
+    return (
+      real &&
+      (async (app: unknown, file: TFile, ...rest: unknown[]) => {
+        if (file.path !== forced.path) return real(app, file, ...rest);
+        forced.events.push('write');
+        // The change, or another writer's like it, reached the file although the write is not known to be in.
+        if (forced.landed) await (app as App).vault.process(file as never, rest[0] as (s: string) => string);
+        return forced.result;
+      })
+    );
   };
-  return { ...actual, processInOpenEditor: force('processInOpenEditor'), processInOpenEditorOnDisk: force('processInOpenEditorOnDisk') };
+  const openEditorText = actual.openEditorText as (app: unknown, path: string) => Promise<string | undefined>;
+  return {
+    ...actual,
+    processInOpenEditor: force('processInOpenEditor'),
+    processInOpenEditorOnDisk: force('processInOpenEditorOnDisk'),
+    openEditorText: async (app: unknown, path: string) => {
+      if (path === forced.path) forced.events.push('read');
+      return openEditorText(app, path);
+    },
+  };
+});
+// The note text the checklist labels are planned from.
+vi.mock('@labnoteo/core/lib/workflowStructure', async importActual => {
+  const actual = await importActual<typeof import('@labnoteo/core/lib/workflowStructure')>();
+  return {
+    ...actual,
+    workflowLabelFor: (fileName: string, content?: string) => {
+      if (forced.path.endsWith(`/${fileName}`)) forced.events.push(`label ${/^title: (.*)$/m.exec(content ?? '')?.[1]}`);
+      return actual.workflowLabelFor(fileName, content);
+    },
+  };
 });
 
 const DIR = 'labnote/002_Target';
@@ -68,6 +97,8 @@ const NOT_WRITTEN = (path: string) =>
 beforeEach(() => {
   forced.path = '';
   forced.result = undefined;
+  forced.landed = false;
+  forced.events = [];
 });
 
 describe('the checklist sync, a note it updates not written or maybe not', () => {
@@ -93,6 +124,24 @@ describe('the checklist sync, a note it updates not written or maybe not', () =>
     expect(h.notices).toContain(said(`${DIR}/${name}`));
     expect(h.notices.join('\n')).not.toContain('note(s) updated');
   });
+
+  it.each(['uncertain', false] as const)(
+    'a retitle whose write came to %s is read back after it, and the labels are planned from what was read',
+    async result => {
+      const h = harness(retitled);
+      forced.path = `${DIR}/${RENAMED}`;
+      forced.result = result;
+      forced.landed = true;
+      await syncWorkflowChecklistCommand(h.app, h.host, h.sync, DIR);
+      // After the write: the note read (a not-written check may read it first too), then the
+      // labels planned from the text read, the new title, never the one before the write.
+      const after = forced.events.slice(forced.events.indexOf('write') + 1);
+      const labels = after.findIndex(e => e.startsWith('label'));
+      expect(after[labels]).toBe('label WD030 Design 2차');
+      expect(after[labels - 1]).toBe('read');
+      expect(after).not.toContain('label WD030 Design');
+    }
+  );
 
   it('a write that went in is counted with no warning', async () => {
     const h = harness(retitled);
