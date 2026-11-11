@@ -30,6 +30,10 @@ describe('the fence view of a line in a container', () => {
     expect(fenceView(['- a', 'b', `  ${t}`, '  x', `  ${t}`])).toEqual(['a', 'b', t, 'x', t]);
   });
 
+  it('ends the item at an HTML block start, which a lazy line cannot be', () => {
+    expect(fenceView(['- a', '<div>', `  ${t}`, 'x'])).toEqual(['a', '<div>', `  ${t}`, 'x']);
+  });
+
   it('reads a line in no container as it is', () => {
     expect(fenceView([t, '  x', `   ${t}`])).toEqual([t, '  x', `   ${t}`]);
   });

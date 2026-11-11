@@ -48,6 +48,12 @@ const LIST_MARK = /^( {0,3})([-*+]|(\d{1,9})[.)])(?=[ \t]|$)/;
 const THEMATIC_BREAK = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
 const ATX_HEADING = /^ {0,3}#{1,6}(?:[ \t]|$)/;
 
+/** CommonMark HTML block type 6: these tag names start a block ended by a blank line. */
+export const BLOCK_TAGS =
+  'address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h1|h2|h3|h4|h5|h6|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul';
+/** A line starting an HTML block that may interrupt a paragraph (CommonMark types 1 to 6). */
+const HTML_INTERRUPT = new RegExp(`^ {0,3}<(?:(?:script|pre|style|textarea)(?:\\s|>|$)|!--|\\?|![A-Za-z]|!\\[CDATA\\[|/?(?:${BLOCK_TAGS})(?:\\s|/?>|$))`, 'i');
+
 /** `text` with the tabs among its leading spaces, `>` and list markers set to spaces (tab stops of 4). */
 function expandLeadingTabs(text: string): string {
   const end = /^[ \t>\-*+.)0-9]*/.exec(text)![0].length;
@@ -117,8 +123,16 @@ export function fenceReader(lines: readonly string[], from = 0): (i: number) => 
     if (matched < stack.length) {
       // A lazy line: paragraph text going on in the containers it does not mark.
       const text = expandLeadingTabs(rest);
+      const item = LIST_MARK.exec(text);
       const starts =
-        text.trim() === '' || QUOTE_MARK.test(text) || LIST_MARK.test(text) || THEMATIC_BREAK.test(text) || ATX_HEADING.test(text) || stepFence(text, null) !== null;
+        text.trim() === '' ||
+        QUOTE_MARK.test(text) ||
+        // A list item interrupts a paragraph when it is not empty, and an ordered one starts at 1.
+        (item !== null && text.slice(item[0].length).trim() !== '' && (item[3] === undefined || item[3] === '1')) ||
+        THEMATIC_BREAK.test(text) ||
+        ATX_HEADING.test(text) ||
+        HTML_INTERRUPT.test(text) ||
+        stepFence(text, null) !== null;
       if (para && !starts) {
         if (stack.length > 0) view[i] = rest;
         return;

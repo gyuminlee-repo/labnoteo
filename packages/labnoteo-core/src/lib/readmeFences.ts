@@ -11,11 +11,8 @@
  * with its indent dropped, as under a list entry). An opener that is never
  * closed is not a fence. Each reading is one linear pass.
  */
-import { closedFenceSpans, fenceView, mayHaveFences, stepFence, type OpenFence } from '../sections/codeFences';
+import { BLOCK_TAGS, closedFenceSpans, fenceView, mayHaveFences, stepFence, type OpenFence } from '../sections/codeFences';
 
-/** CommonMark HTML block type 6: these tag names start a block ended by a blank line. */
-const BLOCK_TAGS =
-  'address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h1|h2|h3|h4|h5|h6|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul';
 const ATTRIBUTE = `\\s+[A-Za-z_:][A-Za-z0-9_.:-]*(?:\\s*=\\s*(?:[^"'=<>\`\\s]+|'[^']*'|"[^"]*"))?`;
 /**
  * The seven CommonMark HTML block starts (up to three spaces in), each with the line that ends
