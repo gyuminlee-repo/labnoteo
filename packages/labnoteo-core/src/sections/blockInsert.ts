@@ -166,7 +166,8 @@ export function extractMethodBody(output: string): string {
   if (fenced && !(fenced[1][0] === '`' && fenced[2].includes('`'))) text = fenced[3];
 
   let lines = text.split(/\r?\n/);
-  const [method] = findSectionMatches(text, 'Method');
+  // A reply, not a note: a `---` it starts with is a rule, not front matter.
+  const [method] = findSectionMatches(text, 'Method', { asNote: false });
   if (method) {
     lines = lines.slice(method.line + 1, sectionBodyEnd(lines, method.line, method.level));
   }

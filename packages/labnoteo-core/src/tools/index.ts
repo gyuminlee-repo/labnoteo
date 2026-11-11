@@ -519,7 +519,8 @@ function sectionTargetIn(call: SectionCall, md: string, args: Record<string, unk
     return { error: 'content only repeats the section heading; nothing was written. Send the body without the heading.' };
   }
   // A heading as high as the target's would end the section there and start a new one (#334).
-  const sibling = listHeadings(body).find(h => h.level <= target.level);
+  // Content, not a note: a `---` it starts with is a rule, not front matter.
+  const sibling = listHeadings(body, { asNote: false }).find(h => h.level <= target.level);
   if (sibling) {
     return {
       error:

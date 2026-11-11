@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { listHeadings, replaceSectionBody } from '../sections/sectionEdit';
 import { listUnitOpBlocks, listFiledScans, listScanHashes } from '../sections/scanInsert';
-import { listUnitOpMethods } from '../sections/blockInsert';
+import { extractMethodBody, listUnitOpMethods } from '../sections/blockInsert';
 import { unitOpsAllEnded, hasWorkflowChecklistSection, parseWorkflowChecklistFromReadme } from '../lib/workflowStructure';
 import { parseFrontMatterYaml } from '../sections/frontMatter';
 
@@ -51,5 +51,13 @@ describe('a README whose front matter has a ## comment and an entry-like line', 
     expect(parseFrontMatterYaml(README).parseError).toBeUndefined();
     expect(hasWorkflowChecklistSection(README)).toBe(false);
     expect(parseWorkflowChecklistFromReadme(README)).toEqual([]);
+  });
+});
+
+// A model's reply is no note: a `---` it starts with is a rule, and the headings below it count.
+describe('a reply that starts with a rule', () => {
+  it('still has its Method section read', () => {
+    const reply = ['---', '', '### [UHW010 A]', '', '#### Method', '', 'old', '', '---', ''].join('\n');
+    expect(extractMethodBody(reply)).toBe('old\n\n---');
   });
 });

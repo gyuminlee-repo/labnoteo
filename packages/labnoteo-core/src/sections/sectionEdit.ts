@@ -70,15 +70,18 @@ export interface NoteHeading {
   parentHeading: string;
 }
 
-/** Every heading of `md` outside code fences, in document order. */
-export function listHeadings(md: string): NoteHeading[] {
+/**
+ * Every heading of `md` outside code fences, in document order. A note's front matter holds
+ * none; `asNote: false` reads a fragment (a model's reply), whose `---` lines are rules.
+ */
+export function listHeadings(md: string, { asNote = true }: { asNote?: boolean } = {}): NoteHeading[] {
   const lines = md.split(/\r?\n/);
   const ancestors: { level: number; text: string }[] = [];
   const out: NoteHeading[] = [];
   // A fenced code block can contain lines that look like ATX headings; those
   // must NOT be treated as real headings.
   let fence: OpenFence | null = null;
-  for (let i = frontMatterLineCountOf(lines); i < lines.length; i++) {
+  for (let i = asNote ? frontMatterLineCountOf(lines) : 0; i < lines.length; i++) {
     const next = stepFence(lines[i], fence);
     if (next !== fence) {
       fence = next;
@@ -102,10 +105,10 @@ export function listHeadings(md: string): NoteHeading[] {
  * Only when none matches exactly are headings compared by
  * {@link normalizeHeadingText} (#145).
  */
-export function findSectionMatches(md: string, heading: string): SectionMatch[] {
+export function findSectionMatches(md: string, heading: string, opts: { asNote?: boolean } = {}): SectionMatch[] {
   const lines = md.split(/\r?\n/);
   const headingRe = new RegExp(`^(#{1,6})\\s+${escapeRegExp(heading)}\\s*$`);
-  const headings = listHeadings(md);
+  const headings = listHeadings(md, opts);
   let found = headings.filter(h => headingRe.test(lines[h.line]));
   if (found.length === 0) {
     const wanted = normalizeHeadingText(heading);
