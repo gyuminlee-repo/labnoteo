@@ -237,12 +237,12 @@ export function appendUnitOpToWorkflowToc(
       if (fenceLine && j < lastEntry && /^\s/.test(lines[j])) indented = true;
       if (k.kind === 'opener') at = j;
       opener.push(isFenced(k) ? at : -1);
-      // A closer in a block quote or list item, or a fence its container ended (no closer line of
-      // its own), is not the plain closer this rebuild trusts.
-      const endedByContainer = k.ends === true && k.kind !== 'closer';
+      // A fence its container ended (no closer line of its own), or a closer line that is more than
+      // its run up to three spaces in (a `>` before it, say), is not the plain closer this rebuild trusts.
       if (k.ends) {
         closed.add(at);
-        if (endedByContainer || k.depth > 0) oddClose = true;
+        const plain = k.kind === 'closer' && lines[j].replace(/^ {0,3}/, '').replace(/[ \t]+$/, '') === k.content.trim();
+        if (!plain) oddClose = true;
       }
     }
     // The front matter is YAML: a `<` line or a lone CR there is not the Markdown read here.

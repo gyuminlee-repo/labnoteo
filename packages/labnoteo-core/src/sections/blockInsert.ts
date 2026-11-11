@@ -164,7 +164,19 @@ export function extractMethodBody(output: string): string {
   const whole = text.split(/\r?\n/);
   const wrap = classifyLines(whole);
   const last = whole.length - 1;
-  if (last >= 2 && wrap[0].kind === 'opener' && wrap[last].kind === 'closer' && wrap.slice(1, last).every(l => l.kind === 'code'))
+  // As before: the opener at the start of the first line, and the same run alone on the last.
+  const atStart = (k: number): boolean => wrap[k].depth === 0 && whole[k] === whole[k].trimStart();
+  const closer = whole[last]?.trimEnd() ?? '';
+  if (
+    last >= 2 &&
+    wrap[0].kind === 'opener' &&
+    wrap[last].kind === 'closer' &&
+    atStart(0) &&
+    atStart(last) &&
+    whole[0].startsWith(closer) &&
+    !/^[`~]/.test(whole[0].slice(closer.length)) &&
+    wrap.slice(1, last).every(l => l.kind === 'code')
+  )
     text = whole.slice(1, last).join('\n');
 
   let lines = text.split(/\r?\n/);

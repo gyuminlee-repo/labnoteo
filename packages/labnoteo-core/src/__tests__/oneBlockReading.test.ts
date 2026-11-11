@@ -10,6 +10,8 @@ import { parseWorksheetBlocks } from '../lib/worksheet';
 import { scanMarkdownTables } from '../lib/exportTablesCsv';
 import { listHeadings, replaceSectionBody } from '../sections/sectionEdit';
 import { removeWorkflowFromReadme } from '../lib/workflowDelete';
+import { appendUnitOpToWorkflowToc } from '../sections/workflowSectionParser';
+import { extractMethodBody } from '../sections/blockInsert';
 
 describe('one block reading for every finder', () => {
   it('finds no sample list table in the front matter', () => {
@@ -38,6 +40,20 @@ describe('one block reading for every finder', () => {
   it('reads an NBSP after a tag as no HTML block start', () => {
     const out = removeWorkflowFromReadme('## Related Workflows\n<span>\u00a0\n- [ ] [A](./001_WD010_A.labnote.md)\n\n', '001_WD010_A.labnote.md');
     expect(out).toEqual({ changed: true, content: '## Related Workflows\n<span>\u00a0\n\n' });
+  });
+
+  it('adds a TOC entry outside a fence when a list item fence closes later in the section', () => {
+    const md = ['## Related Unit Operations', '- [UHW010 A](#uhw010-a)', '~~~', '- [UHW001 Ex](#x)', '~~~', '- ```md', '  ### [UHW040 Example]', '  ```', ''].join('\n');
+    expect(appendUnitOpToWorkflowToc(md, 'UHW020', 'B').split('\n').slice(0, 3)).toEqual([
+      '## Related Unit Operations',
+      '- [UHW010 A](#uhw010-a)',
+      '- [UHW020 B](#uhw020-b)',
+    ]);
+  });
+
+  it('unwraps a reply only when one fence at the start of its first line wraps all of it', () => {
+    expect(extractMethodBody('- ~~~md\n  # KEEP\n  ~~~')).toBe('- ~~~md\n  # KEEP\n  ~~~');
+    expect(extractMethodBody('~~~\n1. step\n## h\n~~~')).toBe('1. step');
   });
 
   it('classifies each line once: front matter, fences, HTML, comments and containers', () => {
