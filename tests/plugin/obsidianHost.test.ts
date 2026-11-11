@@ -265,3 +265,18 @@ describe('editTarget whose view goes to another note as it switches to editing',
   });
 });
 
+// In editing view too: the target's own wait, with nothing to wait for, still lets the view go
+// to another note before the editor is touched.
+describe('editTarget whose view goes to another note in editing view, as a call waits', () => {
+  it.each(['replaceRange', 'revealOffset'] as const)('%s refuses', async method => {
+    const { host, view, editor } = setup({ mode: 'source', data: 'AAAA', editorText: 'AAAA' });
+    const target = host.editTarget()!;
+    const call = method === 'replaceRange' ? target.replaceRange(0, 0, 'X') : target.revealOffset!(1);
+    view.file = new TFile('labnote/001_Test/002_WD020_B.labnote.md');
+    editor.text = 'BBBB';
+    await expect(call).rejects.toThrow('The note was switched to another while the command ran, so it was not changed. Run the command again.');
+    expect(editor.text).toBe('BBBB');
+    expect(editor.setCursor).not.toHaveBeenCalled();
+  });
+});
+

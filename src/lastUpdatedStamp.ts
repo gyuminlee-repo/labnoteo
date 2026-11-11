@@ -10,7 +10,7 @@ import { minimalReplacement } from '@labnoteo/core';
 import * as posix from '@labnoteo/core/posix';
 import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
 import { isValidWorkflowPath } from '@labnoteo/core/lib/workflowStructure';
-import { processNoteThroughVault, processOrCreateNote } from './commands';
+import { changeNotWritten, processNoteThroughVault, processOrCreateNote } from './commands';
 import { openViewHasDisk, type NoteWritten } from './openEditorWrite';
 
 /**
@@ -61,8 +61,22 @@ export async function stampNote(
     return;
   }
   if (!(await host.fs.exists(path))) return;
-  await processNoteThroughVault(app, host, path, content => stamp(content, path));
+  const dated = (content: string) => stamp(content, path);
+  // Not written (a save of the open note did not end in time): tried once more a while later,
+  // so the date is not lost to one slow save; no more than once.
+  if ((await processNoteThroughVault(app, host, path, dated)) !== false) return;
+  if (!(await changeNotWritten(app, host, path, dated))) return;
+  setTimeout(() => {
+    void (async () => {
+      if ((await processNoteThroughVault(app, host, path, dated)) === false && (await changeNotWritten(app, host, path, dated))) {
+        console.warn('[labnoteo] last_updated_date not written, the note still being saved:', path);
+      }
+    })().catch(err => console.warn('[labnoteo] last_updated_date not written:', path, err));
+  }, STAMP_RETRY_MS);
 }
+
+/** How long a date not written waits before it is tried once more. */
+export const STAMP_RETRY_MS = 1000;
 
 /**
  * Stamp a note and, for a workflow note, its experiment README unless

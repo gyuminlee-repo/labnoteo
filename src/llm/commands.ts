@@ -1116,10 +1116,17 @@ export async function askAgentCommand(plugin: LabnotePlugin): Promise<void> {
           }
           // A tool the agent ran, or the user writing on, moved everything the
           // saved cursor pointed at: the answer goes at the end instead.
-          const latest = await current.getText();
-          await insertBlock(plugin, current, answer, {
-            caret: latest === textBefore ? caretBefore : latest.length,
-          });
+          try {
+            const latest = await current.getText();
+            await insertBlock(plugin, current, answer, {
+              caret: latest === textBefore ? caretBefore : latest.length,
+            });
+          } catch (err) {
+            // Switched to another note as it went in: said, and the answer stays to copy.
+            if (!(err instanceof NoteSwitchedError)) throw err;
+            plugin.host.notify('warn', err.message);
+            return false;
+          }
           return true;
         },
       });

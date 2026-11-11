@@ -25,7 +25,8 @@ import {
   validateAlias,
 } from '../../src/sampleActions';
 import { confirmModal, pickModal, promptModal } from '../../src/modals';
-import { createObsidianHost } from '../../src/obsidianHost';
+import { NoteSwitchedError, createObsidianHost } from '../../src/obsidianHost';
+import { OPEN_SAVE_WAIT_MS } from '../../src/openEditorWrite';
 import type { EditTarget } from '@labnoteo/core';
 import type LabnotePlugin from '../../src/main';
 
@@ -583,6 +584,47 @@ describe('editSampleInteractive alias rewrite', () => {
     Notice.reset();
     vi.mocked(confirmModal).mockReset();
   });
+
+  // The record saved, the note's definition is not changed once the view went to another note:
+  // said once, as it is, and the rest done.
+  it('says a definition not changed when its view went to another note', async () => {
+    const SWITCHED = 'The note was switched to another while the command ran, so it was not changed. Run the command again.';
+    editTarget = () =>
+      ({
+        path: `${A}/001_WD010_A.labnote.md`,
+        getText: async () => {
+          throw new NoteSwitchedError(SWITCHED);
+        },
+        insertAtCursor: async () => undefined,
+        replaceRange: async () => undefined,
+      }) as EditTarget;
+    answer('si KIF', 'kd2', '');
+    const { app, p } = editPlugin();
+    const notices: [string, string][] = [];
+    (p.host as unknown as { notify: (level: string, msg: string) => void }).notify = (level, msg) => void notices.push([level, msg]);
+    vi.mocked(confirmModal).mockResolvedValue(true);
+    expect(await editSampleInteractive(app, p, { folder: FOLDER, type: 'RNA', id: 'RNA-1', record: RECORD })).toBe(true);
+    expect(notices.filter(([level]) => level === 'warn')).toEqual([['warn', SWITCHED]]);
+  });
+
+  // A note whose save does not end in time keeps the old alias: said with its path, not left
+  // behind unsaid while the record has the new one.
+  it('says a note not rewritten when its save does not end in time', async () => {
+    open = { path: `${A}/002_WD020_Open.labnote.md`, text: 'RNA-1;si KIF\n', mode: 'preview' };
+    await fs.write(open.path, 'RNA-1;si KIF\n');
+    vi.mocked(confirmModal).mockResolvedValue(true);
+    answer('siKIF', 'kd', '');
+    const { app, p } = editPlugin();
+    (openView as unknown as { savePromise: Promise<void> }).savePromise = new Promise(() => {});
+    const notices: [string, string][] = [];
+    (p.host as unknown as { notify: (level: string, msg: string) => void }).notify = (level, msg) => void notices.push([level, msg]);
+    await editSampleInteractive(app, p, { folder: FOLDER, type: 'RNA', id: 'RNA-1', record: RECORD });
+    expect(await fs.read(open.path)).toBe('RNA-1;si KIF\n');
+    expect(notices).toContainEqual([
+      'warn',
+      `${open.path} was not written: it was still being saved, or it changed while the change went in. Try again in a moment.`,
+    ]);
+  }, OPEN_SAVE_WAIT_MS + 10000);
 
   // #216: a note shown only in reading view has a hidden editor that is never saved.
   it('rewrites a note open in reading view through the vault, not its hidden editor', async () => {

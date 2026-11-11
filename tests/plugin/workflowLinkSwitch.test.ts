@@ -19,11 +19,15 @@ const B = `${DIR}/002_WD030_B.labnote.md`;
 const START = ['---', 'title: x', '---', '# Test', '', '## Related Workflows', ''].join('\n');
 const t = (key: string, ...args: unknown[]) => args.reduce<string>((s, a, i) => s.replace(`{${i}}`, String(a)), key);
 
-/** `when`: the view goes from A to B as the command starts, or while the workflow is picked. */
-async function run(when: 'start' | 'pick') {
+/**
+ * `when`: the view goes from A to B as the command starts, or while the workflow is picked;
+ * 'never', it stays on `start` while `active` is the pane in front.
+ */
+async function run(when: 'start' | 'pick' | 'never', start = A, active?: string) {
   const fs = new MemFileSystem({ [README]: START, [A]: 'a\n', [B]: 'a\n' });
   const notices: { level: string; msg: string }[] = [];
-  let shown = A;
+  let shown = start;
+  const links: string[] = [];
   let text = 'a\n';
   const editor = {
     getValue: () => text,
@@ -39,7 +43,7 @@ async function run(when: 'start' | 'pick') {
   const app = {
     workspace: {
       getActiveFile: () => {
-        const file = new TFile(shown);
+        const file = new TFile(active ?? shown);
         // The view goes to B right after the command looked: before its first wait ends.
         if (when === 'start' && first) {
           first = false;
@@ -52,12 +56,18 @@ async function run(when: 'start' | 'pick') {
     vault: {
       adapter: {},
       getFileByPath: () => null,
-      getAbstractFileByPath: () => null,
+      getAbstractFileByPath: (p: string) => (p.endsWith('_WD020_New.labnote.md') ? new TFile(p) : null),
       read: async (f: TFile) => fs.read(f.path),
       process: async (f: TFile, fn: (s: string) => string) => {
         const next = fn(await fs.read(f.path));
         await fs.write(f.path, next);
         return next;
+      },
+    },
+    fileManager: {
+      generateMarkdownLink: (_f: TFile, source: string) => {
+        links.push(source);
+        return '[[new]]';
       },
     },
   } as unknown as App;
@@ -72,7 +82,7 @@ async function run(when: 'start' | 'pick') {
     },
   } as unknown as LabnoteHost;
   await insertWorkflowLinkCommand(app, host, editor, c => c, () => shown);
-  return { notices, text, files: await fs.list(DIR) };
+  return { notices, text, links, files: await fs.list(DIR) };
 }
 
 describe('a workflow link when the view goes to another note', () => {
@@ -86,3 +96,20 @@ describe('a workflow link when the view goes to another note', () => {
     ]);
   });
 });
+
+// Another pane in front while the view stays on the note: the link is made for that note, and
+// the README check is of that note too.
+describe('a workflow link while another pane is in front', () => {
+  it('is made relative to the note it goes into', async () => {
+    const { text, links } = await run('never', A, B);
+    expect(links).toEqual([A]);
+    expect(text).toBe('[[new]]a\n');
+  });
+
+  it('is not inserted into the README, which lists it already', async () => {
+    const { text, links } = await run('never', README, B);
+    expect(links).toEqual([]);
+    expect(text).toBe('a\n');
+  });
+});
+

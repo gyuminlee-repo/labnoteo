@@ -171,15 +171,17 @@ class SampleDefinitionModal extends Modal {
         btn
           .setButtonText(t('Edit sample'))
           .setCta()
-          .onClick(async () => {
-            const ok = await editSampleInteractive(this.app, this.plugin, {
-              folder,
-              type: this.type,
-              id: this.id,
-              record,
-            });
-            if (ok) this.close();
-          })
+          .onClick(() =>
+            this.plugin.run(async () => {
+              const ok = await editSampleInteractive(this.app, this.plugin, {
+                folder,
+                type: this.type,
+                id: this.id,
+                record,
+              });
+              if (ok) this.close();
+            })
+          )
       );
       buttons.addButton(btn =>
         btn.setButtonText(t('Delete sample')).setWarning().onClick(async () => {

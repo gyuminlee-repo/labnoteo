@@ -129,6 +129,7 @@ export function createObsidianHost(
       async insertAtCursor(text: string) {
         if (inPreview()) {
           await toSource();
+          stillOnNote();
           const end = editor.offsetToPos(editor.getValue().length);
           editor.replaceRange(text, end, end);
           return;
@@ -137,6 +138,9 @@ export function createObsidianHost(
       },
       async replaceRange(start: number, end: number, text: string) {
         await toSource();
+        // Looked at after every wait, whatever the mode: even an await with nothing to wait for
+        // lets the view go to another note first.
+        stillOnNote();
         editor.replaceRange(text, editor.offsetToPos(start), editor.offsetToPos(end));
       },
       async getCursorOffset() {
@@ -151,6 +155,7 @@ export function createObsidianHost(
       },
       async revealOffset(offset: number) {
         await toSource();
+        stillOnNote();
         // setCursor treats a bare number as a line index, so convert first.
         const pos = editor.offsetToPos(offset);
         editor.setCursor(pos);

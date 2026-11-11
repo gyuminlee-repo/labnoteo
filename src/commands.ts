@@ -1510,7 +1510,7 @@ export async function insertWorkflowLinkCommand(
   // the cursor would duplicate it (the reported bug). So only add a cursor link
   // when editing some other note.
   const readmePath = posix.join(labnoteDir, README);
-  if (app.workspace.getActiveFile()?.path === readmePath) {
+  if (notePath === readmePath) {
     notifyWorkflowCreated(host, created);
     return;
   }
@@ -1523,7 +1523,8 @@ export async function insertWorkflowLinkCommand(
     file = app.vault.getAbstractFileByPath(created.path);
   }
 
-  const sourcePath = app.workspace.getActiveFile()?.path ?? '';
+  // Relative to the note it goes into, not whichever pane is active now.
+  const sourcePath = notePath ?? '';
   const link =
     file instanceof TFile
       ? app.fileManager.generateMarkdownLink(file, sourcePath, undefined, created.displayTitle)
@@ -2642,17 +2643,32 @@ export async function syncReadmeOrderOnRename(
   for (const { to } of collapseWorkflowRenames(renames)) {
     labels.set(to, await readWorkflowLabel(host, labnoteDir, to));
   }
-  await processNoteThroughVault(
-    app,
-    host,
-    readmePath,
-    content =>
-      reconcileWorkflowChecklist(content, renames, {
-        labelFor: name => labels.get(name) ?? defaultWorkflowTitle(name),
-        dir: labnoteDir,
-        move: true,
-      }).content
-  );
+  const reconcile = (content: string): string =>
+    reconcileWorkflowChecklist(content, renames, {
+      labelFor: name => labels.get(name) ?? defaultWorkflowTitle(name),
+      dir: labnoteDir,
+      move: true,
+    }).content;
+  await warnChecklistNotFollowed(app, host, readmePath, reconcile, await processNoteThroughVault(app, host, readmePath, reconcile));
+}
+
+/**
+ * The README of renamed or deleted workflow notes, its checklist not written (its save did not
+ * end in time) or maybe not: said, with the command that brings it up to date, since nothing
+ * runs again on its own for those notes.
+ */
+async function warnChecklistNotFollowed(
+  app: App,
+  host: LabnoteHost,
+  readmePath: string,
+  transform: (content: string) => string,
+  written: NoteWritten
+): Promise<void> {
+  if (written === 'uncertain') {
+    host.notify('warn', host.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', readmePath));
+  } else if (!written && (await changeNotWritten(app, host, readmePath, transform))) {
+    host.notify('warn', host.t('{0} was not written: it was still being saved, so its checklist does not follow the renamed or deleted workflow notes yet. Run "{1}" to update it.', readmePath, host.t('Sync workflow checklist with folder')));
+  }
 }
 
 /** Sample-tree cleanup context for {@link syncReadmeAndSamplesOnDelete}. */
@@ -2703,7 +2719,9 @@ export async function syncReadmeAndSamplesOnDelete(
       else removed = 0;
     } else {
       const written = await processNoteThroughVault(app, host, readmePath, prune);
-      if (!written) removed = 0;
+      // Before the count is dropped: the check runs `prune` again, which counts anew.
+      await warnChecklistNotFollowed(app, host, readmePath, prune, written);
+      if (written !== true) removed = 0;
     }
   }
 

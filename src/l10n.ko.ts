@@ -605,6 +605,8 @@ const obsidianKo: Record<string, string> = {
     '편집 화면으로 바꾸는 사이에 노트 내용이 달라졌습니다. 명령을 다시 실행해 주세요.',
   'The note was switched to another while the command ran, so it was not changed. Run the command again.':
     '명령이 도는 사이에 다른 노트로 바뀌어 노트를 바꾸지 않았습니다. 명령을 다시 실행해 주세요.',
+  '{0} was not written: it was still being saved, so its checklist does not follow the renamed or deleted workflow notes yet. Run "{1}" to update it.':
+    '{0}에 쓰지 못했습니다. 아직 저장하는 중이어서 체크리스트가 이름을 바꾸거나 지운 workflow 노트를 아직 따르지 않습니다. "{1}"을 실행해 맞춰 주세요.',
   'The note was switched to another while the workflow was made, so the link to it was not inserted.':
     'workflow를 만드는 사이에 다른 노트로 바뀌어 그 링크를 넣지 않았습니다.',
   'Open a note of an experiment to list its samples.': '시료 목록을 넣으려면 실험 안의 노트를 여세요.',
