@@ -185,6 +185,27 @@ export function embedLinkPath(embed: string): string | undefined {
   }
 }
 
+/**
+ * The file names `text` links, lower-cased: wiki links and embeds (`[[a/b.jpg]]`, `![[b.jpg|200]]`)
+ * and Markdown links (`![](a/b%20c.jpg)`), each by the last part of its path.
+ */
+export function linkedNames(text: string): Set<string> {
+  const names = new Set<string>();
+  const add = (target: string): void => {
+    let path = target.trim();
+    try {
+      path = decodeURIComponent(path);
+    } catch {
+      // A `%` that is no escape: the name as written.
+    }
+    const name = posix.basename(path).toLowerCase();
+    if (name) names.add(name);
+  };
+  for (const m of text.matchAll(/\[\[([^\]|#^\n]+)/g)) add(m[1]);
+  for (const m of text.matchAll(/\]\(\s*<?([^)>\s]+)>?(?:\s+"[^"]*")?\s*\)/g)) add(m[1]);
+  return names;
+}
+
 export class ScanPipeline {
   constructor(private readonly deps: PipelineDeps) {}
 
@@ -266,13 +287,17 @@ export class ScanPipeline {
     const previous = filed
       .filter(s => s.unitOpIndex === unitOpIndex && s.page === payload.page && s.hash !== page.hash)
       .map(s => ({ hash: s.hash, embed: s.embed }));
-    // A deleted image's name stays taken while an entry still links it (#433).
-    const linked = new Set(
-      filed
+    // A deleted image's name stays taken while an entry still links it (#433), or any other
+    // link in the note: a new scan under that name would be what the link shows.
+    // This page's own entry, filed again in its place (#432), does not keep its name from it.
+    const own = new Set(same.map(s => posix.basename(embedLinkPath(s.embed) ?? '').toLowerCase()));
+    const linked = new Set([
+      ...filed
         .filter(s => s.hash !== page.hash)
         .map(s => posix.basename(embedLinkPath(s.embed) ?? '').toLowerCase())
-        .filter(Boolean)
-    );
+        .filter(Boolean),
+      ...[...linkedNames(text)].filter(n => !own.has(n)),
+    ]);
     const stored = await this.store(notePath, payload, unitOpIndex, await page.render(), saved, linked);
     const result: ScanResult = {
       ...base,
@@ -511,6 +536,8 @@ export class ScanPipeline {
     const pending: Pending[] = [];
     const result = await this.filePage(decoded, {}, pending, new Set(), new Map(), new Set());
     await this.flush(pending, { settled: true });
+    // The copy saved for the note stays whenever the note may link it.
+    let keepCopy = false;
     if (result.status === 'filed' || result.status === 'duplicate') {
       // The queued image goes only once the note on disk has the scan: one its open editor alone
       // keeps (its save failed) would be lost with the queued image if the editor is closed unsaved.
@@ -527,7 +554,7 @@ export class ScanPipeline {
       const editor = !result.notePath
         ? false
         : name
-          ? (openSourceView(this.deps.app, result.notePath)?.editor.getValue() ?? '').includes(name)
+          ? linkedNames(openSourceView(this.deps.app, result.notePath)?.editor.getValue() ?? '').has(name.toLowerCase())
           : result.hash
             ? this.inEditor(result.notePath, [result.hash])
             : false;
@@ -544,19 +571,31 @@ export class ScanPipeline {
         });
         delete result.uncertain;
       } else if (disk === false) {
-        this.deps.host.notify(
-          'warn',
-          this.deps.t(
+        // In the open editor alone: said once, as the result, and the copy the editor links stays.
+        Object.assign(result, {
+          status: 'error',
+          message: this.deps.t(
             '{0} has the scan only in its open editor: the note could not be saved yet, so its image stays in the unmatched queue. Assign it again once the note is saved.',
             result.notePath!
-          )
-        );
+          ),
+        });
+        delete result.uncertain;
+        keepCopy = true;
       } else {
-        // The note could not be read to see whether the scan is in it.
-        this.deps.host.notify(
-          'warn',
-          this.deps.t('{0} could not be read to check the scan went in. Its image stays in the unmatched queue; check the note before assigning it again.', result.notePath!)
-        );
+        // The note could not be read to see whether it links the copy: it may, so the copy stays,
+        // and the result says where.
+        Object.assign(result, {
+          status: 'error',
+          message: result.imagePath
+            ? this.deps.t(
+                '{0} could not be read to check the scan went in. Its image stays in the unmatched queue, and the copy saved for the note stays at {1}; check the note before assigning it again.',
+                result.notePath!,
+                result.imagePath
+              )
+            : this.deps.t('{0} could not be read to check the scan went in. Its image stays in the unmatched queue; check the note before assigning it again.', result.notePath!),
+        });
+        delete result.uncertain;
+        keepCopy = true;
       }
     }
     if ((result.status === 'unmatched' || result.status === 'error') && result.unmatchedPath) {
@@ -565,12 +604,15 @@ export class ScanPipeline {
       if (copy instanceof TFile && copy !== image) await app.fileManager.trashFile(copy);
       result.unmatchedPath = image.path;
     }
-    if ((result.status === 'unmatched' || result.status === 'error') && result.imagePath) {
-      // flush could not trash the image it saved; the queued image stands for it.
+    if ((result.status === 'unmatched' || result.status === 'error') && result.imagePath && !keepCopy) {
+      // flush could not trash the image it saved; the queued image stands for it. Not while the
+      // note links it (on disk or in its editor; unread, it may).
       const saved = app.vault.getAbstractFileByPath(result.imagePath);
       try {
-        if (saved instanceof TFile && saved !== image) await app.fileManager.trashFile(saved);
-        delete result.imagePath;
+        if (saved instanceof TFile && saved !== image && !(result.notePath && (await this.linksImage(result.notePath, saved.path)))) {
+          await app.fileManager.trashFile(saved);
+          delete result.imagePath;
+        }
       } catch (err) {
         console.warn('[labnoteo] could not trash a scan image saved before filing failed', result.imagePath, err);
       }
@@ -639,8 +681,8 @@ export class ScanPipeline {
    * not); a note that cannot be read may.
    */
   private async linksImage(notePath: string, imagePath: string): Promise<boolean> {
-    const name = posix.basename(imagePath);
-    const links = (text: string): boolean => text.includes(name);
+    const name = posix.basename(imagePath).toLowerCase();
+    const links = (text: string): boolean => linkedNames(text).has(name);
     const editor = openSourceView(this.deps.app, notePath)?.editor.getValue();
     if (editor !== undefined && links(editor)) return true;
     const file = this.deps.app.vault.getAbstractFileByPath(notePath);
@@ -657,7 +699,7 @@ export class ScanPipeline {
     const file = this.deps.app.vault.getAbstractFileByPath(notePath);
     if (!(file instanceof TFile)) return false;
     try {
-      return (await this.deps.app.vault.read(file)).includes(name);
+      return linkedNames(await this.deps.app.vault.read(file)).has(name.toLowerCase());
     } catch (err) {
       console.warn('[labnoteo] could not read the note to see whether it links the scan', notePath, err);
       return 'unknown';

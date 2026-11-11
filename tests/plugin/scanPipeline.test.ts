@@ -917,12 +917,15 @@ describe('undo and earlier-scan removal tried again while the open note still ca
         1,
         { page: 1, pageCount: 1 }
       );
-    expect((await byHand()).status).toBe('filed');
+    // Said once, as the result: no warning besides it.
+    const first = await byHand();
+    expect(first).toMatchObject({
+      status: 'error',
+      message: `${NOTE} has the scan only in its open editor: the note could not be saved yet, so its image stays in the unmatched queue. Assign it again once the note is saved.`,
+    });
     expect(s.binary.has(QUEUED)).toBe(true);
     expect(s.trashed).not.toContain(QUEUED);
-    expect(warnings).toEqual([
-      `${NOTE} has the scan only in its open editor: the note could not be saved yet, so its image stays in the unmatched queue. Assign it again once the note is saved.`,
-    ]);
+    expect(warnings).toEqual([]);
     state.fails = false;
     await view.save();
     expect((await byHand()).status).toBe('duplicate');
@@ -1225,5 +1228,92 @@ describe('scans judged by what the note links, and undone by the batch they went
     expect(results.map(r => r.status)).toEqual(['filed', 'filed']);
     for (const r of results) expect(await s.pipeline.undo(r)).toBe(true);
     expect(s.text.get(NOTE)).not.toContain('Worksheet scans');
+  });
+});
+
+describe('scan images the note links elsewhere, and one message per hand filing', () => {
+  const QUEUED = '_labnote-scans/unmatched/20261021-021738_unknown_photo1.jpg';
+  const file = (p: string) => new TFile(p) as unknown as Parameters<ScanPipeline['fileManually']>[0];
+
+  it('deleting an earlier scan keeps its image while the note links it elsewhere, and says both counts', async () => {
+    const pages = { 'old.jpg': [page(pagePayload(), 'aaaaaaaaaaaa')], 'new.jpg': [page(pagePayload(), 'bbbbbbbbbbbb', { render: async () => new Uint8Array([7, 8, 9]).buffer })] };
+    const s = setup({ [NOTE]: buildNote(ID, ['UHW010', 'UHW020']) }, pages);
+    const [old] = await s.pipeline.run([input('old.jpg')]);
+    // The researcher links the earlier page's image from the notes too, with a size.
+    const name = old.imagePath!.split('/').pop()!;
+    s.text.set(NOTE, `${s.text.get(NOTE)!}\n## Notes\n![[${name}|100]]\n`);
+    const [next] = await s.pipeline.run([input('new.jpg')]);
+    expect(await s.pipeline.removePrevious(next)).toEqual({ removed: 1, trashed: 0 });
+    expect(s.binary.has(old.imagePath!)).toBe(true);
+    const t: Translator = (key, ...args) => formatMessage(key, args);
+    expect((await undoScanResult(t, { removePrevious: async () => ({ removed: 1, trashed: 0 }), undo: async () => false }, next, true)).message).toBe(
+      'Removed 1 earlier scan(s) from the note and moved 0 image(s) to the trash.'
+    );
+  });
+
+  it('a new scan does not take a name the note still links, though its file is gone', async () => {
+    const pages = { 'p.jpg': [page(pagePayload(), 'aaaaaaaaaaaa')] };
+    const probe = setup({ [NOTE]: buildNote(ID, ['UHW010', 'UHW020']) }, pages);
+    const [first] = await probe.pipeline.run([input('p.jpg')]);
+    const taken = first.imagePath!.split('/').pop()!;
+    const s = setup({ [NOTE]: `${buildNote(ID, ['UHW010', 'UHW020'])}\n## Notes\n![](scans/${encodeURIComponent(taken)})\n` }, pages);
+    const [r] = await s.pipeline.run([input('p.jpg')]);
+    expect(r.imagePath!.split('/').pop()).not.toBe(taken);
+  });
+
+  it('filed by hand into the open editor alone: one message, as the result', async () => {
+    const s = setup({ [NOTE]: buildNote(ID, ['UHW010', 'UHW020']) }, {});
+    s.binary.set(QUEUED, new Uint8Array([9, 9, 9]).buffer);
+    const notices: string[] = [];
+    Object.assign(s.host, { notify: (_l: string, m: string) => void notices.push(m) });
+    let text = s.text.get(NOTE)!;
+    const view = new MarkdownView();
+    view.file = new TFile(NOTE);
+    view.lastSavedData = text;
+    view.editor = {
+      getValue: () => text,
+      offsetToPos: (offset: number) => offset,
+      replaceRange: (r: string, from: number, to: number) => {
+        text = text.slice(0, from) + r + text.slice(to);
+      },
+    };
+    view.getViewData = () => text;
+    view.writeData = async () => {
+      throw new Error('disk full');
+    };
+    Object.assign(s.app, { workspace: { getLeavesOfType: () => [{ view }] } });
+    const result = await s.pipeline.fileManually(file(QUEUED), file(NOTE), 2, { page: 1, pageCount: 1 });
+    expect(notices).toEqual([]);
+    expect(result.status).toBe('error');
+    expect(result.message).toContain('only in its open editor');
+    // The editor links the copy: it stays, and so does the queued image.
+    expect(s.binary.has(result.imagePath!)).toBe(true);
+    expect(s.binary.has(QUEUED)).toBe(true);
+  });
+
+  it('filed by hand into a note that cannot be read to check: one message naming the copy left', async () => {
+    const s = setup({ [NOTE]: buildNote(ID, ['UHW010', 'UHW020']) }, {});
+    s.binary.set(QUEUED, new Uint8Array([9, 9, 9]).buffer);
+    const notices: string[] = [];
+    Object.assign(s.host, { notify: (_l: string, m: string) => void notices.push(m) });
+    let written = false;
+    const process = s.app.vault.process.bind(s.app.vault);
+    const read = s.app.vault.read.bind(s.app.vault);
+    Object.assign(s.app.vault, {
+      process: async (f: TFile, fn: (d: string) => string) => {
+        written = true;
+        return process(f as never, fn);
+      },
+      read: async (f: TFile) => {
+        if (written && f.path === NOTE) throw new Error('EBUSY');
+        return read(f as never);
+      },
+    });
+    const result = await s.pipeline.fileManually(file(QUEUED), file(NOTE), 2, { page: 1, pageCount: 1 });
+    expect(notices).toEqual([]);
+    expect(result.status).toBe('error');
+    expect(result.message).toContain(result.imagePath!);
+    expect(s.binary.has(result.imagePath!)).toBe(true);
+    expect(s.binary.has(QUEUED)).toBe(true);
   });
 });

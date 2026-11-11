@@ -607,6 +607,8 @@ const obsidianKo: Record<string, string> = {
     '편집 화면으로 바꾸는 사이에 노트 내용이 달라졌습니다. 명령을 다시 실행해 주세요.',
   '{0} has the note ID {1} only in its open editor: the note could not be saved yet. Save the note before printing, or a worksheet printed now may not find it.':
     '{0}의 note ID {1}은(는) 열린 편집기에만 있습니다. 노트를 아직 저장하지 못했습니다. 인쇄하기 전에 노트를 저장하세요. 지금 인쇄한 worksheet는 노트를 찾지 못할 수 있습니다.',
+  '{0} could not be read to check the scan went in. Its image stays in the unmatched queue, and the copy saved for the note stays at {1}; check the note before assigning it again.':
+    '{0}을(를) 읽지 못해 스캔이 들어갔는지 확인하지 못했습니다. 이미지는 미배정 대기열에 남아 있고 노트용으로 저장한 사본은 {1}에 남아 있습니다. 노트를 확인한 뒤 다시 배정하세요.',
   'The scan did not go into {0}. Its image stays in the unmatched queue; assign it again.':
     '{0}에 스캔이 들어가지 않았습니다. 이미지는 미배정 대기열에 남아 있으니 다시 배정하세요.',
   '{0} could not be read to check the scan went in. Its image stays in the unmatched queue; check the note before assigning it again.':
