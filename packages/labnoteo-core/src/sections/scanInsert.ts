@@ -216,7 +216,8 @@ function parseSection(lines: readonly string[], headingLine: number, end: number
   // Lines as the one block reading has them (classifyNote): a fence opener ends a caption's paragraph.
   const kinds = classifyNote(lines);
   for (let i = headingLine + 1; i < end; i++) {
-    const m = ENTRY_RE.exec(lines[i]);
+    // An entry comment in a fence is code, no entry.
+    const m = isFenced(kinds[i]) ? null : ENTRY_RE.exec(lines[i]);
     if (m) {
       current = { page: Number(m[1]), hash: m[3], lines: [{ line: i }] };
       entries.push(current);
@@ -235,8 +236,18 @@ function parseSection(lines: readonly string[], headingLine: number, end: number
     if (own < e.lines.length && /^\s*!\[/.test(at(own))) own++;
     if (own < e.lines.length && /^\*/.test(at(own))) {
       let close = own;
-      while (close < e.lines.length && !/(?:^|[^\\])\*\s*$/.test(at(close).replace(/^\*/, ''))) close++;
-      if (close < e.lines.length) own = close + 1;
+      // Over blank lines and text only: a line starting a block (a heading, a list item, a fence, a
+      // rule) is not the caption's, and a caption it cuts off is its first line alone.
+      const starts = (k: number): boolean => {
+        const ref = e.lines[k] as LineRef;
+        return BLOCK_START_RE.test(at(k)) || RULE_RE.test(at(k)) || kinds[ref.line].kind !== 'text';
+      };
+      while (close < e.lines.length && !/(?:^|[^\\])\*\s*$/.test(at(close).replace(/^\*/, ''))) {
+        close++;
+        if (close < e.lines.length && !isBlank(at(close)) && starts(close)) break;
+      }
+      if (close < e.lines.length && !starts(close) || close === own) own = close + 1;
+      else own++;
     }
     // The rest of the paragraph the comment's lines end in goes with them, as before.
     for (; own < e.lines.length; own++) {

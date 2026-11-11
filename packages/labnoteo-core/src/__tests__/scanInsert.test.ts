@@ -351,3 +351,31 @@ describe('removing a scan keeps what the researcher wrote under it', () => {
   });
 });
 
+describe('removing a scan reads the section as the note shows it', () => {
+  it('keeps the fences, and what a caption left open runs into, under a removed entry', () => {
+    const md = [
+      '## Worksheet scans',
+      '',
+      '<!-- labnoteo-scan page=1/3 sha=aa -->',
+      '![[aa.jpg]]',
+      '*cap*',
+      '',
+      '~~~',
+      '<!-- labnoteo-scan page=2/3 sha=ee -->',
+      '~~~',
+      'USER',
+      '<!-- labnoteo-scan page=3/3 sha=bb -->',
+      '![[bb.jpg]]',
+      '*a\\*',
+      '~~~',
+      '## Inner heading',
+      '# KEEP',
+      '*x*',
+      '',
+    ].join('\n');
+    const out = removeAllScanEntries(md).md.split('\n');
+    for (const line of ['<!-- labnoteo-scan page=2/3 sha=ee -->', 'USER', '## Inner heading', '# KEEP', '*x*']) expect(out).toContain(line);
+    expect(out.filter(l => l === '~~~')).toHaveLength(3);
+    expect(out.join('\n')).not.toMatch(/sha=(aa|bb)/);
+  });
+});
