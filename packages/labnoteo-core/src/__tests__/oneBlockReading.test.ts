@@ -51,6 +51,12 @@ describe('one block reading for every finder', () => {
     ]);
   });
 
+  it('adds a TOC entry outside a fence past list item fences their items end at once', () => {
+    const md = ['## Related Unit Operations', '- [UHW050 E](#uhw050-e)', '- [Protocol](https://example.org/p)', '  ```', '# KEEP', '- [UHW001 Ex](#x)', '  ```', '~~~', '- [UHW010 A](#uhw010-a)', '~~~', ''].join('\n');
+    const out = appendUnitOpToWorkflowToc(md, 'UHW020', 'B').split('\n');
+    expect(out.indexOf('- [UHW020 B](#uhw020-b)')).toBe(6);
+  });
+
   it('unwraps a reply only when one fence at the start of its first line wraps all of it', () => {
     expect(extractMethodBody('- ~~~md\n  # KEEP\n  ~~~')).toBe('- ~~~md\n  # KEEP\n  ~~~');
     expect(extractMethodBody('~~~\n1. step\n## h\n~~~')).toBe('1. step');

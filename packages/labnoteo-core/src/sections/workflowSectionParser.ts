@@ -233,7 +233,8 @@ export function appendUnitOpToWorkflowToc(
     const kinds = classifyLines(lines, frontMatter);
     for (let j = 0; j < endIdx; j++) {
       const k = kinds[j];
-      const fenceLine = k.kind === 'opener' || k.kind === 'closer';
+      // An opener its container ends at once holds no line, as before (read then as text).
+      const fenceLine = (k.kind === 'opener' && !k.ends) || k.kind === 'closer';
       if (fenceLine && j < lastEntry && /^\s/.test(lines[j])) indented = true;
       if (k.kind === 'opener') at = j;
       opener.push(isFenced(k) ? at : -1);
@@ -242,7 +243,8 @@ export function appendUnitOpToWorkflowToc(
       if (k.ends) {
         closed.add(at);
         const plain = k.kind === 'closer' && lines[j].replace(/^ {0,3}/, '').replace(/[ \t]+$/, '') === k.content.trim();
-        if (!plain) oddClose = true;
+        // An opener its container ends at once holds no line: nothing to mistrust.
+        if (!plain && k.kind !== 'opener') oddClose = true;
       }
     }
     // The front matter is YAML: a `<` line or a lone CR there is not the Markdown read here.
