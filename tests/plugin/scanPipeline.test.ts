@@ -1126,3 +1126,60 @@ describe('a note that cannot be read, and two removals on one result', () => {
     expect(s.trashed).toContain(old.imagePath);
   });
 });
+
+describe('undo and hand filing that put the note back as it was', () => {
+  const QUEUED = '_labnote-scans/unmatched/20261021-021738_unknown_photo1.jpg';
+  const file = (p: string) => new TFile(p) as unknown as Parameters<ScanPipeline['fileManually']>[0];
+
+  it('an undo leaves a Worksheet scans section the note had before, emptied', async () => {
+    const pages = { 'p.jpg': [page(pagePayload(), 'aaaaaaaaaaaa')] };
+    const first = setup({ [NOTE]: buildNote(ID, ['UHW010', 'UHW020']) }, pages);
+    await first.pipeline.run([input('p.jpg')]);
+    // The note with an empty section of its own: the entry taken out by hand.
+    const empty = first.text.get(NOTE)!.replace(/<!-- labnoteo-scan[^\n]*\n[^\n]*\n\*[^\n]*\*\n/, '');
+    expect(empty).toContain('#### Worksheet scans');
+    expect(empty).not.toContain('labnoteo-scan');
+    const s = setup({ [NOTE]: empty }, pages);
+    const [r] = await s.pipeline.run([input('p.jpg')]);
+    expect(await s.pipeline.undo(r)).toBe(true);
+    expect(JSON.stringify(s.text.get(NOTE))).toBe(JSON.stringify(empty));
+  });
+
+  it('an undo takes out the section the scan made', async () => {
+    const note = buildNote(ID, ['UHW010', 'UHW020']);
+    const s = setup({ [NOTE]: note }, { 'p.jpg': [page(pagePayload(), 'aaaaaaaaaaaa')] });
+    const [r] = await s.pipeline.run([input('p.jpg')]);
+    expect(await s.pipeline.undo(r)).toBe(true);
+    expect(s.text.get(NOTE)).not.toContain('Worksheet scans');
+  });
+
+  it('filed by hand into a note it did not go into: one error, and no unlinked copy left', async () => {
+    const s = setup({ [NOTE]: buildNote(ID, ['UHW010', 'UHW020']) }, {});
+    s.binary.set(QUEUED, new Uint8Array([9, 9, 9]).buffer);
+    const notices: string[] = [];
+    Object.assign(s.host, { notify: (_level: string, message: string) => void notices.push(message) });
+    // The write cannot read the note, nor can the check right after it; the next read can.
+    let failNextRead = false;
+    const read = s.app.vault.read.bind(s.app.vault);
+    Object.assign(s.app.vault, {
+      process: async () => {
+        failNextRead = true;
+        throw new Error('EBUSY');
+      },
+      read: async (f: TFile) => {
+        if (f.path === NOTE && failNextRead) {
+          failNextRead = false;
+          throw new Error('EBUSY');
+        }
+        return read(f as never);
+      },
+    });
+    const result = await s.pipeline.fileManually(file(QUEUED), file(NOTE), 2, { page: 1, pageCount: 1 });
+    expect(result.status).toBe('error');
+    expect(s.text.get(NOTE)).not.toContain('labnoteo-scan');
+    expect(s.binary.has(QUEUED)).toBe(true);
+    // Only the queued image is left: the copy saved for the note went.
+    expect([...s.binary.keys()]).toEqual([QUEUED]);
+    expect(notices.filter(m => /may or may not|only in its open editor/.test(m))).toEqual([]);
+  });
+});

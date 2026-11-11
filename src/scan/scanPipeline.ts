@@ -9,6 +9,7 @@ import { TFile, type App } from 'obsidian';
 import { unzipSync } from 'fflate';
 import type { LabnoteHost, Translator } from '@labnoteo/core';
 import {
+  hasScanSection,
   insertScanEntries,
   listFiledScans,
   listUnitOpBlocks,
@@ -94,6 +95,8 @@ export interface ScanResult {
   uncertain?: boolean;
   /** The note already had this scan, but its image was gone, so it was filed again (#432). */
   replacedMissing?: boolean;
+  /** The Worksheet scans section it went into was there before: an undo leaves its heading. */
+  sectionExisted?: boolean;
 }
 
 /** One page image, decoded. */
@@ -360,8 +363,11 @@ export class ScanPipeline {
     return { ...base, status: 'unmatched', reason, unmatchedPath: file.path };
   }
 
-  /** Write every note of the batch once, then date it. */
-  private async flush(pending: readonly Pending[]): Promise<void> {
+  /**
+   * Write every note of the batch once, then date it. `settled`: the caller checks the note
+   * afterwards and says the outcome itself, so a write not known to have landed is not said here.
+   */
+  private async flush(pending: readonly Pending[], { settled = false }: { settled?: boolean } = {}): Promise<void> {
     const byNote = new Map<string, Pending[]>();
     for (const p of pending) byNote.set(p.notePath, [...(byNote.get(p.notePath) ?? []), p]);
     for (const [notePath, items] of byNote) {
@@ -376,8 +382,11 @@ export class ScanPipeline {
             out = removeScanEntry(out, item.entry.hash).md;
             target = resolveScanTarget(listUnitOpBlocks(out), unitOpIndex, opId, fingerprint);
           }
-          if (target.kind === 'block') out = insertScanEntries(out, target.block, [item.entry]);
-          else if (target.kind === 'note') out = insertScanEntries(out, null, [item.entry]);
+          if (target.kind === 'block' || target.kind === 'note') {
+            const block = target.kind === 'block' ? target.block : null;
+            item.result.sectionExisted = hasScanSection(out, block);
+            out = insertScanEntries(out, block, [item.entry]);
+          }
           else missed.set(item, target.kind === 'missing' ? 'no-unit-op' : target.kind);
         }
         return out;
@@ -392,7 +401,7 @@ export class ScanPipeline {
           // The entries may be in the note, or kept by its editor for its next save: their
           // images stay, and they are not queued, which would file them twice. Scans the text
           // written had no unit operation for are not in it: queued below, as always.
-          this.deps.host.notify('warn', this.deps.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', notePath));
+          if (!settled) this.deps.host.notify('warn', this.deps.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', notePath));
           for (const item of items) if (!missed.has(item)) item.result.uncertain = true;
         } else if (!written && (await changeNotWritten(this.deps.app, this.deps.host, notePath, apply))) {
           // Not written: a save of the open note did not end in time.
@@ -418,7 +427,7 @@ export class ScanPipeline {
           await this.requeue(item);
           if (item.result.status === 'unmatched') Object.assign(item.result, { status: 'error', message: failure });
         }
-        if (maybe) this.deps.host.notify('warn', this.deps.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', notePath));
+        if (maybe && !settled) this.deps.host.notify('warn', this.deps.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', notePath));
         continue;
       }
       // The note changed between reading and writing so that the unit operation is gone.
@@ -497,21 +506,39 @@ export class ScanPipeline {
     };
     const pending: Pending[] = [];
     const result = await this.filePage(decoded, {}, pending, new Set(), new Map(), new Set());
-    await this.flush(pending);
+    await this.flush(pending, { settled: true });
     if (result.status === 'filed' || result.status === 'duplicate') {
       // The queued image goes only once the note on disk has the scan: one its open editor alone
       // keeps (its save failed) would be lost with the queued image if the editor is closed unsaved.
       // Trashed only when the disk is read and has the scan: unread is not saved.
-      if (result.notePath && result.hash && (await this.onDisk(result.notePath, [result.hash])) !== true) {
+      const disk = result.notePath && result.hash ? await this.onDisk(result.notePath, [result.hash]) : true;
+      const editor = result.notePath && result.hash ? this.inEditor(result.notePath, [result.hash]) : false;
+      if (disk === true) {
+        // On disk: filed, whatever the write could not tell.
+        delete result.uncertain;
+        await app.fileManager.trashFile(image);
+      } else if (result.status === 'filed' && disk === false && !editor) {
+        // Neither the note on disk nor its open editor has the scan: it was not filed. Said so
+        // once, as an error; the image saved for it goes below, the queued one stays.
+        Object.assign(result, {
+          status: 'error',
+          message: this.deps.t('The scan did not go into {0}. Its image stays in the unmatched queue; assign it again.', result.notePath!),
+        });
+        delete result.uncertain;
+      } else if (disk === false) {
         this.deps.host.notify(
           'warn',
           this.deps.t(
             '{0} has the scan only in its open editor: the note could not be saved yet, so its image stays in the unmatched queue. Assign it again once the note is saved.',
-            result.notePath
+            result.notePath!
           )
         );
       } else {
-        await app.fileManager.trashFile(image);
+        // The note could not be read to see whether the scan is in it.
+        this.deps.host.notify(
+          'warn',
+          this.deps.t('{0} could not be read to check the scan went in. Its image stays in the unmatched queue; check the note before assigning it again.', result.notePath!)
+        );
       }
     }
     if ((result.status === 'unmatched' || result.status === 'error') && result.unmatchedPath) {
@@ -541,8 +568,10 @@ export class ScanPipeline {
     if (result.status !== 'filed' || !result.notePath || !result.hash) return false;
     const hash = result.hash;
     let removed = false;
+    // A section the note had before the scan went in stays, emptied: the undo puts the note back.
+    const keepSection = result.sectionExisted === true;
     const remove = (content: string): string => {
-      const out = removeScanEntry(content, hash);
+      const out = removeScanEntry(content, hash, { keepSection });
       removed = out.removed;
       return out.md;
     };
@@ -570,13 +599,18 @@ export class ScanPipeline {
     return done;
   }
 
+  /** Whether the note's open editor (saved or not) has one of the scans `hashes`. */
+  private inEditor(notePath: string, hashes: readonly string[]): boolean {
+    const editor = openSourceView(this.deps.app, notePath)?.editor.getValue();
+    return editor !== undefined && hashes.some(hash => removeScanEntry(editor, hash).removed);
+  }
+
   /**
    * Whether the note may still have one of the scans `hashes`, on disk or in its open editor
    * (saved or not): their images stay then.
    */
   private async referenced(notePath: string, hashes: readonly string[]): Promise<boolean> {
-    const editor = openSourceView(this.deps.app, notePath)?.editor.getValue();
-    if (editor !== undefined && hashes.some(hash => removeScanEntry(editor, hash).removed)) return true;
+    if (this.inEditor(notePath, hashes)) return true;
     // A note that cannot be read is not known not to have them, so it may.
     return (await this.onDisk(notePath, hashes)) !== false;
   }

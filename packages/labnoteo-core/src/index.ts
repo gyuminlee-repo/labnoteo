@@ -95,6 +95,7 @@ export {
   findSameAliasUnitOp,
   resolveScanTarget,
   insertScanEntries,
+  hasScanSection,
   removeScanEntry,
   removeAllScanEntries,
   listScanHashes,

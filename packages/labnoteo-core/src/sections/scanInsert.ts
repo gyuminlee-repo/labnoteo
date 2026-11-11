@@ -246,6 +246,12 @@ function renderSection(level: number, section: Pick<Section, 'preface' | 'entrie
   return out;
 }
 
+/** Whether `block` (or the note, for `null`) has a Worksheet scans section {@link insertScanEntries} would add to. */
+export function hasScanSection(md: string, block: UnitOpBlock | null): boolean {
+  const lines = md.split(/\r?\n/);
+  return findSection(lines, scanHeadings(lines), block ? 4 : 2, block ? block.headingLine : -1, block ? block.contentEndLine : lines.length) !== undefined;
+}
+
 /**
  * Add `entries` to the Worksheet scans section of `block` (or of the note,
  * for `null`), creating it at the end of the block when missing. Entries are
@@ -361,10 +367,12 @@ export function listFiledScans(md: string): FiledScan[] {
 
 /**
  * Remove the scan entry with `hash` (undo, or dropping an older scan of a
- * page), and its Worksheet scans section when nothing else is left in it.
+ * page), and its Worksheet scans section when nothing else is left in it,
+ * unless `keepSection` (an undo of a scan filed into a section the note had
+ * before): then the emptied section keeps its heading.
  */
 // front matter: headings from scanHeadings, past the front matter.
-export function removeScanEntry(md: string, hash: string): { md: string; removed: boolean } {
+export function removeScanEntry(md: string, hash: string, { keepSection = false }: { keepSection?: boolean } = {}): { md: string; removed: boolean } {
   // Lines outside the section keep their own line breaks, even in mixed endings.
   const buf = splitLineBuffer(md);
   const { lines } = buf;
@@ -378,12 +386,13 @@ export function removeScanEntry(md: string, hash: string): { md: string; removed
     if (!section) continue;
     const keep = section.entries.filter(e => e.hash !== hash);
     if (keep.length === section.entries.length) continue;
-    if (keep.length === 0 && section.preface.length === 0) {
+    if (keep.length === 0 && section.preface.length === 0 && !keepSection) {
       let start = section.headingLine;
       if (start > 0 && isBlank(lines[start - 1])) start--;
       spliceLineBuffer(buf, start, section.end - start);
     } else {
-      const body = renderSection(h.level, { preface: section.preface, entries: keep });
+      // Kept with nothing in it: the heading alone, as the note had it before the scan went in.
+      const body = keep.length === 0 && section.preface.length === 0 ? [lines[section.headingLine]] : renderSection(h.level, { preface: section.preface, entries: keep });
       spliceLineBuffer(buf, section.headingLine, section.end - section.headingLine, body);
     }
     return { md: joinLineBuffer(buf), removed: true };
