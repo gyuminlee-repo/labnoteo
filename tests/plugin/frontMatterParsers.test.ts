@@ -46,12 +46,18 @@ export function parsersMissingFrontMatter(file: string, source: string): string[
   });
   const out: string[] = [];
   starts.forEach(([s, name], k) => {
-    const e = k + 1 < starts.length ? starts[k + 1][0] : lines.length;
+    // The function's own lines: its leading comment down to its last code line, not the comment
+    // of the function after it.
+    const isNote = (l: string): boolean => /^\s*(\/\/|\/\*|\*|$)/.test(l);
+    let e = k + 1 < starts.length ? starts[k + 1][0] : lines.length;
+    while (e > s + 1 && isNote(lines[e - 1])) e--;
+    let b = s;
+    while (b > 0 && isNote(lines[b - 1]) && lines[b - 1].trim() !== '') b--;
     const code = lines
       .slice(s, e)
       .filter(l => !/^\s*(\*|\/\/)/.test(l))
       .join('\n');
-    const withComments = lines.slice(Math.max(0, s - 3), e).join('\n');
+    const withComments = lines.slice(b, e).join('\n');
     if (HEADING.test(code) && LINES.test(code) && !SKIPS.test(withComments)) out.push(`${file}:${s + 1} ${name}`);
   });
   return out;
