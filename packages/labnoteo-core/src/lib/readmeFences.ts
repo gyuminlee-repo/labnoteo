@@ -125,9 +125,13 @@ export function positionOutsideFences(
   for (let around = inside(after); around.length > 0; around = inside(after)) after = Math.max(...around.map(([, close]) => close + 1));
   let before = at;
   for (let around = inside(before); around.length > 0; around = inside(before)) before = Math.min(...around.map(([open]) => open));
-  const moved = after <= limit ? after : before;
   // Not into a fence the line-by-line reading has open there (one left open, say), when `at` is
-  // in none by that reading: a closed reading's fence may be no fence at all.
+  // in none by that reading: a closed reading's fence may be no fence at all. A place passes when
+  // it is in no span (fence or HTML block) and in no such fence: past the spans, before them, or
+  // the section's end; `at` only when none passes.
   const { openBefore } = lineByLineFences(lines, from);
-  return openBefore[moved] && !openBefore[at] ? at : moved;
+  const passes = (pos: number): boolean => inside(pos).length === 0 && (!openBefore[pos] || openBefore[at]);
+  const moved = after <= limit ? after : before;
+  for (const pos of [moved, moved === after ? before : after, limit]) if (pos <= limit && passes(pos)) return pos;
+  return at;
 }

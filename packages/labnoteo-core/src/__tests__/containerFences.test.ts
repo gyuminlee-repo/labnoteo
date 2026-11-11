@@ -101,4 +101,10 @@ describe('a README entry after a list fence', () => {
     const head = `## Related Workflows\n${t}\n${A}\n${t}\n<!--\n${t}\n-->\n### Sub\n- ${t}\n  x\n- ${t}md\n${A}\n  ${t}\n`;
     expect(insertWorkflowChecklistEntries(`${head}<div>\n${t}\n`, [D])).toBe(`${head}- [ ] [D](./004_WD010_D.labnote.md)\n<div>\n${t}\n`);
   });
+
+  it('puts an entry no fence and no HTML block holds when moving it past them is no way out', () => {
+    const fm = `---\ndescription: |\n  ${t}\n---\n`;
+    const rest = `    ${t}\n<div>\n${t}\n- ${t}md\n${A}\n  ${t}\n- [ ] [C](./003_WD010_C.labnote.md)\n- [x] [B](./002_WD010_B.labnote.md)\n\n<!--\n${t}\n-->\ntext\n<span>\n${t}\n`;
+    expect(insertWorkflowChecklistEntries(`${fm}## 관련 워크플로\n${rest}`, [D])).toBe(`${fm}## 관련 워크플로\n- [ ] [D](./004_WD010_D.labnote.md)\n${rest}`);
+  });
 });
