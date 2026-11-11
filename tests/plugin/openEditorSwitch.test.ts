@@ -74,3 +74,23 @@ describe('a view that goes to another note, alike, while the write waits', () =>
     expect(await openEditorText(app, A)).toBeUndefined();
   });
 });
+
+describe('a view that saves the note and goes to another as it does', () => {
+  // What the save wrote is not known from the view gone to B (its editor B's now): the change
+  // may or may not be in it, here it is.
+  it('says the change may or may not be there, typing the save took in and all', async () => {
+    const { app, host, fs, texts } = switching(0);
+    const view = (app.workspace as unknown as { getLeavesOfType(): { view: MarkdownView }[] }).getLeavesOfType()[0].view;
+    view.save = async () => {
+      // Typed as the save starts, written, and the leaf opens B.
+      texts[A] = `typed\n${texts[A]}`;
+      await fs.write(A, texts[A]);
+      view.lastSavedData = texts[A];
+      view.file = new TFile(B);
+    };
+    expect(await processNoteThroughVault(app, host, A, c => `${c}ADDED\n`, true)).toBe('uncertain');
+    expect(await fs.read(A)).toBe(`typed\n${SAME}ADDED\n`);
+    expect(await fs.read(B)).toBe(SAME);
+  });
+});
+

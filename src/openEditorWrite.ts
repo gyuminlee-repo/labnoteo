@@ -134,17 +134,22 @@ async function writeInOpenEditor(
   // not read the file again while it saves, so the change is in it), and the file.
   const save = async () => {
     let saved = false;
+    // What the save writes: the editor's text as it starts (it holds no save under way here).
+    const toSave = onFile() ? lf(view.editor.getValue()) : undefined;
     try {
       await view.save();
       saved = true;
     } catch {
       // The file is looked at below either way.
     }
-    // The editor's text as the save left it, only while the view is still on the file: another
-    // note's says nothing of this one.
-    const atSave = onFile() ? lf(view.editor.getValue()) : undefined;
+    // The editor's text as the save left it: a view leaving the note saves it first, and its
+    // editor still holds it then. Taken only for a file that changed and reads as it.
+    const onAfterSave = onFile();
+    const atSave = lf(view.editor.getValue());
     const now = await app.vault.read(file);
-    const still = atSave !== undefined && onFile();
+    const still = onAfterSave && onFile();
+    // Gone to another note (not closed): its editor holds that note now.
+    const elsewhere = !still && view.file != null && view.file.path !== file.path;
     const savedAs: unknown = still ? (view as unknown as { lastSavedData?: unknown }).lastSavedData : undefined;
     // Looked at with `savedAs`, no await between: what the view holds as it last read or saved.
     const editorNow = lf(view.editor.getValue());
@@ -156,7 +161,7 @@ async function writeInOpenEditor(
     // now that file: the change is there only if that file has it, which this cannot tell (a
     // formatter may have rewritten the editor's text, change and all, or another edit not).
     const readOver = !saved && typeof savedAs === 'string' && savedAs !== disk && editorNow === lf(savedAs);
-    return { saved, atSave, now, wrote, keeps, readOver };
+    return { saved, elsewhere, toSave, atSave, now, wrote, keeps, readOver };
   };
   // A file no longer as it was holds the change when the save wrote (the view still on the
   // note: the editor's text, the change in it, even when another plugin changed the file right
@@ -169,14 +174,18 @@ async function writeInOpenEditor(
   // may or may not have the change (rewritten by a formatter, say); read merged with typing, the
   // editor differs from the file whether the merge kept the change or dropped it (a part it
   // could not place). The change is not applied again, which could put it in twice.
-  const landed = (text: string, atSave: string | undefined) => lf(text) === after || lf(text) === atSave;
+  const landed = (text: string, atSave: string) => lf(text) === after || lf(text) === atSave;
   // A view that read the file over its editor has the two alike, whether or not the file has the
   // change: not taken for the file reading as the editor.
-  const changedMeanwhile = (at: { saved: boolean; atSave?: string; now: string; wrote: boolean; readOver: boolean }) => {
-    if (at.wrote || lf(at.now) === after) return true;
+  const changedMeanwhile = (at: { saved: boolean; elsewhere: boolean; toSave?: string; atSave: string; now: string; wrote: boolean; readOver: boolean }) => {
+    // The file as the save was to write it: the change is in it, the view gone or not.
+    if (at.wrote || lf(at.now) === after || lf(at.now) === at.toSave) return true;
     if (at.readOver) return 'uncertain' as const;
     if (landed(at.now, at.atSave)) return true;
-    return at.saved ? false : ('uncertain' as const);
+    // A save that wrote nothing, its view on the note or closed: not there. One whose view went
+    // to another note as it saved: what it wrote, typing and all, is not known from that view.
+    if (at.saved) return at.elsewhere ? ('uncertain' as const) : false;
+    return 'uncertain' as const;
   };
   let at = await save();
   if (at.now !== disk) return changedMeanwhile(at);
