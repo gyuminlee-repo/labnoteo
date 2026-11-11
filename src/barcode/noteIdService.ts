@@ -109,7 +109,8 @@ export class NoteIdService {
     file: TFile,
     opts: { reassign?: boolean } = {}
   ): Promise<{ id: string; reason?: undefined } | { id?: undefined; reason: 'unreadable' | 'cancelled' }> {
-    const content = (await this.app.vault.read(file)).replace(/\r\n/g, '\n');
+    // As the note is: an ID kept by an open editor whose save failed is the note's ID, not one to replace.
+    const content = (await this.textOf(file)).replace(/\r\n/g, '\n');
     if (!opts.reassign) {
       const existing = readNoteId(content);
       if (existing) return { id: existing };
@@ -144,6 +145,30 @@ export class NoteIdService {
     while (taken.has(id)) id = generateNoteId();
     if (!(await this.writeId(file, id))) return { reason: 'unreadable' };
     return { id };
+  }
+
+  /**
+   * The note's text as it is: an open editor's, which keeps a change its save could not write
+   * yet and saves it next, else the file's. What the note's ID is judged from, as {@link writeId} judges it.
+   */
+  async textOf(file: TFile): Promise<string> {
+    return (await openEditorText(this.app, file.path)) ?? (await this.app.vault.read(file));
+  }
+
+  /**
+   * Before `id` is shown or printed: said when the note on disk does not carry it yet (its open
+   * editor does, its save having failed), since a worksheet printed now finds the note only once it is saved.
+   */
+  async warnIfIdNotOnDisk(file: TFile, id: string): Promise<void> {
+    if (readNoteId((await this.app.vault.read(file)).replace(/\r\n/g, '\n')) === id) return;
+    this.host.notify(
+      'warn',
+      this.host.t(
+        '{0} has the note ID {1} only in its open editor: the note could not be saved yet. Save the note before printing, or a worksheet printed now may not find it.',
+        file.path,
+        id
+      )
+    );
   }
 
   /**
@@ -190,7 +215,7 @@ export class NoteIdService {
 
   private async offerIdBack(file: TFile, old: string, now: string): Promise<void> {
     // Before the question: the old ID could not be written back.
-    if (noteIdUnwritable(await this.app.vault.read(file))) {
+    if (noteIdUnwritable(await this.textOf(file))) {
       this.warnUnwritable(file, true);
       return;
     }
@@ -229,7 +254,7 @@ export class NoteIdService {
     }
     // Read back as the note is: in an open editor that keeps a change its save could not write
     // yet, the editor's text, which the view saves next.
-    const read = async () => (await openEditorText(this.app, file.path)) ?? (await this.app.vault.read(file));
+    const read = () => this.textOf(file);
     if (result !== 'timedOut' && readNoteId(await read()) === id) return true;
     if (before === undefined) this.known?.delete(file.path);
     else this.known?.set(file.path, before);
@@ -384,7 +409,7 @@ export class NoteIdService {
         // A labnote_id that cannot be written would fail the re-numbering: said once per note
         // instead of asked about each time another note joins the set, and the set is left
         // there, as a re-numbering that failed leaves it.
-        if (noteIdUnwritable(await this.app.vault.read(newest))) {
+        if (noteIdUnwritable(await this.textOf(newest))) {
           this.warnUnwritable(newest, true);
           break;
         }

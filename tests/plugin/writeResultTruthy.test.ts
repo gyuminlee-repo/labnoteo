@@ -2,7 +2,9 @@
  * A note write's result is `true`, `false` or `'uncertain'` (may or may not be in), so reading
  * it as a boolean counts a maybe as done. Every result of the writing functions must be
  * compared, not taken as truthy: `if (await write(…))`, `if (written)`, `if (!written)`,
- * `!!written`, `written ? …`, `written &&`, `+= written` are refused here.
+ * `!!written`, `written ? …`, `written &&`, `+= written` are refused here, the result bound
+ * where it is declared or assigned later. The writers are the functions below and every one
+ * declared to resolve to `NoteWritten` or `NoteWrittenOnDisk`.
  */
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -18,7 +20,29 @@ const WRITERS = [
   'processInOpenEditor',
   'processInOpenEditorOnDisk',
   'writeInOpenEditor',
-].join('|');
+];
+
+/**
+ * The functions and methods `source` declares to resolve to a write result: `name(…):
+ * Promise<NoteWritten>`, with `keeping` those whose result may be `'kept'` (`NoteWrittenOnDisk`).
+ */
+export function declaredWriters(source: string): { writers: string[]; keeping: string[] } {
+  const writers: string[] = [];
+  const keeping: string[] = [];
+  for (const m of source.matchAll(/\)\s*:\s*Promise<\s*(NoteWritten(?:OnDisk)?)\s*>/g)) {
+    let depth = 0;
+    let i = m.index!;
+    for (; i >= 0; i--) {
+      if (source[i] === ')') depth++;
+      else if (source[i] === '(' && --depth === 0) break;
+    }
+    const name = /(\w+)\s*(?:<[^<>]*>)?\s*$/.exec(source.slice(Math.max(0, i - 200), i))?.[1];
+    if (!name || name === 'function') continue;
+    writers.push(name);
+    if (m[1] === 'NoteWrittenOnDisk') keeping.push(name);
+  }
+  return { writers, keeping };
+}
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];
@@ -47,12 +71,18 @@ function pastClose(source: string, open: number): number {
 }
 
 /** Writers whose result may also be `'kept'` (in the editor only), which is not on disk. */
-const KEEPING = /^(?:processNoteThroughVaultOnDisk|processInOpenEditorOnDisk|writeInOpenEditor)$/;
+const KEEPING = ['processNoteThroughVaultOnDisk', 'processInOpenEditorOnDisk', 'writeInOpenEditor'];
 
 /** `file:line` of each result taken as truthy in `source`. */
-export function truthyWriteResults(file: string, source: string): string[] {
+export function truthyWriteResults(
+  file: string,
+  source: string,
+  writers: readonly string[] = WRITERS,
+  keepingWriters: readonly string[] = KEEPING
+): string[] {
   const found: string[] = [];
-  const call = `await\\s+(?:[\\w.]+\\.)?(${WRITERS})\\(`;
+  const keeping = new Set(keepingWriters);
+  const call = `await\\s+(?:[\\w.]+\\.)?(${[...new Set(writers)].join('|')})\\(`;
   // The call itself as a condition or operand, unless its result in parentheses is compared.
   const direct = new RegExp(`(?:\\bif\\s*\\(\\s*!?\\s*|!!\\s*|&&\\s*|\\|\\|\\s*)(\\(\\s*)?${call}`, 'g');
   for (const m of source.matchAll(direct)) {
@@ -64,12 +94,13 @@ export function truthyWriteResults(file: string, source: string): string[] {
   }
   // The result bound to a name, then that name read as truthy in the same function, before
   // `'uncertain'` (and, for a writer that keeps, `'kept'`) were compared away.
-  const bound = new RegExp(`\\b(?:const|let)\\s+(\\w+)\\s*(?::[^=;]+)?=\\s*${call}`, 'g');
+  // `const w = await …`, `let w: T = await …`, and `w = await …` for a name declared before.
+  const bound = new RegExp(`(?<![\\w.])(\\w+)\\s*(?::[^=;()]+)?(?<![=!<>])=(?!=)\\s*${call}`, 'g');
   for (const m of source.matchAll(bound)) {
     const name = m[1];
     const handled = (before: string): boolean =>
       new RegExp(`\\b${name}\\s*[!=]==\\s*'uncertain'`).test(before) &&
-      (!KEEPING.test(m[2]) || new RegExp(`\\b${name}\\s*[!=]==\\s*'kept'`).test(before));
+      (!keeping.has(m[2]) || new RegExp(`\\b${name}\\s*[!=]==\\s*'kept'`).test(before));
     const start = m.index! + m[0].length;
     const next = source.slice(start).search(/\n(?:export |async |function |\s{2}(?:private |public |protected |async )+\w+\()/);
     const rest = source.slice(start, next < 0 ? undefined : start + next);
@@ -86,10 +117,32 @@ export function truthyWriteResults(file: string, source: string): string[] {
 
 describe('note write results', () => {
   it('are compared, never read as truthy', () => {
-    const found = SOURCE_DIRS.flatMap(dir => sourceFiles(join(ROOT, dir))).flatMap(path =>
-      truthyWriteResults(relative(ROOT, path), readFileSync(path, 'utf8'))
-    );
+    const sources = SOURCE_DIRS.flatMap(dir => sourceFiles(join(ROOT, dir))).map(path => ({
+      path: relative(ROOT, path),
+      text: readFileSync(path, 'utf8'),
+    }));
+    const declared = sources.map(f => declaredWriters(f.text));
+    const writers = [...WRITERS, ...declared.flatMap(d => d.writers)];
+    const keeping = [...KEEPING, ...declared.flatMap(d => d.keeping)];
+    // The writers declared include those listed: the declarations are read as meant.
+    expect(declared.flatMap(d => d.writers)).toEqual(expect.arrayContaining(['processNoteThroughVault', 'processOrCreateNote', 'processNoteStamped']));
+    const found = sources.flatMap(f => truthyWriteResults(f.path, f.text, writers, keeping));
     expect(found).toEqual([]);
+  });
+
+  it('finds a result assigned apart from its declaration, and a writer known only by its declared type', () => {
+    expect(truthyWriteResults('x.ts', 'let w;\nw = await processNoteThroughVault(app, host, p, f);\nif (w) n++;')).not.toEqual([]);
+    expect(truthyWriteResults('x.ts', "let w;\nw = await processNoteThroughVault(app, host, p, f);\nif (w === 'uncertain') return;\nif (w) n++;")).toEqual([]);
+    const own = 'async function saveIt(path: string, change: (s: string) => string): Promise<NoteWritten> {\n  return x;\n}\n';
+    const mine = declaredWriters(own);
+    expect(mine.writers).toEqual(['saveIt']);
+    const use = `${own}async function go() {\n  if (await saveIt(p, f)) n++;\n}\n`;
+    expect(truthyWriteResults('x.ts', use, [...WRITERS, ...mine.writers])).not.toEqual([]);
+    expect(truthyWriteResults('x.ts', use)).toEqual([]);
+    const kept = 'class A {\n  async keepIt(p: string): Promise<NoteWrittenOnDisk> {\n    return x;\n  }\n}\n';
+    expect(declaredWriters(kept)).toEqual({ writers: ['keepIt'], keeping: ['keepIt'] });
+    const keptUse = "async function go() {\n  const w = await a.keepIt(p);\n  if (w === 'uncertain') return;\n  if (!w) return;\n}\n";
+    expect(truthyWriteResults('x.ts', keptUse, ['keepIt'], ['keepIt'])).not.toEqual([]);
   });
 
   it('the check finds each truthy form, and passes compared ones', () => {

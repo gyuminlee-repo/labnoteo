@@ -233,7 +233,11 @@ export class BarcodeFeature {
         this.plugin.settings.worksheetPaperSize = paper;
         await this.plugin.saveSettings();
       },
-      ensureNoteId: file => this.noteIds.ensureId(file),
+      ensureNoteId: async file => {
+        const id = await this.noteIds.ensureId(file);
+        if (id) await this.noteIds.warnIfIdNotOnDisk(file, id);
+        return id;
+      },
       sampleLookup: async file => {
         if (!this.plugin.sampleTrackingFor(file.path)) return undefined;
         const { globalSampleFolder, customSampleTypes } = this.plugin.settings;
@@ -248,6 +252,7 @@ export class BarcodeFeature {
   async showBarcode(file: TFile): Promise<void> {
     const id = await this.noteIds.ensureId(file);
     if (!id) return;
+    await this.noteIds.warnIfIdNotOnDisk(file, id);
     // The window opens for the notes "Print whole note with barcodes" takes, so it is always offered.
     new BarcodeModal(this.app, this.t, { title: noteTitleOf(this.app, file), id }, {
       worksheet: isValidWorkflowPath(file.path)
@@ -258,7 +263,7 @@ export class BarcodeFeature {
   }
 
   private async assignId(file: TFile): Promise<void> {
-    const current = readNoteId(await this.app.vault.read(file));
+    const current = readNoteId(await this.noteIds.textOf(file));
     if (current) {
       const others = this.noteIds.filesWithId(current).filter(f => f.path !== file.path);
       if (others.length === 0) {
@@ -283,7 +288,7 @@ export class BarcodeFeature {
    * was said by NoteIdService and is 'failed': the caller goes on with the copy, as 0.140.2 does.
    */
   async reassignCopiedId(file: TFile): Promise<'renewed' | 'none' | 'refused' | 'failed'> {
-    const content = await this.app.vault.read(file);
+    const content = await this.noteIds.textOf(file);
     if (!readNoteId(content)) {
       if (!unwritableIdInUse(content)) return 'none';
       this.noteIds.warnUnwritable(file, true);
@@ -291,7 +296,7 @@ export class BarcodeFeature {
     }
     // NoteIdService warns when it cannot write the new ID.
     const id = await this.noteIds.ensureId(file, { reassign: true });
-    if (!id) return noteIdUnwritable(await this.app.vault.read(file)) ? 'refused' : 'failed';
+    if (!id) return noteIdUnwritable(await this.noteIds.textOf(file)) ? 'refused' : 'failed';
     this.host.notify('info', this.t('Gave the copy {0} its own note ID {1}.', file.basename, id));
     return 'renewed';
   }
@@ -394,7 +399,8 @@ export class BarcodeFeature {
   async moveScansWithNote(newPath: string, fromDir: string, toDir: string): Promise<'refused' | undefined> {
     const file = this.app.vault.getAbstractFileByPath(newPath);
     if (!(file instanceof TFile)) return;
-    const content = await this.app.vault.read(file);
+    // As the note is: scans are filed under an ID its open editor may keep unsaved.
+    const content = await this.noteIds.textOf(file);
     const noteId = readNoteId(content);
     // Scans are named after an ID: without one YAML reads, there are none of the note's to move.
     if (!noteId && !unwritableIdInUse(content)) return;

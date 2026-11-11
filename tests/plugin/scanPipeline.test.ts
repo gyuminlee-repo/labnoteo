@@ -840,3 +840,101 @@ describe('undo of a scan in an open note whose save fails', () => {
     expect(s.trashed).toEqual([result.imagePath]);
   });
 });
+
+// Tried again before the note is saved: the editor no longer has the entries, so the write finds
+// nothing to do, while the disk still points at the images. They stay until the disk no longer does.
+describe('undo and earlier-scan removal tried again while the open note still cannot be saved', () => {
+  function failingView(s: ReturnType<typeof setup>) {
+    const filed = s.text.get(NOTE)!;
+    let text = filed;
+    const state = { fails: true };
+    const view = new MarkdownView();
+    view.file = new TFile(NOTE);
+    view.lastSavedData = filed;
+    view.editor = {
+      getValue: () => text,
+      offsetToPos: (offset: number) => offset,
+      replaceRange: (r: string, from: number, to: number) => {
+        text = text.slice(0, from) + r + text.slice(to);
+      },
+    };
+    view.getViewData = () => text;
+    view.writeData = async (_f: TFile, t: string) => {
+      if (state.fails) throw new Error('disk full');
+      s.text.set(NOTE, t);
+    };
+    Object.assign(s.app, { workspace: { getLeavesOfType: () => [{ view }] } });
+    return { view, state };
+  }
+
+  it('undo: the image stays on the second try too, and goes once the note is saved', async () => {
+    const s = setup({ [NOTE]: buildNote(ID, ['UHW010', 'UHW020']) }, { 'a.jpg': [page(pagePayload(), 'aaaaaaaaaaaa')] });
+    const [result] = await s.pipeline.run([input('a.jpg')]);
+    const { view, state } = failingView(s);
+    expect(await s.pipeline.undo(result)).toBe('notWritten');
+    expect(await s.pipeline.undo(result)).toBe('notWritten');
+    expect(s.text.get(NOTE)).toContain('aaaaaaaaaaaa');
+    expect(s.trashed).toEqual([]);
+    state.fails = false;
+    await view.save();
+    expect(await s.pipeline.undo(result)).toBe(false);
+    expect(s.trashed).toEqual([result.imagePath]);
+  });
+
+  it('earlier scans: their image stays on the second try too, and goes once the note is saved', async () => {
+    const s = setup(
+      { [NOTE]: buildNote(ID, ['UHW010', 'UHW020']) },
+      { 'old.jpg': [page(pagePayload(), 'aaaaaaaaaaaa')], 'new.jpg': [page(pagePayload(), 'bbbbbbbbbbbb', { render: async () => new Uint8Array([7, 8, 9]).buffer })] }
+    );
+    const [old] = await s.pipeline.run([input('old.jpg')]);
+    const [next] = await s.pipeline.run([input('new.jpg')]);
+    expect(next.previous?.length).toBe(1);
+    const { view, state } = failingView(s);
+    expect(await s.pipeline.removePrevious(next)).toBe('notWritten');
+    expect(await s.pipeline.removePrevious(next)).toBe('notWritten');
+    expect(listFiledScans(s.text.get(NOTE)!).map(f => f.hash).sort()).toEqual(['aaaaaaaaaaaa', 'bbbbbbbbbbbb']);
+    expect(s.binary.has(old.imagePath!)).toBe(true);
+    expect(s.trashed).toEqual([]);
+    state.fails = false;
+    await view.save();
+    expect(await s.pipeline.removePrevious(next)).toBe(0);
+    expect(s.trashed).toEqual([old.imagePath]);
+  });
+
+  it('filed by hand: the queued image stays while the disk lacks the scan, and goes once it is saved', async () => {
+    const QUEUED = '_labnote-scans/unmatched/20261021-021738_unknown_photo1.jpg';
+    const s = setup({ [NOTE]: buildNote(ID, ['UHW010', 'UHW020']) }, {});
+    s.binary.set(QUEUED, new Uint8Array([9, 9, 9]).buffer);
+    const { view, state } = failingView(s);
+    const warnings: string[] = [];
+    (s.host as unknown as { notify: (level: string, msg: string) => void }).notify = (level, msg) => {
+      if (level === 'warn') warnings.push(msg);
+    };
+    const byHand = () =>
+      s.pipeline.fileManually(
+        new TFile(QUEUED) as unknown as Parameters<ScanPipeline['fileManually']>[0],
+        new TFile(NOTE) as unknown as Parameters<ScanPipeline['fileManually']>[1],
+        1,
+        { page: 1, pageCount: 1 }
+      );
+    expect((await byHand()).status).toBe('filed');
+    expect(s.binary.has(QUEUED)).toBe(true);
+    expect(s.trashed).not.toContain(QUEUED);
+    expect(warnings).toEqual([
+      `${NOTE} has the scan only in its open editor: the note could not be saved yet, so its image stays in the unmatched queue. Assign it again once the note is saved.`,
+    ]);
+    state.fails = false;
+    await view.save();
+    expect((await byHand()).status).toBe('duplicate');
+    expect(s.trashed).toContain(QUEUED);
+  });
+
+  it('imported again: a scan the editor keeps is a duplicate, not filed twice', async () => {
+    const s = setup({ [NOTE]: buildNote(ID, ['UHW010', 'UHW020']) }, { 'a.jpg': [page(pagePayload(), 'aaaaaaaaaaaa')] });
+    failingView(s);
+    const [first] = await s.pipeline.run([input('a.jpg')]);
+    expect(first.status).toBe('filed');
+    const [again] = await s.pipeline.run([input('a.jpg')]);
+    expect(again.status).toBe('duplicate');
+  });
+});

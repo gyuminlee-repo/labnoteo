@@ -21,6 +21,7 @@ import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
 import { isPagePayload, unitOpFingerprint, type PagePayload, type ScanPayload } from '@labnoteo/core/lib/scanPayload';
 import * as posix from '@labnoteo/core/posix';
 import { changeNotWritten, processNoteThroughVault, processNoteThroughVaultOnDisk } from '../commands';
+import { openEditorText } from '../openEditorWrite';
 import type { NoteIdService } from '../barcode/noteIdService';
 import {
   SCANS_SUBFOLDER,
@@ -208,7 +209,8 @@ export class ScanPipeline {
   private async readNote(path: string, cache: Map<string, string>): Promise<string> {
     let text = cache.get(path);
     if (text === undefined) {
-      text = await this.deps.host.fs.read(path);
+      // As the note is: an open editor keeps scans its save could not write yet, already filed.
+      text = (await openEditorText(this.deps.app, path)) ?? (await this.deps.host.fs.read(path));
       cache.set(path, text);
     }
     return text;
@@ -475,7 +477,21 @@ export class ScanPipeline {
     const pending: Pending[] = [];
     const result = await this.filePage(decoded, {}, pending, new Set(), new Map(), new Set());
     await this.flush(pending);
-    if (result.status === 'filed' || result.status === 'duplicate') await app.fileManager.trashFile(image);
+    if (result.status === 'filed' || result.status === 'duplicate') {
+      // The queued image goes only once the note on disk has the scan: one its open editor alone
+      // keeps (its save failed) would be lost with the queued image if the editor is closed unsaved.
+      if (result.notePath && result.hash && !(await this.onDisk(result.notePath, [result.hash]))) {
+        this.deps.host.notify(
+          'warn',
+          this.deps.t(
+            '{0} has the scan only in its open editor: the note could not be saved yet, so its image stays in the unmatched queue. Assign it again once the note is saved.',
+            result.notePath
+          )
+        );
+      } else {
+        await app.fileManager.trashFile(image);
+      }
+    }
     if ((result.status === 'unmatched' || result.status === 'error') && result.unmatchedPath) {
       // The image is still in the queue; the copy filePage or flush made there is not needed.
       const copy = app.vault.getAbstractFileByPath(result.unmatchedPath);
@@ -516,10 +532,22 @@ export class ScanPipeline {
     // and its image stay.
     if (written === 'uncertain') return 'uncertain';
     if (!written && (await changeNotWritten(this.deps.app, this.deps.host, result.notePath, remove))) return 'notWritten';
+    // Read from the disk itself, not from the write's result: an undo tried again while the
+    // editor keeps the first one unsaved finds nothing to do there, the disk still pointing at the image.
+    if (await this.onDisk(result.notePath, [hash])) return 'notWritten';
     const image = result.imagePath ? this.deps.app.vault.getAbstractFileByPath(result.imagePath) : null;
     if (image instanceof TFile) await this.deps.app.fileManager.trashFile(image);
     if (removed) this.deps.markUserEdit(result.notePath);
     return removed;
+  }
+
+  /** Whether the note on disk still has one of the scans `hashes`: their images stay then. */
+  private async onDisk(notePath: string, hashes: readonly string[]): Promise<boolean> {
+    const { app } = this.deps;
+    const file = app.vault.getAbstractFileByPath(notePath);
+    if (!(file instanceof TFile)) return false;
+    const disk = await app.vault.read(file);
+    return hashes.some(hash => removeScanEntry(disk, hash).removed);
   }
 
   /**
@@ -552,6 +580,7 @@ export class ScanPipeline {
     if (written === 'kept') return 'notWritten';
     if (written === 'uncertain') return 'uncertain';
     if (!written && (await changeNotWritten(app, host, notePath, remove))) return 'notWritten';
+    if (await this.onDisk(notePath, result.previous.map(p => p.hash))) return 'notWritten';
     for (const image of images) await app.fileManager.trashFile(image);
     if (count > 0) this.deps.markUserEdit(notePath);
     result.previous = [];
