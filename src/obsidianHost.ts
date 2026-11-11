@@ -76,8 +76,21 @@ export function createObsidianHost(
     const cell = cellEditor ?? (tableCellHostView(editor) ? editor : null);
     const cellHost = cell ? tableCellHostView(cell) ?? editorView(editor) : undefined;
     const cellDom = cell ? editorView(cell)?.dom : undefined;
+    // Looked at on every call: a call after a wait (a prompt, a read) may find the view gone
+    // to another note, whose editor this one now is; it is not read or changed as this note.
+    const onNote = <T extends EditTarget>(target: T): T => {
+      for (const key of Object.keys(target) as (keyof T)[]) {
+        const call = target[key];
+        if (typeof call !== 'function') continue;
+        target[key] = (async (...args: unknown[]) => {
+          if (noteView.file?.path !== file.path) throw new Error(t('The note was switched to another while the command ran, so it was not changed. Run the command again.'));
+          return (call as (...a: unknown[]) => unknown).apply(target, args);
+        }) as T[keyof T];
+      }
+      return target;
+    };
     if (cell && cellHost && cellDom) {
-      const target = noteTargetBelowTable(file.path, cellHost, cellDom);
+      const target = onNote(noteTargetBelowTable(file.path, cellHost, cellDom));
       tableCellEditors.set(target, cell);
       return target;
     }
@@ -132,6 +145,7 @@ export function createObsidianHost(
         editor.focus();
       },
     };
+    onNote(target);
     readingViewChecks.set(target, inPreview);
     return target;
   }

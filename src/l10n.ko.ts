@@ -603,6 +603,10 @@ const obsidianKo: Record<string, string> = {
     '읽기 화면이던 노트를 편집 화면으로 바꿔서 고쳤습니다.',
   'The note changed while switching to editing view. Run the command again.':
     '편집 화면으로 바꾸는 사이에 노트 내용이 달라졌습니다. 명령을 다시 실행해 주세요.',
+  'The note was switched to another while the command ran, so it was not changed. Run the command again.':
+    '명령이 도는 사이에 다른 노트로 바뀌어 노트를 바꾸지 않았습니다. 명령을 다시 실행해 주세요.',
+  'The note was switched to another while the workflow was made, so the link to it was not inserted.':
+    'workflow를 만드는 사이에 다른 노트로 바뀌어 그 링크를 넣지 않았습니다.',
   'Open a note of an experiment to list its samples.': '시료 목록을 넣으려면 실험 안의 노트를 여세요.',
   'This experiment has no samples yet.': '이 실험에는 아직 시료가 없습니다.',
   'Inserted {0} sample(s).': '시료 {0}개를 표로 넣었습니다.',

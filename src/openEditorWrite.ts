@@ -106,6 +106,12 @@ async function writeInOpenEditor(
     // read yet. Read again once it is on the file, rather than take the view for one behind.
     if (await waitForOpenSaves(app, file.path, 0)) break;
   }
+  // Looked at again after every wait: the view may have gone to another note meanwhile, whose
+  // editor and last saved text (alike, it may be) are not this file's. Gone, the change is made
+  // on this file through the vault, as for a closed note.
+  const shown = view;
+  const onFile = () => openSourceView(app, file.path) === shown;
+  if (!onFile()) return undefined;
   const before = view.editor.getValue();
   // Only a view that holds this file as it is now: Obsidian 1.15.0 keeps in `lastSavedData`
   // the text it last read or saved (the file's own text, CRLF and all), null while it reads a
@@ -134,15 +140,18 @@ async function writeInOpenEditor(
     } catch {
       // The file is looked at below either way.
     }
-    const atSave = lf(view.editor.getValue());
+    // The editor's text as the save left it, only while the view is still on the file: another
+    // note's says nothing of this one.
+    const atSave = onFile() ? lf(view.editor.getValue()) : undefined;
     const now = await app.vault.read(file);
-    const savedAs: unknown = (view as unknown as { lastSavedData?: unknown }).lastSavedData;
+    const still = atSave !== undefined && onFile();
+    const savedAs: unknown = still ? (view as unknown as { lastSavedData?: unknown }).lastSavedData : undefined;
     // Looked at with `savedAs`, no await between: what the view holds as it last read or saved.
     const editorNow = lf(view.editor.getValue());
-    const wrote = saved && openSourceView(app, file.path) === view && typeof savedAs === 'string' && savedAs !== disk;
+    const wrote = saved && still && typeof savedAs === 'string' && savedAs !== disk;
     // The view still on the note, holding the file's text as last saved: its editor keeps the
     // change, and saves it on its next save.
-    const keeps = view.file?.path === file.path && typeof savedAs === 'string';
+    const keeps = still && typeof savedAs === 'string';
     // A failed save whose view has read the file another writer changed already, its editor
     // now that file: the change is there only if that file has it, which this cannot tell (a
     // formatter may have rewritten the editor's text, change and all, or another edit not).
@@ -160,10 +169,10 @@ async function writeInOpenEditor(
   // may or may not have the change (rewritten by a formatter, say); read merged with typing, the
   // editor differs from the file whether the merge kept the change or dropped it (a part it
   // could not place). The change is not applied again, which could put it in twice.
-  const landed = (text: string, atSave: string) => lf(text) === after || lf(text) === atSave;
+  const landed = (text: string, atSave: string | undefined) => lf(text) === after || lf(text) === atSave;
   // A view that read the file over its editor has the two alike, whether or not the file has the
   // change: not taken for the file reading as the editor.
-  const changedMeanwhile = (at: { saved: boolean; atSave: string; now: string; wrote: boolean; readOver: boolean }) => {
+  const changedMeanwhile = (at: { saved: boolean; atSave?: string; now: string; wrote: boolean; readOver: boolean }) => {
     if (at.wrote || lf(at.now) === after) return true;
     if (at.readOver) return 'uncertain' as const;
     if (landed(at.now, at.atSave)) return true;
@@ -183,9 +192,13 @@ async function writeInOpenEditor(
     // Past the wait, that save, made of the editor's text, has the change in it, and the editor
     // keeps it: written, not to be asked for again (which would put an insertion in twice).
     if (!(await waitForOpenSaves(app, file.path, until))) return at.keeps;
-    at = await save();
-    if (at.now !== disk) return changedMeanwhile(at);
-    return at.keeps;
+    // Gone to another note meanwhile: that note is not saved for this one; the change, left in
+    // this file's editor as it switched, is looked for in the file below.
+    if (onFile()) {
+      at = await save();
+      if (at.now !== disk) return changedMeanwhile(at);
+      return at.keeps;
+    }
   }
   // A view that left the note, or reads it again, does not keep the editor's text: the change
   // is made of the file's, through the vault, once, only to the file as it was before the
@@ -459,6 +472,8 @@ export async function openEditorText(app: App, path: string): Promise<string | u
   const file = app.vault.getFileByPath(path);
   if (!file) return undefined;
   const disk = await app.vault.read(file);
+  // Gone to another note while the file was read: its editor is not this note's.
+  if (openSourceView(app, path) !== view) return undefined;
   const text = view.editor.getValue();
   const lastSaved: unknown = (view as unknown as { lastSavedData?: unknown }).lastSavedData;
   if (lastSaved !== disk || (text === '' && disk.trim() !== '')) return undefined;

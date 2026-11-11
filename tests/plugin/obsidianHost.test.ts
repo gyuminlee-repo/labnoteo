@@ -232,3 +232,20 @@ describe('openFile', () => {
     expect(reading.editor.setCursor).not.toHaveBeenCalled();
   });
 });
+
+// The view gone to another note between two calls (a prompt, a read in between): its editor is
+// that note's now, so the target neither reads nor changes it as this one.
+describe('editTarget after its view went to another note', () => {
+  it('refuses to read or write', async () => {
+    const { host, view, editor } = setup({ mode: 'source', data: 'note A\n', editorText: 'note A\n' });
+    const target = host.editTarget()!;
+    expect(await target.getText()).toBe('note A\n');
+    view.file = new TFile('labnote/001_Test/002_WD020_B.labnote.md');
+    editor.text = 'note B\n';
+    const switched = 'The note was switched to another while the command ran, so it was not changed. Run the command again.';
+    await expect(target.getText()).rejects.toThrow(switched);
+    await expect(target.replaceRange(0, 0, 'X')).rejects.toThrow(switched);
+    expect(editor.text).toBe('note B\n');
+  });
+});
+

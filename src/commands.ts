@@ -1021,6 +1021,11 @@ export async function insertIssueMarkerCommand(editor: Editor, host: LabnoteHost
       })
     )?.trim();
     if (!topic) return false;
+    // The editor may show another note now: that one is not marked.
+    if (notePath !== undefined && host.editTarget && host.editTarget()?.path !== notePath) {
+      host.notify('warn', host.t('The note was switched to another while the command ran, so it was not changed. Run the command again.'));
+      return false;
+    }
     // The note may have changed while the prompt was open.
     doc = editor.getValue();
     const caret = editor.posToOffset(editor.getCursor('from'));
@@ -1479,6 +1484,8 @@ export async function insertWorkflowLinkCommand(
   // too, since the link goes over it as it did.
   const caret = editor.posToOffset(editor.getCursor('from'));
   const caretTo = editor.posToOffset(editor.getCursor('to'));
+  // The note the link goes into: the editor may show another one once the workflow is made.
+  const notePath = app.workspace.getActiveFile()?.path;
 
   const chosen = await pickWorkflow(host);
   if (!chosen) return;
@@ -1511,6 +1518,11 @@ export async function insertWorkflowLinkCommand(
       ? app.fileManager.generateMarkdownLink(file, sourcePath, undefined, created.displayTitle)
       : `[[${created.fileName.replace(/\.md$/, '')}|${created.displayTitle}]]`;
 
+  if (sourcePath !== notePath) {
+    notifyWorkflowCreated(host, created);
+    host.notify('warn', host.t('The note was switched to another while the workflow was made, so the link to it was not inserted.'));
+    return;
+  }
   const text = editor.getValue();
   const from = caretIn(caret, text);
   const to = Math.max(from, caretIn(caretTo, text));
