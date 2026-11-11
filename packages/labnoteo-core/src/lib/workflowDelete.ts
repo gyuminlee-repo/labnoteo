@@ -122,10 +122,11 @@ export function removeWorkflowFromReadme(
     // `# Notes` are that part's.
     ranges.push({ start: workflow.header + 1, end: Math.min(workflow.end, sectionBodyEnd(lines, workflow.header, 2)) });
   }
-  // Union with what main (#442) deletes, so this never removes less than main did.
-  const drop = v442DeletedLines(readmeContent, lines, line => isChecklistLineForFile(line, fileName));
-  // main (#442) read the front matter as Markdown; what it would delete there stays.
-  for (const i of [...drop]) if (i < fm) drop.delete(i);
+  // Union with what main (#442) deletes from the body, so this never removes less than main did
+  // there. Main read the front matter as Markdown: read with it, a fence in the YAML moved what
+  // main deleted below, so the same body lost other lines under another front matter.
+  const bodyLines = lines.slice(fm);
+  const drop = new Set([...v442DeletedLines(bodyLines.join(''), bodyLines, line => isChecklistLineForFile(line, fileName))].map(i => i + fm));
   // Nor a line in a closed fence or an HTML block as CommonMark reads them: main read a list
   // item's fence closer (`  ```` under `- ```md`) as an opener, and the example below as entries.
   for (const i of [...drop]) if (plain[i]) drop.delete(i);

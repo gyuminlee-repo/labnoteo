@@ -68,6 +68,13 @@ describe('a README entry after a list fence', () => {
     expect(removeWorkflowFromReadme(md, '001_WD010_A.labnote.md').content).toBe(`## Related Workflows\n- ${t}md\n  ${t}\n${t}\nx\n${t}\n`);
   });
 
+  it('keeps an entry in a list fence whatever the front matter holds', () => {
+    const body = `- ${t}md\r\n  - [UHW001 Ex](#x)\r\n  *x*\n  ${A}\r\n  code\n  ${t}\r\n`;
+    for (const fm of ['', '---\ntitle: WD010 T\n---x\n\n## Worksheet scans\n---\n']) {
+      expect(removeWorkflowFromReadme(fm + body, '001_WD010_A.labnote.md')).toEqual({ changed: false, content: fm + body });
+    }
+  });
+
   it('keeps an entry in the fence under the next heading', () => {
     const md = `## Related Workflows\n- ${t}md\n  ${t}\n## A\n${t}\n${A}\n${t}\n`;
     expect(removeWorkflowFromReadme(md, '001_WD010_A.labnote.md')).toEqual({ changed: false, content: md });
