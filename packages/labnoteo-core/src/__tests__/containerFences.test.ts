@@ -10,6 +10,9 @@ import { listHeadings } from '../sections/sectionEdit';
 import { extractMarkdownTables } from '../lib/exportTablesCsv';
 import { removeWorkflowFromReadme } from '../lib/workflowDelete';
 import { insertWorkflowChecklistEntries } from '../lib/workflowStructure';
+import { parseIssueMarkers } from '../lib/issueMarker';
+import { findSampleListTableRanges } from '../lib/sampleUtils';
+import { scanDocumentHead } from '../sections/documentHead';
 
 const t = '```';
 const A = '- [ ] [A](./001_WD010_A.labnote.md)';
@@ -31,6 +34,21 @@ describe('readers after a list fence', () => {
 
   it('exports the table below a list fence', () => {
     expect(extractMarkdownTables(`- ${t}md\n  ${t}\n\n| a | b |\n|---|---|\n| 1 | 2 |\n`)).toHaveLength(1);
+  });
+});
+
+describe('readers with a fence rule of their own', () => {
+  it('reads the issue marker below a list fence, and none in a fence an info line does not close', () => {
+    expect(parseIssueMarkers(`- ${t}md\n  ${t}\ntext @issue;ISS-1;topic\n`).markers.map(m => m.id)).toEqual(['ISS-1']);
+    expect(parseIssueMarkers(`${t}\nx\n${t}md\ntext @issue;ISS-1;topic\n${t}\n`).markers).toEqual([]);
+  });
+
+  it('finds the sample list below a list fence', () => {
+    expect(findSampleListTableRanges(`- ${t}md\n  ${t}\n| ID | Name |\n|---|---|\n| S1 | a |\n`, [['ID', 'Name']])).toHaveLength(1);
+  });
+
+  it('reads the title below a list fence', () => {
+    expect(scanDocumentHead([`- ${t}md`, `  ${t}`, '# Title']).firstHeadingLine).toBe(2);
   });
 });
 

@@ -4,7 +4,7 @@
  */
 
 import { escapeRegExp } from './regexUtils';
-import { fenceLines } from '../sections/codeFences';
+import { fenceLines, stepFence, type OpenFence } from '../sections/codeFences';
 
 /**
  * Sample types available
@@ -194,19 +194,17 @@ function scanSampleListTables(
     at = nl + 1;
   }
   const tables: Array<SampleListTableRange & { rows: SampleListRow[] }> = [];
-  let fence: string | undefined;
-  // Fences in a block quote or list item as CommonMark reads them.
+  let fence: OpenFence | null = null;
+  // Fences in a block quote or list item as CommonMark reads them, closed as stepFence closes them.
   const view = fenceLines(lines.map(l => l.text));
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].text;
-    // A backtick run with a backtick after it is inline code, not a fence, as stepFence reads it.
-    const run = /^\s{0,3}(`{3,}|~{3,})([^\n]*)/.exec(view[i]);
-    const mark = run && !(run[1][0] === '`' && run[2].includes('`')) ? run[1] : undefined;
-    if (mark && (!fence || (mark[0] === fence[0] && mark.length >= fence.length))) {
-      fence = fence ? undefined : mark;
+    const next = stepFence(view[i], fence);
+    if (fence !== null || next !== null) {
+      fence = next;
       continue;
     }
-    if (fence || !line.trimStart().startsWith('|')) continue;
+    if (!line.trimStart().startsWith('|')) continue;
     const header = tableCells(line);
     const matched = sets.indexOf(header.map(c => c.toLowerCase()).join('\u0000'));
     if (matched < 0) continue;

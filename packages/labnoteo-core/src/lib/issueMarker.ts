@@ -21,7 +21,7 @@
  * them, and `validate` that reports broken ones.
  */
 import { frontMatterLineCountOf } from '../sections/frontMatter';
-import { fenceLines } from '../sections/codeFences';
+import { fenceLines, stepFence, type OpenFence } from '../sections/codeFences';
 import { isInFrontMatter } from '../sections/documentHead';
 
 /** Marker keyword, without the delimiter. */
@@ -104,17 +104,6 @@ const MARKER_RE = /^@issue[;:]([A-Za-z0-9-]+)(?:[;:](.*))?$/i;
  */
 const MARKER_START_RE = /@issue(?=[;:])/i;
 
-/** Opening/closing fence of a code block (up to 3 leading spaces, per CommonMark). */
-const FENCE_RE = /^ {0,3}(`{3,}|~{3,})([^\n]*)/;
-
-/**
- * Whether `line` is a fence line: a backtick run with a backtick after it is inline code,
- * not a fence (CommonMark), as stepFence reads it, so a marker below it is text there too.
- */
-function isFenceLine(line: string): boolean {
-  const m = FENCE_RE.exec(line);
-  return !!m && !(m[1][0] === '`' && m[2].includes('`'));
-}
 const INDENTED_CODE_RE = /^(?: {4}|\t)/;
 const LIST_ITEM_RE = /^\s*(?:[-*+]|\d+[.)])(?:\s|$)/;
 
@@ -128,21 +117,19 @@ const LIST_ITEM_RE = /^\s*(?:[-*+]|\d+[.)])(?:\s|$)/;
  */
 function codeLines(lines: readonly string[]): boolean[] {
   const code: boolean[] = [];
-  let inFence = false;
+  let fence: OpenFence | null = null;
   let inIndented = false;
   let inList = false;
   let prevBlank = true;
-  // Fences in a block quote or list item as CommonMark reads them.
+  // Fences in a block quote or list item as CommonMark reads them, closed only by a run of the
+  // same character at least as long with nothing after it (stepFence).
   const view = fenceLines(lines);
   for (const [i, line] of lines.entries()) {
-    if (isFenceLine(view[i])) {
-      inFence = !inFence;
+    const next = stepFence(view[i], fence);
+    if (fence !== null || next !== null) {
+      fence = next;
       code.push(true);
       prevBlank = false;
-      continue;
-    }
-    if (inFence) {
-      code.push(true);
       continue;
     }
     if (line.trim() === '') {
@@ -424,16 +411,18 @@ export function fencedCodeRanges(md: string): IssueMarkerRange[] {
   const ranges: IssueMarkerRange[] = [];
   let offset = 0;
   let start = -1;
-  for (const line of md.split('\n')) {
+  const lines = md.split('\n');
+  const view = fenceLines(lines);
+  let fence: OpenFence | null = null;
+  for (const [i, line] of lines.entries()) {
     const end = offset + line.length;
-    if (isFenceLine(line)) {
-      if (start === -1) {
-        start = offset;
-      } else {
-        ranges.push({ start, end });
-        start = -1;
-      }
+    const next = stepFence(view[i], fence);
+    if (fence === null && next !== null) start = offset;
+    if (fence !== null && next === null) {
+      ranges.push({ start, end });
+      start = -1;
     }
+    fence = next;
     offset = end + 1;
   }
   if (start !== -1) ranges.push({ start, end: md.length });

@@ -4,7 +4,7 @@
  * matter or above the title (#50, #63).
  */
 import { frontMatterLineCountOf } from './frontMatter';
-import { fenceLines } from './codeFences';
+import { fenceLines, stepFence, type OpenFence } from './codeFences';
 export interface DocumentHead {
   /** Line index of the closing `---`, or -1 when there is no (closed) front matter. */
   fmEndLine: number;
@@ -23,25 +23,18 @@ export function scanDocumentHead(lines: readonly string[]): DocumentHead {
   // (YAML comments look like headings).
   const headingLines = new Set<number>();
   let firstHeadingLine = -1;
-  let inFence = false;
-  let fenceChar = '';
-  // Fences in a block quote or list item as CommonMark reads them.
+  let fence: OpenFence | null = null;
+  // Fences in a block quote or list item as CommonMark reads them, at any indent as before, and
+  // closed as stepFence closes them (the same character, at least as long, nothing after it).
   const view = fenceLines(lines, fmEndLine + 1);
   for (let i = 0; i < lines.length; i++) {
     if (fmEndLine !== -1 && i <= fmEndLine) continue;
     const trimmed = lines[i].trimStart();
-    const fence = /^(```+|~~~+)/.exec(view[i].trimStart());
-    if (fence) {
-      const ch = fence[1][0];
-      if (!inFence) {
-        inFence = true;
-        fenceChar = ch;
-      } else if (ch === fenceChar) {
-        inFence = false;
-      }
+    const next = stepFence(view[i].trimStart(), fence);
+    if (fence !== null || next !== null) {
+      fence = next;
       continue;
     }
-    if (inFence) continue;
     if (/^#{1,6}\s/.test(trimmed)) {
       headingLines.add(i);
       if (firstHeadingLine === -1) firstHeadingLine = i;
