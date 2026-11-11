@@ -8,7 +8,7 @@
  * and sections still holding the template placeholder print their heading only.
  */
 import { listUnitOpBlocks, WORKSHEET_SCANS_HEADING } from '../sections/scanInsert';
-import { fenceLines, stepFence, type OpenFence } from '../sections/sectionEdit';
+import { classifyLines, isFenced, isPlain } from '../sections/codeFences';
 import { fitRow, isTableHeaderLine, isTableRowLine, splitTableCells } from './exportTablesCsv';
 import { HW_PLACEHOLDERS, SW_PLACEHOLDERS } from './unitOpTemplate';
 import { stripAiCallouts } from './aiCallout';
@@ -106,13 +106,9 @@ function splitSections(lines: readonly string[]): { description: string; section
   const sections: RawSection[] = [];
   const intro: string[] = [];
   let current: RawSection | null = null;
-  let fence: OpenFence | null = null;
-  const view = fenceLines(lines);
+  const kinds = classifyLines(lines);
   for (const [i, line] of lines.entries()) {
-    const next = stepFence(view[i], fence);
-    const inCode = fence !== null || next !== fence;
-    fence = next;
-    const m = !inCode && /^####\s+(.+?)\s*$/.exec(line);
+    const m = isPlain(kinds[i]) && /^####[ \t]+(.+?)[ \t]*$/.exec(line);
     if (m) {
       current = { title: m[1], lines: [] };
       sections.push(current);
@@ -169,20 +165,20 @@ export function parseWorksheetBlocks(lines: readonly string[]): WorksheetBlock[]
   const blocks: WorksheetBlock[] = [];
   const open: number[] = [];
   let afterBlank = false;
-  let fence: OpenFence | null = null;
-  let code: string[] | null = null;
-  const view = fenceLines(lines);
+  let code: string[] = [];
+  // Each line as the one block reading has it (classifyLines): a fence ended by the end of its list
+  // item or block quote keeps its last line as code.
+  const kinds = classifyLines(lines);
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const next = stepFence(view[i], fence);
-    if (next !== fence || fence) {
-      if (!fence) {
+    const kind = kinds[i].kind;
+    if (isFenced(kinds[i])) {
+      if (kind === 'opener') {
         code = [];
         blocks.push({ kind: 'code', lines: code });
-      } else if (next === fence) {
-        code?.push(line);
+      } else if (kind === 'code') {
+        code.push(line);
       }
-      fence = next;
       open.length = 0;
       afterBlank = false;
       continue;
@@ -212,7 +208,7 @@ export function parseWorksheetBlocks(lines: readonly string[]): WorksheetBlock[]
     if (isTableHeaderLine(lines, i)) {
       const header = splitTableCells(line);
       const rows = [header];
-      for (i += 2; i < lines.length && isTableRowLine(lines[i]); i++) {
+      for (i += 2; i < lines.length && isTableRowLine(lines[i], kinds[i]); i++) {
         rows.push(fitRow(splitTableCells(lines[i]), header.length));
       }
       i--;
@@ -305,13 +301,9 @@ const trimBlankEdges = (lines: string[]): string[] => {
  * line, not none, so the paragraphs around it stay apart.
  */
 function blankPlaceholders(lines: readonly string[]): string[] {
-  let fence: OpenFence | null = null;
-  const view = fenceLines(lines);
+  const kinds = classifyLines(lines);
   return lines.map((line, i) => {
-    const next = stepFence(view[i], fence);
-    const inCode = fence !== null || next !== fence;
-    fence = next;
-    return !inCode && PLACEHOLDERS.has(line.trim()) ? '' : line;
+    return !isFenced(kinds[i]) && PLACEHOLDERS.has(line.trim()) ? '' : line;
   });
 }
 

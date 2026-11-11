@@ -4,8 +4,7 @@
  */
 
 import { escapeRegExp } from './regexUtils';
-import { fenceLines, stepFence, type OpenFence } from '../sections/codeFences';
-import { frontMatterLineCountOf } from '../sections/frontMatter';
+import { classifyNote, isPlain } from '../sections/codeFences';
 
 /**
  * Sample types available
@@ -195,27 +194,22 @@ function scanSampleListTables(
     at = nl + 1;
   }
   const tables: Array<SampleListTableRange & { rows: SampleListRow[] }> = [];
-  let fence: OpenFence | null = null;
-  // Fences in a block quote or list item as CommonMark reads them, closed as stepFence closes them,
-  // from past the front matter: one in the YAML reaches no table below.
-  const fm = frontMatterLineCountOf(lines.map(l => l.text));
-  const view = fenceLines(lines.map(l => l.text), fm);
+  // Lines as the one block reading has them (classifyNote): a table is found only on text lines,
+  // so none in the front matter, a fence or an HTML block.
+  const kinds = classifyNote(lines.map(l => l.text));
+  const plain = (k: number): boolean => kinds[k] !== undefined && isPlain(kinds[k]);
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].text;
-    const next: OpenFence | null = i < fm ? null : stepFence(view[i], fence);
-    if (fence !== null || next !== null) {
-      fence = next;
-      continue;
-    }
+    if (!plain(i)) continue;
     if (!line.trimStart().startsWith('|')) continue;
     const header = tableCells(line);
     const matched = sets.indexOf(header.map(c => c.toLowerCase()).join('\u0000'));
     if (matched < 0) continue;
     const rule = lines[i + 1]?.text;
-    if (!rule || !tableCells(rule).every(c => /^:?-+:?$/.test(c))) continue;
+    if (!rule || !plain(i + 1) || !tableCells(rule).every(c => /^:?-+:?$/.test(c))) continue;
     const rows: SampleListRow[] = [];
     let j = i + 2;
-    for (; j < lines.length && lines[j].text.trimStart().startsWith('|'); j++) {
+    for (; j < lines.length && plain(j) && lines[j].text.trimStart().startsWith('|'); j++) {
       const id = tableCells(lines[j].text)[0];
       if (id) rows.push({ start: lines[j].start, end: lines[j].start + lines[j].text.length, id });
     }

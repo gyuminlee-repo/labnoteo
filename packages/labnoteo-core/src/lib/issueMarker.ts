@@ -21,7 +21,7 @@
  * them, and `validate` that reports broken ones.
  */
 import { frontMatterLineCountOf } from '../sections/frontMatter';
-import { fenceLines, stepFence, type OpenFence } from '../sections/codeFences';
+import { classifyLines, isFenced } from '../sections/codeFences';
 import { isInFrontMatter } from '../sections/documentHead';
 
 /** Marker keyword, without the delimiter. */
@@ -119,18 +119,14 @@ const LIST_ITEM_RE = /^\s*(?:[-*+]|\d+[.)])(?:\s|$)/;
 // reaches no line below), or a fragment's from its first line.
 function codeLines(lines: readonly string[], from = 0): boolean[] {
   const code: boolean[] = new Array<boolean>(Math.min(from, lines.length)).fill(false);
-  let fence: OpenFence | null = null;
   let inIndented = false;
   let inList = false;
   let prevBlank = true;
-  // Fences in a block quote or list item as CommonMark reads them, closed only by a run of the
-  // same character at least as long with nothing after it (stepFence).
-  const view = fenceLines(lines, from);
+  // Fences as the one block reading has them (classifyLines).
+  const kinds = classifyLines(lines, from);
   for (const [i, line] of lines.entries()) {
     if (i < from) continue;
-    const next = stepFence(view[i], fence);
-    if (fence !== null || next !== null) {
-      fence = next;
+    if (isFenced(kinds[i])) {
       code.push(true);
       prevBlank = false;
       continue;
@@ -417,17 +413,15 @@ export function fencedCodeRanges(md: string): IssueMarkerRange[] {
   let start = -1;
   const lines = md.split('\n');
   const fm = frontMatterLineCountOf(lines, { crKept: true });
-  const view = fenceLines(lines, fm);
-  let fence: OpenFence | null = null;
+  // Fences as the one block reading has them (classifyLines), from past the front matter.
+  const kinds = classifyLines(lines, fm);
   for (const [i, line] of lines.entries()) {
     const end = offset + line.length;
-    const next: OpenFence | null = i < fm ? null : stepFence(view[i], fence);
-    if (fence === null && next !== null) start = offset;
-    if (fence !== null && next === null) {
+    if (kinds[i].kind === 'opener') start = offset;
+    if (kinds[i].ends) {
       ranges.push({ start, end });
       start = -1;
     }
-    fence = next;
     offset = end + 1;
   }
   if (start !== -1) ranges.push({ start, end: md.length });

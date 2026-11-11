@@ -8,7 +8,8 @@
  * unit-op blocks at the cursor and keeps the TOC in sync with these targeted
  * helpers.
  */
-import { fenceLines, normalizeHeadingText, stepFence, type OpenFence } from './sectionEdit';
+import { classifyLines, isFenced } from './codeFences';
+import { normalizeHeadingText } from './sectionEdit';
 import { joinLineBuffer, spliceLineBuffer, splitLineBuffer } from '../util/lineEnds';
 import { frontMatterLineCount, frontMatterLineCountOf } from './frontMatter';
 
@@ -224,30 +225,31 @@ export function appendUnitOpToWorkflowToc(
   if (lastEntry !== -1) {
     const opener: number[] = [];
     const closed = new Set<number>();
-    let fence: OpenFence | null = null;
     let at = -1;
     let indented = false;
     let oddClose = false;
-    // No fence in the front matter, as scanLines reads it.
+    // No fence in the front matter, as scanLines reads it; lines as the one block reading has them.
     const frontMatter = frontMatterLineCount(md);
-    // Fences in a block quote or list item as CommonMark reads them.
-    const view = fenceLines(lines, frontMatter);
+    const kinds = classifyLines(lines, frontMatter);
     for (let j = 0; j < endIdx; j++) {
-      const next: OpenFence | null = j < frontMatter ? fence : stepFence(view[j], fence);
-      if (next !== fence && j < lastEntry && /^\s/.test(lines[j])) indented = true;
-      if (fence === null && next !== null) at = j;
-      opener.push(fence !== null || next !== null ? at : -1);
-      if (fence !== null && next === null) {
+      const k = kinds[j];
+      const fenceLine = k.kind === 'opener' || k.kind === 'closer';
+      if (fenceLine && j < lastEntry && /^\s/.test(lines[j])) indented = true;
+      if (k.kind === 'opener') at = j;
+      opener.push(isFenced(k) ? at : -1);
+      // A closer in a block quote or list item, or a fence its container ended (no closer line of
+      // its own), is not the plain closer this rebuild trusts.
+      const endedByContainer = k.ends === true && k.kind !== 'closer';
+      if (k.ends) {
         closed.add(at);
-        if (!/^ {0,3}(`{3,}|~{3,})[ \t]*$/.test(lines[j])) oddClose = true;
+        if (endedByContainer || k.depth > 0) oddClose = true;
       }
-      fence = next;
     }
     // The front matter is YAML: a `<` line or a lone CR there is not the Markdown read here.
     const html = lines.slice(frontMatter, lastEntry).some(l => /^ {0,3}</.test(l));
     const loneCr = lines.slice(frontMatter, endIdx).some(l => l.includes('\r'));
     const inCode = (j: number): boolean =>
-      !indented && !html && !oddClose && !loneCr && opener[j] > headingIdx && closed.has(opener[j]) && /^[`~]/.test(lines[opener[j]]);
+      !indented && !html && !oddClose && !loneCr && opener[j] > headingIdx && closed.has(opener[j]) && kinds[opener[j]].depth === 0 && !/^[ \t]/.test(lines[opener[j]]);
     if (inCode(lastEntry)) {
       let alt = -1;
       for (let j = lastEntry - 1; j > headingIdx && alt === -1; j--) if (isEntry(j) && opener[j] === -1) alt = j;
@@ -405,23 +407,18 @@ interface MdLine {
 /** Split into lines with offsets, marking ``` / ~~~ fenced code (fence lines included). */
 function scanLines(md: string): MdLine[] {
   const lines: MdLine[] = [];
-  // Fences read as stepFence reads them, so a backtick run with a backtick in its info is text;
-  // none in the front matter, which Obsidian reads as properties.
+  // Lines as the one block reading has them (classifyLines), over the lines split as below; none
+  // in the front matter, which Obsidian reads as properties.
   const frontMatter = frontMatterLineCount(md);
-  // Fences in a block quote or list item as CommonMark reads them, over the lines split as below.
   const pieces = md.split('\n');
-  const view = fenceLines(pieces.map((p, k) => (k < pieces.length - 1 && p.endsWith('\r') ? p.slice(0, -1) : p)), frontMatter);
-  let fence: OpenFence | null = null;
+  const kinds = classifyLines(pieces.map((p, k) => (k < pieces.length - 1 && p.endsWith('\r') ? p.slice(0, -1) : p)), frontMatter);
   let start = 0;
   for (;;) {
     const nl = md.indexOf('\n', start);
     const end = nl === -1 ? md.length : nl > start && md[nl - 1] === '\r' ? nl - 1 : nl;
     const text = md.slice(start, end);
-    const inFrontMatter = lines.length < frontMatter;
-    const next: OpenFence | null = inFrontMatter ? fence : stepFence(view[lines.length], fence);
     // Front matter is YAML, no Markdown: a `## …` comment in it is no heading, a `- [ID …]` no TOC entry.
-    const fenced = inFrontMatter || fence !== null || next !== null;
-    fence = next;
+    const fenced = lines.length < frontMatter || isFenced(kinds[lines.length]);
     lines.push({ start, end, text, fenced });
     if (nl === -1) break;
     start = nl + 1;

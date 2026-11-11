@@ -11,7 +11,7 @@
  * with its indent dropped, as under a list entry). An opener that is never
  * closed is not a fence. Each reading is one linear pass.
  */
-import { closedFenceSpans, fenceView, htmlBlockMarks, stepFence, type OpenFence } from '../sections/codeFences';
+import { classifyLines, closedFenceSpans, htmlBlockMarks, isFenced } from '../sections/codeFences';
 
 /**
  * Which lines are in an HTML block (CommonMark, read line by line, in block quotes and list
@@ -36,19 +36,11 @@ function fenceReading(lines: readonly string[], indentAny: boolean, inHtml?: rea
  * would be in one. The closed readings take an opener never closed for text; this one does not.
  */
 function lineByLineFences(lines: readonly string[], from = 0): { code: boolean[]; openBefore: boolean[] } {
-  const html = htmlBlockLines(lines.slice(from));
-  const code = new Array<boolean>(lines.length).fill(false);
-  const openBefore = new Array<boolean>(lines.length + 1).fill(false);
-  let fence: OpenFence | null = null;
-  const view = fenceView(lines, from);
-  for (let i = from; i < lines.length; i++) {
-    openBefore[i] = fence !== null;
-    if (html[i - from]) continue;
-    const next = stepFence(view[i].replace(/\r?\n$|\r$/, ''), fence);
-    code[i] = fence !== null || next !== null;
-    fence = next;
-  }
-  openBefore[lines.length] = fence !== null;
+  // Lines as the one block reading has them (classifyLines).
+  const kinds = classifyLines(lines, from);
+  const open = (i: number): boolean => i >= from && isFenced(kinds[i]) && !kinds[i].ends;
+  const code = kinds.map(isFenced);
+  const openBefore = Array.from({ length: lines.length + 1 }, (_x, i) => open(i - 1));
   return { code, openBefore };
 }
 

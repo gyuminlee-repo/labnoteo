@@ -3,7 +3,8 @@
  * section (`Conclusions and Discussion` of a workflow note, `Summary and
  * Discussion` of a README), replacing the summary an earlier run put there.
  */
-import { fenceLines, findSectionMatches, listHeadings, sectionBodyEnd, stepFence, type OpenFence } from './sectionEdit';
+import { classifyLines, isPlain } from './codeFences';
+import { findSectionMatches, listHeadings, sectionBodyEnd } from './sectionEdit';
 import { frontMatterLineCountOf } from './frontMatter';
 
 /** Where {@link locateSummary} found the summary's section. */
@@ -45,17 +46,11 @@ function locate(md: string, heading: string, titles: readonly string[] = []): Lo
   }
   if (titles.length === 0) return undefined;
   let callout = -1;
-  let fence: OpenFence | null = null;
   const fm = frontMatterLineCountOf(lines, { crKept: true });
-  // Fences in a block quote or list item as CommonMark reads them.
-  const view = fenceLines(lines, fm);
+  // Lines as the one block reading has them (classifyLines): the callout is on a text line.
+  const kinds = classifyLines(lines, fm);
   for (let i = fm; i < lines.length; i++) {
-    const next = stepFence(view[i], fence);
-    if (next !== fence) {
-      fence = next;
-      continue;
-    }
-    if (!fence && isSummaryCallout(lines[i], titles)) callout = i;
+    if (isPlain(kinds[i]) && isSummaryCallout(lines[i], titles)) callout = i;
   }
   if (callout === -1) return undefined;
   const above = listHeadings(md).filter(h => h.line < callout).pop();

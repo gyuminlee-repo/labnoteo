@@ -7,7 +7,7 @@
  * the sections results are written in count, plus any section the researcher
  * added themselves.
  */
-import { fenceLines, stepFence, type OpenFence } from '../sections/sectionEdit';
+import { classifyLines, isPlain } from '../sections/codeFences';
 import { frontMatterLineCount } from '../sections/frontMatter';
 import { HW_PLACEHOLDERS, SW_PLACEHOLDERS } from './unitOpTemplate';
 import { stripAiCallouts } from './aiCallout';
@@ -68,17 +68,13 @@ function sections(md: string): HeadingSection[] {
   const unitOpLine = unitOpSectionLine(md);
   // No fence in the front matter, as unitOpSectionLine reads it.
   const frontMatter = frontMatterLineCount(md);
-  let fence: OpenFence | null = null;
   let current: HeadingSection | null = null;
   const lines = md.split(/\r?\n/);
-  // Fences in a block quote or list item as CommonMark reads them.
-  const view = fenceLines(lines, frontMatter);
+  // Lines as the one block reading has them (classifyLines): a heading is on a text line, so none
+  // in the front matter (YAML: a `## …` comment there), a fence or an HTML block.
+  const kinds = classifyLines(lines, frontMatter);
   for (const [i, line] of lines.entries()) {
-    const next: OpenFence | null = i < frontMatter ? fence : stepFence(view[i], fence);
-    const inFence = fence !== null || next !== null;
-    fence = next;
-    // Front matter is YAML: a `## …` comment in it is no heading.
-    const heading = inFence || i < frontMatter ? null : HEADING_RE.exec(line);
+    const heading = isPlain(kinds[i]) ? HEADING_RE.exec(line) : null;
     if (heading) {
       current = { level: heading[1].length, title: heading[2].trim(), body: [], unitOps: i === unitOpLine };
       out.push(current);

@@ -7,7 +7,8 @@
  * that unit operation's `#### Method` body; anywhere else it goes in as its own
  * block after the cursor's line. The Obsidian side only applies the result.
  */
-import { fenceLines, findSectionMatches, sectionBodyEnd, stepFence, type OpenFence } from './sectionEdit';
+import { classifyLines, isFenced, isPlain } from './codeFences';
+import { findSectionMatches, sectionBodyEnd } from './sectionEdit';
 import { UNIT_OP_HEADING_PATTERN } from './workflowSectionParser';
 import { scanDocumentHead, isBeforeBody } from './documentHead';
 import { frontMatterLineCountOf, stripFrontMatter } from './frontMatter';
@@ -38,17 +39,11 @@ interface HeadingLine {
 /** Every ATX heading outside code fences, in document order. */
 function scanHeadings(lines: readonly string[]): HeadingLine[] {
   const headings: HeadingLine[] = [];
-  let fence: OpenFence | null = null;
   const start = frontMatterLineCountOf(lines);
-  // Fences in a block quote or list item as CommonMark reads them.
-  const view = fenceLines(lines, start);
+  // Lines as the one block reading has them (classifyLines): a heading is on a text line.
+  const kinds = classifyLines(lines, start);
   for (let i = start; i < lines.length; i++) {
-    const next = stepFence(view[i], fence);
-    if (next !== fence) {
-      fence = next;
-      continue;
-    }
-    if (fence) continue;
+    if (!isPlain(kinds[i])) continue;
     const m = ANY_HEADING_RE.exec(lines[i]);
     if (m) headings.push({ line: i, level: m[1].length });
   }
@@ -165,9 +160,12 @@ export function findUnitOpMethodByIndex(
  */
 export function extractMethodBody(output: string): string {
   let text = output.trim();
-  const fenced = /^(`{3,}|~{3,})([^\n]*)\n([\s\S]*?)\n\1\s*$/.exec(text);
-  // A backtick run with a backtick in its info is inline code, not a fence, as stepFence reads it.
-  if (fenced && !(fenced[1][0] === '`' && fenced[2].includes('`'))) text = fenced[3];
+  // A reply wrapped whole in one fence, read as the one block reading has it (classifyLines).
+  const whole = text.split(/\r?\n/);
+  const wrap = classifyLines(whole);
+  const last = whole.length - 1;
+  if (last >= 2 && wrap[0].kind === 'opener' && wrap[last].kind === 'closer' && wrap.slice(1, last).every(l => l.kind === 'code'))
+    text = whole.slice(1, last).join('\n');
 
   let lines = text.split(/\r?\n/);
   // A reply, not a note: a `---` it starts with is a rule, not front matter.
@@ -177,13 +175,9 @@ export function extractMethodBody(output: string): string {
   }
 
   const kept: string[] = [];
-  let fence: OpenFence | null = null;
-  const view = fenceLines(lines);
+  const kinds = classifyLines(lines);
   for (const [i, line] of lines.entries()) {
-    const next = stepFence(view[i], fence);
-    const inCode = fence !== null || next !== fence;
-    fence = next;
-    if (!inCode && /^#{1,4}\s/.test(line)) continue;
+    if (!isFenced(kinds[i]) && /^#{1,4}[ \t]/.test(line)) continue;
     kept.push(line);
   }
   return kept.join('\n').trim();

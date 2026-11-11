@@ -8,7 +8,7 @@
  */
 
 import { escapeRegExp } from '../lib/regexUtils';
-import { closedFencedLines, fenceLines, fenceReader, stepFence, type OpenFence } from './codeFences';
+import { classifyLines, closedFencedLines, isFenced, isPlain, lineReader } from './codeFences';
 import { joinLineBuffer, spliceLineBuffer, splitLineBuffer } from '../util/lineEnds';
 import { frontMatterLineCountOf } from './frontMatter';
 
@@ -29,7 +29,6 @@ export interface SectionBody {
   subheadings: number;
 }
 
-export { fenceLines, stepFence, type OpenFence } from './codeFences';
 
 /** One heading that {@link findSectionMatches} found. */
 export interface SectionMatch {
@@ -80,17 +79,11 @@ export function listHeadings(md: string, { asNote = true }: { asNote?: boolean }
   const out: NoteHeading[] = [];
   // A fenced code block can contain lines that look like ATX headings; those
   // must NOT be treated as real headings.
-  let fence: OpenFence | null = null;
   const start = asNote ? frontMatterLineCountOf(lines) : 0;
-  // Fences in a block quote or list item as CommonMark reads them.
-  const view = fenceLines(lines, start);
+  // Lines as the one block reading has them: a heading is a text line (no fence, code or HTML block).
+  const kinds = classifyLines(lines, start);
   for (let i = start; i < lines.length; i++) {
-    const next = stepFence(view[i], fence);
-    if (next !== fence) {
-      fence = next;
-      continue;
-    }
-    if (fence) continue;
+    if (!isPlain(kinds[i])) continue;
     const h = lines[i].match(ANY_HEADING_RE);
     if (!h) continue;
     const level = h[1].length;
@@ -244,15 +237,9 @@ export function diffBodyLines(before: string, after: string): { removed: string[
 // front matter: a section body's lines.
 function summarizeBody(body: readonly string[]): SectionBody {
   let subheadings = 0;
-  let fence: OpenFence | null = null;
-  const view = fenceLines(body);
+  const kinds = classifyLines(body);
   for (const [i, l] of body.entries()) {
-    const next = stepFence(view[i], fence);
-    if (next !== fence) {
-      fence = next;
-      continue;
-    }
-    if (!fence && ANY_HEADING_RE.test(l)) subheadings++;
+    if (isPlain(kinds[i]) && ANY_HEADING_RE.test(l)) subheadings++;
   }
   return {
     text: body.join('\n').replace(/^\s*\n/, '').trimEnd(),
@@ -293,14 +280,12 @@ export function sectionBodyEnd(
   // Fences read from just after the heading, which was matched outside one.
   const from = headingIdx + 1;
   const scan = (closed?: readonly boolean[]): number => {
-    let fence: OpenFence | null = null;
-    // Read lazily: the scan stops at the section's end.
-    const at = fenceReader(lines, from);
+    // Read lazily: the scan stops at the section's end. A line in an HTML block is no boundary.
+    const at = lineReader(lines, from);
     for (let i = from; i < lines.length; i++) {
-      const next = stepFence(at(i), fence);
-      const inCode = fence !== null || next !== fence;
-      fence = next;
-      if (inCode && (closed === undefined || closed[i - from])) continue;
+      const read = at(i);
+      if (read.kind === 'html') continue;
+      if (isFenced(read) && (closed === undefined || closed[i - from])) continue;
       if (!boundaryRe.test(lines[i])) continue;
       let j = i - 1;
       while (j > headingIdx && lines[j].trim() === '') j--;

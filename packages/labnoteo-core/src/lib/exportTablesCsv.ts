@@ -2,7 +2,7 @@
  * Extracts GFM pipe tables from a Markdown body and converts them to CSV.
  * Pure functions, no `vscode` import.
  */
-import { fenceLines, stepFence, type OpenFence } from '../sections/sectionEdit';
+import { classifyLines, isFenced, type LineClass } from '../sections/codeFences';
 import { frontMatterLineCount } from '../sections/frontMatter';
 
 export interface CsvTable {
@@ -172,6 +172,8 @@ function hasCodeSpanPipe(line: string): boolean {
 interface QuotedLine {
   depth: number;
   text: string;
+  /** A fence line, a line in a fence, or front matter (classifyLines): no table row. */
+  block?: boolean;
 }
 
 const QUOTE_MARK_RE = /^ {0,3}>[ \t]?/;
@@ -205,8 +207,8 @@ const isTableRow = (l: QuotedLine | undefined, depth: number): boolean =>
   UNESCAPED_PIPE_RE.test(l.text) &&
   !LIST_ITEM_RE.test(l.text) &&
   !HEADING_RE.test(l.text) &&
-  // A fence opens as stepFence reads it: a backtick run with a backtick after it is inline code.
-  stepFence(l.text, null) === null &&
+  // A fence line or a line in a fence, as the one block reading has it (classifyLines).
+  !l.block &&
   !THEMATIC_BREAK_RE.test(l.text);
 
 /**
@@ -226,8 +228,11 @@ function isTableHeader(lines: readonly QuotedLine[], i: number, depth: number): 
 export const isTableHeaderLine = (lines: readonly string[], i: number): boolean =>
   isTableHeader(lines.slice(i, i + 2).map(text => ({ depth: 0, text })), 0, 0);
 
-/** {@link isTableRow} for a line outside any quote. */
-export const isTableRowLine = (line: string): boolean => isTableRow({ depth: 0, text: line }, 0);
+/** {@link isTableRow} for a line outside any quote, read as `read` has it ({@link classifyLines}). */
+export const isTableRowLine = (line: string, read: LineClass): boolean => isTableRow({ depth: 0, text: line, block: noRow(read) }, 0);
+
+/** A fence line, a line in a fence, or front matter: no table row (an HTML block line is read as before). */
+const noRow = (read: LineClass): boolean => isFenced(read) || read.kind === 'front';
 
 /**
  * Whether a table header on `line` starts a block, so the reading view draws
@@ -251,10 +256,6 @@ export interface MarkdownTableScan {
   hidden: number;
 }
 
-/** An HTML comment opening at the start of a line, as a Markdown HTML block does. */
-const HTML_COMMENT_OPEN = '<!--';
-const HTML_COMMENT_CLOSE = '-->';
-const OBSIDIAN_COMMENT = '%%';
 
 /**
  * Which lines the reading view hides because they are inside a comment (#246):
@@ -264,41 +265,7 @@ const OBSIDIAN_COMMENT = '%%';
  * Comment marks inside a fenced code block are text, not comments.
  */
 export function hiddenCommentLines(lines: readonly string[]): boolean[] {
-  const hidden: boolean[] = [];
-  let fence: OpenFence | null = null;
-  let open: 'html' | 'obsidian' | null = null;
-  const view = fenceLines(lines);
-  for (const [k, line] of lines.entries()) {
-    const next = stepFence(view[k], fence);
-    if (next !== fence || fence) {
-      fence = next;
-      hidden.push(false);
-      continue;
-    }
-    let visible = '';
-    let i = 0;
-    while (i < line.length) {
-      if (open) {
-        const close = line.indexOf(open === 'html' ? HTML_COMMENT_CLOSE : OBSIDIAN_COMMENT, i);
-        if (close < 0) break;
-        i = close + (open === 'html' ? HTML_COMMENT_CLOSE.length : OBSIDIAN_COMMENT.length);
-        open = null;
-        continue;
-      }
-      const html = line.indexOf(HTML_COMMENT_OPEN, i);
-      const obsidian = line.indexOf(OBSIDIAN_COMMENT, i);
-      const at = html < 0 ? obsidian : obsidian < 0 ? html : Math.min(html, obsidian);
-      if (at < 0) {
-        visible += line.slice(i);
-        break;
-      }
-      visible += line.slice(i, at);
-      open = at === html ? 'html' : 'obsidian';
-      i = at + (open === 'html' ? HTML_COMMENT_OPEN.length : OBSIDIAN_COMMENT.length);
-    }
-    hidden.push(line.trim() !== '' && visible.trim() === '');
-  }
-  return hidden;
+  return classifyLines(lines).map(line => line.comment === true);
 }
 
 /**
@@ -328,18 +295,14 @@ export function extractMarkdownTables(markdown: string): CsvTable[] {
 export function scanMarkdownTables(markdown: string): MarkdownTableScan {
   const text = markdown.replace(/\r\n/g, '\n');
   const raw = text.split('\n');
-  const lines = raw.map(unquote);
-  // Front matter is YAML (Obsidian reads it as properties): a `|` line there is no table, and no
-  // fence or comment mark in it reaches the body. Comments are read from past it, as the tables.
+  // Each line as the one block reading has it, from past the front matter (classifyLines).
   const fm = frontMatterLineCount(text);
-  const commented = [...new Array<boolean>(fm).fill(false), ...hiddenCommentLines(lines.slice(fm).map(l => l.text))];
+  const kinds = classifyLines(raw, fm);
+  const lines = raw.map((line, k) => ({ ...unquote(line), block: noRow(kinds[k]) }));
   const tables: CsvTable[] = [];
   let notRendered = 0;
   let hidden = 0;
 
-  let fence: OpenFence | null = null;
-  // Fences in a block quote or list item as CommonMark reads them.
-  const view = fenceLines(raw, fm);
   let inList = false;
   let inIndentedCode = false;
   // The line before was code (fenced, a fence line, or indented).
@@ -348,14 +311,12 @@ export function scanMarkdownTables(markdown: string): MarkdownTableScan {
   while (i < lines.length) {
     const line = lines[i];
     const prev = lines[i - 1];
-    const next = stepFence(view[i], fence);
-    if (next !== fence || fence) {
-      fence = next;
+    if (isFenced(kinds[i])) {
       prevCode = true;
       i++;
       continue;
     }
-    if (commented[i]) {
+    if (kinds[i].comment) {
       if (isTableHeader(lines, i, line.depth)) {
         hidden++;
         for (i += 2; i < lines.length && isTableRow(lines[i], line.depth); i++);

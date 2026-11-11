@@ -53,7 +53,9 @@ const ATX_HEADING = /^ {0,3}#{1,6}(?:[ \t]|$)/;
 /** CommonMark HTML block type 6: these tag names start a block ended by a blank line. */
 export const BLOCK_TAGS =
   'address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h1|h2|h3|h4|h5|h6|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul';
-const ATTRIBUTE = `\\s+[A-Za-z_:][A-Za-z0-9_.:-]*(?:\\s*=\\s*(?:[^"'=<>\`\\s]+|'[^']*'|"[^"]*"))?`;
+// CommonMark whitespace in a tag on one line is a space or a tab (an NBSP is no whitespace there),
+// and an unquoted attribute value stops at a space or a control character.
+const ATTRIBUTE = `[ \\t]+[A-Za-z_:][A-Za-z0-9_.:-]*(?:[ \\t]*=[ \\t]*(?:[^"'=<>\`\\x00-\\x20]+|'[^']*'|"[^"]*"))?`;
 /**
  * The seven CommonMark HTML block starts (up to three spaces in), each with the line that ends
  * it: types 1 to 5 end on the line holding their end mark (the start line too), 6 and 7 before a
@@ -61,14 +63,14 @@ const ATTRIBUTE = `\\s+[A-Za-z_:][A-Za-z0-9_.:-]*(?:\\s*=\\s*(?:[^"'=<>\`\\s]+|'
  * paragraph. An autolink (`<https://…>`, `<a@b.c>`) or `a < b` starts none.
  */
 const HTML_STARTS: { start: RegExp; end: RegExp | null; paragraph: boolean }[] = [
-  { start: /^ {0,3}<(?:script|pre|style|textarea)(?:\s|>|$)/i, end: /<\/(?:script|pre|style|textarea)>/i, paragraph: true },
+  { start: /^ {0,3}<(?:script|pre|style|textarea)(?:[ \t]|>|$)/i, end: /<\/(?:script|pre|style|textarea)>/i, paragraph: true },
   { start: /^ {0,3}<!--/, end: /-->/, paragraph: true },
   { start: /^ {0,3}<\?/, end: /\?>/, paragraph: true },
   { start: /^ {0,3}<![A-Za-z]/, end: />/, paragraph: true },
   { start: /^ {0,3}<!\[CDATA\[/, end: /\]\]>/, paragraph: true },
-  { start: new RegExp(`^ {0,3}</?(?:${BLOCK_TAGS})(?:\\s|/?>|$)`, 'i'), end: null, paragraph: true },
+  { start: new RegExp(`^ {0,3}</?(?:${BLOCK_TAGS})(?:[ \\t]|/?>|$)`, 'i'), end: null, paragraph: true },
   {
-    start: new RegExp(`^ {0,3}(?:<(?!(?:script|pre|style|textarea)\\b)[A-Za-z][A-Za-z0-9-]*(?:${ATTRIBUTE})*\\s*/?>|</[A-Za-z][A-Za-z0-9-]*\\s*>)\\s*$`, 'i'),
+    start: new RegExp(`^ {0,3}(?:<(?!(?:script|pre|style|textarea)\\b)[A-Za-z][A-Za-z0-9-]*(?:${ATTRIBUTE})*[ \\t]*/?>|</[A-Za-z][A-Za-z0-9-]*[ \\t]*>)[ \\t]*$`, 'i'),
     end: null,
     paragraph: false,
   },
@@ -103,14 +105,6 @@ export function fenceView(lines: readonly string[], from = 0, reading: BlockRead
   return lines.map((_line, i) => at(i));
 }
 
-/**
- * {@link fenceView} read lazily: line `i` as it reads, reading the lines up to the one after it
- * (whose container may end a fence) and no further, for a reader that stops at a heading.
- */
-export function fenceReader(lines: readonly string[], from = 0): (i: number) => string {
-  return readBlocks(lines, from).at;
-}
-
 /** Which lines of `lines` (from line `from` on) are in an HTML block, as {@link fenceView} reads them. */
 export function htmlBlockMarks(lines: readonly string[], from = 0): boolean[] {
   const { at, html } = readBlocks(lines, from);
@@ -118,13 +112,99 @@ export function htmlBlockMarks(lines: readonly string[], from = 0): boolean[] {
 }
 
 /**
+ * How a line reads: `front` before the line the reading starts at (the front matter), `opener` and
+ * `closer` a fence's opening and closing line, `code` a line in a fence, `html` a line in an HTML block, `text`
+ * any other line. `content` is the line with its block quote markers and list item indent taken
+ * off, `depth` how many of those containers it sits in. `closed` (fence lines) whether
+ * the fence is closed, by its closer or the end of its container, rather than running to the end.
+ * `comment` whether the reading view hides all of the line in a comment `<!-- … -->` or
+ * `%% … %%` (either may run over several lines; comment marks in code are text).
+ */
+export interface LineClass {
+  kind: 'front' | 'opener' | 'code' | 'closer' | 'html' | 'text';
+  content: string;
+  depth: number;
+  closed: boolean;
+  /** The last line of a closed fence: its closer, or the line its container ends after. */
+  ends?: boolean;
+  comment?: boolean;
+}
+
+/**
+ * Every line of `lines` read once, from line `from` on (lines before it are `front`): the one
+ * reading of fences, HTML blocks, comments and containers that every finder of headings, tables,
+ * entries, markers and sections takes its lines from.
+ */
+export function classifyLines(lines: readonly string[], from = 0, reading: BlockReading = {}): LineClass[] {
+  const recs = readBlocks(lines, from, reading).all();
+  markComments(recs);
+  return recs;
+}
+
+/**
+ * {@link classifyLines} read lazily, for a reader that stops at a heading: line `i` read with the
+ * lines up to the one after it (whose container may end a fence) and no further. Not read here:
+ * `comment`, and `closed` of a fence that has not ended by line `i + 1`.
+ */
+export function lineReader(lines: readonly string[], from = 0): (i: number) => LineClass {
+  return readBlocks(lines, from).rec;
+}
+
+/** {@link classifyLines} of a whole note: the front matter as Obsidian finds it is `front`. */
+export function classifyNote(lines: readonly string[]): LineClass[] {
+  return classifyLines(lines, frontMatterLineCountOf(lines));
+}
+
+/** Whether a line is no fence, code, HTML block or front matter line. */
+export const isPlain = (line: LineClass): boolean => line.kind === 'text';
+
+/** Whether a line is a fence line or in a fence (one left open too: it runs to the end). */
+export const isFenced = (line: LineClass): boolean => line.kind === 'opener' || line.kind === 'code' || line.kind === 'closer';
+
+/** Sets `comment` on each line a comment hides whole: comment marks are read on text and HTML block lines. */
+function markComments(recs: LineClass[]): void {
+  let open: '-->' | '%%' | null = null;
+  for (const rec of recs) {
+    if (rec.kind !== 'text' && rec.kind !== 'html') continue;
+    const line = rec.content.replace(/\r$/, '');
+    let visible = '';
+    let i = 0;
+    while (i < line.length) {
+      if (open) {
+        const close = line.indexOf(open, i);
+        if (close < 0) break;
+        i = close + open.length;
+        open = null;
+        continue;
+      }
+      const html = line.indexOf('<!--', i);
+      const obsidian = line.indexOf('%%', i);
+      const at = html < 0 ? obsidian : obsidian < 0 ? html : Math.min(html, obsidian);
+      if (at < 0) {
+        visible += line.slice(i);
+        break;
+      }
+      visible += line.slice(i, at);
+      open = at === html ? '-->' : '%%';
+      i = at + (at === html ? 4 : 2);
+    }
+    rec.comment = line.trim() !== '' && visible.trim() === '';
+  }
+}
+
+/**
  * One pass over the block structure the fence readers need: containers (block quotes and list
  * items), fences and HTML blocks, line by line as CommonMark reads them.
  */
 // front matter: read from `from`, which its callers set past the front matter (or pass a section's or a body's lines).
-function readBlocks(lines: readonly string[], from: number, { html: readHtml = true }: BlockReading = {}): { at: (i: number) => string; html: (i: number) => boolean } {
+function readBlocks(
+  lines: readonly string[],
+  from: number,
+  { html: readHtml = true }: BlockReading = {}
+): { all: () => LineClass[]; rec: (i: number) => LineClass; at: (i: number) => string; html: (i: number) => boolean } {
   const view: string[] = [];
   const marks: boolean[] = [];
+  const recs: LineClass[] = lines.slice(0, from).map(line => ({ kind: 'front', content: line, depth: 0, closed: false }));
   let stack: Container[] = [];
   let fence: OpenFence | null = null;
   // The containers the open fence sits in, and its opening line.
@@ -154,9 +234,13 @@ function readBlocks(lines: readonly string[], from: number, { html: readHtml = t
       matched++;
     }
     if (fence && matched < fenceDepth) {
-      // The fence's container ended with it: the line before closes it.
+      // The fence's container ended with it: the fence is closed after the line before (code
+      // still). For the line-by-line string view, that line reads as the fence's closer, or the
+      // opener, when nothing came between, as text.
       if (i - 1 > fenceLine) view[i - 1] = fence.char.repeat(fence.length);
       else view[fenceLine] = '';
+      for (let k = fenceLine; k < i; k++) recs[k].closed = true;
+      recs[i - 1].ends = true;
       fence = null;
     }
     // An HTML block ends with its container.
@@ -164,9 +248,16 @@ function readBlocks(lines: readonly string[], from: number, { html: readHtml = t
     if (fence) {
       fence = stepFence(rest, fence);
       view[i] = rest;
+      recs[i] = { kind: fence ? 'code' : 'closer', content: rest, depth: matched, closed: false };
+      if (!fence) {
+        for (let k = fenceLine; k <= i; k++) recs[k].closed = true;
+        recs[i].ends = true;
+      }
       return;
     }
+    recs[i] = { kind: 'text', content: rest, depth: matched, closed: false };
     if (html) {
+      recs[i].kind = 'html';
       marks[i] = true;
       view[i] = '';
       para = false;
@@ -216,8 +307,10 @@ function readBlocks(lines: readonly string[], from: number, { html: readHtml = t
       para = false;
     }
     if (contained || stack.length > 0) view[i] = rest;
+    recs[i] = { kind: 'text', content: rest, depth: stack.length, closed: false };
     fence = stepFence(rest, null);
     if (fence) {
+      recs[i].kind = 'opener';
       fenceDepth = stack.length;
       fenceLine = i;
       para = false;
@@ -225,6 +318,7 @@ function readBlocks(lines: readonly string[], from: number, { html: readHtml = t
     }
     const kind = readHtml ? HTML_STARTS.find(k => k.start.test(rest) && (k.paragraph || !para)) : undefined;
     if (kind) {
+      recs[i].kind = 'html';
       marks[i] = true;
       view[i] = '';
       para = false;
@@ -243,6 +337,14 @@ function readBlocks(lines: readonly string[], from: number, { html: readHtml = t
     }
   };
   return {
+    all: () => {
+      read(lines.length);
+      return recs;
+    },
+    rec: k => {
+      read(k);
+      return recs[k];
+    },
     at: k => {
       if (k < from) return lines[k];
       read(k);
@@ -256,9 +358,14 @@ function readBlocks(lines: readonly string[], from: number, { html: readHtml = t
   };
 }
 
-/** {@link fenceView} of `lines` from line `from`, or `lines` itself when no line could open a fence. */
-export function fenceLines(lines: readonly string[], from = 0): readonly string[] {
-  return mayHaveFences(lines) ? fenceView(lines, from) : lines;
+/**
+ * Whether a fence is still open after the last line of `lines`, each line read as {@link fenceView}
+ * has it and then through `read` (`line => line.trimStart()` reads fences at any indent).
+ */
+export function fenceOpenAtEnd(lines: readonly string[], read: (line: string) => string = line => line): boolean {
+  let open: OpenFence | null = null;
+  for (const line of fenceView(lines)) open = stepFence(read(line), open);
+  return open !== null;
 }
 
 /**

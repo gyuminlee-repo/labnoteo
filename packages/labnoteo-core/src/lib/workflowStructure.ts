@@ -13,8 +13,8 @@ import {
   WORKFLOW_FILE_NAME_MAX,
 } from './regexUtils';
 import { frontMatterNames, lineEdits, parseFrontMatterYaml, serializeFrontMatterEntry, stripFrontMatter } from '../sections/frontMatter';
-import { fenceLines, normalizeHeadingText, stepFence, type OpenFence } from '../sections/sectionEdit';
-import { markdownCodeLines, mayHaveFences } from '../sections/codeFences';
+import { normalizeHeadingText } from '../sections/sectionEdit';
+import { classifyLines, fenceOpenAtEnd, isFenced, isPlain, markdownCodeLines, mayHaveFences } from '../sections/codeFences';
 import { joinLineBuffer, joinSplitKeepingCr, spliceLineBuffer, splitKeepingCr, splitLineBuffer } from '../util/lineEnds';
 import { positionOutsideFences, readmeFencedLines, readmeFenceSpans } from './readmeFences';
 import { generateNoteId, NOTE_ID_KEY } from './noteId';
@@ -1983,27 +1983,20 @@ export function dropBlankLeftByEntries(
   const maybeCode: boolean[] = new Array<boolean>(fmEnd + 1).fill(false);
   if (fences) {
     // Only the lines up to just past the last entry going can be the blank lines asked about.
-    // The line-by-line readings of a line need no line below it; the closed-blocks readings
-    // do only for a fence still open there (in either reading), so they read past it then.
     let lastDrop = 0;
     for (const i of drop) if (i > lastDrop) lastDrop = i;
     const limit = Math.min(lines.length, lastDrop + 2);
     const head = lines.slice(fmEnd + 1, limit);
-    let plain: OpenFence | null = null;
-    let anyIndent: OpenFence | null = null;
-    // Fences in a block quote or list item as CommonMark reads them.
-    const headView = fenceLines(head);
-    for (const line of headView) {
-      plain = stepFence(line, plain);
-      anyIndent = stepFence(line.trimStart(), anyIndent);
-    }
-    const closed = readmeFencedLines(plain === null && anyIndent === null ? head : lines.slice(fmEnd + 1));
+    // Line by line as the one block reading has them (classifyLines; a fence left open runs on),
+    // closed fences in either README reading, and markdownCodeLines: code in any of them stays.
+    const kinds = classifyLines(head.map(line => line.replace(/\r?\n$|\r$/, '')));
+    // The closed-blocks readings need the lines below only for a fence still open at the end (in
+    // either reading), so they read past it then.
+    const open = fenceOpenAtEnd(head) || fenceOpenAtEnd(head, line => line.trimStart());
+    const closed = readmeFencedLines(open ? lines.slice(fmEnd + 1) : head);
     const markdown = markdownCodeLines(lines.slice(0, limit).map(line => line.replace(/\r?\n$|\r$/, '')));
-    let fence: OpenFence | null = null;
     head.forEach((_line, i) => {
-      const next = stepFence(headView[i], fence);
-      maybeCode.push(fence !== null || next !== null || closed[i] || markdown[fmEnd + 1 + i]);
-      fence = next;
+      maybeCode.push(isFenced(kinds[i]) || closed[i] || markdown[fmEnd + 1 + i]);
     });
   }
   const blank = (i: number): boolean => i >= 0 && i < contentEnd && !drop.has(i) && lines[i].trim() === '' && !maybeCode[i];
@@ -2120,18 +2113,12 @@ export interface WorkflowExperimenterSync {
 export function unitOpsAllEnded(content: string, now: string = getSeoulDateTimeString()): boolean {
   const lines = content.split(/\r?\n/);
   const ended: boolean[] = [];
-  let fence: OpenFence | null = null;
   const start = frontMatterLineCountOf(lines);
-  // Fences in a block quote or list item as CommonMark reads them.
-  const view = fenceLines(lines, start);
+  // Lines as the one block reading has them (classifyLines): none in a fence; a heading on a text line.
+  const kinds = classifyLines(lines, start);
   for (const [i, line] of lines.entries()) {
-    if (i < start) continue;
-    const next = stepFence(view[i], fence);
-    if (next !== fence || fence) {
-      fence = next;
-      continue;
-    }
-    if (/^###\s+\[/.test(line)) {
+    if (i < start || isFenced(kinds[i])) continue;
+    if (isPlain(kinds[i]) && /^###[ \t]+\[/.test(line)) {
       ended.push(false);
       continue;
     }
@@ -2171,17 +2158,12 @@ export function planWorkflowExperimenterSync(
   // Experimenter lines to rewrite, grouped by unit op, and which unit ops ended.
   type Block = { name: string; lines: number[]; empty: number; ended: boolean; future?: string; unreadable?: string };
   const blocks: Block[] = [{ name: '', lines: [], empty: 0, ended: false }];
-  let fence: OpenFence | null = null;
-  // Fences in a block quote or list item as CommonMark reads them.
-  const view = fenceLines(lines, fmEnd + 1);
+  // Lines as the one block reading has them (classifyLines): none in a fence; a heading on a text line.
+  const kinds = classifyLines(lines, fmEnd + 1);
   for (let i = fmEnd + 1; i < lines.length; i++) {
-    const next = stepFence(view[i], fence);
-    if (next !== fence || fence) {
-      fence = next;
-      continue;
-    }
-    if (/^###\s+\[/.test(lines[i])) {
-      blocks.push({ name: lines[i].replace(/^###\s+/, '').trim(), lines: [], empty: 0, ended: false });
+    if (isFenced(kinds[i])) continue;
+    if (isPlain(kinds[i]) && /^###[ \t]+\[/.test(lines[i])) {
+      blocks.push({ name: lines[i].replace(/^###[ \t]+/, '').trim(), lines: [], empty: 0, ended: false });
       continue;
     }
     const block = blocks[blocks.length - 1];
@@ -2255,15 +2237,10 @@ export function resetCopiedWorkflowDates(content: string, today: string): string
     if (key) edit(i, 1, [serializeFrontMatterEntry(key, key === 'end_date' ? '' : today)]);
   }
   apply();
-  let fence: OpenFence | null = null;
-  // Fences in a block quote or list item as CommonMark reads them.
-  const view = fenceLines(lines, fmEnd + 1);
+  // Lines as the one block reading has them (classifyLines): none in a fence.
+  const kinds = classifyLines(lines, fmEnd + 1);
   for (let i = fmEnd + 1; i < lines.length; i++) {
-    const next = stepFence(view[i], fence);
-    if (next !== fence || fence) {
-      fence = next;
-      continue;
-    }
+    if (isFenced(kinds[i])) continue;
     const date = findMetaDateFieldInLine(lines[i]);
     if (!date || date.value === '') continue;
     const line = lines[i];
@@ -2283,19 +2260,13 @@ export function resetCopiedWorkflowDates(content: string, today: string): string
 export function outputSampleIds(content: string, types: readonly string[]): string[] {
   const ids: string[] = [];
   let inOutput = false;
-  let fence: OpenFence | null = null;
   const lines = content.split(/\r?\n/);
   const start = frontMatterLineCountOf(lines);
-  // Fences in a block quote or list item as CommonMark reads them.
-  const view = fenceLines(lines, start);
+  // Lines as the one block reading has them (classifyLines): none in a fence; a heading on a text line.
+  const kinds = classifyLines(lines, start);
   for (const [i, line] of lines.entries()) {
-    if (i < start) continue;
-    const next = stepFence(view[i], fence);
-    if (next !== fence || fence) {
-      fence = next;
-      continue;
-    }
-    const heading = /^(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line);
+    if (i < start || isFenced(kinds[i])) continue;
+    const heading = isPlain(kinds[i]) ? /^(#{1,6})[ \t]+(.*?)[ \t]*#*[ \t]*$/.exec(line) : null;
     if (heading) {
       if (heading[1].length <= 4) inOutput = heading[1].length === 4 && heading[2].toLowerCase() === 'output';
       continue;

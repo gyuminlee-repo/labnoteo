@@ -7,8 +7,8 @@ import {
   normalizeHeadingText,
   stripRepeatedHeading,
   diffBodyLines,
-  stepFence,
 } from '../sections/sectionEdit';
+import { stepFence } from '../sections/codeFences';
 import { closedFencedLines } from '../sections/codeFences';
 import { readmeFencedLines } from '../lib/readmeFences';
 

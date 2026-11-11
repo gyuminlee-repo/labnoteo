@@ -12,8 +12,7 @@
  * invisible when reading, so entries can be sorted, deduplicated and removed
  * again (undo) without depending on how the image link is written.
  */
-import { fenceLines, stepFence, type OpenFence } from './sectionEdit';
-import { BLOCK_TAGS } from './codeFences';
+import { BLOCK_TAGS, classifyLines, classifyNote, isFenced, isPlain } from './codeFences';
 import { joinLineBuffer, spliceLineBuffer, splitLineBuffer, type LineRef } from '../util/lineEnds';
 import { UNIT_OP_HEADING_PATTERN } from './workflowSectionParser';
 import { unitOpFingerprint } from '../lib/scanPayload';
@@ -69,17 +68,11 @@ interface Heading {
 
 function scanHeadings(lines: readonly string[]): Heading[] {
   const out: Heading[] = [];
-  let fence: OpenFence | null = null;
   const start = frontMatterLineCountOf(lines);
-  // Fences in a block quote or list item as CommonMark reads them.
-  const view = fenceLines(lines, start);
+  // Lines as the one block reading has them (classifyLines): a heading is on a text line.
+  const kinds = classifyLines(lines, start);
   for (let i = start; i < lines.length; i++) {
-    const next = stepFence(view[i], fence);
-    if (next !== fence) {
-      fence = next;
-      continue;
-    }
-    if (fence) continue;
+    if (!isPlain(kinds[i])) continue;
     const m = ANY_HEADING_RE.exec(lines[i]);
     if (m) out.push({ line: i, level: m[1].length });
   }
@@ -220,6 +213,8 @@ function parseSection(lines: readonly string[], headingLine: number, end: number
   const preface: LineRef[] = [];
   let current: ParsedEntry | null = null;
   const blankAt = (ref: string | LineRef): boolean => typeof ref !== 'string' && isBlank(lines[ref.line]);
+  // Lines as the one block reading has them (classifyNote): a fence opener ends a caption's paragraph.
+  const kinds = classifyNote(lines);
   for (let i = headingLine + 1; i < end; i++) {
     const m = ENTRY_RE.exec(lines[i]);
     if (m) {
@@ -246,7 +241,7 @@ function parseSection(lines: readonly string[], headingLine: number, end: number
     // The rest of the paragraph the comment's lines end in goes with them, as before.
     for (; own < e.lines.length; own++) {
       const line = at(own);
-      if (isBlank(line) || BLOCK_START_RE.test(line) || stepFence(line, null) !== null || RULE_RE.test(line)) break;
+      if (isBlank(line) || BLOCK_START_RE.test(line) || kinds[(e.lines[own] as LineRef).line].kind === 'opener' || RULE_RE.test(line)) break;
     }
     e.own = own;
   }
@@ -328,19 +323,12 @@ export function insertScanEntries(md: string, block: UnitOpBlock | null, entries
 /** Content hashes of the scans already filed anywhere in the note. */
 export function listScanHashes(md: string): Set<string> {
   const out = new Set<string>();
-  let fence: OpenFence | null = null;
   const lines = md.split(/\r?\n/);
-  const start = frontMatterLineCountOf(lines);
-  // Fences in a block quote or list item as CommonMark reads them.
-  const view = fenceLines(lines, start);
+  // Lines as the one block reading has them (classifyNote): an entry is on no fence or code line
+  // (its comment is an HTML block line), and none is in the front matter.
+  const kinds = classifyNote(lines);
   for (const [i, line] of lines.entries()) {
-    if (i < start) continue;
-    const next = stepFence(view[i], fence);
-    if (next !== fence) {
-      fence = next;
-      continue;
-    }
-    if (fence) continue;
+    if (kinds[i].kind === 'front' || isFenced(kinds[i])) continue;
     const m = ENTRY_RE.exec(line);
     if (m) out.add(m[3]);
   }
@@ -353,18 +341,12 @@ export function listScanHashes(md: string): Set<string> {
  * Undefined when the note has no such scan outside code blocks.
  */
 export function scanEntryLine(md: string, hash: string): number | undefined {
-  let fence: OpenFence | null = null;
   const lines = md.split(/\r?\n/);
   const start = frontMatterLineCountOf(lines);
-  // Fences in a block quote or list item as CommonMark reads them.
-  const view = fenceLines(lines, start);
+  // Lines as the one block reading has them (classifyLines): an entry is on no fence or code line.
+  const kinds = classifyLines(lines, start);
   for (let i = start; i < lines.length; i++) {
-    const next = stepFence(view[i], fence);
-    if (next !== fence) {
-      fence = next;
-      continue;
-    }
-    if (fence) continue;
+    if (isFenced(kinds[i])) continue;
     if (ENTRY_RE.exec(lines[i])?.[3] === hash) return i;
   }
   return undefined;
@@ -385,17 +367,11 @@ export function listFiledScans(md: string): FiledScan[] {
   const lines = md.split(/\r?\n/);
   const blocks = blocksOf(lines, scanHeadings(lines));
   const out: FiledScan[] = [];
-  let fence: OpenFence | null = null;
   const start = frontMatterLineCountOf(lines);
-  // Fences in a block quote or list item as CommonMark reads them.
-  const view = fenceLines(lines, start);
+  // Lines as the one block reading has them (classifyLines): an entry is on no fence or code line.
+  const kinds = classifyLines(lines, start);
   for (let i = start; i < lines.length; i++) {
-    const next = stepFence(view[i], fence);
-    if (next !== fence) {
-      fence = next;
-      continue;
-    }
-    if (fence) continue;
+    if (isFenced(kinds[i])) continue;
     const m = ENTRY_RE.exec(lines[i]);
     if (!m) continue;
     const block = blocks.find(b => b.headingLine < i && i < b.endLine);
