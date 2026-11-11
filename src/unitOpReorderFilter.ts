@@ -71,7 +71,7 @@ function lastUpdatedOf(doc: Text): string | undefined {
 }
 
 /** A task list mark, up to the character inside its brackets. */
-const TASK_MARK_RE = /^\s*(?:[-*+]|\d+[.)])\s+\[$/;
+const TASK_MARK_RE = /^[ \t]*(?:[-*+]|\d+[.)])\s+\[$/;
 
 /**
  * A checkbox ticked or cleared in Live Preview (#472): Obsidian writes the one

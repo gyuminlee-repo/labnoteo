@@ -41,7 +41,7 @@ const PLACEHOLDERS = new Set<string>([...Object.values(HW_PLACEHOLDERS), ...Obje
 /** `## [WD010 Design]` and `### [UHW010 Liquid Handling]`: template headings too. */
 const BRACKET_HEADING_RE = /^\[[A-Za-z]+\d+\s/;
 
-const HEADING_RE = /^(#{1,6})\s+(.*)$/;
+const HEADING_RE = /^(#{1,6})[ \t]+(.*)$/;
 
 /** `md` without the template's `- (…)` placeholder lines, for the model's context. */
 export function stripTemplatePlaceholders(md: string): string {
@@ -187,7 +187,7 @@ export function extractResultSections(md: string): string {
  */
 function echoKey(line: string): string {
   return line
-    .replace(/^\s*(?:>\s*)*(?:(?:[-*+]|\d+[.)])\s+)?/, '')
+    .replace(/^[ \t]*(?:>\s*)*(?:(?:[-*+]|\d+[.)])\s+)?/, '')
     .replace(/^[^:：]{1,30}[:：]\s*/, '')
     .replace(/[\s\p{P}\p{S}]/gu, '')
     .toLowerCase();

@@ -520,8 +520,8 @@ const WORKFLOW_SECTION_NAMES = ['related workflows', '관련 워크플로'];
 /** Whether `line` is a `##` heading naming the "Related Workflows" section, as {@link findWorkflowSection} matches it. */
 // front matter: one line; its callers pass headings read past the front matter (findWorkflowSection, removeWorkflowFromReadme).
 export function isWorkflowSectionHeading(line: string): boolean {
-  if (!/^##\s/.test(line.trim())) return false;
-  const text = normalizeHeadingText(line.trim().replace(/^##\s+/, ''));
+  if (!/^##[ \t]/.test(line.trim())) return false;
+  const text = normalizeHeadingText(line.trim().replace(/^##[ \t]+/, ''));
   return WORKFLOW_SECTION_NAMES.some(name => text.includes(name));
 }
 
@@ -543,7 +543,7 @@ function findWorkflowSection(
   // Front matter is YAML: a `## …` comment or `- [ ]` line in it is no heading or entry. README
   // lines are split on `\n`, their CR kept, but for workflowChecklistSectionRange's.
   const fm = frontMatterLineCountOf(lines, { crKept });
-  const isH2At = (i: number): boolean => i >= fm && !skip?.[i] && /^##\s/.test(lines[i].trim());
+  const isH2At = (i: number): boolean => i >= fm && !skip?.[i] && /^##[ \t]/.test(lines[i].trim());
   const endOf = (header: number): number => {
     for (let i = header + 1; i < lines.length; i++) if (isH2At(i)) return i;
     return lines.length;
@@ -1485,7 +1485,7 @@ export interface WorkflowHeading {
   alias: string;
 }
 
-const WORKFLOW_HEADING_RE = /^##\s+\[([A-Z]{2}\d{3})\s+([^\]]+)\](.*)$/;
+const WORKFLOW_HEADING_RE = /^##[ \t]+\[([A-Z]{2}\d{3})\s+([^\]]+)\](.*)$/;
 
 /** The note's `## [ID name] alias` heading, or undefined when it has none. */
 export function parseWorkflowHeading(content: string): WorkflowHeading | undefined {
@@ -1659,7 +1659,7 @@ export function rewriteWorkflowTitle(
     }
   }
   if (parts.heading !== false) {
-    const h2 = new RegExp(`^##\\s+\\[${escapeRegExp(id)}\\s+[^\\]]+\\]`);
+    const h2 = new RegExp(`^##[ \\t]+\\[${escapeRegExp(id)}\\s+[^\\]]+\\]`);
     const fm = frontMatterLineCountOf(lines);
     const at = lines.findIndex((l, i) => i >= fm && h2.test(l));
     if (at !== -1) lines[at] = `## [${id} ${name}]${suffix}`;

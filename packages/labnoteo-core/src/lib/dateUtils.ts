@@ -184,7 +184,7 @@ export function findPairedMetaDate(
   // Front matter is YAML: no Meta block there, and none reaches into it.
   const fm = frontMatterLineCountOf(lines);
   if (lineIndex < fm) return undefined;
-  const isHeading = (l: string) => /^#{1,6}\s/.test(l);
+  const isHeading = (l: string) => /^#{1,6}[ \t]/.test(l);
   let start = lineIndex;
   while (start > fm && !isHeading(lines[start - 1])) start--;
   for (let i = start; i < lines.length && (i === start || !isHeading(lines[i])); i++) {

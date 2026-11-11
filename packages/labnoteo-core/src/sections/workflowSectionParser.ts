@@ -13,7 +13,7 @@ import { normalizeHeadingText } from './sectionEdit';
 import { joinLineBuffer, spliceLineBuffer, splitLineBuffer } from '../util/lineEnds';
 import { frontMatterLineCount, frontMatterLineCountOf } from './frontMatter';
 
-export const UNIT_OP_HEADING_PATTERN = /^###\s+\[([A-Z]+\d+)\s+(.+?)\]\s*(.*)/;
+export const UNIT_OP_HEADING_PATTERN = /^###[ \t]+\[([A-Z]+\d+)\s+(.+?)\]\s*(.*)/;
 
 const UNIT_OP_SECTION_NAMES = ['related unit operations', '관련 유닛 오퍼레이션'];
 
@@ -32,7 +32,7 @@ export function isUnitOpTocEntryLine(text: string): boolean {
  * The workflow's title, `## [WD070 Name]`. The same shape as `lib/workflowStructure`'s,
  * kept here so `sections` does not import `lib`.
  */
-const WORKFLOW_TITLE_RE = /^##\s+\[[A-Z]{2}\d{3}\s+[^\]]+\]/;
+const WORKFLOW_TITLE_RE = /^##[ \t]+\[[A-Z]{2}\d{3}\s+[^\]]+\]/;
 
 /** The heading {@link ensureUnitOpSection} writes. */
 const UNIT_OP_SECTION_HEADING = '## Related Unit Operations';
@@ -49,8 +49,8 @@ const UNIT_OP_SECTION_HEADING = '## Related Unit Operations';
  */
 // front matter: lines from scanLines, which marks the front matter fenced.
 export function findUnitOpSection(lines: readonly { text: string; fenced: boolean }[]): number {
-  const isH2 = (j: number): boolean => !lines[j].fenced && /^##\s/.test(lines[j].text);
-  const named = lines.findIndex((_, j) => isH2(j) && isUnitOpSectionTitle(lines[j].text.replace(/^##\s+/, '')));
+  const isH2 = (j: number): boolean => !lines[j].fenced && /^##[ \t]/.test(lines[j].text);
+  const named = lines.findIndex((_, j) => isH2(j) && isUnitOpSectionTitle(lines[j].text.replace(/^##[ \t]+/, '')));
   if (named !== -1) return named;
   for (let j = 0; j < lines.length; j++) {
     if (!isH2(j)) continue;
@@ -85,7 +85,7 @@ export function missingUnitOpSectionEdit(md: string): { offset: number; text: st
     // one the researcher renamed takes it, as it did before (#455).
     const conclusions = findConclusionsIdx(lines);
     for (let j = (conclusions === -1 ? lines.length : conclusions) - 1; j > title; j--) {
-      if (!lines[j].fenced && /^##\s/.test(lines[j].text)) return null;
+      if (!lines[j].fenced && /^##[ \t]/.test(lines[j].text)) return null;
     }
   }
   const nl = md.includes('\r\n') ? '\r\n' : '\n';
@@ -97,7 +97,7 @@ export function missingUnitOpSectionEdit(md: string): { offset: number; text: st
     let last = title;
     let j = title + 1;
     while (j < stop && lines[j].text.trim() === '') j++;
-    while (j < stop && /^\s*>/.test(lines[j].text)) last = j++;
+    while (j < stop && /^[ \t]*>/.test(lines[j].text)) last = j++;
     return { offset: lines[last].end, text: `${nl}${nl}${UNIT_OP_SECTION_HEADING}` };
   }
   if (firstBlock === -1) return null;
@@ -123,8 +123,8 @@ export function unitOpSectionLine(md: string): number {
 // front matter: lines from scanLines, which marks the front matter fenced.
 function findConclusionsIdx(lines: readonly { text: string; fenced: boolean }[]): number {
   return lines.findIndex(l => {
-    if (l.fenced || !/^##\s/.test(l.text)) return false;
-    const text = normalizeHeadingText(l.text.replace(/^##\s+/, ''));
+    if (l.fenced || !/^##[ \t]/.test(l.text)) return false;
+    const text = normalizeHeadingText(l.text.replace(/^##[ \t]+/, ''));
     return text.includes('conclusion') || text.includes('결론');
   });
 }
@@ -198,7 +198,7 @@ export function appendUnitOpToWorkflowToc(
   // Section spans until the next `## ` heading or a thematic break `---`.
   let endIdx = lines.length;
   for (let j = headingIdx + 1; j < lines.length; j++) {
-    if (/^##\s/.test(lines[j]) || lines[j].trim() === '---') {
+    if (/^##[ \t]/.test(lines[j]) || lines[j].trim() === '---') {
       endIdx = j;
       break;
     }
@@ -303,7 +303,7 @@ export function findUnitOpInsertOffset(md: string): number {
   if (headingIdx === -1) return md.length;
 
   for (let i = headingIdx + 1; i < lineStarts.length; i++) {
-    if (/^##\s/.test(lineAt(i))) return lineStarts[i];
+    if (/^##[ \t]/.test(lineAt(i))) return lineStarts[i];
   }
   return md.length;
 }
@@ -353,7 +353,7 @@ export function findUnitOpInsertPointAt(md: string, cursor: number): UnitOpInser
   }
   let endIdx = lineStarts.length;
   for (let i = headingIdx + 1; i < lineStarts.length; i++) {
-    if (/^##\s/.test(lineAt(i))) {
+    if (/^##[ \t]/.test(lineAt(i))) {
       endIdx = i;
       break;
     }
@@ -363,13 +363,13 @@ export function findUnitOpInsertPointAt(md: string, cursor: number): UnitOpInser
   const blocks: { start: number; heading: string }[] = [];
   for (let i = headingIdx + 1; i < endIdx; i++) {
     const line = lineAt(i);
-    if (!/^###\s+\[/.test(line)) continue;
+    if (!/^###[ \t]+\[/.test(line)) continue;
     // A block begins at its `---` separator when it has one.
     let start = i;
     let j = i - 1;
     while (j > headingIdx && lineAt(j).trim() === '') j--;
     if (j > headingIdx && lineAt(j).trim() === '---') start = j;
-    blocks.push({ start, heading: line.replace(/^###\s+/, '').trim() });
+    blocks.push({ start, heading: line.replace(/^###[ \t]+/, '').trim() });
   }
   if (blocks.length === 0) return { offset: sectionEnd, place: 'empty' };
 
@@ -563,7 +563,7 @@ function scanUnitOpToc(md: string): UnitOpTocScan | null {
   let tocEndIdx = lines.length;
   for (let j = headingIdx + 1; j < lines.length; j++) {
     const l = lines[j];
-    if (!l.fenced && (/^#{1,6}\s/.test(l.text) || l.text.trim() === '---')) {
+    if (!l.fenced && (/^#{1,6}[ \t]/.test(l.text) || l.text.trim() === '---')) {
       tocEndIdx = j;
       break;
     }
@@ -681,7 +681,7 @@ function separatorEdits(md: string, scan: UnitOpTocScan): TextEdit[] {
 
   let sectionEnd = lines.length;
   for (let j = headingIdx + 1; j < lines.length; j++) {
-    if (!lines[j].fenced && /^#{1,2}\s/.test(lines[j].text)) {
+    if (!lines[j].fenced && /^#{1,2}[ \t]/.test(lines[j].text)) {
       sectionEnd = j;
       break;
     }
@@ -691,7 +691,7 @@ function separatorEdits(md: string, scan: UnitOpTocScan): TextEdit[] {
   const isBreak = (j: number): boolean => {
     if (lines[j].fenced || lines[j].text.trim() !== '---') return false;
     const prev = lines[j - 1].text.trim();
-    return prev === '' || prev === '---' || /^#{1,6}\s/.test(lines[j - 1].text);
+    return prev === '' || prev === '---' || /^#{1,6}[ \t]/.test(lines[j - 1].text);
   };
 
   const items: { idx: number; kind: 'break' | 'unitOp' | 'other' }[] = [];

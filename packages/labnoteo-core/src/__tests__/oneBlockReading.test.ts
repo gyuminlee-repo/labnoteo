@@ -8,7 +8,7 @@ import { classifyLines, classifyNote } from '../sections/codeFences';
 import { planSampleListRowRemoval } from '../lib/sampleUtils';
 import { parseWorksheetBlocks } from '../lib/worksheet';
 import { scanMarkdownTables } from '../lib/exportTablesCsv';
-import { replaceSectionBody } from '../sections/sectionEdit';
+import { listHeadings, replaceSectionBody } from '../sections/sectionEdit';
 import { removeWorkflowFromReadme } from '../lib/workflowDelete';
 
 describe('one block reading for every finder', () => {
@@ -88,5 +88,26 @@ describe('no finder reads fences its own way', () => {
         .map(({ at }) => at)
     );
     expect(found).toEqual([]);
+  });
+
+  // CommonMark whitespace after a heading's hashes or a list marker is a space or a tab: `\s`
+  // there also takes an NBSP. (The front matter is YAML, read by its own rules.)
+  const UNICODE_SPACE = /#(?:\{(?:[^{}]|\{[^}]*\})*\}|#)\)?\\{1,2}s|\(\?:\\{1,2}s\|\$\)/;
+
+  it('reads no NBSP as the space after a heading mark or a list marker', () => {
+    expect(UNICODE_SPACE.test('/^(#{1,6})\\s+(.*)$/')).toBe(true);
+    expect(UNICODE_SPACE.test('new RegExp(`^#{1,${level}}\\\\s`)')).toBe(true);
+    expect(UNICODE_SPACE.test('/^\\s*(?:[-*+]|\\d+[.)])(?:\\s|$)/')).toBe(true);
+    const found = files
+      .filter(f => !f.endsWith('frontMatter.ts'))
+      .flatMap(f =>
+        readFileSync(f, 'utf8')
+          .split('\n')
+          .map((line, i) => ({ line, at: `${relative(root, f)}:${i + 1}` }))
+          .filter(({ line }) => UNICODE_SPACE.test(line) && !/^\s*(\/\/|\*|\/\*\*)/.test(line))
+          .map(({ at }) => at)
+      );
+    expect(found).toEqual([]);
+    expect(listHeadings('#\u00a0x\n## y\n')).toEqual([{ line: 1, level: 2, text: 'y', parentHeading: '' }]);
   });
 });

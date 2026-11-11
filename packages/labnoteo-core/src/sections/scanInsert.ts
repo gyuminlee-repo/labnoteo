@@ -49,7 +49,7 @@ export interface ScanEntry {
   fullSizeLink?: string;
 }
 
-const ANY_HEADING_RE = /^(#{1,6})\s/;
+const ANY_HEADING_RE = /^(#{1,6})[ \t]/;
 const RULE_RE = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
 const ENTRY_RE = /^<!-- labnoteo-scan page=(\d+)\/(\d+) sha=([0-9a-f]+) -->\s*$/;
 /**
@@ -258,7 +258,7 @@ function findSection(
   from: number,
   to: number
 ): Section | undefined {
-  const re = new RegExp(`^#{${level}}\\s+${WORKSHEET_SCANS_HEADING}\\s*$`);
+  const re = new RegExp(`^#{${level}}[ \\t]+${WORKSHEET_SCANS_HEADING}\\s*$`);
   const h = headings.find(o => o.line > from && o.line < to && o.level === level && re.test(lines[o.line]));
   if (!h) return undefined;
   const next = headings.find(o => o.line > h.line && o.level <= level)?.line ?? lines.length;
@@ -398,7 +398,7 @@ export function removeScanEntry(md: string, hash: string, { keepSection = false 
   const buf = splitLineBuffer(md);
   const { lines } = buf;
   const headings = scanHeadings(lines);
-  const sectionRe = new RegExp(`^(#{2}|#{4})\\s+${WORKSHEET_SCANS_HEADING}\\s*$`);
+  const sectionRe = new RegExp(`^(#{2}|#{4})[ \\t]+${WORKSHEET_SCANS_HEADING}\\s*$`);
   for (const h of headings) {
     if (!sectionRe.test(lines[h.line])) continue;
     const block = blocksOf(lines, headings).find(b => b.headingLine < h.line && h.line < b.endLine);

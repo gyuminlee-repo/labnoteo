@@ -379,7 +379,7 @@ export function unitOpContext(text: string, loc: UnitOpMethodLocation): string {
   const lines = text.split('\n');
   // A `### [ID …]` YAML comment in the front matter is no unit operation.
   const fm = frontMatterLineCountOf(lines, { crKept: true });
-  const firstUnitOp = lines.findIndex((l, i) => i >= fm && /^###\s+\[/.test(l));
+  const firstUnitOp = lines.findIndex((l, i) => i >= fm && /^###[ \t]+\[/.test(l));
   const head = lines.slice(0, firstUnitOp === -1 ? 40 : Math.min(firstUnitOp, 40)).join('\n');
   const block = lines.slice(loc.unitOpStartLine, loc.unitOpEndLine).join('\n');
   return `Note front matter and workflow description:\n${head.slice(0, 2000)}\n\nUnit operation:\n${block.slice(0, 4000)}`;
@@ -415,7 +415,7 @@ export async function draftMethodCommand(plugin: LabnotePlugin): Promise<void> {
     if (methods.length > 0) {
       const chosen = await plugin.host.pick(
         methods.map(m => ({
-          label: m.unitOpHeading.replace(/^###\s+/, ''),
+          label: m.unitOpHeading.replace(/^###[ \t]+/, ''),
           detail: m.isPlaceholder ? undefined : plugin.t('Has a Method already'),
           value: m,
         })),
@@ -474,7 +474,7 @@ export async function draftMethodCommand(plugin: LabnotePlugin): Promise<void> {
     },
     {
       role: 'user',
-      content: `Draft the Method body for the unit operation "${loc.unitOpHeading.replace(/^###\s+/, '')}".\n\n${unitOpContext(text, loc)}`,
+      content: `Draft the Method body for the unit operation "${loc.unitOpHeading.replace(/^###[ \t]+/, '')}".\n\n${unitOpContext(text, loc)}`,
     },
   ]);
   if (!out) return;

@@ -16,7 +16,7 @@ export interface CsvTable {
   codePipe?: boolean;
 }
 
-export const SEPARATOR_ROW_RE = /^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$/;
+export const SEPARATOR_ROW_RE = /^[ \t]*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$/;
 
 function stripEdgePipes(line: string): string {
   let s = line.trim();
@@ -177,7 +177,7 @@ interface QuotedLine {
 }
 
 const QUOTE_MARK_RE = /^ {0,3}>[ \t]?/;
-const LIST_ITEM_RE = /^\s*(?:[-*+]|\d+[.)])(?:\s|$)/;
+const LIST_ITEM_RE = /^[ \t]*(?:[-*+]|\d+[.)])(?:[ \t]|$)/;
 const INDENTED_CODE_RE = /^(?: {4}|\t)/;
 
 function unquote(line: string): QuotedLine {
@@ -190,9 +190,9 @@ function unquote(line: string): QuotedLine {
   return { depth, text };
 }
 
-const HEADING_RE = /^ {0,3}#{1,6}(?:\s|$)/;
+const HEADING_RE = /^ {0,3}#{1,6}(?:[ \t]|$)/;
 const THEMATIC_BREAK_RE = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
-const CALLOUT_TITLE_RE = /^ {0,3}\[![^\]\s]+\][+-]?(?:\s|$)/;
+const CALLOUT_TITLE_RE = /^ {0,3}\[![^\]\s]+\][+-]?(?:[ \t]|$)/;
 const UNESCAPED_PIPE_RE = /(?:^|[^\\])\|/;
 
 /**

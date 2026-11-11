@@ -29,7 +29,7 @@ export interface UnitOpMethodLocation {
   isPlaceholder: boolean;
 }
 
-const ANY_HEADING_RE = /^(#{1,6})\s/;
+const ANY_HEADING_RE = /^(#{1,6})[ \t]/;
 
 interface HeadingLine {
   line: number;
@@ -129,7 +129,7 @@ export function cleanMethodDraft(output: string): string {
   if (body) return body;
   return noFront
     .split(/\r?\n/)
-    .filter(l => !/^#{1,6}\s/.test(l))
+    .filter(l => !/^#{1,6}[ \t]/.test(l))
     .join('\n')
     .trim();
 }

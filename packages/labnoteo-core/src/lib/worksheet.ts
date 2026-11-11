@@ -93,7 +93,7 @@ const META_FILL_IN = ['Start_date', 'End_date'];
 export function classifyUnitOp(opId: string, metaLines: readonly string[]): UnitOpKind {
   if (/^UHW/.test(opId)) return 'hw';
   if (/^USW/.test(opId)) return 'sw';
-  return metaLines.some(l => /^\s*-\s*Software\s*:/.test(l)) ? 'sw' : 'hw';
+  return metaLines.some(l => /^[ \t]*-\s*Software\s*:/.test(l)) ? 'sw' : 'hw';
 }
 
 interface RawSection {
@@ -119,19 +119,19 @@ function splitSections(lines: readonly string[]): { description: string; section
     }
   }
   const description = intro
-    .filter(l => /^\s*>/.test(l))
-    .map(l => l.replace(/^\s*>\s?/, '').trim())
+    .filter(l => /^[ \t]*>/.test(l))
+    .map(l => l.replace(/^[ \t]*>\s?/, '').trim())
     .filter(Boolean)
     .join(' ');
   // What the user wrote between the title and the first `####`, such as a
   // caution for whoever runs the step, prints first without a heading (#383).
-  const written = intro.filter(l => !/^\s*>/.test(l) && !/^\s*-{3,}\s*$/.test(l));
+  const written = intro.filter(l => !/^[ \t]*>/.test(l) && !/^\s*-{3,}\s*$/.test(l));
   if (written.some(l => l.trim() !== '')) sections.unshift({ title: '', lines: written });
   return { description, sections };
 }
 
 const LIST_ITEM_RE = /^[ \t]*(?:[-*+]|\d+[.)])\s+(?:\[([ xX])\]\s+)?(.*)$/;
-const FOOTNOTE_DEF_RE = /^\s*\[\^[^\]\s]+\]:/;
+const FOOTNOTE_DEF_RE = /^[ \t]*\[\^[^\]\s]+\]:/;
 const QUOTE_RE = /^[ \t]*>[ \t]?(.*)$/;
 const CALLOUT_RE = /^\[!([^\]\s]+)\][+-]?\s*(.*)$/;
 
@@ -315,7 +315,7 @@ function toSection(raw: RawSection): WorksheetSection {
   const text = body.join('\n').trim();
   if (raw.title === 'Meta') {
     const fields = body
-      .map(l => /^\s*-\s*([^:]+?)\s*:\s*(.*)$/.exec(l))
+      .map(l => /^[ \t]*-\s*([^:]+?)\s*:\s*(.*)$/.exec(l))
       .filter((m): m is RegExpExecArray => m !== null)
       .map(m => ({ label: m[1], value: m[2].replace(/^(['"])(.*)\1$/, '$2').trim() }));
     for (const label of META_FILL_IN) {

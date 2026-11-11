@@ -41,7 +41,7 @@ function locate(md: string, heading: string, titles: readonly string[] = []): Lo
   const lines = md.split('\n');
   const match = findSectionMatches(md, heading)[0];
   if (match) {
-    const text = lines[match.line].replace(/^#{1,6}\s+/, '').trim();
+    const text = lines[match.line].replace(/^#{1,6}[ \t]+/, '').trim();
     return { lines, line: match.line, end: sectionBodyEnd(lines, match.line, match.level), place: { kind: 'named', heading: text } };
   }
   if (titles.length === 0) return undefined;

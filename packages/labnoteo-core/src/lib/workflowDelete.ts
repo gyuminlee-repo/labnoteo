@@ -43,7 +43,7 @@ function isChecklistLineForFile(line: string, fileName: string): boolean {
   return linkFile === fileName;
 }
 
-const HEADING_RE = /^(#{1,6})\s+(.*?)\s*$/;
+const HEADING_RE = /^(#{1,6})[ \t]+(.*?)\s*$/;
 
 /**
  * The bodies of the headings named "Related Workflows" at any level, each up

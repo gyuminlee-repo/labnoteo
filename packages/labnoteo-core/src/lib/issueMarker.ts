@@ -105,7 +105,7 @@ const MARKER_RE = /^@issue[;:]([A-Za-z0-9-]+)(?:[;:](.*))?$/i;
 const MARKER_START_RE = /@issue(?=[;:])/i;
 
 const INDENTED_CODE_RE = /^(?: {4}|\t)/;
-const LIST_ITEM_RE = /^\s*(?:[-*+]|\d+[.)])(?:\s|$)/;
+const LIST_ITEM_RE = /^[ \t]*(?:[-*+]|\d+[.)])(?:[ \t]|$)/;
 
 /**
  * Which of `lines` are code: fenced blocks (fence lines included; a fence
@@ -569,8 +569,8 @@ export type IssueMarkerInsertion =
   | { reason: 'conflict' | 'table' | 'frontMatter' | 'codeBlock' | 'comment' };
 
 // front matter: one line; planIssueMarkerInsertion refuses an offset in the front matter first.
-const isHeadingLine = (line: string): boolean => /^ {0,3}#{1,6}(?:\s|$)/.test(line);
-const isTableRow = (line: string): boolean => /^\s*\|/.test(line);
+const isHeadingLine = (line: string): boolean => /^ {0,3}#{1,6}(?:[ \t]|$)/.test(line);
+const isTableRow = (line: string): boolean => /^[ \t]*\|/.test(line);
 
 /**
  * Whether `line` holds a sample reference the marker would damage (#373): an
@@ -637,7 +637,7 @@ export function planIssueMarkerInsertion(
   const title = multiLine
     ? selected
         .split('\n')
-        .map(l => l.replace(/^\s*(?:>\s*)*(?:(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?)?/, '').trim())
+        .map(l => l.replace(/^[ \t]*(?:>\s*)*(?:(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?)?/, '').trim())
         .filter(Boolean)
         .join(' ')
     : (topic ?? selected).trim().replace(/\s*\n\s*/g, ' ');
@@ -743,7 +743,7 @@ export function findEnclosingHeading(md: string, line: number, { asNote = true }
 
   for (let i = Math.min(line, lines.length) - 1; i >= fm; i--) {
     if (code[i]) continue;
-    const m = lines[i].match(/^#{1,6}\s+(.*?)\s*$/);
+    const m = lines[i].match(/^#{1,6}[ \t]+(.*?)\s*$/);
     if (m && m[1]) return m[1];
   }
   return undefined;

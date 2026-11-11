@@ -29,7 +29,7 @@ export function scanDocumentHead(lines: readonly string[]): DocumentHead {
     if (fmEndLine !== -1 && i <= fmEndLine) continue;
     const trimmed = lines[i].trimStart();
     if (!isPlain(kinds[i])) continue;
-    if (/^#{1,6}\s/.test(trimmed)) {
+    if (/^#{1,6}[ \t]/.test(trimmed)) {
       headingLines.add(i);
       if (firstHeadingLine === -1) firstHeadingLine = i;
     }

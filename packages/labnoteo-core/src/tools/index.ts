@@ -513,7 +513,7 @@ function sectionTargetIn(call: SectionCall, md: string, args: Record<string, unk
   const { target, index, total } = found;
   if (content === '') return { documentPath, heading, content, md, target, index, total, append };
   // Content that starts with the section's own heading would repeat it (#162).
-  const targetText = md.split(/\r?\n/)[target.line].replace(/^#{1,6}\s+/, '');
+  const targetText = md.split(/\r?\n/)[target.line].replace(/^#{1,6}[ \t]+/, '');
   const body = stripRepeatedHeading(content, targetText);
   if (body.trim() === '') {
     return { error: 'content only repeats the section heading; nothing was written. Send the body without the heading.' };

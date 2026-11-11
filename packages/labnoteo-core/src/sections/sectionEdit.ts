@@ -42,7 +42,7 @@ export interface SectionMatch {
   occurrence: number;
 }
 
-const ANY_HEADING_RE = /^(#{1,6})\s+(.*?)\s*$/;
+const ANY_HEADING_RE = /^(#{1,6})[ \t]+(.*?)\s*$/;
 
 /**
  * Heading text as {@link findSectionMatches} compares it when no heading
@@ -103,7 +103,7 @@ export function listHeadings(md: string, { asNote = true }: { asNote?: boolean }
  */
 export function findSectionMatches(md: string, heading: string, opts: { asNote?: boolean } = {}): SectionMatch[] {
   const lines = md.split(/\r?\n/);
-  const headingRe = new RegExp(`^(#{1,6})\\s+${escapeRegExp(heading)}\\s*$`);
+  const headingRe = new RegExp(`^(#{1,6})[ \\t]+${escapeRegExp(heading)}\\s*$`);
   const headings = listHeadings(md, opts);
   let found = headings.filter(h => headingRe.test(lines[h.line]));
   if (found.length === 0) {
@@ -276,7 +276,7 @@ export function sectionBodyEnd(
   level: number,
   { replacing = false }: { replacing?: boolean } = {}
 ): number {
-  const boundaryRe = new RegExp(`^#{1,${level}}\\s`);
+  const boundaryRe = new RegExp(`^#{1,${level}}[ \\t]`);
   // Fences read from just after the heading, which was matched outside one.
   const from = headingIdx + 1;
   const scan = (closed?: readonly boolean[]): number => {
