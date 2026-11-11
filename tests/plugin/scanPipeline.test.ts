@@ -702,7 +702,7 @@ describe('scans while a save of the open note does not end in time', () => {
     const s = setup({ [NOTE]: buildNote(ID, ['UHW010', 'UHW020']) }, { 'a.jpg': [page(pagePayload(), 'aaaaaaaaaaaa')] });
     const [result] = await s.pipeline.run([input('a.jpg')]);
     stuck(s);
-    expect(await s.pipeline.undo(result)).toBe(false);
+    expect(await s.pipeline.undo(result)).toBe('notWritten');
     expect(s.text.get(NOTE)).toContain('aaaaaaaaaaaa');
     expect(s.binary.has(result.imagePath!)).toBe(true);
     expect(s.trashed).toEqual([]);
@@ -717,7 +717,7 @@ describe('scans while a save of the open note does not end in time', () => {
     const [next] = await s.pipeline.run([input('new.jpg')]);
     expect(next.previous?.length).toBe(1);
     stuck(s);
-    expect(await s.pipeline.removePrevious(next)).toBe(0);
+    expect(await s.pipeline.removePrevious(next)).toBe('notWritten');
     expect(listFiledScans(s.text.get(NOTE)!).map(f => f.hash).sort()).toEqual(['aaaaaaaaaaaa', 'bbbbbbbbbbbb']);
     expect(s.binary.has(old.imagePath!)).toBe(true);
     expect(s.trashed).toEqual([]);

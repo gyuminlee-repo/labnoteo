@@ -951,7 +951,16 @@ export function insertDateCommand(
  * The ID exists so the topic can be reworded later without orphaning the issue
  * it opened, which is also why it is generated rather than typed.
  */
-export async function insertIssueMarkerCommand(editor: Editor, host: LabnoteHost, notePath?: string): Promise<boolean> {
+/**
+ * `shows`: the note the editor's view shows now, looked at after the prompt so another note
+ * the view went to meanwhile is not marked.
+ */
+export async function insertIssueMarkerCommand(
+  editor: Editor,
+  host: LabnoteHost,
+  notePath?: string,
+  shows?: () => string | undefined
+): Promise<boolean> {
   // IDs are a timestamp plus a counter, so generating a duplicate is not
   // actually possible; this scan is kept only because it costs nothing.
   //
@@ -1022,7 +1031,7 @@ export async function insertIssueMarkerCommand(editor: Editor, host: LabnoteHost
     )?.trim();
     if (!topic) return false;
     // The editor may show another note now: that one is not marked.
-    if (notePath !== undefined && host.editTarget && host.editTarget()?.path !== notePath) {
+    if (notePath !== undefined && shows && shows() !== notePath) {
       host.notify('warn', host.t('The note was switched to another while the command ran, so it was not changed. Run the command again.'));
       return false;
     }
@@ -1473,8 +1482,12 @@ export async function insertWorkflowLinkCommand(
   app: App,
   host: LabnoteHost,
   editor: Editor,
-  stamp: (content: string, path?: string) => string = c => c
+  stamp: (content: string, path?: string) => string = c => c,
+  shows: () => string | undefined = () => app.workspace.getActiveFile()?.path
 ): Promise<void> {
+  // The note the link goes into, before any wait: the editor's view may show another one by
+  // the time the workflow is made.
+  const notePath = shows();
   const labnoteDir = await resolveLabnoteDir(app, host);
   if (!labnoteDir) return;
 
@@ -1484,8 +1497,6 @@ export async function insertWorkflowLinkCommand(
   // too, since the link goes over it as it did.
   const caret = editor.posToOffset(editor.getCursor('from'));
   const caretTo = editor.posToOffset(editor.getCursor('to'));
-  // The note the link goes into: the editor may show another one once the workflow is made.
-  const notePath = app.workspace.getActiveFile()?.path;
 
   const chosen = await pickWorkflow(host);
   if (!chosen) return;
@@ -1518,7 +1529,7 @@ export async function insertWorkflowLinkCommand(
       ? app.fileManager.generateMarkdownLink(file, sourcePath, undefined, created.displayTitle)
       : `[[${created.fileName.replace(/\.md$/, '')}|${created.displayTitle}]]`;
 
-  if (sourcePath !== notePath) {
+  if (shows() !== notePath) {
     notifyWorkflowCreated(host, created);
     host.notify('warn', host.t('The note was switched to another while the workflow was made, so the link to it was not inserted.'));
     return;
@@ -2239,7 +2250,14 @@ export async function syncWorkflowChecklistCommand(
       }
       // Obsidian rewrites the link only when "Automatically update internal links" is on.
       if (relinks.length > 0) {
-        await processNoteThroughVault(app, host, readmePath, content => relinkWorkflowChecklistEntries(content, relinks));
+        const relink = (content: string): string => relinkWorkflowChecklistEntries(content, relinks);
+        const written = await processNoteThroughVault(app, host, readmePath, relink);
+        // Said when the README did not get the links of the notes moved back, or may not have.
+        if (written === 'uncertain') {
+          host.notify('warn', host.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', readmePath));
+        } else if (!written && (await changeNotWritten(app, host, readmePath, relink))) {
+          host.notify('warn', host.t('{0} was not written: it was still being saved, or it changed while the change went in. Try again in a moment.', readmePath));
+        }
       }
       if (movedBack > 0) {
         // As the README is: an open editor keeps a relink its save could not write yet.

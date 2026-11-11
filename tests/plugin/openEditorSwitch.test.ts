@@ -94,3 +94,20 @@ describe('a view that saves the note and goes to another as it does', () => {
   });
 });
 
+describe('a view whose save fails as it goes to another note, the file rewritten as that note reads', () => {
+  it('says the change may or may not be there, not taking the other note\'s editor for this one', async () => {
+    const { app, host, fs, texts } = switching(0);
+    const view = (app.workspace as unknown as { getLeavesOfType(): { view: MarkdownView }[] }).getLeavesOfType()[0].view;
+    view.save = async () => {
+      // Another writer makes A read as B, the change not in it; the leaf opens B; the save fails.
+      texts[B] = 'b text\n';
+      await fs.write(A, texts[B]);
+      view.file = new TFile(B);
+      view.lastSavedData = texts[B];
+      throw new Error('disk full');
+    };
+    expect(await processNoteThroughVault(app, host, A, c => `${c}ADDED\n`, true)).toBe('uncertain');
+    expect(await fs.read(B)).toBe(SAME);
+  });
+});
+

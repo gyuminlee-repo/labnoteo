@@ -525,7 +525,7 @@ export class WorkflowTreeView extends ItemView {
         .setTitle(this.plugin.t('Insert unit operation'))
         .setIcon('plus')
         .onClick(() =>
-          void insertUnitOpAndUpdateToc(
+          this.plugin.run(() => insertUnitOpAndUpdateToc(
             this.plugin.host,
             {
               opId: op.id,
@@ -537,7 +537,7 @@ export class WorkflowTreeView extends ItemView {
             },
             unitOpAliasPrompt(this.app, this.plugin.host),
             { sortToc: this.plugin.settings.autoSyncUnitOpToc }
-          )
+          ))
         )
     );
     menu.showAtMouseEvent(evt);

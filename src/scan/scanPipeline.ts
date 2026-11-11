@@ -495,8 +495,11 @@ export class ScanPipeline {
     return result;
   }
 
-  /** Take a filed scan out of its note again and trash its image. */
-  async undo(result: ScanResult): Promise<boolean> {
+  /**
+   * Take a filed scan out of its note again and trash its image: whether it was there, or
+   * 'notWritten' / 'uncertain' when the note was not written or may not have been.
+   */
+  async undo(result: ScanResult): Promise<boolean | 'notWritten' | 'uncertain'> {
     if (result.status !== 'filed' || !result.notePath || !result.hash) return false;
     const hash = result.hash;
     let removed = false;
@@ -508,16 +511,19 @@ export class ScanPipeline {
     const written = await processNoteThroughVault(this.deps.app, this.deps.host, result.notePath, remove);
     // Not written (a save of the open note did not end in time), or not known to be: the entry
     // and its image stay.
-    if (written === 'uncertain') return false;
-    if (!written && (await changeNotWritten(this.deps.app, this.deps.host, result.notePath, remove))) return false;
+    if (written === 'uncertain') return 'uncertain';
+    if (!written && (await changeNotWritten(this.deps.app, this.deps.host, result.notePath, remove))) return 'notWritten';
     const image = result.imagePath ? this.deps.app.vault.getAbstractFileByPath(result.imagePath) : null;
     if (image instanceof TFile) await this.deps.app.fileManager.trashFile(image);
     if (removed) this.deps.markUserEdit(result.notePath);
     return removed;
   }
 
-  /** Remove the earlier scans of the page `result` filed (and trash their images). */
-  async removePrevious(result: ScanResult): Promise<number> {
+  /**
+   * Remove the earlier scans of the page `result` filed (and trash their images): how many, or
+   * 'notWritten' / 'uncertain' when the note was not written or may not have been.
+   */
+  async removePrevious(result: ScanResult): Promise<number | 'notWritten' | 'uncertain'> {
     const { app, host } = this.deps;
     if (!result.notePath || !result.previous?.length) return 0;
     const notePath = result.notePath;
@@ -540,8 +546,8 @@ export class ScanPipeline {
     // Not written (a save of the open note did not end in time), or not known to be: the entries
     // and images stay.
     const written = await processNoteThroughVault(app, host, notePath, remove);
-    if (written === 'uncertain') return 0;
-    if (!written && (await changeNotWritten(app, host, notePath, remove))) return 0;
+    if (written === 'uncertain') return 'uncertain';
+    if (!written && (await changeNotWritten(app, host, notePath, remove))) return 'notWritten';
     for (const image of images) await app.fileManager.trashFile(image);
     if (count > 0) this.deps.markUserEdit(notePath);
     result.previous = [];

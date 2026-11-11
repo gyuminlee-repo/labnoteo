@@ -81,6 +81,28 @@ export function unmatchedReasonText(t: Translator, reason: string, noteId = ''):
   return why[reason] ?? '';
 }
 
+/**
+ * What a click on a result's undo or "delete earlier scan" says, and whether it is done (its
+ * button goes): a note not written, or that may not have been, keeps the button to try again.
+ */
+export async function undoScanResult(
+  t: Translator,
+  pipeline: Pick<ScanPipeline, 'undo' | 'removePrevious'>,
+  r: ScanResult,
+  earlier: boolean
+): Promise<{ message: string; done: boolean }> {
+  const out = earlier ? await pipeline.removePrevious(r) : await pipeline.undo(r);
+  const path = r.notePath ?? '';
+  if (out === 'uncertain') {
+    return { done: false, message: t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', path) };
+  }
+  if (out === 'notWritten') {
+    return { done: false, message: t('{0} was not written: it was still being saved, or it changed while the change went in. Try again in a moment.', path) };
+  }
+  if (earlier) return { done: true, message: t('Removed {0} earlier scan(s).', String(out)) };
+  return { done: true, message: out ? t('Removed the scan from {0}.', path) : t('The scan was no longer in the note.') };
+}
+
 export class ScanResultModal extends Modal {
   constructor(
     app: App,
@@ -115,9 +137,9 @@ export class ScanResultModal extends Modal {
             .setButtonText(t('Delete earlier scan'))
             .setTooltip(t('This page was filed before; remove the earlier scan and its image.'))
             .onClick(async () => {
-              const n = await this.pipeline.removePrevious(r);
-              new Notice(t('Removed {0} earlier scan(s).', String(n)));
-              b.setDisabled(true);
+              const { message, done } = await undoScanResult(t, this.pipeline, r, true);
+              new Notice(message);
+              if (done) b.setDisabled(true);
             })
         );
       }
@@ -127,9 +149,10 @@ export class ScanResultModal extends Modal {
             .setButtonText(t('Undo'))
             .setWarning()
             .onClick(async () => {
-              const ok = await this.pipeline.undo(r);
+              const { message, done } = await undoScanResult(t, this.pipeline, r, false);
+              new Notice(message);
+              if (!done) return;
               r.status = 'skipped';
-              new Notice(ok ? t('Removed the scan from {0}.', r.notePath ?? '') : t('The scan was no longer in the note.'));
               row.setDesc(t('Undone'));
               row.controlEl.empty();
             })

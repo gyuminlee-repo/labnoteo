@@ -74,7 +74,7 @@ import {
 } from '@labnoteo/core/lib/sampleStorage';
 import { VaultFileSystem } from './vaultFileSystem';
 import { bilingualName, createObsidianTranslator } from './i18n';
-import { createObsidianHost } from './obsidianHost';
+import { createObsidianHost, NoteSwitchedError } from './obsidianHost';
 import {
   createExperimentCommand,
   changeExperimentStatusCommand,
@@ -410,6 +410,11 @@ export default class LabnotePlugin extends Plugin {
    */
   run(fn: () => Promise<unknown>): void {
     fn().catch((err: unknown) => {
+      // The note was switched under the command: said as it is, nothing changed.
+      if (err instanceof NoteSwitchedError) {
+        this.host.notify('warn', err.message);
+        return;
+      }
       console.error('[labnoteo] command failed:', err);
       if (isPathTooLongError(err)) {
         this.host.notify(
@@ -466,7 +471,7 @@ export default class LabnotePlugin extends Plugin {
     }
     const path = active?.file?.path ?? '';
     this.run(async () => {
-      const inserted = await insertIssueMarkerCommand(editor, this.host, path);
+      const inserted = await insertIssueMarkerCommand(editor, this.host, path, () => active?.file?.path);
       if (!inserted || this.issueAutomationHintShown) return;
       const state = await issueAutomationState(this.host);
       if (state === 'ready') return;
@@ -840,7 +845,7 @@ export default class LabnotePlugin extends Plugin {
               .setTitle(this.t('Insert workflow'))
               .setIcon('git-branch-plus')
               .onClick(() =>
-                this.run(() => insertWorkflowLinkCommand(this.app, this.host, editor, this.stampLastUpdated))
+                this.run(() => insertWorkflowLinkCommand(this.app, this.host, editor, this.stampLastUpdated, () => info.file?.path))
               )
           );
           menu.addItem(item =>
@@ -2427,7 +2432,8 @@ export default class LabnotePlugin extends Plugin {
     }
     // Dropped first so the rename below is not taken for a rename by hand.
     this.copiedWorkflows.delete(copyPath);
-    await processNote(this.app, file, data => rewriteWorkflowTitle(data, heading.id, heading.name, alias));
+    // Not written is said; the copy is still renamed and listed, as asked.
+    await this.processNoteSaid(file, data => rewriteWorkflowTitle(data, heading.id, heading.name, alias));
     await this.resetCopyDates(file);
     await this.app.fileManager.renameFile(file, target);
     if (await addWorkflowFileToChecklist(this.app, this.host, dir, fileName)) {
@@ -2442,7 +2448,8 @@ export default class LabnotePlugin extends Plugin {
     const settled = await this.waitForNoModal();
     if (this.unloaded || !settled || file.path !== path) return;
     // Before asking (#194): the title and heading follow the new name even if the copy is not listed.
-    await processNote(this.app, file, data => planWorkflowRetitle(data, file.name)?.content ?? data);
+    // Not written is said before the question, which is about the checklist only.
+    await this.processNoteSaid(file, data => planWorkflowRetitle(data, file.name)?.content ?? data);
     const ok = await this.host.confirm(this.t('Add "{0}" to the README checklist?', file.name), {
       confirmLabel: this.t('Add to checklist'),
     });

@@ -174,3 +174,22 @@ describe('the issue markers of a copied workflow note', () => {
   }, OPEN_SAVE_WAIT_MS + 10000);
 });
 
+// A copy renamed by hand to a workflow name while Obsidian is still saving it past the wait: its
+// title is not written, which is said before the checklist is asked about.
+describe('the title of a copy renamed by hand', () => {
+  it('a save that does not end in time: said as not written', async () => {
+    const start = createWorkflowContent({ id: 'WD010', name: 'A', description: '' }, 'Dr. Kim');
+    const renamed = new TFile(`${COPY}/002_WD010_B.labnote.md`);
+    const files = new Map([[renamed.path, start]]);
+    const { p, notices } = plugin(files, renamed.path, 'before');
+    Object.assign(p, {
+      waitForNoModal: async () => true,
+      host: { ...(p.host as object), confirm: async () => false },
+    });
+    await (p as unknown as { offerListRenamedCopy(f: TFile): Promise<void> }).offerListRenamedCopy(renamed);
+    expect(notices).toEqual([
+      { level: 'warn', msg: `${renamed.path} was not written: it was still being saved, or it changed while the change went in. Try again in a moment.` },
+    ]);
+  }, OPEN_SAVE_WAIT_MS + 10000);
+});
+

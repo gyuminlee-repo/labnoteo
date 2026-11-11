@@ -31,29 +31,42 @@ export function openSourceView(app: App, path: string): MarkdownView | undefined
  */
 export const OPEN_SAVE_WAIT_MS = 3000;
 
+/** How often a save Obsidian before 1.15.0 has under way is looked at again: it has no promise. */
+const SAVING_POLL_MS = 20;
+
 /**
  * Wait for the saves under way in the views `path` is open in, until none of them has one or
  * `deadline` passes (by default {@link OPEN_SAVE_WAIT_MS} from now; one write shares its
  * deadline across its waits), so a write does not land before one of them and get written
  * over by it. Obsidian 1.15.0 keeps a save under way in the view's `savePromise` (null when
  * none; not in the API) and its own save waits for it the same way, in a loop; that promise
- * is awaited, not `save()` called, which would write the buffer again. A view without it is
- * not waited for. Returns false when a save was still under way at the deadline: that save
- * writes a buffer without the change, so a change written before it would be written over;
- * the write is not made and its caller is told so.
+ * is awaited, not `save()` called, which would write the buffer again. Obsidian 1.12.4 and
+ * 1.14.5 have no such promise: a view sets `saving` while its save writes (and a save called
+ * meanwhile only asks for another after it), so that flag is looked at again every
+ * {@link SAVING_POLL_MS} until the same deadline. A view with neither is not waited for.
+ * Returns false when a save was still under way at the deadline: that save writes a buffer
+ * without the change, so a change written before it would be written over; the write is not
+ * made and its caller is told so.
  */
 export async function waitForOpenSaves(app: App, path: string, deadline = Date.now() + OPEN_SAVE_WAIT_MS): Promise<boolean> {
   for (;;) {
     // An app with no workspace (a test's) has no editor open.
-    const pending = (app.workspace?.getLeavesOfType?.('markdown') ?? [])
-      .map(leaf => leaf.view as unknown as { file?: { path?: string } | null; savePromise?: unknown })
-      .filter(view => view?.file?.path === path && view.savePromise instanceof Promise)
+    const views = (app.workspace?.getLeavesOfType?.('markdown') ?? [])
+      .map(leaf => leaf.view as unknown as { file?: { path?: string } | null; savePromise?: unknown; saving?: unknown })
+      .filter(view => view?.file?.path === path);
+    const pending = views
+      .filter(view => view.savePromise instanceof Promise)
       .map(view => (view.savePromise as Promise<unknown>).catch(() => undefined));
-    if (pending.length === 0) return true;
+    const saving = views.some(view => view.saving === true);
+    if (pending.length === 0 && !saving) return true;
     const left = deadline - Date.now();
     if (left <= 0) return false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    await Promise.race([Promise.all(pending), new Promise(resolve => (timer = setTimeout(resolve, left)))]);
+    const waitFor = saving ? Math.min(left, SAVING_POLL_MS) : left;
+    await Promise.race([
+      ...(pending.length > 0 ? [Promise.all(pending)] : []),
+      new Promise(resolve => (timer = setTimeout(resolve, waitFor))),
+    ]);
     clearTimeout(timer);
   }
 }
@@ -142,17 +155,16 @@ async function writeInOpenEditor(
     } catch {
       // The file is looked at below either way.
     }
-    // The editor's text as the save left it: a view leaving the note saves it first, and its
-    // editor still holds it then. Taken only for a file that changed and reads as it.
-    const onAfterSave = onFile();
-    const atSave = lf(view.editor.getValue());
+    // The editor's text as the save left it, read only while the view is on the note: gone to
+    // another, its editor holds that note, which says nothing of this one.
+    const atSave = onFile() ? lf(view.editor.getValue()) : undefined;
     const now = await app.vault.read(file);
-    const still = onAfterSave && onFile();
+    const still = atSave !== undefined && onFile();
     // Gone to another note (not closed): its editor holds that note now.
     const elsewhere = !still && view.file != null && view.file.path !== file.path;
     const savedAs: unknown = still ? (view as unknown as { lastSavedData?: unknown }).lastSavedData : undefined;
     // Looked at with `savedAs`, no await between: what the view holds as it last read or saved.
-    const editorNow = lf(view.editor.getValue());
+    const editorNow = still ? lf(view.editor.getValue()) : undefined;
     const wrote = saved && still && typeof savedAs === 'string' && savedAs !== disk;
     // The view still on the note, holding the file's text as last saved: its editor keeps the
     // change, and saves it on its next save.
@@ -174,10 +186,10 @@ async function writeInOpenEditor(
   // may or may not have the change (rewritten by a formatter, say); read merged with typing, the
   // editor differs from the file whether the merge kept the change or dropped it (a part it
   // could not place). The change is not applied again, which could put it in twice.
-  const landed = (text: string, atSave: string) => lf(text) === after || lf(text) === atSave;
+  const landed = (text: string, atSave: string | undefined) => lf(text) === after || lf(text) === atSave;
   // A view that read the file over its editor has the two alike, whether or not the file has the
   // change: not taken for the file reading as the editor.
-  const changedMeanwhile = (at: { saved: boolean; elsewhere: boolean; toSave?: string; atSave: string; now: string; wrote: boolean; readOver: boolean }) => {
+  const changedMeanwhile = (at: { saved: boolean; elsewhere: boolean; toSave?: string; atSave?: string; now: string; wrote: boolean; readOver: boolean }) => {
     // The file as the save was to write it: the change is in it, the view gone or not.
     if (at.wrote || lf(at.now) === after || lf(at.now) === at.toSave) return true;
     if (at.readOver) return 'uncertain' as const;

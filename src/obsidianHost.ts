@@ -26,6 +26,12 @@ import { pickModal, pickManyModal, promptModal, confirmModal } from './modals';
 import { activeTableCellEditor, editorView, noteTargetBelowTable, tableCellHostView } from './tableCellTarget';
 
 const readingViewChecks = new WeakMap<EditTarget, () => boolean>();
+
+/**
+ * An edit target called once its view showed another note: nothing was read or changed. Its
+ * message is for the user as it is, not a failure of the command.
+ */
+export class NoteSwitchedError extends Error {}
 const tableCellEditors = new WeakMap<EditTarget, Editor>();
 
 /**
@@ -78,12 +84,17 @@ export function createObsidianHost(
     const cellDom = cell ? editorView(cell)?.dom : undefined;
     // Looked at on every call: a call after a wait (a prompt, a read) may find the view gone
     // to another note, whose editor this one now is; it is not read or changed as this note.
+    const stillOnNote = (): void => {
+      if (noteView.file?.path !== file.path) {
+        throw new NoteSwitchedError(t('The note was switched to another while the command ran, so it was not changed. Run the command again.'));
+      }
+    };
     const onNote = <T extends EditTarget>(target: T): T => {
       for (const key of Object.keys(target) as (keyof T)[]) {
         const call = target[key];
         if (typeof call !== 'function') continue;
         target[key] = (async (...args: unknown[]) => {
-          if (noteView.file?.path !== file.path) throw new Error(t('The note was switched to another while the command ran, so it was not changed. Run the command again.'));
+          stillOnNote();
           return (call as (...a: unknown[]) => unknown).apply(target, args);
         }) as T[keyof T];
       }
@@ -103,6 +114,8 @@ export function createObsidianHost(
       if (!inPreview()) return;
       const before = noteView.getViewData();
       await noteView.setState({ ...noteView.getState(), mode: 'source' }, { history: false });
+      // Looked at again before the editor is: the view may have gone to another note meanwhile.
+      stillOnNote();
       if (editor.getValue() !== before) {
         throw new Error(t('The note changed while switching to editing view. Run the command again.'));
       }

@@ -249,3 +249,19 @@ describe('editTarget after its view went to another note', () => {
   });
 });
 
+// The view goes to another note, alike, while the target switches it to editing: nothing is
+// written into that note.
+describe('editTarget whose view goes to another note as it switches to editing', () => {
+  it('refuses the write', async () => {
+    const { host, view, editor, setState } = setup({ mode: 'preview', data: 'same\n', editorText: 'same\n' });
+    setState.mockImplementation(async state => {
+      if (state.mode) view.mode = state.mode;
+      view.file = new TFile('labnote/001_Test/002_WD020_B.labnote.md');
+      editor.text = 'same\n';
+    });
+    const target = host.editTarget()!;
+    await expect(target.replaceRange(0, 0, 'X')).rejects.toThrow('The note was switched to another while the command ran, so it was not changed. Run the command again.');
+    expect(editor.text).toBe('same\n');
+  });
+});
+

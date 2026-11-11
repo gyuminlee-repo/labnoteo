@@ -64,6 +64,7 @@ import { buildApprovalMessage, erasesRecordedLines } from './approvalMessage';
 import { getObsidianLanguage } from '../i18n';
 import { getSeoulDateString } from '@labnoteo/core/lib/dateUtils';
 import { aiAnswerModal } from '../modals';
+import { NoteSwitchedError } from '../obsidianHost';
 import { sampleUsages } from '../sampleActions';
 
 /**
@@ -323,7 +324,14 @@ async function deliverToNote(
   const writeIfOpen = async (): Promise<boolean> => {
     const current = plugin.host.editTarget();
     if (current?.path !== note.path) return false;
-    await write(current);
+    try {
+      await write(current);
+    } catch (err) {
+      // Switched to another note as it was written: said, and the answer is offered to copy.
+      if (!(err instanceof NoteSwitchedError)) throw err;
+      plugin.host.notify('warn', err.message);
+      return false;
+    }
     new Notice(plugin.t(doneMessage, note.path.split('/').pop() ?? note.path));
     return true;
   };
