@@ -3,6 +3,7 @@ import { App, Modal, Notice, Setting } from 'obsidian';
 import type { Translator } from '@labnoteo/core';
 import { isPagePayload, payloadLabel } from '@labnoteo/core/lib/scanPayload';
 import type { ScanPipeline, ScanResult } from './scanPipeline';
+import { guardScanAction } from './actionGuard';
 
 /** "12 page(s): 10 filed, 1 unmatched, 1 blank". */
 export function summarizeResults(t: Translator, results: readonly ScanResult[]): string {
@@ -145,12 +146,14 @@ export class ScanResultModal extends Modal {
           b
             .setButtonText(t('Delete earlier scan'))
             .setTooltip(t('This page was filed before; remove the earlier scan and its image.'))
-            .onClick(async () => {
-              const { message, done } = await undoScanResult(t, this.pipeline, r, true);
-              new Notice(message);
-              // Done: nothing earlier is left to delete, so the button goes.
-              if (done) b.buttonEl.remove();
-            })
+            .onClick(() =>
+              void guardScanAction(t, async () => {
+                const { message, done } = await undoScanResult(t, this.pipeline, r, true);
+                new Notice(message);
+                // Done: nothing earlier is left to delete, so the button goes.
+                if (done) b.buttonEl.remove();
+              })
+            )
         );
       }
       if (r.status === 'filed') {
@@ -158,14 +161,16 @@ export class ScanResultModal extends Modal {
           b
             .setButtonText(t('Undo'))
             .setWarning()
-            .onClick(async () => {
-              const { message, done } = await undoScanResult(t, this.pipeline, r, false);
-              new Notice(message);
-              if (!done) return;
-              r.status = 'skipped';
-              row.setDesc(t('Undone'));
-              row.controlEl.empty();
-            })
+            .onClick(() =>
+              void guardScanAction(t, async () => {
+                const { message, done } = await undoScanResult(t, this.pipeline, r, false);
+                new Notice(message);
+                if (!done) return;
+                r.status = 'skipped';
+                row.setDesc(t('Undone'));
+                row.controlEl.empty();
+              })
+            )
         );
       }
     }

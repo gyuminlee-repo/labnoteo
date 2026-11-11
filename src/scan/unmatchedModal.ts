@@ -11,6 +11,7 @@ import { unmatchedInfoFromName, UNMATCHED_FOLDER } from './imageStore';
 import type { ScanPipeline } from './scanPipeline';
 import { describeResult, unmatchedReasonText } from './resultModal';
 import { openEditorText } from '../openEditorWrite';
+import { guardScanAction } from './actionGuard';
 
 const IMAGE_RE = /\.(jpe?g|png|webp)$/i;
 
@@ -75,15 +76,17 @@ export class UnmatchedModal extends Modal {
       Object.assign(img.style, { display: 'block', maxWidth: '220px', maxHeight: '220px', marginTop: '4px', cursor: 'zoom-in' });
       img.addEventListener('click', () => window.open(this.app.vault.getResourcePath(file)));
       row
-        .addButton(b => b.setButtonText(t('Assign')).setCta().onClick(() => void this.assign(file)))
+        .addButton(b => b.setButtonText(t('Assign')).setCta().onClick(() => void guardScanAction(this.t, () => this.assign(file))))
         .addButton(b =>
           b
             .setButtonText(t('Delete'))
             .setWarning()
-            .onClick(async () => {
-              await this.app.fileManager.trashFile(file);
-              this.render();
-            })
+            .onClick(() =>
+              void guardScanAction(this.t, async () => {
+                await this.app.fileManager.trashFile(file);
+                this.render();
+              })
+            )
         );
     }
   }

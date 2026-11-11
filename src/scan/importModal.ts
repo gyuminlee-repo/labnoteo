@@ -2,6 +2,7 @@
 import { App, Modal, Setting } from 'obsidian';
 import type { Translator } from '@labnoteo/core';
 import type { ScanInput } from './scanPipeline';
+import { guardScanAction } from './actionGuard';
 
 const ACCEPT = '.jpg,.jpeg,.png,.webp,.gif,.bmp,.pdf,.zip,.heic,.heif,.tif,.tiff,image/*,application/pdf,application/zip';
 
@@ -35,7 +36,7 @@ export class ImportScansModal extends Modal {
     const input = contentEl.createEl('input', { attr: { type: 'file', multiple: 'true', accept: ACCEPT } });
     input.style.display = 'none';
     zone.addEventListener('click', () => input.click());
-    input.addEventListener('change', () => void this.take(Array.from(input.files ?? [])));
+    input.addEventListener('change', () => void guardScanAction(this.t, () => this.take(Array.from(input.files ?? []))));
     zone.addEventListener('dragover', e => {
       e.preventDefault();
       zone.style.borderColor = 'var(--interactive-accent)';
@@ -44,7 +45,7 @@ export class ImportScansModal extends Modal {
     zone.addEventListener('drop', e => {
       e.preventDefault();
       zone.style.borderColor = 'var(--background-modifier-border)';
-      void this.take(Array.from(e.dataTransfer?.files ?? []));
+      void guardScanAction(this.t, () => this.take(Array.from(e.dataTransfer?.files ?? [])));
     });
     if (this.onProcessFolder) {
       const run = this.onProcessFolder;
