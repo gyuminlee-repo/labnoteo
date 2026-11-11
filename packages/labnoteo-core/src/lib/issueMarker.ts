@@ -743,7 +743,7 @@ export function findEnclosingHeading(md: string, line: number): string | undefin
   const lines = md.split('\n');
   const code = codeLines(lines);
   // Not above the front matter's end: a `## …` YAML comment there is no heading.
-  const fm = frontMatterLineCountOf(lines);
+  const fm = frontMatterLineCountOf(lines, { crKept: true });
 
   for (let i = Math.min(line, lines.length) - 1; i >= fm; i--) {
     if (code[i]) continue;

@@ -44,10 +44,14 @@ export function stripFrontMatter(md: string): string {
 /**
  * {@link frontMatterLineCount} of a note split into `lines`: the lines Obsidian reads as
  * properties (YAML), where a `## …` comment is no heading and a fence-like line opens nothing.
- * Every parser of headings, sections and entries skips them.
+ * Every parser of headings, sections and entries skips them. Lines split on `\r?\n` by
+ * default, so a CR left at a line's end is text (a closing `---\r` is none); `crKept` for
+ * lines split on `\n` alone, whose CR ends the line.
  */
-export function frontMatterLineCountOf(lines: readonly string[]): number {
-  return lines[0]?.trim() === '---' ? frontMatterLineCount(lines.join('\n')) : 0;
+export function frontMatterLineCountOf(lines: readonly string[], { crKept = false }: { crKept?: boolean } = {}): number {
+  if (lines[0]?.trim() !== '---') return 0;
+  // A CR that is text is kept from reading as a line break: followed by a character no line ends with.
+  return frontMatterLineCount(crKept ? lines.join('\n') : lines.map(l => (l.endsWith('\r') ? `${l}\u0000` : l)).join('\n'));
 }
 
 /**

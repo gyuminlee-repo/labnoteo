@@ -4,7 +4,7 @@
  * `## …` YAML comment in it is no heading and a line in it no entry.
  */
 import { describe, it, expect } from 'vitest';
-import { stripFrontMatter } from '../sections/frontMatter';
+import { frontMatterLineCountOf, stripFrontMatter } from '../sections/frontMatter';
 import { listUnitOpBlocks, removeScanEntry } from '../sections/scanInsert';
 import { replaceSectionBody } from '../sections/sectionEdit';
 import { parseWorkflowHeading, rewriteWorkflowTitle } from '../lib/workflowStructure';
@@ -25,6 +25,14 @@ describe('the front matter boundary', () => {
     ['---\nx\n---', ''],
   ])('%j leaves the body %j', (md, body) => {
     expect(stripFrontMatter(md)).toBe(body);
+  });
+
+  // Split on \r?\n, a CR left at a line's end is text: `---\r\r\n` closes nothing, as in Obsidian.
+  it('counts lines split either way as Obsidian reads the text', () => {
+    expect(frontMatterLineCountOf('---\r\nx\r\n---\r\r\nb'.split(/\r?\n/))).toBe(0);
+    expect(frontMatterLineCountOf('---\r\nx\r\n---\r\r\nb'.split('\n'), { crKept: true })).toBe(0);
+    expect(frontMatterLineCountOf('---\r\nx\r\n---\r\nb'.split('\n'), { crKept: true })).toBe(3);
+    expect(frontMatterLineCountOf('---\r\nx\r\n---\r\nb'.split(/\r?\n/))).toBe(3);
   });
 
   it('an empty block swallows no scan entry below it', () => {

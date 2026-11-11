@@ -378,7 +378,7 @@ async function writeMethodDraft(
 export function unitOpContext(text: string, loc: UnitOpMethodLocation): string {
   const lines = text.split('\n');
   // A `### [ID …]` YAML comment in the front matter is no unit operation.
-  const fm = frontMatterLineCountOf(lines);
+  const fm = frontMatterLineCountOf(lines, { crKept: true });
   const firstUnitOp = lines.findIndex((l, i) => i >= fm && /^###\s+\[/.test(l));
   const head = lines.slice(0, firstUnitOp === -1 ? 40 : Math.min(firstUnitOp, 40)).join('\n');
   const block = lines.slice(loc.unitOpStartLine, loc.unitOpEndLine).join('\n');

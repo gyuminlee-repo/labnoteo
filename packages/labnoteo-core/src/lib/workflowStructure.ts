@@ -534,9 +534,14 @@ export function isWorkflowSectionHeading(line: string): boolean {
  * workflow entry is taken: a heading renamed to anything else still has its
  * entries under it.
  */
-function findWorkflowSection(lines: readonly string[], skip?: readonly boolean[]): { header: number; end: number } {
-  // Front matter is YAML: a `## …` comment or `- [ ]` line in it is no heading or entry.
-  const fm = frontMatterLineCountOf(lines);
+function findWorkflowSection(
+  lines: readonly string[],
+  skip?: readonly boolean[],
+  { crKept = true }: { crKept?: boolean } = {}
+): { header: number; end: number } {
+  // Front matter is YAML: a `## …` comment or `- [ ]` line in it is no heading or entry. README
+  // lines are split on `\n`, their CR kept, but for workflowChecklistSectionRange's.
+  const fm = frontMatterLineCountOf(lines, { crKept });
   const isH2At = (i: number): boolean => i >= fm && !skip?.[i] && /^##\s/.test(lines[i].trim());
   const endOf = (header: number): number => {
     for (let i = header + 1; i < lines.length; i++) if (isH2At(i)) return i;
@@ -565,7 +570,7 @@ export function workflowChecklistSectionRange(
   skip?: readonly boolean[]
 ): { header: number; end: number } | undefined {
   const lines = readmeContent.split(/\r?\n/);
-  const section = findWorkflowSection(lines, skip);
+  const section = findWorkflowSection(lines, skip, { crKept: false });
   return section.header === -1 ? undefined : section;
 }
 
