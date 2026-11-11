@@ -115,16 +115,19 @@ const LIST_ITEM_RE = /^\s*(?:[-*+]|\d+[.)])(?:\s|$)/;
  * Every reader of markers goes through this, so what the editor styles is
  * what `issue-sync` and `validate` read (#120, #224).
  */
-function codeLines(lines: readonly string[]): boolean[] {
-  const code: boolean[] = [];
+// front matter: a note's lines, read from `from` (past its front matter, so a fence in the YAML
+// reaches no line below), or a fragment's from its first line.
+function codeLines(lines: readonly string[], from = 0): boolean[] {
+  const code: boolean[] = new Array<boolean>(Math.min(from, lines.length)).fill(false);
   let fence: OpenFence | null = null;
   let inIndented = false;
   let inList = false;
   let prevBlank = true;
   // Fences in a block quote or list item as CommonMark reads them, closed only by a run of the
   // same character at least as long with nothing after it (stepFence).
-  const view = fenceLines(lines);
+  const view = fenceLines(lines, from);
   for (const [i, line] of lines.entries()) {
+    if (i < from) continue;
     const next = stepFence(view[i], fence);
     if (fence !== null || next !== null) {
       fence = next;
@@ -200,7 +203,7 @@ function scanCommentsAndSpans(md: string): { comments: IssueMarkerRange[]; spans
   const ranges: IssueMarkerRange[] = [];
   const spans: IssueMarkerRange[] = [];
   const raws = md.split('\n');
-  const code = codeLines(raws.map(raw => raw.replace(/\r$/, '')));
+  const code = codeLines(raws.map(raw => raw.replace(/\r$/, '')), frontMatterLineCountOf(raws, { crKept: true }));
   let open: { close: string; start: number } | undefined;
   let offset = 0;
   for (let li = 0; li < raws.length; li++) {
@@ -267,7 +270,8 @@ export function parseIssueMarkers(md: string): IssueMarkerScan {
   const malformed: MalformedIssueMarker[] = [];
 
   const lines = md.split('\n');
-  const code = codeLines(lines);
+  // Fences are read from past the front matter: one in the YAML reaches no line below.
+  const code = codeLines(lines, frontMatterLineCountOf(lines, { crKept: true }));
   const comments = markerHiddenRanges(md);
   let offset = 0;
   for (let i = 0; i < lines.length; i++) {
@@ -412,11 +416,12 @@ export function fencedCodeRanges(md: string): IssueMarkerRange[] {
   let offset = 0;
   let start = -1;
   const lines = md.split('\n');
-  const view = fenceLines(lines);
+  const fm = frontMatterLineCountOf(lines, { crKept: true });
+  const view = fenceLines(lines, fm);
   let fence: OpenFence | null = null;
   for (const [i, line] of lines.entries()) {
     const end = offset + line.length;
-    const next = stepFence(view[i], fence);
+    const next: OpenFence | null = i < fm ? null : stepFence(view[i], fence);
     if (fence === null && next !== null) start = offset;
     if (fence !== null && next === null) {
       ranges.push({ start, end });
@@ -437,7 +442,7 @@ export function fencedCodeRanges(md: string): IssueMarkerRange[] {
 export function codeBlockRanges(md: string): IssueMarkerRange[] {
   const ranges: IssueMarkerRange[] = [];
   const lines = md.split('\n');
-  const code = codeLines(lines);
+  const code = codeLines(lines, frontMatterLineCountOf(lines, { crKept: true }));
   let offset = 0;
   let open: IssueMarkerRange | undefined;
   for (let i = 0; i < lines.length; i++) {
@@ -493,7 +498,7 @@ export function reassignIssueMarkerIds(
 ): { content: string; count: number } {
   let count = 0;
   const raws = md.split('\n');
-  const code = codeLines(raws.map(raw => raw.replace(/\r$/, '')));
+  const code = codeLines(raws.map(raw => raw.replace(/\r$/, '')), frontMatterLineCountOf(raws, { crKept: true }));
   const comments = markerHiddenRanges(md);
   let offset = 0;
   const lines = raws.map((raw, i) => {
@@ -521,7 +526,8 @@ export function reassignIssueMarkerIds(
  */
 export function stripIssueMarkers(md: string): string {
   const raws = md.split('\n');
-  const code = codeLines(raws.map(raw => raw.replace(/\r$/, '')));
+  // As markerHiddenRanges reads it: fences from past a front matter.
+  const code = codeLines(raws.map(raw => raw.replace(/\r$/, '')), frontMatterLineCountOf(raws, { crKept: true }));
   const comments = markerHiddenRanges(md);
   let offset = 0;
   return raws

@@ -57,6 +57,12 @@ describe('readers with a fence rule of their own', () => {
     expect(findSampleListTableRanges(`- ${t}md\n  ${t}\n| ID | Name |\n|---|---|\n| S1 | a |\n`, [['ID', 'Name']])).toHaveLength(1);
   });
 
+  it('reads no fence in the front matter for issue markers and sample lists', () => {
+    const fm = `---\ndescription: |\n  ${t}\n---\n`;
+    expect(parseIssueMarkers(`${fm}text @issue;ISS-1;topic\n`).markers.map(m => m.id)).toEqual(['ISS-1']);
+    expect(findSampleListTableRanges(`${fm}| ID | Name |\n|---|---|\n| S1 | a |\n`, [['ID', 'Name']])).toHaveLength(1);
+  });
+
   it('reads the title below a list fence', () => {
     expect(scanDocumentHead([`- ${t}md`, `  ${t}`, '# Title']).firstHeadingLine).toBe(2);
   });

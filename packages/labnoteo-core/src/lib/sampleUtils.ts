@@ -5,6 +5,7 @@
 
 import { escapeRegExp } from './regexUtils';
 import { fenceLines, stepFence, type OpenFence } from '../sections/codeFences';
+import { frontMatterLineCountOf } from '../sections/frontMatter';
 
 /**
  * Sample types available
@@ -195,11 +196,13 @@ function scanSampleListTables(
   }
   const tables: Array<SampleListTableRange & { rows: SampleListRow[] }> = [];
   let fence: OpenFence | null = null;
-  // Fences in a block quote or list item as CommonMark reads them, closed as stepFence closes them.
-  const view = fenceLines(lines.map(l => l.text));
+  // Fences in a block quote or list item as CommonMark reads them, closed as stepFence closes them,
+  // from past the front matter: one in the YAML reaches no table below.
+  const fm = frontMatterLineCountOf(lines.map(l => l.text));
+  const view = fenceLines(lines.map(l => l.text), fm);
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].text;
-    const next = stepFence(view[i], fence);
+    const next: OpenFence | null = i < fm ? null : stepFence(view[i], fence);
     if (fence !== null || next !== null) {
       fence = next;
       continue;
