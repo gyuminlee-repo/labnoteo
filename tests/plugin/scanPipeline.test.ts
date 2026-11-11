@@ -1183,3 +1183,47 @@ describe('undo and hand filing that put the note back as it was', () => {
     expect(notices.filter(m => /may or may not|only in its open editor/.test(m))).toEqual([]);
   });
 });
+
+describe('scans judged by what the note links, and undone by the batch they went in with', () => {
+  const QUEUED = '_labnote-scans/unmatched/20261021-021738_unknown_photo1.jpg';
+  const file = (p: string) => new TFile(p) as unknown as Parameters<ScanPipeline['fileManually']>[0];
+
+  it('filed by hand, its section renamed right after the write: the linked copy stays', async () => {
+    const s = setup({ [NOTE]: buildNote(ID, ['UHW010', 'UHW020']) }, {});
+    s.binary.set(QUEUED, new Uint8Array([9, 9, 9]).buffer);
+    const process = s.app.vault.process.bind(s.app.vault);
+    Object.assign(s.app.vault, {
+      process: async (f: TFile, fn: (data: string) => string) => {
+        const out = await process(f as never, fn);
+        // Renamed by the researcher before the check reads the note.
+        s.text.set(NOTE, out.replace('#### Worksheet scans', '#### Worksheet scans (paper)'));
+        return out;
+      },
+    });
+    const result = await s.pipeline.fileManually(file(QUEUED), file(NOTE), 2, { page: 1, pageCount: 1 });
+    expect(result.status).toBe('filed');
+    expect(s.binary.has(result.imagePath!)).toBe(true);
+    expect(s.text.get(NOTE)).toContain(result.imagePath!.split('/').pop()!);
+    expect(s.trashed).toContain(QUEUED);
+  });
+
+  it('an undo leaves an image the note still links under a renamed section', async () => {
+    const s = setup({ [NOTE]: buildNote(ID, ['UHW010', 'UHW020']) }, { 'p.jpg': [page(pagePayload(), 'aaaaaaaaaaaa')] });
+    const [r] = await s.pipeline.run([input('p.jpg')]);
+    s.text.set(NOTE, s.text.get(NOTE)!.replace('#### Worksheet scans', '#### Worksheet scans (paper)'));
+    await s.pipeline.undo(r);
+    expect(s.trashed).not.toContain(r.imagePath);
+  });
+
+  it('two pages filed in one batch into a block without the section: undoing both takes it out', async () => {
+    const note = buildNote(ID, ['UHW010', 'UHW020']);
+    const s = setup(
+      { [NOTE]: note },
+      { 'two.jpg': [page(pagePayload({ page: 1, pageCount: 2 }), 'aaaaaaaaaaaa'), page(pagePayload({ page: 2, pageCount: 2 }), 'bbbbbbbbbbbb')] }
+    );
+    const results = await s.pipeline.run([input('two.jpg')]);
+    expect(results.map(r => r.status)).toEqual(['filed', 'filed']);
+    for (const r of results) expect(await s.pipeline.undo(r)).toBe(true);
+    expect(s.text.get(NOTE)).not.toContain('Worksheet scans');
+  });
+});

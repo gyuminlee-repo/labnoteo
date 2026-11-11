@@ -384,7 +384,11 @@ export class ScanPipeline {
           }
           if (target.kind === 'block' || target.kind === 'note') {
             const block = target.kind === 'block' ? target.block : null;
-            item.result.sectionExisted = hasScanSection(out, block);
+            // Whether the note had the section before this batch, not before this page: undoing
+            // every page of the batch takes out a section the batch made.
+            const was = resolveScanTarget(listUnitOpBlocks(content), unitOpIndex, opId, fingerprint);
+            item.result.sectionExisted =
+              was.kind === 'block' || was.kind === 'note' ? hasScanSection(content, was.kind === 'block' ? was.block : null) : false;
             out = insertScanEntries(out, block, [item.entry]);
           }
           else missed.set(item, target.kind === 'missing' ? 'no-unit-op' : target.kind);
@@ -510,9 +514,23 @@ export class ScanPipeline {
     if (result.status === 'filed' || result.status === 'duplicate') {
       // The queued image goes only once the note on disk has the scan: one its open editor alone
       // keeps (its save failed) would be lost with the queued image if the editor is closed unsaved.
-      // Trashed only when the disk is read and has the scan: unread is not saved.
-      const disk = result.notePath && result.hash ? await this.onDisk(result.notePath, [result.hash]) : true;
-      const editor = result.notePath && result.hash ? this.inEditor(result.notePath, [result.hash]) : false;
+      // Trashed only when the disk is read and has the scan: unread is not saved. A scan filed is
+      // known by its image's link (the note may have renamed its section since), a duplicate by its entry.
+      const name = result.status === 'filed' && result.imagePath ? posix.basename(result.imagePath) : undefined;
+      const disk = !result.notePath
+        ? true
+        : name
+          ? await this.diskLinks(result.notePath, name)
+          : result.hash
+            ? await this.onDisk(result.notePath, [result.hash])
+            : true;
+      const editor = !result.notePath
+        ? false
+        : name
+          ? (openSourceView(this.deps.app, result.notePath)?.editor.getValue() ?? '').includes(name)
+          : result.hash
+            ? this.inEditor(result.notePath, [result.hash])
+            : false;
       if (disk === true) {
         // On disk: filed, whatever the write could not tell.
         delete result.uncertain;
@@ -592,7 +610,8 @@ export class ScanPipeline {
     // editor keeps the first one unsaved finds nothing to do there, the disk still pointing at the image.
     if (await this.referenced(result.notePath, [hash])) return 'notWritten';
     const image = result.imagePath ? this.deps.app.vault.getAbstractFileByPath(result.imagePath) : null;
-    if (image instanceof TFile) await this.deps.app.fileManager.trashFile(image);
+    // Not while the note still links it (its entry under a section renamed since, say).
+    if (image instanceof TFile && !(await this.linksImage(result.notePath, image.path))) await this.deps.app.fileManager.trashFile(image);
     if (removed) this.deps.markUserEdit(result.notePath);
     const done = removed || (result.removedPending?.undo ?? 0) > 0;
     if (result.removedPending) delete result.removedPending.undo;
@@ -630,6 +649,18 @@ export class ScanPipeline {
       return links(await this.deps.app.vault.read(file));
     } catch {
       return true;
+    }
+  }
+
+  /** Whether the note on disk links the image named `name`; 'unknown' when it cannot be read. */
+  private async diskLinks(notePath: string, name: string): Promise<boolean | 'unknown'> {
+    const file = this.deps.app.vault.getAbstractFileByPath(notePath);
+    if (!(file instanceof TFile)) return false;
+    try {
+      return (await this.deps.app.vault.read(file)).includes(name);
+    } catch (err) {
+      console.warn('[labnoteo] could not read the note to see whether it links the scan', notePath, err);
+      return 'unknown';
     }
   }
 
@@ -685,11 +716,17 @@ export class ScanPipeline {
     if (written === 'uncertain') return 'uncertain';
     if (!written && (await changeNotWritten(app, host, notePath, remove))) return 'notWritten';
     if (await this.referenced(notePath, result.previous.map(p => p.hash))) return 'notWritten';
-    for (const image of images) await app.fileManager.trashFile(image);
+    // An image the note still links (an entry under a section renamed since, say) stays.
+    let trashed = 0;
+    for (const image of images) {
+      if (await this.linksImage(notePath, image.path)) continue;
+      await app.fileManager.trashFile(image);
+      trashed++;
+    }
     if (count > 0) this.deps.markUserEdit(notePath);
     result.previous = [];
     const removed = count + (result.removedPending?.earlier ?? 0);
     if (result.removedPending) delete result.removedPending.earlier;
-    return { removed, trashed: images.length };
+    return { removed, trashed };
   }
 }
