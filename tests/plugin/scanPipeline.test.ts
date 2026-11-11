@@ -1317,3 +1317,25 @@ describe('scan images the note links elsewhere, and one message per hand filing'
     expect(s.binary.has(QUEUED)).toBe(true);
   });
 });
+
+describe('a scan filed by hand whose Markdown link has parentheses in its path', () => {
+  it('is filed, and its copy stays', async () => {
+    const QUEUED = '_labnote-scans/unmatched/20261021-021738_unknown_photo1.jpg';
+    const s = setup({ [NOTE]: buildNote(ID, ['UHW010', 'UHW020']) }, {});
+    s.binary.set(QUEUED, new Uint8Array([9, 9, 9]).buffer);
+    // Markdown links, as the vault's "Use [[Wikilinks]]" off writes them.
+    Object.assign(s.app.fileManager, {
+      generateMarkdownLink: (f: TFile, _source: string, _subpath?: string, alias?: string) =>
+        `${alias ? `[${alias}]` : '![]'}(labnote/Assay(pilot)/images/${f.path.split('/').pop()})`,
+    });
+    const result = await s.pipeline.fileManually(
+      new TFile(QUEUED) as unknown as Parameters<ScanPipeline['fileManually']>[0],
+      new TFile(NOTE) as unknown as Parameters<ScanPipeline['fileManually']>[1],
+      2,
+      { page: 1, pageCount: 1 }
+    );
+    expect(result.status).toBe('filed');
+    expect(s.binary.has(result.imagePath!)).toBe(true);
+    expect(s.text.get(NOTE)).toContain('(labnote/Assay(pilot)/images/');
+  });
+});

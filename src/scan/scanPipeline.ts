@@ -24,6 +24,7 @@ import * as posix from '@labnoteo/core/posix';
 import { changeNotWritten, processNoteThroughVault, processNoteThroughVaultOnDisk } from '../commands';
 import { openEditorText, openSourceView } from '../openEditorWrite';
 import type { NoteIdService } from '../barcode/noteIdService';
+import { linkedNames, mayLinkName } from './noteLinks';
 import {
   SCANS_SUBFOLDER,
   UNMATCHED_FOLDER,
@@ -183,27 +184,6 @@ export function embedLinkPath(embed: string): string | undefined {
   } catch {
     return md[1].trim();
   }
-}
-
-/**
- * The file names `text` links, lower-cased: wiki links and embeds (`[[a/b.jpg]]`, `![[b.jpg|200]]`)
- * and Markdown links (`![](a/b%20c.jpg)`), each by the last part of its path.
- */
-export function linkedNames(text: string): Set<string> {
-  const names = new Set<string>();
-  const add = (target: string): void => {
-    let path = target.trim();
-    try {
-      path = decodeURIComponent(path);
-    } catch {
-      // A `%` that is no escape: the name as written.
-    }
-    const name = posix.basename(path).toLowerCase();
-    if (name) names.add(name);
-  };
-  for (const m of text.matchAll(/\[\[([^\]|#^\n]+)/g)) add(m[1]);
-  for (const m of text.matchAll(/\]\(\s*<?([^)>\s]+)>?(?:\s+"[^"]*")?\s*\)/g)) add(m[1]);
-  return names;
 }
 
 export class ScanPipeline {
@@ -554,7 +534,7 @@ export class ScanPipeline {
       const editor = !result.notePath
         ? false
         : name
-          ? linkedNames(openSourceView(this.deps.app, result.notePath)?.editor.getValue() ?? '').has(name.toLowerCase())
+          ? mayLinkName(openSourceView(this.deps.app, result.notePath)?.editor.getValue() ?? '', name)
           : result.hash
             ? this.inEditor(result.notePath, [result.hash])
             : false;
@@ -682,7 +662,7 @@ export class ScanPipeline {
    */
   private async linksImage(notePath: string, imagePath: string): Promise<boolean> {
     const name = posix.basename(imagePath).toLowerCase();
-    const links = (text: string): boolean => linkedNames(text).has(name);
+    const links = (text: string): boolean => mayLinkName(text, name);
     const editor = openSourceView(this.deps.app, notePath)?.editor.getValue();
     if (editor !== undefined && links(editor)) return true;
     const file = this.deps.app.vault.getAbstractFileByPath(notePath);
@@ -699,7 +679,7 @@ export class ScanPipeline {
     const file = this.deps.app.vault.getAbstractFileByPath(notePath);
     if (!(file instanceof TFile)) return false;
     try {
-      return linkedNames(await this.deps.app.vault.read(file)).has(name.toLowerCase());
+      return mayLinkName(await this.deps.app.vault.read(file), name);
     } catch (err) {
       console.warn('[labnoteo] could not read the note to see whether it links the scan', notePath, err);
       return 'unknown';
