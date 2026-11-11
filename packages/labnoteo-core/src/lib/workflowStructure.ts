@@ -703,7 +703,7 @@ export function insertWorkflowChecklistEntries(
       shiftSpans(pos, 1 + (separator ? 1 : 0) + (blankAbove ? 1 : 0));
     };
     // Never into a fenced example: just after its closing line instead.
-    const outside = (at: number): number => positionOutsideFences(lines, at, header, end, spans);
+    const outside = (at: number): number => positionOutsideFences(lines, at, header, end, spans, fm);
     if (entries.length > 0) {
       insertAt(outside(checklistInsertAt(lines, entries, checklistSequence(item.fileName), end)));
       continue;
