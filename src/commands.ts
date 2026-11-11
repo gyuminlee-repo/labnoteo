@@ -2355,11 +2355,10 @@ export async function syncWorkflowChecklistCommand(
         const notePath = posix.join(labnoteDir, name);
         const retitle = (content: string): string => planWorkflowRetitle(content, name)?.content ?? content;
         const changed = await noteWrittenSaid(app, host, notePath, retitle, await processNoteThroughVault(app, host, notePath, retitle));
-        if (changed) {
-          updatedNotes.add(name);
-          // As the note is: an open editor keeps a title its save could not write yet.
-          notes.set(name, (await openEditorText(app, notePath)) ?? (await readWorkflowNote(host, labnoteDir, name)));
-        }
+        if (changed) updatedNotes.add(name);
+        // As the note is, written or not: an open editor keeps a title its save could not write
+        // yet, and a write that may have gone in may have changed the title the labels follow.
+        notes.set(name, (await openEditorText(app, notePath)) ?? (await readWorkflowNote(host, labnoteDir, name)));
       }
       titles = workflowLabels(notes);
       plan = planWorkflowChecklistSync(readme, names, titles, subfolders);
