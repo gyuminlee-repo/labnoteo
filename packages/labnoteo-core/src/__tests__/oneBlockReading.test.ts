@@ -51,6 +51,12 @@ describe('one block reading for every finder', () => {
     expect(kinds[13]).toMatchObject({ content: 'q', depth: 1 });
     // A fence left open runs to the end, not closed.
     expect(classifyLines(['```', 'x']).map(k => [k.kind, k.closed])).toEqual([['opener', false], ['code', false]]);
+    // The empty piece after the last line break ends no block quote: the fence stays open.
+    expect(classifyLines('> - ~~~\n>   x\n'.split('\n')).map(k => k.closed)).toEqual([false, false, false]);
+    // A dash under a paragraph is its setext underline: a tag line after it starts an HTML block.
+    expect(classifyLines(['text', '-', '<span>']).map(k => k.kind)).toEqual(['text', 'text', 'html']);
+    // A paragraph ends with its block quote: a tag line after the quote starts an HTML block.
+    expect(classifyLines(['> a', '', '<span>']).map(k => k.kind)).toEqual(['text', 'text', 'html']);
   });
 });
 

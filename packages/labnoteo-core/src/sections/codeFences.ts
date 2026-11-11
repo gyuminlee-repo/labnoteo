@@ -233,6 +233,8 @@ function readBlocks(
       } else break;
       matched++;
     }
+    // The empty piece after a final line break is no line: it ends no container.
+    if (i === lines.length - 1 && i > from && rest === '' && lines[i] === '') matched = stack.length;
     if (fence && matched < fenceDepth) {
       // The fence's container ended with it: the fence is closed after the line before (code
       // still). For the line-by-line string view, that line reads as the fence's closer, or the
@@ -283,6 +285,8 @@ function readBlocks(
         return;
       }
       stack = stack.slice(0, matched);
+      // The paragraph was in a container that ended: none is open now.
+      para = false;
     }
     const contained = stack.length > 0;
     // New containers this line opens.
@@ -326,7 +330,7 @@ function readBlocks(
       return;
     }
     const text = expandLeadingTabs(rest);
-    if (text.trim() === '' || ATX_HEADING.test(text) || THEMATIC_BREAK.test(text) || (para && /^ {0,3}=+[ \t]*$/.test(text))) para = false;
+    if (text.trim() === '' || ATX_HEADING.test(text) || THEMATIC_BREAK.test(text) || (para && /^ {0,3}(?:=+|-+)[ \t]*$/.test(text))) para = false;
     else if (!para && /^ {4}/.test(text)) para = false;
     else para = true;
   };
