@@ -6,7 +6,7 @@
  * says so: false, a README entry not written, the warning for a note ID not written.
  * The view follows Obsidian 1.15.0's TextFileView (save, savePromise, the re-read on modify).
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { App } from 'obsidian';
 import { MarkdownView, TFile } from '../stubs/obsidian';
 import type { LabnoteHost } from '@labnoteo/core';
@@ -124,9 +124,22 @@ function assignId(app: App, host: LabnoteHost, t: unknown, file: TFile): Promise
 const endings = [['CRLF', '\r\n'], ['LF', '\n']] as const;
 const ops: Op[] = ['register', 'counted', 'noteId'];
 
+
+// The saves and the wait run on fake timers: the deadline is met or missed by the clock, not by
+// how busy the machine is.
+beforeEach(() => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] }));
+afterEach(() => vi.useRealTimers());
+/** `p`, the fake clock run on in 10 ms steps until it settles. */
+async function settle<V>(p: Promise<V>): Promise<V> {
+  let done = false;
+  p.then(() => (done = true), () => (done = true));
+  while (!done) await vi.advanceTimersByTimeAsync(10);
+  return p;
+}
+
 describe("a write while Obsidian's own save of the open note is writing", () => {
   it.each(endings.flatMap(([n, nl]) => ops.map(op => [op, n, nl] as const)))('%s (%s): the change once, the typed text kept', async (op, _n, nl) => {
-    const { result, file } = await run(nl, op, 'soon');
+    const { result, file } = await settle(run(nl, op, 'soon'));
     expect(file).toContain(TYPED);
     if (op === 'register') {
       expect(result).toBe('registered');
@@ -144,7 +157,7 @@ describe("a write while Obsidian's own save of the open note is writing", () => 
   const late: Op[] = ['register', 'counted', 'assign'];
   it.each(endings.flatMap(([n, nl]) => late.map(op => [op, n, nl] as const)))('%s (%s): a save that does not end in time, nothing written', async (op, _n, nl) => {
     const started = Date.now();
-    const { result, file, notices } = await run(nl, op, 'never');
+    const { result, file, notices } = await settle(run(nl, op, 'never'));
     expect(Date.now() - started).toBeGreaterThanOrEqual(OPEN_SAVE_WAIT_MS);
     expect(Date.now() - started).toBeLessThan(OPEN_SAVE_WAIT_MS + 2000);
     expect(file).toContain(TYPED);

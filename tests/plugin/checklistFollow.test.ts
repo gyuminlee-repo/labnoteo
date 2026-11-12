@@ -3,7 +3,7 @@
  * while Obsidian is still saving the note past the wait: nothing runs again for the checklist,
  * so the user is told how to bring it up to date; a date is tried once more a while later.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { App } from 'obsidian';
 import { TFile } from '../stubs/obsidian';
 import type { LabnoteHost } from '@labnoteo/core';
@@ -50,17 +50,29 @@ function saving(files: Record<string, string>, path: string, ends?: number) {
 
 const T = OPEN_SAVE_WAIT_MS + 10000;
 
+// The saves, the wait and the retry run on fake timers: the deadline is met or missed by the
+// clock, not by how busy the machine is.
+beforeEach(() => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] }));
+afterEach(() => vi.useRealTimers());
+/** `p`, the fake clock run on in 10 ms steps until it settles. */
+async function settle<V>(p: Promise<V>): Promise<V> {
+  let done = false;
+  p.then(() => (done = true), () => (done = true));
+  while (!done) await vi.advanceTimersByTimeAsync(10);
+  return p;
+}
+
 describe('the README checklist after workflow notes change, its save not ending in time', () => {
   it('a rename: said, with the command that updates it', async () => {
     const s = saving({ [README]: LISTED, [`${DIR}/002_WD010_A.labnote.md`]: '# A\n' }, README);
-    await syncReadmeOrderOnRename(s.app, s.host, DIR, [{ from: '001_WD010_A.labnote.md', to: '002_WD010_A.labnote.md' }]);
+    await settle(syncReadmeOrderOnRename(s.app, s.host, DIR, [{ from: '001_WD010_A.labnote.md', to: '002_WD010_A.labnote.md' }]));
     expect(await s.fs.read(README)).toBe(LISTED);
     expect(s.notices).toEqual([{ level: 'warn', msg: FOLLOW }]);
   }, T);
 
   it('a delete: said, with the command that updates it, and nothing counted', async () => {
     const s = saving({ [README]: LISTED }, README);
-    expect(await syncReadmeAndSamplesOnDelete(s.app, s.host, DIR, [NOTE])).toBe(0);
+    expect(await settle(syncReadmeAndSamplesOnDelete(s.app, s.host, DIR, [NOTE]))).toBe(0);
     expect(await s.fs.read(README)).toBe(LISTED);
     expect(s.notices).toEqual([{ level: 'warn', msg: FOLLOW }]);
   }, T);
@@ -70,9 +82,9 @@ describe('a date for a note whose save ends past the wait', () => {
   it('is tried once more a while later, and written then', async () => {
     const s = saving({ [NOTE]: '---\nlast_updated_date: 2026-01-01\n---\n' }, NOTE, OPEN_SAVE_WAIT_MS + 300);
     const stamp = (c: string) => c.replace('2026-01-01', '2026-11-11');
-    await stampNote(s.app, s.host, NOTE, stamp);
+    await settle(stampNote(s.app, s.host, NOTE, stamp));
     expect(await s.fs.read(NOTE)).toContain('2026-01-01');
-    await new Promise(resolve => setTimeout(resolve, STAMP_RETRY_MS + 500));
+    await vi.advanceTimersByTimeAsync(STAMP_RETRY_MS + 500);
     expect(await s.fs.read(NOTE)).toContain('2026-11-11');
   }, T);
 });

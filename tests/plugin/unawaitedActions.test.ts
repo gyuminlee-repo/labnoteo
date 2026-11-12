@@ -154,7 +154,8 @@ describe('user actions no one awaits', () => {
       .filter(sf => sf.fileName.startsWith(join(ROOT, 'src')) && !/\.(test|d)\.ts$/.test(sf.fileName))
       .flatMap(sf => unsaidRejections(checker, sf, relative(ROOT, sf.fileName)));
     expect(found).toEqual([]);
-  });
+    // Builds TypeScript programs with the type checker: seconds under load.
+  }, 60000);
 
   it('the check finds every form of a dropped promise, and passes caught or explained ones', () => {
     expect(check('b.onClick(async () => { await save(); });')).toEqual(['x.ts:1 onClick handler: save()']);
@@ -171,7 +172,8 @@ describe('user actions no one awaits', () => {
     expect(check('b.onClick(() => void save().catch(say).finally(() => 1));')).toEqual([]);
     expect(check('b.onClick(() => say(1));')).toEqual([]);
     expect(check('// unawaited: a refresh, which catches inside.\nb.onClick(() => void save());')).toEqual([]);
-  });
+    // Builds TypeScript programs with the type checker: seconds under load.
+  }, 60000);
 });
 
 describe('sayFailure and logFailure', () => {

@@ -5,7 +5,7 @@
  * as for 1.15.0's, until the same deadline: past it nothing is written and it is said so; within
  * it the change goes in after the save and stays.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { App } from 'obsidian';
 import { MarkdownView, TFile } from '../stubs/obsidian';
 import { createLabnoteTools, MemFileSystem, type LabnoteHost, type ToolContext } from '@labnoteo/core';
@@ -114,47 +114,59 @@ const count = (s: string, needle: string) => s.split(needle).length - 1;
 const LATE = OPEN_SAVE_WAIT_MS + 1000;
 const T = LATE + 10000;
 
+// The saves and the wait run on fake timers: the deadline is met or missed by the clock, not by
+// how busy the machine is.
+beforeEach(() => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] }));
+afterEach(() => vi.useRealTimers());
+/** `p`, the fake clock run on in 10 ms steps until it settles. */
+async function settle<V>(p: Promise<V>): Promise<V> {
+  let done = false;
+  p.then(() => (done = true), () => (done = true));
+  while (!done) await vi.advanceTimersByTimeAsync(10);
+  return p;
+}
+
 describe('a write while Obsidian 1.12.4 / 1.14.5 is still saving the open note', () => {
   it('a section: past the wait, said not written, and not in the note', async () => {
     const s = savingNote(NOTE, BODY, LATE);
-    const res = await tool('update_section').handler(s.ctx, { documentPath: NOTE, heading: 'Results', content: 'NEW', mode: 'append' });
+    const res = await settle(tool('update_section').handler(s.ctx, { documentPath: NOTE, heading: 'Results', content: 'NEW', mode: 'append' }));
     expect(res).toMatchObject({ ok: false, code: 'note_not_written' });
-    expect(count(await s.final(), 'NEW')).toBe(0);
+    expect(count(await settle(s.final()), 'NEW')).toBe(0);
   }, T);
 
   it('a section: within the wait, written after the save, and kept', async () => {
     const s = savingNote(NOTE, BODY, 200);
-    const res = await tool('update_section').handler(s.ctx, { documentPath: NOTE, heading: 'Results', content: 'NEW', mode: 'append' });
+    const res = await settle(tool('update_section').handler(s.ctx, { documentPath: NOTE, heading: 'Results', content: 'NEW', mode: 'append' }));
     expect(res.ok).toBe(true);
-    const end = await s.final();
+    const end = await settle(s.final());
     expect(count(end, 'NEW')).toBe(1);
     expect(end).toContain('r1 typed');
   }, T);
 
   it('a workflow: past the wait, not said as listed, and not listed', async () => {
     const s = savingNote(README, READMES, LATE);
-    const res = await tool('create_workflow').handler(s.ctx, { documentPath: README, workflowId: 'WD020' });
+    const res = await settle(tool('create_workflow').handler(s.ctx, { documentPath: README, workflowId: 'WD020' }));
     expect(res.ok).toBe(true);
     expect((res.data as { registered: boolean }).registered).toBe(false);
-    expect(count(await s.final(), 'WD020')).toBe(0);
+    expect(count(await settle(s.final()), 'WD020')).toBe(0);
   }, T);
 
   it('a workflow: within the wait, listed and kept', async () => {
     const s = savingNote(README, READMES, 200);
-    const res = await tool('create_workflow').handler(s.ctx, { documentPath: README, workflowId: 'WD020' });
+    const res = await settle(tool('create_workflow').handler(s.ctx, { documentPath: README, workflowId: 'WD020' }));
     expect((res.data as { registered: boolean }).registered).toBe(true);
-    expect(count(await s.final(), '[WD020 ')).toBe(1);
+    expect(count(await settle(s.final()), '[WD020 ')).toBe(1);
   }, T);
 
   it('a note ID: past the wait, said not written, and not in the note', async () => {
     const s = savingNote(NOTE, BODY, LATE);
-    expect(await processNoteResult(s.app, s.tf as never, data => setNoteId(data, 'LN-7K3M9QX2'))).toBe('timedOut');
-    expect(count(await s.final(), 'LN-7K3M9QX2')).toBe(0);
+    expect(await settle(processNoteResult(s.app, s.tf as never, data => setNoteId(data, 'LN-7K3M9QX2')))).toBe('timedOut');
+    expect(count(await settle(s.final()), 'LN-7K3M9QX2')).toBe(0);
   }, T);
 
   it('a note ID: within the wait, written and kept', async () => {
     const s = savingNote(NOTE, BODY, 200);
-    expect(await processNoteResult(s.app, s.tf as never, data => setNoteId(data, 'LN-7K3M9QX2'))).toBe('written');
-    expect(count(await s.final(), 'LN-7K3M9QX2')).toBe(1);
+    expect(await settle(processNoteResult(s.app, s.tf as never, data => setNoteId(data, 'LN-7K3M9QX2')))).toBe('written');
+    expect(count(await settle(s.final()), 'LN-7K3M9QX2')).toBe(1);
   }, T);
 });

@@ -38,7 +38,8 @@ describe('classifyFileSize', () => {
   });
 });
 
-describe('large-file guard against a real Git index', () => {
+// Each case runs git in a temporary repository: seconds under load, so its own timeout.
+describe('large-file guard against a real Git index', { timeout: 60000 }, () => {
   let repo: string;
   let cwd: string;
   const file = '실험 raw\n001.bam';
