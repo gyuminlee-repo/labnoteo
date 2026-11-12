@@ -10,7 +10,7 @@ import { parseWorksheetBlocks } from '../lib/worksheet';
 import { scanMarkdownTables } from '../lib/exportTablesCsv';
 import { listHeadings, replaceSectionBody } from '../sections/sectionEdit';
 import { removeWorkflowFromReadme } from '../lib/workflowDelete';
-import { appendUnitOpToWorkflowToc, findUnitOpInsertOffset, findUnitOpInsertPointAt } from '../sections/workflowSectionParser';
+import { appendUnitOpToWorkflowToc, findUnitOpInsertOffset, findUnitOpInsertPointAt, resolveGithubAnchor } from '../sections/workflowSectionParser';
 import { extractMethodBody } from '../sections/blockInsert';
 import { scanDocumentHead } from '../sections/documentHead';
 
@@ -72,6 +72,11 @@ describe('one block reading for every finder', () => {
       expect(findUnitOpInsertPointAt(B, 30)).toEqual({ offset: 49, place: 'noSection' });
       expect(findUnitOpInsertPointAt(C, 30)).toEqual({ offset: 59, place: 'noSection' });
     });
+  });
+
+  it('numbers anchors of headings up to three spaces in, as GitHub does', () => {
+    expect(resolveGithubAnchor(' # Same\n# Same\n', 'same')).toBe(0);
+    expect(resolveGithubAnchor(' # Same\n# Same\n', 'same-1')).toBe(1);
   });
 
   it('takes a tilde fence with a backtick in its info string as wrapping a reply', () => {

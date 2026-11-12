@@ -408,6 +408,8 @@ interface MdLine {
   heading: number;
   /** Its heading text ({@link headingText}), or ''. */
   title: string;
+  /** Its heading level read up to three spaces in, as GitHub numbers anchors, or 0. */
+  anchorHeading: number;
 }
 
 /** Split into lines with offsets, marking ``` / ~~~ fenced code (fence lines included). */
@@ -427,7 +429,8 @@ function scanLines(md: string): MdLine[] {
     const fenced = lines.length < frontMatter || isFenced(kinds[lines.length]);
     const read = kinds[lines.length];
     const heading = lines.length < frontMatter ? 0 : headingLevel(read);
-    lines.push({ start, end, text, fenced, heading, title: heading ? headingText(read) : '' });
+    const anchorHeading = lines.length < frontMatter ? 0 : headingLevel(read, { indented: true });
+    lines.push({ start, end, text, fenced, heading, title: anchorHeading ? headingText(read) : '', anchorHeading });
     if (nl === -1) break;
     start = nl + 1;
   }
@@ -448,7 +451,8 @@ function headingAnchors(lines: MdLine[]): Map<number, string> {
   const anchors = new Map<number, string>();
   const seen = new Map<string, number>();
   for (let j = start; j < lines.length; j++) {
-    if (!lines[j].heading) continue;
+    // Up to three spaces in, as GitHub reads headings for anchors (and as before).
+    if (!lines[j].anchorHeading) continue;
     const base = githubHeadingAnchor(lines[j].title.replace(/(?:^|[ \t]+)#+$/, ''));
     const n = seen.get(base) ?? 0;
     seen.set(base, n + 1);
