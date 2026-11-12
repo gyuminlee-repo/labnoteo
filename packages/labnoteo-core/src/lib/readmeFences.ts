@@ -44,6 +44,25 @@ function lineByLineFences(lines: readonly string[], from = 0): { code: boolean[]
   return { code, openBefore };
 }
 
+/**
+ * For deletion only: a fence opener that only the lazy reading reveals (CommonMark reads its line
+ * in an HTML block) and that never closes runs to the end as code, as Obsidian 1.15.0 reads it.
+ * The closed readings take an opener never closed for text (#442 inputs); there it was HTML.
+ */
+function revealedOpenFences(lines: readonly string[]): [number, number][] {
+  const kinds = classifyLines(lines, 0, { lazyHtml: true });
+  const cm = htmlBlockLines(lines);
+  const spans: [number, number][] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (kinds[i].kind !== 'opener' || kinds[i].closed || !cm[i]) continue;
+    let j = i;
+    while (j + 1 < lines.length && isFenced(kinds[j + 1])) j++;
+    spans.push([i, j]);
+    i = j;
+  }
+  return spans;
+}
+
 /** The HTML blocks of `lines` as `[first, last]` line pairs. */
 function htmlBlockSpans(lines: readonly string[], html: readonly boolean[] = htmlBlockLines(lines)): [number, number][] {
   const spans: [number, number][] = [];
@@ -83,7 +102,7 @@ export function readmeFencedReadings(lines: readonly string[]): { inCode: boolea
   // only, an HTML start at column 0 right after a list item's paragraph line is that paragraph
   // going on, as Obsidian 1.15.0 reads it (reading view and metadataCache), not an HTML block.
   const html = htmlBlockMarks(lines, 0, { lazyHtml: true });
-  const plainSpans = [...fenceReading(lines, false, html, true), ...htmlBlockSpans(lines, html)];
+  const plainSpans = [...fenceReading(lines, false, html, true), ...htmlBlockSpans(lines, html), ...revealedOpenFences(lines)];
   // Without an HTML block the readings that take its lines as fences are these same ones.
   const asFences = html.some(Boolean) ? [...fenceReading(lines, false), ...fenceReading(lines, true)] : [];
   // The HTML blocks CommonMark reads there keep their lines from the section's own deletion too

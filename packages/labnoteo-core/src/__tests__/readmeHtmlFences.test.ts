@@ -83,6 +83,12 @@ describe('a README entry right after a lone closing tag', () => {
     expect(removeWorkflowFromReadme(md, '001_WD010_A.labnote.md')).toEqual({ changed: false, content: md });
   });
 
+  it('keeps the entries below a fence the details line reveals and never closes: Obsidian reads code to the end', () => {
+    const below = '- [ ] a\n  ```\n  x\n```\n- [ ] [A](./001_WD010_A.labnote.md)\n```\n  - [ ] [A2](./001_WD010_A.labnote.md)\n';
+    const md = `## Related Workflows\n  - [ ] [A2](./001_WD010_A.labnote.md)\n<details>\n~~~\n</details>\n\n\n${below}`;
+    expect(removeWorkflowFromReadme(md, '001_WD010_A.labnote.md')).toEqual({ changed: true, content: `## Related Workflows\n<details>\n~~~\n</details>\n\n\n${below}` });
+  });
+
   it('still reads the line in the HTML block for adding entries', () => {
     const lines = `${div}- [ ] [Build](./002_WB030_Build.labnote.md)\n\n`.split('\n');
     expect(htmlBlockLines(lines).slice(0, 5)).toEqual([true, true, true, true, true]);
