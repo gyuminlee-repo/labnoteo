@@ -14,7 +14,7 @@ import {
 } from './regexUtils';
 import { frontMatterNames, lineEdits, parseFrontMatterYaml, serializeFrontMatterEntry, stripFrontMatter } from '../sections/frontMatter';
 import { normalizeHeadingText } from '../sections/sectionEdit';
-import { classifyLines, fenceOpenAtEnd, isFenced, isPlain, markdownCodeLines, mayHaveFences } from '../sections/codeFences';
+import { classifyLines, fenceOpenAtEnd, headingLevel, headingText, isFenced, markdownCodeLines, mayHaveFences } from '../sections/codeFences';
 import { joinLineBuffer, joinSplitKeepingCr, spliceLineBuffer, splitKeepingCr, splitLineBuffer } from '../util/lineEnds';
 import { positionOutsideFences, readmeFencedLines, readmeFenceSpans } from './readmeFences';
 import { generateNoteId, NOTE_ID_KEY } from './noteId';
@@ -2118,7 +2118,7 @@ export function unitOpsAllEnded(content: string, now: string = getSeoulDateTimeS
   const kinds = classifyLines(lines, start);
   for (const [i, line] of lines.entries()) {
     if (i < start || isFenced(kinds[i])) continue;
-    if (isPlain(kinds[i]) && /^###[ \t]+\[/.test(line)) {
+    if (headingLevel(kinds[i]) === 3 && headingText(kinds[i]).startsWith('[')) {
       ended.push(false);
       continue;
     }
@@ -2162,8 +2162,8 @@ export function planWorkflowExperimenterSync(
   const kinds = classifyLines(lines, fmEnd + 1);
   for (let i = fmEnd + 1; i < lines.length; i++) {
     if (isFenced(kinds[i])) continue;
-    if (isPlain(kinds[i]) && /^###[ \t]+\[/.test(lines[i])) {
-      blocks.push({ name: lines[i].replace(/^###[ \t]+/, '').trim(), lines: [], empty: 0, ended: false });
+    if (headingLevel(kinds[i]) === 3 && headingText(kinds[i]).startsWith('[')) {
+      blocks.push({ name: headingText(kinds[i]), lines: [], empty: 0, ended: false });
       continue;
     }
     const block = blocks[blocks.length - 1];
@@ -2266,7 +2266,9 @@ export function outputSampleIds(content: string, types: readonly string[]): stri
   const kinds = classifyLines(lines, start);
   for (const [i, line] of lines.entries()) {
     if (i < start || isFenced(kinds[i])) continue;
-    const heading = isPlain(kinds[i]) ? /^(#{1,6})[ \t]+(.*?)[ \t]*#*[ \t]*$/.exec(line) : null;
+    const level = headingLevel(kinds[i]);
+    // Its text without a closing run of `#`s.
+    const heading = level ? ['', '#'.repeat(level), headingText(kinds[i]).replace(/(?:^|[ \t]+)#+$/, '')] : null;
     if (heading) {
       if (heading[1].length <= 4) inOutput = heading[1].length === 4 && heading[2].toLowerCase() === 'output';
       continue;

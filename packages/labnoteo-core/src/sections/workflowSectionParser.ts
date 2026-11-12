@@ -8,7 +8,7 @@
  * unit-op blocks at the cursor and keeps the TOC in sync with these targeted
  * helpers.
  */
-import { classifyLines, isFenced } from './codeFences';
+import { classifyLines, headingLevel, headingText, isFenced } from './codeFences';
 import { normalizeHeadingText } from './sectionEdit';
 import { joinLineBuffer, spliceLineBuffer, splitLineBuffer } from '../util/lineEnds';
 import { frontMatterLineCount, frontMatterLineCountOf } from './frontMatter';
@@ -48,9 +48,9 @@ const UNIT_OP_SECTION_HEADING = '## Related Unit Operations';
  * lines are skipped.
  */
 // front matter: lines from scanLines, which marks the front matter fenced.
-export function findUnitOpSection(lines: readonly { text: string; fenced: boolean }[]): number {
-  const isH2 = (j: number): boolean => !lines[j].fenced && /^##[ \t]/.test(lines[j].text);
-  const named = lines.findIndex((_, j) => isH2(j) && isUnitOpSectionTitle(lines[j].text.replace(/^##[ \t]+/, '')));
+export function findUnitOpSection(lines: readonly MdLine[]): number {
+  const isH2 = (j: number): boolean => lines[j].heading === 2;
+  const named = lines.findIndex((_, j) => isH2(j) && isUnitOpSectionTitle(lines[j].title));
   if (named !== -1) return named;
   for (let j = 0; j < lines.length; j++) {
     if (!isH2(j)) continue;
@@ -85,7 +85,7 @@ export function missingUnitOpSectionEdit(md: string): { offset: number; text: st
     // one the researcher renamed takes it, as it did before (#455).
     const conclusions = findConclusionsIdx(lines);
     for (let j = (conclusions === -1 ? lines.length : conclusions) - 1; j > title; j--) {
-      if (!lines[j].fenced && /^##[ \t]/.test(lines[j].text)) return null;
+      if (lines[j].heading === 2) return null;
     }
   }
   const nl = md.includes('\r\n') ? '\r\n' : '\n';
@@ -121,10 +121,10 @@ export function unitOpSectionLine(md: string): number {
 
 /** Line index of the note's conclusions `##` heading (`## Conclusions and Discussion`), or -1. */
 // front matter: lines from scanLines, which marks the front matter fenced.
-function findConclusionsIdx(lines: readonly { text: string; fenced: boolean }[]): number {
+function findConclusionsIdx(lines: readonly MdLine[]): number {
   return lines.findIndex(l => {
-    if (l.fenced || !/^##[ \t]/.test(l.text)) return false;
-    const text = normalizeHeadingText(l.text.replace(/^##[ \t]+/, ''));
+    if (l.heading !== 2) return false;
+    const text = normalizeHeadingText(l.title);
     return text.includes('conclusion') || text.includes('결론');
   });
 }
@@ -404,6 +404,10 @@ interface MdLine {
   end: number;
   text: string;
   fenced: boolean;
+  /** Its heading level as the one block reading has it ({@link headingLevel}), or 0. */
+  heading: number;
+  /** Its heading text ({@link headingText}), or ''. */
+  title: string;
 }
 
 /** Split into lines with offsets, marking ``` / ~~~ fenced code (fence lines included). */
@@ -421,7 +425,9 @@ function scanLines(md: string): MdLine[] {
     const text = md.slice(start, end);
     // Front matter is YAML, no Markdown: a `## …` comment in it is no heading, a `- [ID …]` no TOC entry.
     const fenced = lines.length < frontMatter || isFenced(kinds[lines.length]);
-    lines.push({ start, end, text, fenced });
+    const read = kinds[lines.length];
+    const heading = lines.length < frontMatter ? 0 : headingLevel(read);
+    lines.push({ start, end, text, fenced, heading, title: heading ? headingText(read) : '' });
     if (nl === -1) break;
     start = nl + 1;
   }
@@ -442,10 +448,8 @@ function headingAnchors(lines: MdLine[]): Map<number, string> {
   const anchors = new Map<number, string>();
   const seen = new Map<string, number>();
   for (let j = start; j < lines.length; j++) {
-    if (lines[j].fenced) continue;
-    const m = /^ {0,3}#{1,6}(?:[ \t]+(.*?))?[ \t]*$/.exec(lines[j].text);
-    if (!m) continue;
-    const base = githubHeadingAnchor((m[1] ?? '').replace(/(?:^|[ \t]+)#+$/, ''));
+    if (!lines[j].heading) continue;
+    const base = githubHeadingAnchor(lines[j].title.replace(/(?:^|[ \t]+)#+$/, ''));
     const n = seen.get(base) ?? 0;
     seen.set(base, n + 1);
     anchors.set(j, n > 0 ? `${base}-${n}` : base);
@@ -565,7 +569,7 @@ function scanUnitOpToc(md: string): UnitOpTocScan | null {
   let tocEndIdx = lines.length;
   for (let j = headingIdx + 1; j < lines.length; j++) {
     const l = lines[j];
-    if (!l.fenced && (/^#{1,6}[ \t]/.test(l.text) || l.text.trim() === '---')) {
+    if (l.heading || (!l.fenced && l.text.trim() === '---')) {
       tocEndIdx = j;
       break;
     }
@@ -683,7 +687,7 @@ function separatorEdits(md: string, scan: UnitOpTocScan): TextEdit[] {
 
   let sectionEnd = lines.length;
   for (let j = headingIdx + 1; j < lines.length; j++) {
-    if (!lines[j].fenced && /^#{1,2}[ \t]/.test(lines[j].text)) {
+    if (lines[j].heading === 1 || lines[j].heading === 2) {
       sectionEnd = j;
       break;
     }
@@ -693,7 +697,7 @@ function separatorEdits(md: string, scan: UnitOpTocScan): TextEdit[] {
   const isBreak = (j: number): boolean => {
     if (lines[j].fenced || lines[j].text.trim() !== '---') return false;
     const prev = lines[j - 1].text.trim();
-    return prev === '' || prev === '---' || /^#{1,6}[ \t]/.test(lines[j - 1].text);
+    return prev === '' || prev === '---' || lines[j - 1].heading > 0;
   };
 
   const items: { idx: number; kind: 'break' | 'unitOp' | 'other' }[] = [];

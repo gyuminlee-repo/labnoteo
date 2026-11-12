@@ -8,7 +8,7 @@
  */
 
 import { escapeRegExp } from '../lib/regexUtils';
-import { classifyLines, closedFencedLines, isFenced, isPlain, lineReader } from './codeFences';
+import { classifyLines, closedFencedLines, headingLevel, headingText, isFenced, lineReader } from './codeFences';
 import { joinLineBuffer, spliceLineBuffer, splitLineBuffer } from '../util/lineEnds';
 import { frontMatterLineCountOf } from './frontMatter';
 
@@ -83,10 +83,9 @@ export function listHeadings(md: string, { asNote = true }: { asNote?: boolean }
   // Lines as the one block reading has them: a heading is a text line (no fence, code or HTML block).
   const kinds = classifyLines(lines, start);
   for (let i = start; i < lines.length; i++) {
-    if (!isPlain(kinds[i])) continue;
-    const h = lines[i].match(ANY_HEADING_RE);
-    if (!h) continue;
-    const level = h[1].length;
+    const level = headingLevel(kinds[i]);
+    if (!level) continue;
+    const h = [lines[i], '', headingText(kinds[i])];
     while (ancestors.length > 0 && ancestors[ancestors.length - 1].level >= level) ancestors.pop();
     out.push({ line: i, level, text: h[2], parentHeading: ancestors[ancestors.length - 1]?.text ?? '' });
     ancestors.push({ level, text: h[2] });
@@ -239,7 +238,7 @@ function summarizeBody(body: readonly string[]): SectionBody {
   let subheadings = 0;
   const kinds = classifyLines(body);
   for (const [i, l] of body.entries()) {
-    if (isPlain(kinds[i]) && ANY_HEADING_RE.test(l)) subheadings++;
+    if (headingLevel(kinds[i])) subheadings++;
   }
   return {
     text: body.join('\n').replace(/^\s*\n/, '').trimEnd(),
@@ -286,7 +285,9 @@ export function sectionBodyEnd(
       const read = at(i);
       if (read.kind === 'html') continue;
       if (isFenced(read) && (closed === undefined || closed[i - from])) continue;
-      if (!boundaryRe.test(lines[i])) continue;
+      // In the closed-blocks reading a line of a fence never closed is text, and may be a heading.
+      const lv = closed !== undefined && isFenced(read) ? (read.depth === 0 && read.heading) || 0 : headingLevel(read);
+      if (!lv || lv > level) continue;
       let j = i - 1;
       while (j > headingIdx && lines[j].trim() === '') j--;
       if (j > headingIdx && THEMATIC_BREAK_RE.test(lines[j]) && (j - 1 === headingIdx || lines[j - 1].trim() === '')) return j;

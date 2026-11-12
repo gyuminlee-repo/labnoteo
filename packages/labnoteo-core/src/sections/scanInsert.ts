@@ -12,7 +12,7 @@
  * invisible when reading, so entries can be sorted, deduplicated and removed
  * again (undo) without depending on how the image link is written.
  */
-import { BLOCK_TAGS, classifyLines, classifyNote, isFenced, isPlain } from './codeFences';
+import { BLOCK_TAGS, classifyLines, classifyNote, headingLevel, isFenced } from './codeFences';
 import { joinLineBuffer, spliceLineBuffer, splitLineBuffer, type LineRef } from '../util/lineEnds';
 import { UNIT_OP_HEADING_PATTERN } from './workflowSectionParser';
 import { unitOpFingerprint } from '../lib/scanPayload';
@@ -72,9 +72,8 @@ function scanHeadings(lines: readonly string[]): Heading[] {
   // Lines as the one block reading has them (classifyLines): a heading is on a text line.
   const kinds = classifyLines(lines, start);
   for (let i = start; i < lines.length; i++) {
-    if (!isPlain(kinds[i])) continue;
-    const m = ANY_HEADING_RE.exec(lines[i]);
-    if (m) out.push({ line: i, level: m[1].length });
+    const level = headingLevel(kinds[i]);
+    if (level) out.push({ line: i, level });
   }
   return out;
 }
@@ -183,6 +182,32 @@ export function renderScanEntry(entry: ScanEntry): string[] {
   ];
 }
 
+/** Positions of the `*` no backslash escapes in `text`. */
+function unescapedStars(text: string): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '\\') i++;
+    else if (text[i] === '*') out.push(i);
+  }
+  return out;
+}
+
+/**
+ * How many of `lines` (the first starting with `*`) are a caption as {@link renderScanEntry}
+ * writes it: `*`, the caption with every `*` escaped (over any lines, blank ones, list items or
+ * table rows among them), and a closing `*` ending a line. 0 when the lines are no such caption:
+ * an unescaped `*` before the closing one, or none.
+ */
+export function scanCaptionLength(lines: readonly string[]): number {
+  for (let k = 0; k < lines.length; k++) {
+    const text = (k === 0 ? lines[0].replace(/^\*/, '') : lines[k]).replace(/\r$/, '').replace(/[ \t]+$/, '');
+    const stars = unescapedStars(text);
+    if (stars.length === 0) continue;
+    return stars.length === 1 && stars[0] === text.length - 1 ? k + 1 : 0;
+  }
+  return 0;
+}
+
 interface ParsedEntry {
   page: number;
   hash: string;
@@ -229,25 +254,14 @@ function parseSection(lines: readonly string[], headingLine: number, end: number
   }
   for (const e of entries) {
     while (e.lines.length > 1 && blankAt(e.lines[e.lines.length - 1])) e.gap = e.lines.pop() as LineRef;
-    // The caption, as renderScanEntry writes it, runs from a line starting with `*` to one ending
-    // with an unescaped `*`, over blank lines too (a caption holding a line break).
+    // The caption as renderScanEntry writes it ({@link scanCaptionLength}); one in no such shape is
+    // its first line alone.
     const at = (k: number): string => lines[(e.lines[k] as LineRef).line];
     let own = 1;
     if (own < e.lines.length && /^\s*!\[/.test(at(own))) own++;
     if (own < e.lines.length && /^\*/.test(at(own))) {
-      let close = own;
-      // Over blank lines and text only: a line starting a block (a heading, a list item, a fence, a
-      // rule) is not the caption's, and a caption it cuts off is its first line alone.
-      const starts = (k: number): boolean => {
-        const ref = e.lines[k] as LineRef;
-        return BLOCK_START_RE.test(at(k)) || RULE_RE.test(at(k)) || kinds[ref.line].kind !== 'text';
-      };
-      while (close < e.lines.length && !/(?:^|[^\\])\*\s*$/.test(at(close).replace(/^\*/, ''))) {
-        close++;
-        if (close < e.lines.length && !isBlank(at(close)) && starts(close)) break;
-      }
-      if (close < e.lines.length && !starts(close) || close === own) own = close + 1;
-      else own++;
+      const n = scanCaptionLength(e.lines.slice(own).map((_ref, k) => at(own + k)));
+      own += n > 0 ? n : 1;
     }
     // The rest of the paragraph the comment's lines end in goes with them, as before.
     for (; own < e.lines.length; own++) {

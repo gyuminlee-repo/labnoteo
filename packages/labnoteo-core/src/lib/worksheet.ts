@@ -8,7 +8,7 @@
  * and sections still holding the template placeholder print their heading only.
  */
 import { listUnitOpBlocks, WORKSHEET_SCANS_HEADING } from '../sections/scanInsert';
-import { classifyLines, isFenced, isPlain } from '../sections/codeFences';
+import { classifyLines, headingLevel, headingText, isFenced } from '../sections/codeFences';
 import { fitRow, isTableHeaderLine, isTableRowLine, splitTableCells } from './exportTablesCsv';
 import { HW_PLACEHOLDERS, SW_PLACEHOLDERS } from './unitOpTemplate';
 import { stripAiCallouts } from './aiCallout';
@@ -108,7 +108,7 @@ function splitSections(lines: readonly string[]): { description: string; section
   let current: RawSection | null = null;
   const kinds = classifyLines(lines);
   for (const [i, line] of lines.entries()) {
-    const m = isPlain(kinds[i]) && /^####[ \t]+(.+?)[ \t]*$/.exec(line);
+    const m = headingLevel(kinds[i]) === 4 && headingText(kinds[i]) !== '' && ['', headingText(kinds[i])];
     if (m) {
       current = { title: m[1], lines: [] };
       sections.push(current);

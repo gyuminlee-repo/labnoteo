@@ -113,7 +113,7 @@ export function htmlBlockMarks(lines: readonly string[], from = 0): boolean[] {
 
 /**
  * How a line reads: `front` before the line the reading starts at (the front matter), `opener` and
- * `closer` a fence's opening and closing line, `code` a line in a fence, `html` a line in an HTML block, `text`
+ * `closer` a fence's opening and closing line, `code` a line in a fence, `indented` an indented code line, `html` a line in an HTML block, `text`
  * any other line. `content` is the line with its block quote markers and list item indent taken
  * off, `depth` how many of those containers it sits in. `closed` (fence lines) whether
  * the fence is closed, by its closer or the end of its container, rather than running to the end.
@@ -121,7 +121,9 @@ export function htmlBlockMarks(lines: readonly string[], from = 0): boolean[] {
  * `%% … %%` (either may run over several lines; comment marks in code are text).
  */
 export interface LineClass {
-  kind: 'front' | 'opener' | 'code' | 'closer' | 'html' | 'text';
+  kind: 'front' | 'opener' | 'code' | 'closer' | 'html' | 'indented' | 'text';
+  /** An ATX heading's level: a line whose content opens with `#` to `######` and a space, a tab or its end (a text line, or a code line, for a reading that takes a fence never closed for text). */
+  heading?: number;
   content: string;
   depth: number;
   closed: boolean;
@@ -157,6 +159,13 @@ export function classifyNote(lines: readonly string[]): LineClass[] {
 
 /** Whether a line is no fence, code, HTML block or front matter line. */
 export const isPlain = (line: LineClass): boolean => line.kind === 'text';
+
+/** The level of a heading outside any block quote or list item (an ATX heading), or 0. */
+export const headingLevel = (line: LineClass): number => (line.kind === 'text' && line.depth === 0 && line.heading) || 0;
+
+// front matter: a line the block reading classified, so none of the front matter (its lines are `front`).
+/** A heading line's text: past its `#`s and the spaces after them, trailing spaces and tabs off. */
+export const headingText = (line: LineClass): string => line.content.replace(/^ {0,3}#{1,6}(?:[ \t]+|$)/, '').replace(/[ \t]+$/, '');
 
 /** Whether a line is a fence line or in a fence (one left open too: it runs to the end). */
 export const isFenced = (line: LineClass): boolean => line.kind === 'opener' || line.kind === 'code' || line.kind === 'closer';
@@ -251,6 +260,8 @@ function readBlocks(
       fence = stepFence(rest, fence);
       view[i] = rest;
       recs[i] = { kind: fence ? 'code' : 'closer', content: rest, depth: matched, closed: false };
+      // As a heading would read were the fence never closed (a reading that takes such a fence for text).
+      if (ATX_HEADING.test(expandLeadingTabs(rest))) recs[i].heading = /#+/.exec(rest)![0].length;
       if (!fence) {
         for (let k = fenceLine; k <= i; k++) recs[k].closed = true;
         recs[i].ends = true;
@@ -330,9 +341,12 @@ function readBlocks(
       return;
     }
     const text = expandLeadingTabs(rest);
+    if (ATX_HEADING.test(text)) recs[i].heading = /#+/.exec(text)![0].length;
     if (text.trim() === '' || ATX_HEADING.test(text) || THEMATIC_BREAK.test(text) || (para && /^ {0,3}(?:=+|-+)[ \t]*$/.test(text))) para = false;
-    else if (!para && /^ {4}/.test(text)) para = false;
-    else para = true;
+    else if (!para && /^ {4}/.test(text)) {
+      recs[i].kind = 'indented';
+      para = false;
+    } else para = true;
   };
   const read = (k: number): void => {
     while (i < lines.length && i <= k + 1) {

@@ -12,6 +12,7 @@ import { listHeadings, replaceSectionBody } from '../sections/sectionEdit';
 import { removeWorkflowFromReadme } from '../lib/workflowDelete';
 import { appendUnitOpToWorkflowToc } from '../sections/workflowSectionParser';
 import { extractMethodBody } from '../sections/blockInsert';
+import { scanDocumentHead } from '../sections/documentHead';
 
 describe('one block reading for every finder', () => {
   it('finds no sample list table in the front matter', () => {
@@ -55,6 +56,17 @@ describe('one block reading for every finder', () => {
     const md = ['## Related Unit Operations', '- [UHW050 E](#uhw050-e)', '- [Protocol](https://example.org/p)', '  ```', '# KEEP', '- [UHW001 Ex](#x)', '  ```', '~~~', '- [UHW010 A](#uhw010-a)', '~~~', ''].join('\n');
     const out = appendUnitOpToWorkflowToc(md, 'UHW020', 'B').split('\n');
     expect(out.indexOf('- [UHW020 B](#uhw020-b)')).toBe(6);
+  });
+
+  it('takes a tilde fence with a backtick in its info string as wrapping a reply', () => {
+    expect(extractMethodBody('~~~`markdown`\n#### Method\n1. step\n~~~')).toBe('1. step');
+  });
+
+  it('reads no heading in indented code above the note heading', () => {
+    const md = '    ~~~\n    # Example\n    ~~~\n\n# Real\nbody\n';
+    const head = scanDocumentHead(md.split('\n'));
+    expect(head.firstHeadingLine).toBe(4);
+    expect([...head.headingLines]).toEqual([4]);
   });
 
   it('unwraps a reply only when one fence at the start of its first line wraps all of it', () => {
@@ -116,6 +128,25 @@ describe('no finder reads fences its own way', () => {
         .map(({ at }) => at)
     );
     expect(found).toEqual([]);
+  });
+
+  // A line the block reading classified is not judged again: no heading, indent or fence test on
+  // the raw line beside a classification (kinds[...], isPlain, isFenced, .fenced).
+  const REJUDGE = /(?:kinds\[|isPlain\(|isFenced\(|\.fenced\b)[^\n]*(?:\/\^[^/]*#|trimStart\(\)|startsWith\('#'\))/;
+
+  it('judges no classified line again by its raw text', () => {
+    expect(REJUDGE.test("if (isPlain(kinds[i]) && /^#{1,6}[ \\t]/.test(line))")).toBe(true);
+    expect(REJUDGE.test("if (!lines[j].fenced && /^##[ \\t]/.test(lines[j].text))")).toBe(true);
+    const found = files.flatMap(f =>
+      readFileSync(f, 'utf8')
+        .split('\n')
+        .map((line, i) => ({ line, at: `${relative(root, f)}:${i + 1}` }))
+        .filter(({ line }) => REJUDGE.test(line) && !/^\s*(\/\/|\*|\/\*\*)/.test(line))
+        .map(({ at }) => at)
+    );
+    expect(found).toEqual([]);
+    const trimmed = files.filter(f => /classifyLines|classifyNote|lineReader/.test(readFileSync(f, 'utf8')) && /const trimmed = [^\n]*trimStart\(\)/.test(readFileSync(f, 'utf8')));
+    expect(trimmed.map(f => relative(root, f))).toEqual([]);
   });
 
   // CommonMark whitespace after a heading's hashes or a list marker is a space or a tab: `\s`

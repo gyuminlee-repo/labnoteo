@@ -7,7 +7,7 @@
  * the sections results are written in count, plus any section the researcher
  * added themselves.
  */
-import { classifyLines, isPlain } from '../sections/codeFences';
+import { classifyLines, headingLevel, headingText } from '../sections/codeFences';
 import { frontMatterLineCount } from '../sections/frontMatter';
 import { HW_PLACEHOLDERS, SW_PLACEHOLDERS } from './unitOpTemplate';
 import { stripAiCallouts } from './aiCallout';
@@ -74,7 +74,8 @@ function sections(md: string): HeadingSection[] {
   // in the front matter (YAML: a `## …` comment there), a fence or an HTML block.
   const kinds = classifyLines(lines, frontMatter);
   for (const [i, line] of lines.entries()) {
-    const heading = isPlain(kinds[i]) ? HEADING_RE.exec(line) : null;
+    const level = headingLevel(kinds[i]);
+    const heading = level ? ['', '#'.repeat(level), headingText(kinds[i])] : null;
     if (heading) {
       current = { level: heading[1].length, title: heading[2].trim(), body: [], unitOps: i === unitOpLine };
       out.push(current);

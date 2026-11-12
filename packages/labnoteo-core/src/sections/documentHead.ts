@@ -4,7 +4,7 @@
  * matter or above the title (#50, #63).
  */
 import { frontMatterLineCountOf } from './frontMatter';
-import { classifyLines, isPlain } from './codeFences';
+import { classifyLines, headingLevel } from './codeFences';
 export interface DocumentHead {
   /** Line index of the closing `---`, or -1 when there is no (closed) front matter. */
   fmEndLine: number;
@@ -27,9 +27,7 @@ export function scanDocumentHead(lines: readonly string[]): DocumentHead {
   const kinds = classifyLines(lines, fmEndLine + 1);
   for (let i = 0; i < lines.length; i++) {
     if (fmEndLine !== -1 && i <= fmEndLine) continue;
-    const trimmed = lines[i].trimStart();
-    if (!isPlain(kinds[i])) continue;
-    if (/^#{1,6}[ \t]/.test(trimmed)) {
+    if (headingLevel(kinds[i])) {
       headingLines.add(i);
       if (firstHeadingLine === -1) firstHeadingLine = i;
     }

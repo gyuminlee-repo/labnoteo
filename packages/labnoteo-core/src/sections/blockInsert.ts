@@ -7,7 +7,7 @@
  * that unit operation's `#### Method` body; anywhere else it goes in as its own
  * block after the cursor's line. The Obsidian side only applies the result.
  */
-import { classifyLines, isFenced, isPlain } from './codeFences';
+import { classifyLines, headingLevel } from './codeFences';
 import { findSectionMatches, sectionBodyEnd } from './sectionEdit';
 import { UNIT_OP_HEADING_PATTERN } from './workflowSectionParser';
 import { scanDocumentHead, isBeforeBody } from './documentHead';
@@ -43,9 +43,8 @@ function scanHeadings(lines: readonly string[]): HeadingLine[] {
   // Lines as the one block reading has them (classifyLines): a heading is on a text line.
   const kinds = classifyLines(lines, start);
   for (let i = start; i < lines.length; i++) {
-    if (!isPlain(kinds[i])) continue;
-    const m = ANY_HEADING_RE.exec(lines[i]);
-    if (m) headings.push({ line: i, level: m[1].length });
+    const level = headingLevel(kinds[i]);
+    if (level) headings.push({ line: i, level });
   }
   return headings;
 }
@@ -174,7 +173,9 @@ export function extractMethodBody(output: string): string {
     atStart(0) &&
     atStart(last) &&
     whole[0].startsWith(closer) &&
-    !/^[`~]/.test(whole[0].slice(closer.length)) &&
+    // The closer's run as long as the opener's: no more of its character right after it (an info
+    // string may start with any other, a backtick after tildes too).
+    whole[0].charAt(closer.length) !== closer.charAt(0) &&
     wrap.slice(1, last).every(l => l.kind === 'code')
   )
     text = whole.slice(1, last).join('\n');
@@ -189,7 +190,8 @@ export function extractMethodBody(output: string): string {
   const kept: string[] = [];
   const kinds = classifyLines(lines);
   for (const [i, line] of lines.entries()) {
-    if (!isFenced(kinds[i]) && /^#{1,4}[ \t]/.test(line)) continue;
+    const level = headingLevel(kinds[i]);
+    if (level && level <= 4) continue;
     kept.push(line);
   }
   return kept.join('\n').trim();

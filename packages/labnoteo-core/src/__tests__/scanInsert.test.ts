@@ -152,6 +152,12 @@ describe('removeScanEntry and a caption over several lines', () => {
     ['U+2029', 'source\u2029name.png'],
     ['blank line', 'a\n\nb'],
     ['trailing backslash', 'a\\'],
+    ['numbered list', 'source\n1. item'],
+    ['bullet list', 'source\n- item\n* other'],
+    ['emphasis', '**bold** and _it_ and *em*'],
+    ['emphasis over lines', 'a *b\nc* d'],
+    ['table', '| a | b |\n|---|---|\n| 1 | 2 |'],
+    ['list, table and blank line', '1. a\n\n| x |\n- *y*'],
   ])('removes the whole caption (%s)', (_name, caption) => {
     for (const note of ['# Note\n', '# Note\r\n']) {
       const md = insertScanEntries(note, null, [{ page: 1, pageCount: 1, hash: 'aa', embed: '![[a.jpg]]', caption }]);
