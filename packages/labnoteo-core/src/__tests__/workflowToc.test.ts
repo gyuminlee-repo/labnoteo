@@ -318,10 +318,11 @@ describe('appendUnitOpToWorkflowToc', () => {
     expect(appendUnitOpToWorkflowToc(md, 'U9', 'New')).toBe(['## Related Unit Operations', '- [U1 A](#u1-a)', '  ~~~md', '  example', '- [Protocol](https://example.org/p)', '- [U9 New](#u9-new)', ''].join(nl));
   });
 
-  // A fence in an HTML block is no code (CommonMark): the entry goes last, as before.
-  it.each([['<!--', '-->', '\n'], ['<!--', '-->', '\r\n'], ['<div>', '</div>', '\n']])('goes after the last entry in an HTML block (%s, %j)', (open, close, nl) => {
+  // A line in an HTML block is no entry (CommonMark: the block is HTML, a fence in it no code):
+  // the entry goes after the last one out of it.
+  it.each([['<!--', '-->', '\n'], ['<!--', '-->', '\r\n'], ['<div>', '</div>', '\n']])('goes after the last entry out of an HTML block (%s, %j)', (open, close, nl) => {
     const md = ['## Related Unit Operations', '- [U1 A](#u1-a)', '', open, '```', '- [U2 B](#u2-b)', '```', close, ''].join(nl);
-    expect(appendUnitOpToWorkflowToc(md, 'U3', 'C')).toBe(['## Related Unit Operations', '- [U1 A](#u1-a)', '', open, '```', '- [U2 B](#u2-b)', '- [U3 C](#u3-c)', '```', close, ''].join(nl));
+    expect(appendUnitOpToWorkflowToc(md, 'U3', 'C')).toBe(['## Related Unit Operations', '- [U1 A](#u1-a)', '- [U3 C](#u3-c)', '', open, '```', '- [U2 B](#u2-b)', '```', close, ''].join(nl));
   });
 
   // A run closed with a space CommonMark does not count (NBSP and the like) is no closer

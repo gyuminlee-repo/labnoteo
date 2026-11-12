@@ -55,7 +55,8 @@ describe('one block reading for every finder', () => {
   it('adds a TOC entry outside a fence past list item fences their items end at once', () => {
     const md = ['## Related Unit Operations', '- [UHW050 E](#uhw050-e)', '- [Protocol](https://example.org/p)', '  ```', '# KEEP', '- [UHW001 Ex](#x)', '  ```', '~~~', '- [UHW010 A](#uhw010-a)', '~~~', ''].join('\n');
     const out = appendUnitOpToWorkflowToc(md, 'UHW020', 'B').split('\n');
-    expect(out.indexOf('- [UHW020 B](#uhw020-b)')).toBe(6);
+    // `# KEEP` ends the section: the last entry in it, out of every fence, is `- [Protocol]`.
+    expect(out.indexOf('- [UHW020 B](#uhw020-b)')).toBe(3);
   });
 
   // A `##` one to three spaces in is no section heading for these finders, as before: a section
@@ -77,6 +78,47 @@ describe('one block reading for every finder', () => {
   it('numbers anchors of headings up to three spaces in, as GitHub does', () => {
     expect(resolveGithubAnchor(' # Same\n# Same\n', 'same')).toBe(0);
     expect(resolveGithubAnchor(' # Same\n# Same\n', 'same-1')).toBe(1);
+  });
+
+  it('adds a TOC entry outside a fence however other fences before it are indented', () => {
+    // A list item fence above, and a fenced example with an NBSP after a run (no closer) below.
+    const md = [
+      "## Related Workflows",
+      "",
+      "- [ ] [A](./001_WD010_A.labnote.md)",
+      "- [ ] [A](./001_WD010_A.labnote.md)",
+      "```text",
+      "alpha",
+      "",
+      "- [ ] [A](./001_WD010_A.labnote.md)",
+      "",
+      "beta",
+      "```",
+      "#### Method",
+      "- ```md",
+      "  ![[x.jpg]]",
+      "  code",
+      "  ## Inner heading",
+      "  ```",
+      "step",
+      "",
+      "## Related Unit Operations",
+      "### [Group] alias",
+      "",
+      "- [UHW010 A](#uhw010-a)",
+      "```",
+      "```\u00a0",
+      "- [UHW010 A](#uhw010-a)",
+      "```",
+      "",
+      "",
+      "   ## Other",
+      "text",
+      "",
+    ].join('\n');
+    const out = appendUnitOpToWorkflowToc(md, 'UHW020', 'B').split('\n');
+    expect(out.indexOf('- [UHW020 B](#uhw020-b)')).toBe(23);
+    expect(out.slice(24, 28)).toEqual(['```', '```\u00a0', '- [UHW010 A](#uhw010-a)', '```']);
   });
 
   it('takes a tilde fence with a backtick in its info string as wrapping a reply', () => {

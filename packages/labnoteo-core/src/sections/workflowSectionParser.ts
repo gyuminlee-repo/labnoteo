@@ -195,10 +195,15 @@ export function appendUnitOpToWorkflowToc(
   const headingIdx = findUnitOpSection(scanLines(md));
   if (headingIdx === -1) return md;
 
-  // Section spans until the next `## ` heading or a thematic break `---`.
+  // Lines as the one block reading has them (no fence in the front matter, as scanLines reads it).
+  const kinds = classifyLines(lines, frontMatterLineCount(md));
+  // A closed fence or an HTML block (a fence never closed is text here, as before).
+  const code = (j: number): boolean => (isFenced(kinds[j]) && kinds[j].closed) || kinds[j].kind === 'html';
+  // Section spans until the next `## ` line or a thematic break `---`, as before, or a `#` heading.
   let endIdx = lines.length;
   for (let j = headingIdx + 1; j < lines.length; j++) {
-    if (/^##[ \t]/.test(lines[j]) || lines[j].trim() === '---') {
+    const title = headingLevel(kinds[j]) === 1;
+    if (title || /^##[ \t]/.test(lines[j]) || lines[j].trim() === '---') {
       endIdx = j;
       break;
     }
@@ -207,58 +212,20 @@ export function appendUnitOpToWorkflowToc(
   const entryLine = buildUnitOpTocLine(opId, opName, alias);
 
   const isEntry = (j: number): boolean => /^\s*- \[/.test(lines[j]);
+  // The entry goes after the last `- [` line no closed fence and no HTML block holds, as the one
+  // block reading has the note (a fence never closed is text here, as before). When every such
+  // line is in one, there is no safe place: the note stays as it is.
+  // A line holding a lone CR: CommonMark ends a line there, this reading (split on LF) does not,
+  // so no line is taken for code; the entry goes after the last one, as before.
+  const loneCr = lines.slice(0, endIdx).some(l => l.includes('\r'));
   let lastEntry = -1;
+  let entries = false;
   for (let j = headingIdx + 1; j < endIdx; j++) {
-    if (isEntry(j)) lastEntry = j;
+    if (!isEntry(j)) continue;
+    entries = true;
+    if (loneCr || !code(j)) lastEntry = j;
   }
-
-  // A last `- [` line in a code example (fences read line by line): the entry
-  // goes after the last one before it out of every fence, or nowhere when none
-  // is. Only a fence opened unindented in the section and closed there counts, and
-  // only when no fence line before it was indented: an indented one may belong
-  // to a list item and end with it (CommonMark), which this reading does not see.
-  // Nor after a line that may start an HTML block (`<` at up to three spaces): a
-  // fence in an HTML block is no code there. Nor when a fence closes on a line that is not a
-  // run of up to three spaces in with only spaces and tabs after it (a closer in a list item,
-  // say). Nor when a line holds a lone CR: CommonMark
-  // ends a line there, this reading (split on LF) does not.
-  if (lastEntry !== -1) {
-    const opener: number[] = [];
-    const closed = new Set<number>();
-    let at = -1;
-    let indented = false;
-    let oddClose = false;
-    // No fence in the front matter, as scanLines reads it; lines as the one block reading has them.
-    const frontMatter = frontMatterLineCount(md);
-    const kinds = classifyLines(lines, frontMatter);
-    for (let j = 0; j < endIdx; j++) {
-      const k = kinds[j];
-      // An opener its container ends at once holds no line, as before (read then as text).
-      const fenceLine = (k.kind === 'opener' && !k.ends) || k.kind === 'closer';
-      if (fenceLine && j < lastEntry && /^\s/.test(lines[j])) indented = true;
-      if (k.kind === 'opener') at = j;
-      opener.push(isFenced(k) ? at : -1);
-      // A fence its container ended (no closer line of its own), or a closer line that is more than
-      // its run up to three spaces in (a `>` before it, say), is not the plain closer this rebuild trusts.
-      if (k.ends) {
-        closed.add(at);
-        const plain = k.kind === 'closer' && lines[j].replace(/^ {0,3}/, '').replace(/[ \t]+$/, '') === k.content.trim();
-        // An opener its container ends at once holds no line: nothing to mistrust.
-        if (!plain && k.kind !== 'opener') oddClose = true;
-      }
-    }
-    // The front matter is YAML: a `<` line or a lone CR there is not the Markdown read here.
-    const html = lines.slice(frontMatter, lastEntry).some(l => /^ {0,3}</.test(l));
-    const loneCr = lines.slice(frontMatter, endIdx).some(l => l.includes('\r'));
-    const inCode = (j: number): boolean =>
-      !indented && !html && !oddClose && !loneCr && opener[j] > headingIdx && closed.has(opener[j]) && kinds[opener[j]].depth === 0 && !/^[ \t]/.test(lines[opener[j]]);
-    if (inCode(lastEntry)) {
-      let alt = -1;
-      for (let j = lastEntry - 1; j > headingIdx && alt === -1; j--) if (isEntry(j) && opener[j] === -1) alt = j;
-      if (alt === -1) return md;
-      lastEntry = alt;
-    }
-  }
+  if (entries && lastEntry === -1) return md;
 
   if (lastEntry !== -1) {
     spliceLineBuffer(buf, lastEntry + 1, 0, [entryLine]);
