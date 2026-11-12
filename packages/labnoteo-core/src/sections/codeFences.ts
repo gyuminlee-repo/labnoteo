@@ -111,6 +111,12 @@ export function htmlBlockMarks(lines: readonly string[], from = 0): boolean[] {
   return lines.map((_line, i) => (at(i), html(i)));
 }
 
+/** The CommonMark type (1 to 7) of the HTML block each line of `lines` is in, 0 for none, as {@link htmlBlockMarks} reads them. */
+export function htmlBlockTypes(lines: readonly string[], from = 0): number[] {
+  const { htmlType } = readBlocks(lines, from);
+  return lines.map((_line, i) => htmlType(i));
+}
+
 /**
  * How a line reads: `front` before the line the reading starts at (the front matter), `opener` and
  * `closer` a fence's opening and closing line, `code` a line in a fence, `indented` an indented code line, `html` a line in an HTML block, `text`
@@ -217,9 +223,17 @@ function readBlocks(
   lines: readonly string[],
   from: number,
   { html: readHtml = true }: BlockReading = {}
-): { all: () => LineClass[]; rec: (i: number) => LineClass; at: (i: number) => string; html: (i: number) => boolean } {
+): {
+  all: () => LineClass[];
+  rec: (i: number) => LineClass;
+  at: (i: number) => string;
+  html: (i: number) => boolean;
+  htmlType: (i: number) => number;
+} {
   const view: string[] = [];
   const marks: boolean[] = [];
+  // The CommonMark type (1 to 7) of the HTML block each marked line is in.
+  const types: number[] = [];
   const recs: LineClass[] = lines.slice(0, from).map(line => ({ kind: 'front', content: line, depth: 0, closed: false }));
   let stack: Container[] = [];
   let fence: OpenFence | null = null;
@@ -228,7 +242,7 @@ function readBlocks(
   let fenceLine = -1;
   // The open HTML block: its end mark (types 1 to 5) or null (6 and 7, ended by a blank line),
   // and the containers it sits in.
-  let html: { end: RegExp | null; depth: number } | null = null;
+  let html: { end: RegExp | null; depth: number; type: number } | null = null;
   // The line before was paragraph text, which a lazy line continues and some list items cannot interrupt.
   let para = false;
   let i = from;
@@ -279,6 +293,7 @@ function readBlocks(
     if (html) {
       recs[i].kind = 'html';
       marks[i] = true;
+      types[i] = html.type;
       view[i] = '';
       para = false;
       // The blank line ending a block is marked too: a line put right before it would join the block.
@@ -342,9 +357,10 @@ function readBlocks(
     if (kind) {
       recs[i].kind = 'html';
       marks[i] = true;
+      types[i] = HTML_STARTS.indexOf(kind) + 1;
       view[i] = '';
       para = false;
-      if (kind.end === null || !kind.end.test(rest.slice(rest.indexOf('<') + 1))) html = { end: kind.end, depth: stack.length };
+      if (kind.end === null || !kind.end.test(rest.slice(rest.indexOf('<') + 1))) html = { end: kind.end, depth: stack.length, type: types[i] };
       return;
     }
     const text = expandLeadingTabs(rest);
@@ -379,6 +395,11 @@ function readBlocks(
       if (k < from) return false;
       read(k);
       return marks[k] === true;
+    },
+    htmlType: k => {
+      if (k < from) return 0;
+      read(k);
+      return types[k] ?? 0;
     },
   };
 }

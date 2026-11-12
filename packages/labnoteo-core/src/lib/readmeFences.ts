@@ -11,7 +11,7 @@
  * with its indent dropped, as under a list entry). An opener that is never
  * closed is not a fence. Each reading is one linear pass.
  */
-import { BLOCK_TAGS, classifyLines, closedFenceSpans, htmlBlockMarks, isFenced } from '../sections/codeFences';
+import { BLOCK_TAGS, classifyLines, closedFenceSpans, htmlBlockMarks, htmlBlockTypes, isFenced } from '../sections/codeFences';
 
 /**
  * Which lines are in an HTML block (CommonMark, read line by line, in block quotes and list
@@ -51,11 +51,13 @@ const LIST_MARKER = /^(?:[-+*]|\d{1,9}[.)])[ \t]/;
  * For deletion only: Obsidian renders a list line right after a line holding only a block
  * tag's closer (`</div>`) as a list, both at column 0 as Obsidian 1.15.0 was seen to render
  * them, though CommonMark keeps it in the HTML block up to the blank line. That one line is no
- * longer kept from deletion as HTML; the fence readings still take the block as before. The
+ * longer kept from deletion as HTML; the fence readings still take the block as before. Only in
+ * a type 6 block (a closer in `<pre>`, a script or a comment is text of that block). The
  * lines may keep their line endings (removeWorkflowFromReadme splits after `\n`).
  */
 function listAfterCloserOut(lines: readonly string[], html: readonly boolean[]): boolean[] {
-  return html.map((on, i) => on && !(i > 0 && html[i - 1] && BLOCK_CLOSER_ONLY.test(lines[i - 1]) && LIST_MARKER.test(lines[i])));
+  const type = htmlBlockTypes(lines);
+  return html.map((on, i) => on && !(i > 0 && type[i - 1] === 6 && type[i] === 6 && BLOCK_CLOSER_ONLY.test(lines[i - 1]) && LIST_MARKER.test(lines[i])));
 }
 
 /** The HTML blocks of `lines` as `[first, last]` line pairs. */

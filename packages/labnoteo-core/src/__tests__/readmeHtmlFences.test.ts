@@ -68,6 +68,11 @@ describe('a README entry right after a lone closing tag', () => {
     expect(removeWorkflowFromReadme(md, '002_WB030_Build.labnote.md')).toEqual({ changed: true, content: `${head}${div}${notes}` });
   });
 
+  it('keeps the line after a lone closer in a <pre> block: there it is preformatted text', () => {
+    const md = '## Related Workflows\n<pre>\n</div>\n- [ ] [A](./001_WD010_A.labnote.md)\n</pre>\n';
+    expect(removeWorkflowFromReadme(md, '001_WD010_A.labnote.md')).toEqual({ changed: false, content: md });
+  });
+
   it('still reads the line in the HTML block for adding entries', () => {
     const lines = `${div}- [ ] [Build](./002_WB030_Build.labnote.md)\n\n`.split('\n');
     expect(htmlBlockLines(lines).slice(0, 5)).toEqual([true, true, true, true, true]);
