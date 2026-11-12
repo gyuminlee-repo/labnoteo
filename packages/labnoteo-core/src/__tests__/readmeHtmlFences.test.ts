@@ -56,20 +56,30 @@ describe('lines that start no HTML block', () => {
   });
 });
 
-// Obsidian renders a list line right after a lone `</div>` as a list (a task line with its
-// checkbox), so deletion takes it; the inline example in the div and the fenced one below stay.
+// Obsidian reads a `<div>` right after a list item's line as that item's paragraph going on, so
+// the entry after its `</div>` is a list item (a checkbox in the reading view) and deletion takes
+// it; the inline example in the div and the fenced one below stay. Without the list item line
+// before it the block is HTML in Obsidian too, and an entry after its closer stays.
 describe('a README entry right after a lone closing tag', () => {
   const div = '<div class="qa-note">\nInline `- [ ] [Build](./002_WB030_Build.labnote.md)` inside HTML, and a run ```of three``` backticks.\n</div>\n';
   const notes = '\n## Notes\nCode example:\n\n```markdown\n- [ ] [Build](./002_WB030_Build.labnote.md)\n- [ ] [Example](./009_WD010_Example.labnote.md)\n```\n\nKeep notes.\n';
   const head = '---\nstatus: ongoing\n---\n# 955_HtmlReadme_LF\n\n## Related Workflows\n- [ ] [Design](./001_WD010_Design.labnote.md)\n';
 
-  it('deletes the entry, as Obsidian reads it out of the HTML block', () => {
+  it('deletes the entry when the div follows a list item line, as Obsidian reads no HTML block', () => {
     const md = `${head}${div}- [ ] [Build](./002_WB030_Build.labnote.md)\n${notes}`;
     expect(removeWorkflowFromReadme(md, '002_WB030_Build.labnote.md')).toEqual({ changed: true, content: `${head}${div}${notes}` });
   });
 
   it('keeps the line after a lone closer in a <pre> block: there it is preformatted text', () => {
     const md = '## Related Workflows\n<pre>\n</div>\n- [ ] [A](./001_WD010_A.labnote.md)\n</pre>\n';
+    expect(removeWorkflowFromReadme(md, '001_WD010_A.labnote.md')).toEqual({ changed: false, content: md });
+  });
+
+  it.each([
+    ['a div after a code line', '## Related Workflows\n```\ncode\n<div>\n```\n</div>\n- [ ] [A](./001_WD010_A.labnote.md)\n```text\n## Hidden\n```\n### Sub\n~~~md\ncode\n~~~\n## 관련 워크플로\n\n- ~~~md\n\n  ~~~\n'],
+    ['a p block after the heading', '## Related Workflows\n<p>\nnote\n</p>\n- [ ] [A](./001_WD010_A.labnote.md)\n'],
+    ['a lone closer after the heading', '## Related Workflows\n</div>\n- [ ] [A](./001_WD010_A.labnote.md)\n'],
+  ])('keeps the entry after the closer of %s: Obsidian reads it in the HTML block', (_name, md) => {
     expect(removeWorkflowFromReadme(md, '001_WD010_A.labnote.md')).toEqual({ changed: false, content: md });
   });
 

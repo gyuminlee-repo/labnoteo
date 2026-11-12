@@ -11,7 +11,7 @@
  * with its indent dropped, as under a list entry). An opener that is never
  * closed is not a fence. Each reading is one linear pass.
  */
-import { BLOCK_TAGS, classifyLines, closedFenceSpans, htmlBlockMarks, htmlBlockTypes, isFenced } from '../sections/codeFences';
+import { classifyLines, closedFenceSpans, htmlBlockMarks, isFenced } from '../sections/codeFences';
 
 /**
  * Which lines are in an HTML block (CommonMark, read line by line, in block quotes and list
@@ -24,10 +24,10 @@ export function htmlBlockLines(lines: readonly string[]): boolean[] {
 }
 
 /** Each line as a fence reading takes it: one `inHtml` marks (in an HTML block) is no fence line. */
-function fenceReading(lines: readonly string[], indentAny: boolean, inHtml?: readonly boolean[]): [number, number][] {
+function fenceReading(lines: readonly string[], indentAny: boolean, inHtml?: readonly boolean[], lazyHtml = false): [number, number][] {
   const read = indentAny ? (line: string) => line.trimStart() : (line: string) => line;
   // Without `inHtml` the HTML blocks are not read, and a backtick run in one may be a fence.
-  return closedFenceSpans(lines, (line, i) => (inHtml?.[i] ? '' : read(line)), { html: inHtml !== undefined });
+  return closedFenceSpans(lines, (line, i) => (inHtml?.[i] ? '' : read(line)), { html: inHtml !== undefined, lazyHtml });
 }
 
 /**
@@ -42,22 +42,6 @@ function lineByLineFences(lines: readonly string[], from = 0): { code: boolean[]
   const code = kinds.map(isFenced);
   const openBefore = Array.from({ length: lines.length + 1 }, (_x, i) => open(i - 1));
   return { code, openBefore };
-}
-
-const BLOCK_CLOSER_ONLY = new RegExp(`^</(?:${BLOCK_TAGS})[ \\t]*>[ \\t]*\\r?\\n?$`, 'i');
-const LIST_MARKER = /^(?:[-+*]|\d{1,9}[.)])[ \t]/;
-
-/**
- * For deletion only: Obsidian renders a list line right after a line holding only a block
- * tag's closer (`</div>`) as a list, both at column 0 as Obsidian 1.15.0 was seen to render
- * them, though CommonMark keeps it in the HTML block up to the blank line. That one line is no
- * longer kept from deletion as HTML; the fence readings still take the block as before. Only in
- * a type 6 block (a closer in `<pre>`, a script or a comment is text of that block). The
- * lines may keep their line endings (removeWorkflowFromReadme splits after `\n`).
- */
-function listAfterCloserOut(lines: readonly string[], html: readonly boolean[]): boolean[] {
-  const type = htmlBlockTypes(lines);
-  return html.map((on, i) => on && !(i > 0 && type[i - 1] === 6 && type[i] === 6 && BLOCK_CLOSER_ONLY.test(lines[i - 1]) && LIST_MARKER.test(lines[i])));
 }
 
 /** The HTML blocks of `lines` as `[first, last]` line pairs. */
@@ -95,12 +79,16 @@ export function readmeFencedReadings(lines: readonly string[]): { inCode: boolea
     for (const [open, close] of spans) out.fill(true, open, close + 1);
     return out;
   };
-  // An HTML block is no Markdown either: no line in it is an entry, nor a heading.
-  const html = htmlBlockLines(lines);
-  const plainSpans = [...fenceReading(lines, false, html), ...htmlBlockSpans(lines, listAfterCloserOut(lines, html))];
+  // An HTML block is no Markdown either: no line in it is an entry, nor a heading. For deletion
+  // only, an HTML start at column 0 right after a list item's paragraph line is that paragraph
+  // going on, as Obsidian 1.15.0 reads it (reading view and metadataCache), not an HTML block.
+  const html = htmlBlockMarks(lines, 0, { lazyHtml: true });
+  const plainSpans = [...fenceReading(lines, false, html, true), ...htmlBlockSpans(lines, html)];
   // Without an HTML block the readings that take its lines as fences are these same ones.
   const asFences = html.some(Boolean) ? [...fenceReading(lines, false), ...fenceReading(lines, true)] : [];
-  const either = [...plainSpans, ...fenceReading(lines, true, html), ...asFences];
+  // The HTML blocks CommonMark reads there keep their lines from the section's own deletion too
+  // (it can only do less): a fence the lazy reading opens may never close, and so hide nothing.
+  const either = [...plainSpans, ...fenceReading(lines, true, html, true), ...asFences, ...htmlBlockSpans(lines)];
   return { inCode: fill(either), plain: fill(plainSpans) };
 }
 
