@@ -55,3 +55,21 @@ describe('lines that start no HTML block', () => {
     expect(removeWorkflowFromReadme(md, '001_WD010_A.labnote.md')).toEqual({ changed: false, content: md });
   });
 });
+
+// Obsidian renders a list line right after a lone `</div>` as a list (a task line with its
+// checkbox), so deletion takes it; the inline example in the div and the fenced one below stay.
+describe('a README entry right after a lone closing tag', () => {
+  const div = '<div class="qa-note">\nInline `- [ ] [Build](./002_WB030_Build.labnote.md)` inside HTML, and a run ```of three``` backticks.\n</div>\n';
+  const notes = '\n## Notes\nCode example:\n\n```markdown\n- [ ] [Build](./002_WB030_Build.labnote.md)\n- [ ] [Example](./009_WD010_Example.labnote.md)\n```\n\nKeep notes.\n';
+  const head = '---\nstatus: ongoing\n---\n# 955_HtmlReadme_LF\n\n## Related Workflows\n- [ ] [Design](./001_WD010_Design.labnote.md)\n';
+
+  it('deletes the entry, as Obsidian reads it out of the HTML block', () => {
+    const md = `${head}${div}- [ ] [Build](./002_WB030_Build.labnote.md)\n${notes}`;
+    expect(removeWorkflowFromReadme(md, '002_WB030_Build.labnote.md')).toEqual({ changed: true, content: `${head}${div}${notes}` });
+  });
+
+  it('still reads the line in the HTML block for adding entries', () => {
+    const lines = `${div}- [ ] [Build](./002_WB030_Build.labnote.md)\n\n`.split('\n');
+    expect(htmlBlockLines(lines).slice(0, 5)).toEqual([true, true, true, true, true]);
+  });
+});
