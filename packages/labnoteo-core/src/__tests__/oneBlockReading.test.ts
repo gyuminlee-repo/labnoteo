@@ -10,7 +10,7 @@ import { parseWorksheetBlocks } from '../lib/worksheet';
 import { scanMarkdownTables } from '../lib/exportTablesCsv';
 import { listHeadings, replaceSectionBody } from '../sections/sectionEdit';
 import { removeWorkflowFromReadme } from '../lib/workflowDelete';
-import { appendUnitOpToWorkflowToc } from '../sections/workflowSectionParser';
+import { appendUnitOpToWorkflowToc, findUnitOpInsertOffset, findUnitOpInsertPointAt } from '../sections/workflowSectionParser';
 import { extractMethodBody } from '../sections/blockInsert';
 import { scanDocumentHead } from '../sections/documentHead';
 
@@ -56,6 +56,22 @@ describe('one block reading for every finder', () => {
     const md = ['## Related Unit Operations', '- [UHW050 E](#uhw050-e)', '- [Protocol](https://example.org/p)', '  ```', '# KEEP', '- [UHW001 Ex](#x)', '  ```', '~~~', '- [UHW010 A](#uhw010-a)', '~~~', ''].join('\n');
     const out = appendUnitOpToWorkflowToc(md, 'UHW020', 'B').split('\n');
     expect(out.indexOf('- [UHW020 B](#uhw020-b)')).toBe(6);
+  });
+
+  // A `##` one to three spaces in is no section heading for these finders, as before: a section
+  // taken from it read the code under it for its end and its blocks.
+  describe('a unit operation section heading indented one to three spaces', () => {
+    const A = '  ## Related Unit Operations\n\n~~~\n- [example](x)\n## Example\n~~~\n';
+    const B = '  ## Related Unit Operations\n\n~~~\n## Example\n~~~\n';
+    const C = '  ## Related Unit Operations\n\n~~~\n### [UHW010 Example]\n~~~\n';
+    it('adds no TOC entry in the code under it', () => {
+      expect(appendUnitOpToWorkflowToc(A, 'UHW099', 'New')).toBe(A);
+    });
+    it('puts a new unit operation past the code', () => {
+      expect(findUnitOpInsertOffset(B)).toBe(49);
+      expect(findUnitOpInsertPointAt(B, 30)).toEqual({ offset: 49, place: 'noSection' });
+      expect(findUnitOpInsertPointAt(C, 30)).toEqual({ offset: 59, place: 'noSection' });
+    });
   });
 
   it('takes a tilde fence with a backtick in its info string as wrapping a reply', () => {

@@ -27,7 +27,8 @@ export function scanDocumentHead(lines: readonly string[]): DocumentHead {
   const kinds = classifyLines(lines, fmEndLine + 1);
   for (let i = 0; i < lines.length; i++) {
     if (fmEndLine !== -1 && i <= fmEndLine) continue;
-    if (headingLevel(kinds[i])) {
+    // Up to three spaces in, as the head was read before (indented code is no heading).
+    if (headingLevel(kinds[i], { indented: true })) {
       headingLines.add(i);
       if (firstHeadingLine === -1) firstHeadingLine = i;
     }

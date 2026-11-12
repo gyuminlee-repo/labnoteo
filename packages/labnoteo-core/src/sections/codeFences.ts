@@ -160,8 +160,15 @@ export function classifyNote(lines: readonly string[]): LineClass[] {
 /** Whether a line is no fence, code, HTML block or front matter line. */
 export const isPlain = (line: LineClass): boolean => line.kind === 'text';
 
-/** The level of a heading outside any block quote or list item (an ATX heading), or 0. */
-export const headingLevel = (line: LineClass): number => (line.kind === 'text' && line.depth === 0 && line.heading) || 0;
+/**
+ * The level of a heading outside any block quote or list item (an ATX heading), or 0. As the
+ * finders read headings before: at the start of the line, unless `indented` (up to three spaces
+ * in, as CommonMark and the document head have it); on a text line, or with `code` a fence's line
+ * too (for the reading that takes a fence never closed for text).
+ */
+// front matter: a line the block reading classified (front matter lines are `front`, no heading).
+export const headingLevel = (line: LineClass, { indented = false, code = false }: { indented?: boolean; code?: boolean } = {}): number =>
+  (line.kind === 'text' || (code && isFenced(line))) && line.depth === 0 && line.heading && (indented || line.content.startsWith('#')) ? line.heading : 0;
 
 // front matter: a line the block reading classified, so none of the front matter (its lines are `front`).
 /** A heading line's text: past its `#`s and the spaces after them, trailing spaces and tabs off. */

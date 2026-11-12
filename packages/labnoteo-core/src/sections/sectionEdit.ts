@@ -286,7 +286,7 @@ export function sectionBodyEnd(
       if (read.kind === 'html') continue;
       if (isFenced(read) && (closed === undefined || closed[i - from])) continue;
       // In the closed-blocks reading a line of a fence never closed is text, and may be a heading.
-      const lv = closed !== undefined && isFenced(read) ? (read.depth === 0 && read.heading) || 0 : headingLevel(read);
+      const lv = headingLevel(read, { code: closed !== undefined });
       if (!lv || lv > level) continue;
       let j = i - 1;
       while (j > headingIdx && lines[j].trim() === '') j--;
