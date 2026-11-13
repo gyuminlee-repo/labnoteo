@@ -43,7 +43,7 @@ export function planScanMoves(
 }
 
 /**
- * Whether `content` has a `labnote_id` that cannot be written (L2) and that YAML (and so
+ * Whether `content` has a `labnote_id` that cannot be written (over several lines) and that YAML (and so
  * Obsidian) reads as a valid note ID, as {@link NoteIdService.idOf} counts one: an ID the note
  * may share with another or have its scans named after. Any other value (an empty block, a
  * list, a string that is no ID such as `LN-AAAAAAAA\n` from a `|` block) or front matter YAML
@@ -284,7 +284,7 @@ export class BarcodeFeature {
   /**
    * Copies made in Obsidian get their own ID right away, like their issue markers:
    * 'renewed', or 'none' for a note without one. A `labnote_id` that cannot be written
-   * (over several lines: L2) and reads as an ID ({@link unwritableIdInUse}) is said once and
+   * (over several lines) and reads as an ID ({@link unwritableIdInUse}) is said once and
    * left as it is: 'refused', and the caller goes no further with the copy. Any other failure (front matter that cannot be read)
    * was said by NoteIdService and is 'failed': the caller goes on with the copy, as 0.140.2 does.
    */

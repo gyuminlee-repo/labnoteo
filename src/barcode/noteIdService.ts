@@ -277,7 +277,7 @@ export class NoteIdService {
   }
 
   /**
-   * The warning for a `labnote_id` that cannot be written (L2). A path the user did not start
+   * The warning for a `labnote_id` that cannot be written (over several lines). A path the user did not start
    * (`auto`: a copy handled, a shared or changed ID found) says it once per note this session;
    * a command the user gave says it every time, and counts as said.
    */

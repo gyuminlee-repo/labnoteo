@@ -306,7 +306,7 @@ describe('appendUnitOpToWorkflowToc', () => {
     expect(appendUnitOpToWorkflowToc(md, 'UHW010', 'X')).toBe(md);
   });
 
-  // L1: the last `- [` line in a closed unindented fence is no place for the entry.
+  // The last `- [` line in a closed unindented fence is no place for the entry.
   it.each([['```', '\n'], ['```', '\r\n'], ['~~~', '\n'], ['~~~', '\r\n']])('goes after the last entry out of code (%s, %j)', (f, nl) => {
     const md = ['## Related Unit Operations', '- [U1 A](#u1-a)', f + 'md', '- [X](#x)', f, ''].join(nl);
     expect(appendUnitOpToWorkflowToc(md, 'U3', 'C')).toBe(['## Related Unit Operations', '- [U1 A](#u1-a)', '- [U3 C](#u3-c)', f + 'md', '- [X](#x)', f, ''].join(nl));

@@ -1,7 +1,7 @@
 // A `- ` line at column 0 continues `labnote_id` only under an empty first value (a block
-// sequence, L2). Under a key with a value it is a YAML error, not more of the value: the ID
+// sequence, a value over several lines). Under a key with a value it is a YAML error, not more of the value: the ID
 // reads, prints and takes its scans along as 0.140.2 does.
-// The L2 warning for a scan move is given only when there are scans to look through.
+// The unwritable-ID warning for a scan move is given only when there are scans to look through.
 import { describe, it, expect } from 'vitest';
 import type { App, TFile as ObsidianTFile } from 'obsidian';
 import { TFile, TFolder } from '../stubs/obsidian';
@@ -79,7 +79,7 @@ describe('a "- " line under a labnote_id with a value, read as 0.140.2 reads it'
   });
 });
 
-describe('a "- " line under an empty labnote_id stays a value over several lines (L2)', () => {
+describe('a "- " line under an empty labnote_id stays a value over several lines', () => {
   const keys = ['labnote_id:', 'labnote_id: # the barcode'];
   const cases = keys.flatMap(key => endings.map(([n, nl]) => [n, JSON.stringify(key), nl, key] as const));
 
@@ -105,7 +105,7 @@ describe('a "- " line under an empty labnote_id stays a value over several lines
   });
 });
 
-describe('no L2 warning for a move with no scans to look through', () => {
+describe('no unwritable-ID warning for a move with no scans to look through', () => {
   const unwritable = (nl: string) => note(nl, `labnote_id: ${ID}`, '  continued');
 
   it.each(endings)('a move to a subfolder of the same experiment (%s)', async (_n, nl) => {

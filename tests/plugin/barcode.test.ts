@@ -542,7 +542,7 @@ describe('NoteIdService', () => {
   });
 });
 
-// L2: a copied note whose labnote_id is written over several lines has an ID that can be
+// A copied note whose labnote_id is written over several lines has an ID that can be
 // neither read nor written; that is said (the NoteIdService warning), not taken for none.
 // The scans folder of experiment `A/001`, with one scan in it: a move has something to look through.
 const SCANS = 'A/001/images/scans';
@@ -588,8 +588,8 @@ describe('BarcodeFeature and a labnote_id over several lines', () => {
 
   // A `- ` item at column 0 under a key with a value is a YAML error, not more of the value:
   // the one-line ID is read, and its renewal fails at the front matter that cannot be read
-  // with the YAML warning of 0.140.2, not the L2 one: 'failed', so the copy flows go on as in 0.140.2
-  // (copiedNoteId.test.ts). Under an empty value it is L2 (noteIdDashItem.test.ts).
+  // with the YAML warning of 0.140.2, not the unwritable-ID one: 'failed', so the copy flows go on as in 0.140.2
+  // (copiedNoteId.test.ts). Under an empty value it is a value over several lines (noteIdDashItem.test.ts).
   it.each([
     ['LF, "- " item', '\n', '- continued'],
     ['CRLF, "- " item', '\r\n', '- continued'],
@@ -670,7 +670,7 @@ describe('moving the scans of a note whose one-line ID has a line below it', () 
   });
 });
 
-// L2: an empty first value with the ID on an indented line below (tab or spaces) is a value
+// An empty first value with the ID on an indented line below (tab or spaces) is a value
 // over several lines too: no ID, so printing stops and the scans stay, with a warning.
 describe('a labnote_id on the line after an empty first value', () => {
   function setup(text: string) {

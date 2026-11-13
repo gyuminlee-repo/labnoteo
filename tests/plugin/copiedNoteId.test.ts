@@ -1,5 +1,5 @@
 /**
- * L2: a copied note whose labnote_id cannot be written (over several lines) is said once by
+ * A copied note whose labnote_id cannot be written (over several lines) is said once by
  * BarcodeFeature.reassignCopiedId ('refused'); the copy flows then go no further with it.
  */
 import { describe, it, expect, vi } from 'vitest';
@@ -153,7 +153,7 @@ describe('copy flows and a note ID that cannot be written', () => {
 });
 
 // A `- ` line at column 0 under a labnote_id with a value is a YAML error, not a value over
-// several lines (L2): the real reassignCopiedId says what NoteIdService says (the front matter
+// several lines: the real reassignCopiedId says what NoteIdService says (the front matter
 // warning) and the copy flows go on as 0.140.2 does.
 describe('copy flows and a copied note whose front matter cannot be read', () => {
   const endings = [['LF', '\n'], ['CRLF', '\r\n']] as const;
@@ -171,7 +171,7 @@ describe('copy flows and a copied note whose front matter cannot be read', () =>
     return { ...made, notices, barcode };
   }
 
-  it.each(endings)('reassignCopiedId fails without the L2 warning (%s)', async (_n, nl) => {
+  it.each(endings)('reassignCopiedId fails without the unwritable-ID warning (%s)', async (_n, nl) => {
     const path = `${DIR}/001_WD010_A.labnote.md`;
     const { barcode, notices } = real(nl, [path]);
     expect(await barcode.reassignCopiedId(new TFile(path) as never)).toBe('failed');
@@ -208,7 +208,7 @@ describe('copy flows and a copied note whose front matter cannot be read', () =>
 // A labnote_id that cannot be written but that YAML reads as no note ID (a list, a mapping or
 // a string that is no ID) is no ID the copy can share: as in 0.140.2, the copy is handled as one without an ID and goes on,
 // with nothing said. One that YAML reads as an ID (on the line below an empty first value)
-// may be shared, so the copy still stops there with the L2 warning.
+// may be shared, so the copy still stops there with the unwritable-ID warning.
 describe('copy flows and an unwritable labnote_id YAML reads as no ID', () => {
   const endings = [['LF', '\n'], ['CRLF', '\r\n']] as const;
   const shapes = [

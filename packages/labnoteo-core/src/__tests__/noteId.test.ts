@@ -198,7 +198,7 @@ describe('findDuplicateNoteIds', () => {
 });
 
 // One judgment: a note never has an ID it cannot be given, and setNoteId writes exactly
-// where the value is writable (L2), whatever the first value and the line below it.
+// where the value is writable (not over several lines), whatever the first value and the line below it.
 describe('readNoteId, noteIdUnwritable and setNoteId agree', () => {
   const firsts = ['', ' ', '\t', ' # c', " ''", ' ""', ' LN-7K3M9QX2', ' "LN-7K3M9QX2"', " 'LN-7K3M9QX2'", ' |', ' >-', ' "LN-7K3M9QX2', ' LN-7K3M9QX2 # c'];
   const nexts = ['\tLN-7K3M9QX2', '  LN-7K3M9QX2', '\tmore', '  more', '- LN-7K3M9QX2', '- more', '', '  # c', 'title: T', '-'];
@@ -216,7 +216,7 @@ describe('readNoteId, noteIdUnwritable and setNoteId agree', () => {
 
 // A block scalar indicator or an open quote with no line continuing it is that one line: it is
 // rewritten as 0.140.2 rewrites it, and the front matter reads as YAML afterwards. With a line
-// continuing it, it stays as written (L2).
+// continuing it, it stays as written (a value over several lines).
 describe('a block indicator or open quote alone on its line', () => {
   const endings = [['LF', '\n'], ['CRLF', '\r\n']] as const;
   const firsts = ['labnote_id: |', 'labnote_id: >-', 'labnote_id: "LN-OLD'];

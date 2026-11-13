@@ -54,7 +54,7 @@ const linesRead = (run: () => void): number => {
   return fns.reduce((sum, f) => sum + f.mock.calls.reduce((n, c) => n + (c[0] as readonly string[]).length, 0), 0);
 };
 
-// L5: the blank line a removed workflow entry leaves is judged from the lines up to it; a long
+// The blank line a removed workflow entry leaves is judged from the lines up to it; a long
 // README after the entry is read only once in each of the two closed-fence readings of
 // removeWorkflowFromReadme.
 describe('workflow entry removal and the README after it', () => {

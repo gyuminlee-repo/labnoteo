@@ -3,7 +3,7 @@
  * copy moved to another experiment, for the six labnote_id values written over several lines
  * (LF and CRLF) and a one-line original whose copy has a line below its ID. The copy never keeps
  * the original's ID and never takes the original's scans along: it gets an ID of its own, or
- * (a value that writing would break) it is left as it is with the L2 warning.
+ * (a value that writing would break) it is left as it is with the unwritable-ID warning.
  */
 import { describe, it, expect } from 'vitest';
 import { TFile, TFolder } from '../stubs/obsidian';
