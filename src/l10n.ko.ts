@@ -1222,6 +1222,8 @@ const obsidianKo: Record<string, string> = {
   'These images go to the trash:': '이 이미지는 휴지통으로 갑니다:',
   'No image goes to the trash.': '휴지통으로 가는 이미지는 없습니다.',
   '{0} image(s) stay, as the note still links them elsewhere:': '노트가 다른 곳에서 링크하고 있어 이미지 {0}개는 남습니다:',
+  'The note could not be read, so no image goes to the trash.': '노트를 읽지 못해 휴지통으로 보내는 이미지는 없습니다.',
+  '{0} image(s) stay, as the note could not be read:': '노트를 읽지 못해 이미지 {0}개는 남습니다:',
   'This page was filed before; remove the earlier scan and its image.': '이 페이지는 전에도 붙였습니다. 이전 스캔과 이미지를 지웁니다.',
   'Removed {0} earlier scan(s).': '이전 스캔 {0}개를 지웠습니다.',
   Undo: '되돌리기',

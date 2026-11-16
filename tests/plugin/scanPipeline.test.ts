@@ -1485,6 +1485,8 @@ describe('the question before Delete earlier scan', () => {
       'These images go to the trash:',
       'No image goes to the trash.',
       '{0} image(s) stay, as the note still links them elsewhere:',
+      'The note could not be read, so no image goes to the trash.',
+      '{0} image(s) stay, as the note could not be read:',
     ]) {
       expect(obsidianKo[key]).toBeTruthy();
     }
@@ -1566,7 +1568,11 @@ describe('Delete earlier scan after its question', () => {
       question = m;
       return false;
     });
-    expect(question).toContain('No image goes to the trash.');
-    expect(question).toContain(`2 image(s) stay, as the note still links them elsewhere:\n- ${name(a)}\n- ${name(b)}`);
+    expect(question).toBe(
+      'Delete the earlier scan of this page? Its entry leaves the note.\n\n' +
+        'The note could not be read, so no image goes to the trash.\n\n' +
+        `2 image(s) stay, as the note could not be read:\n- ${name(a)}\n- ${name(b)}`
+    );
+    expect(question).not.toContain('links them elsewhere');
   });
 });

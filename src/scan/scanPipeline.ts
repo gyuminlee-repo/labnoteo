@@ -746,9 +746,10 @@ export class ScanPipeline {
   /**
    * {@link previousImages} as {@link removePrevious} would leave them were it run now: `kept`
    * the ones the note still links once the earlier entries are out (in its open editor or on
-   * disk, as {@link linksImage} reads it), `trash` the rest. A note that cannot be read keeps all.
+   * disk, as {@link linksImage} reads it), `trash` the rest. A note that cannot be read keeps all,
+   * and says so with `unreadable`.
    */
-  async previousImagesPlan(result: ScanResult): Promise<{ trash: TFile[]; kept: TFile[] }> {
+  async previousImagesPlan(result: ScanResult): Promise<{ trash: TFile[]; kept: TFile[]; unreadable?: true }> {
     const images = this.previousImages(result);
     const notePath = result.notePath;
     if (!notePath || images.length === 0) return { trash: [], kept: [] };
@@ -762,7 +763,7 @@ export class ScanPipeline {
       try {
         texts.push(without(await this.deps.app.vault.read(file)));
       } catch {
-        return { trash: [], kept: images };
+        return { trash: [], kept: images, unreadable: true };
       }
     }
     const linked = (image: TFile): boolean =>

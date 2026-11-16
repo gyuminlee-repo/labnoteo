@@ -115,15 +115,28 @@ export async function undoScanResult(
 
 /**
  * The question before "Delete earlier scan" (#576): the images that go to the trash, by name,
- * and apart from them the ones that stay because the note still links them elsewhere.
+ * and apart from them the ones that stay because the note still links them elsewhere, or
+ * because the note could not be read (`unreadable`) and so none can be known to be unlinked.
  */
-export function earlierScanQuestion(t: Translator, plan: { trash: readonly { name: string }[]; kept: readonly { name: string }[] }): string {
+export function earlierScanQuestion(
+  t: Translator,
+  plan: { trash: readonly { name: string }[]; kept: readonly { name: string }[]; unreadable?: boolean }
+): string {
   const names = (files: readonly { name: string }[]): string => files.map(f => `- ${f.name}`).join('\n');
+  const kept = String(plan.kept.length);
   return [
     t('Delete the earlier scan of this page? Its entry leaves the note.'),
-    plan.trash.length > 0 ? `${t('These images go to the trash:')}\n${names(plan.trash)}` : t('No image goes to the trash.'),
+    plan.unreadable
+      ? t('The note could not be read, so no image goes to the trash.')
+      : plan.trash.length > 0
+        ? `${t('These images go to the trash:')}\n${names(plan.trash)}`
+        : t('No image goes to the trash.'),
     ...(plan.kept.length > 0
-      ? [`${t('{0} image(s) stay, as the note still links them elsewhere:', String(plan.kept.length))}\n${names(plan.kept)}`]
+      ? [
+          `${plan.unreadable
+            ? t('{0} image(s) stay, as the note could not be read:', kept)
+            : t('{0} image(s) stay, as the note still links them elsewhere:', kept)}\n${names(plan.kept)}`,
+        ]
       : []),
   ].join('\n\n');
 }
