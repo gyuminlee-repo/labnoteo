@@ -153,6 +153,26 @@ describe('openUserGuide with a guide left at an older release', () => {
     expect(host.openFile).toHaveBeenCalledWith(QUICKSTART_DOC_PATH);
   });
 
+  // Saved on disk while the dialog was open: the guide and the backup name are left as they
+  // are, and the user is told, not left to wonder why nothing changed.
+  it('leaves an edited old block saved again while the dialog was open, and says so', async () => {
+    const edited = oldFile(`${OLD}\n우리 연구실 메모`);
+    const saved = oldFile(`${OLD}\n우리 연구실 메모\n하나 더`);
+    const { fs, host, asHost } = makeHost({
+      [QUICKSTART_DOC_PATH]: edited,
+      [INSTALL_RECORD_PATH]: record(contentHash(QUICKSTART_DOC_CONTENT)),
+    });
+    host.confirm.mockImplementation(async () => {
+      await fs.write(QUICKSTART_DOC_PATH, saved);
+      return true;
+    });
+    await openUserGuide(asHost, VERSION);
+    expect(await fs.read(QUICKSTART_DOC_PATH)).toBe(saved);
+    expect(await fs.exists(QUICKSTART_BACKUP_PATH)).toBe(false);
+    expect(host.notify).toHaveBeenCalledWith('warn', expect.stringContaining('The user guide changed while you were deciding'));
+    expect(host.openFile).toHaveBeenCalledWith(QUICKSTART_DOC_PATH);
+  });
+
   it('does not write over a backup an earlier replacement left (#344)', async () => {
     const edited = oldFile(`> 이 설명서는 labnoteo 0.121.0 기준입니다.\n${OLD}\n메모 E`);
     const { fs, host, asHost } = makeHost({

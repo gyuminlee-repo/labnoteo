@@ -46,6 +46,11 @@ export async function openUserGuide(
   }
 ): Promise<void> {
   const write = (path: string, content: string) => processFile(path, () => content);
+  const sayChanged = (): void =>
+    host.notify(
+      'warn',
+      host.t('The user guide changed while you were deciding, so it was not updated. Run "{0}" again to update it.', host.t('Open user guide'))
+    );
   // The guide changed as `fits` asks of the text written over: left as it is, and said so.
   const update = async (fits: (text: string) => boolean, change: (text: string) => string): Promise<boolean> => {
     let refused = false;
@@ -54,10 +59,7 @@ export async function openUserGuide(
       return refused ? text : change(text);
     });
     if (refused) {
-      host.notify(
-        'warn',
-        host.t('The user guide changed while you were deciding, so it was not updated. Run "{0}" again to update it.', host.t('Open user guide'))
-      );
+      sayChanged();
       return false;
     }
     if (written === 'uncertain') {
@@ -118,7 +120,10 @@ export async function openUserGuide(
           ),
           { confirmLabel: host.t('Replace with the new version') }
         ));
-      if (replace && await host.fs.read(QUICKSTART_DOC_PATH) === current) {
+      // Changed on disk while the dialog was open: left as it is, and said so.
+      const changedMeanwhile = replace && (await host.fs.read(QUICKSTART_DOC_PATH)) !== current;
+      if (changedMeanwhile) sayChanged();
+      if (replace && !changedMeanwhile) {
         if (backup !== undefined) await write(backup, current);
         const sameStatus = (text: string) =>
           managedBlockStatus(text, QUICKSTART_ASSET, record.files[QUICKSTART_DOC_PATH]) === status;
