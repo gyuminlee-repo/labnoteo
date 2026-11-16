@@ -539,6 +539,22 @@ describe('QUICKSTART managed block', () => {
     expect(await plain.fs.exists('GUIDE.backup.md')).toBe(false);
   });
 
+  // Text saved outside the block while the replace question was open: the answer was given to
+  // the file as it was, so neither a backup of the old text nor the replacement is written, and
+  // the saved text stays (#577).
+  it('leaves an edited block whose file was saved again while the question was open', async () => {
+    const edited = marked('guide v1 (lab: no raw cryo-EM)', 'Below.');
+    const saved = marked('guide v1 (lab: no raw cryo-EM)', 'Below. A line saved meanwhile.');
+    const { fs, host, asHost } = makeHost({ 'GUIDE.md': edited });
+    host.confirm.mockImplementationOnce(async () => {
+      await fs.write('GUIDE.md', saved);
+      return true;
+    });
+    expect(await applyAsset(asHost, GUIDE, contentHash('guide v1\n'), legacy)).toBe('skipped');
+    expect(await fs.read('GUIDE.md')).toBe(saved);
+    expect(await fs.exists('GUIDE.backup.md')).toBe(false);
+  });
+
   it('keeps the file before replacing an edited block, under a name no earlier backup has (#351)', async () => {
     const edited = marked('guide v1 (lab: no raw cryo-EM)', 'Below.');
     const { fs, host, asHost } = makeHost({ 'GUIDE.md': edited, 'GUIDE.backup.md': 'earlier backup\n' });
