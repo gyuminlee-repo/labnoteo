@@ -744,6 +744,33 @@ export class ScanPipeline {
   }
 
   /**
+   * {@link previousImages} as {@link removePrevious} would leave them were it run now: `kept`
+   * the ones the note still links once the earlier entries are out (in its open editor or on
+   * disk, as {@link linksImage} reads it), `trash` the rest. A note that cannot be read keeps all.
+   */
+  async previousImagesPlan(result: ScanResult): Promise<{ trash: TFile[]; kept: TFile[] }> {
+    const images = this.previousImages(result);
+    const notePath = result.notePath;
+    if (!notePath || images.length === 0) return { trash: [], kept: [] };
+    const without = (content: string): string =>
+      (result.previous ?? []).reduce((out, p) => removeScanEntry(out, p.hash).md, content);
+    const texts: string[] = [];
+    const editor = openSourceView(this.deps.app, notePath)?.editor.getValue();
+    if (editor !== undefined) texts.push(without(editor));
+    const file = this.deps.app.vault.getAbstractFileByPath(notePath);
+    if (file instanceof TFile) {
+      try {
+        texts.push(without(await this.deps.app.vault.read(file)));
+      } catch {
+        return { trash: [], kept: images };
+      }
+    }
+    const linked = (image: TFile): boolean =>
+      texts.some(text => mayLinkName(text, posix.basename(image.path).toLowerCase()));
+    return { trash: images.filter(image => !linked(image)), kept: images.filter(linked) };
+  }
+
+  /**
    * Remove the earlier scans of the page `result` filed (and trash their images): how many, or
    * 'notWritten' / 'uncertain' when the note was not written or may not have been.
    */

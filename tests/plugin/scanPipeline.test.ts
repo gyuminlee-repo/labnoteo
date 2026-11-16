@@ -22,7 +22,7 @@ import {
   type ScanInput,
 } from '../../src/scan/scanPipeline';
 import { isDateInput, listUnmatched, parsePageInput } from '../../src/scan/unmatchedModal';
-import { undoScanResult } from '../../src/scan/resultModal';
+import { deleteEarlierScan, undoScanResult } from '../../src/scan/resultModal';
 import { OPEN_SAVE_WAIT_MS } from '../../src/openEditorWrite';
 
 // What writing a note answers, forced for a test: else as written.
@@ -1442,5 +1442,51 @@ describe('a scan filed by hand whose Markdown link has parentheses in its path',
     expect(result.status).toBe('filed');
     expect(s.binary.has(result.imagePath!)).toBe(true);
     expect(s.text.get(NOTE)).toContain('(labnote/Assay(pilot)/images/');
+  });
+});
+
+// #576: the question before "Delete earlier scan" names only the images that go to the trash, as
+// the note is when it asks; one the note still links elsewhere is listed apart as staying.
+describe('the question before Delete earlier scan', () => {
+  const t: Translator = (key, ...args) => formatMessage(key, args);
+  const pages = () => ({
+    'old.jpg': [page(pagePayload(), 'aaaaaaaaaaaa')],
+    'new.jpg': [page(pagePayload(), 'bbbbbbbbbbbb', { render: async () => new Uint8Array([7, 8, 9]).buffer })],
+  });
+  async function asked(link: boolean): Promise<{ question: string; name: string }> {
+    const s = setup({ [NOTE]: buildNote(ID, ['UHW010', 'UHW020']) }, pages());
+    const [old] = await s.pipeline.run([input('old.jpg')]);
+    const name = old.imagePath!.split('/').pop()!;
+    if (link) s.text.set(NOTE, `${s.text.get(NOTE)!}\n## Notes\n![[${name}|100]]\n`);
+    const [next] = await s.pipeline.run([input('new.jpg')]);
+    let question = '';
+    await deleteEarlierScan(t, s.pipeline, next, async m => {
+      question = m;
+      return false;
+    });
+    return { question, name };
+  }
+
+  it('lists the image that goes to the trash', async () => {
+    const { question, name } = await asked(false);
+    expect(question).toBe(`Delete the earlier scan of this page? Its entry leaves the note.\n\nThese images go to the trash:\n- ${name}`);
+  });
+
+  it('says no image goes to the trash when the note still links it, and names it as staying', async () => {
+    const { question, name } = await asked(true);
+    expect(question).toBe(
+      `Delete the earlier scan of this page? Its entry leaves the note.\n\nNo image goes to the trash.\n\n1 image(s) stay, as the note still links them elsewhere:\n- ${name}`
+    );
+  });
+
+  it('has each of its lines in Korean', () => {
+    for (const key of [
+      'Delete the earlier scan of this page? Its entry leaves the note.',
+      'These images go to the trash:',
+      'No image goes to the trash.',
+      '{0} image(s) stay, as the note still links them elsewhere:',
+    ]) {
+      expect(obsidianKo[key]).toBeTruthy();
+    }
   });
 });

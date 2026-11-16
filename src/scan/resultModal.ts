@@ -113,6 +113,35 @@ export async function undoScanResult(
   return { done: true, message: out ? t('Removed the scan from {0}.', path) : t('The scan was no longer in the note.') };
 }
 
+/**
+ * The question before "Delete earlier scan" (#576): the images that go to the trash, by name,
+ * and apart from them the ones that stay because the note still links them elsewhere.
+ */
+export function earlierScanQuestion(t: Translator, plan: { trash: readonly { name: string }[]; kept: readonly { name: string }[] }): string {
+  const names = (files: readonly { name: string }[]): string => files.map(f => `- ${f.name}`).join('\n');
+  return [
+    t('Delete the earlier scan of this page? Its entry leaves the note.'),
+    plan.trash.length > 0 ? `${t('These images go to the trash:')}\n${names(plan.trash)}` : t('No image goes to the trash.'),
+    ...(plan.kept.length > 0
+      ? [`${t('{0} image(s) stay, as the note still links them elsewhere:', String(plan.kept.length))}\n${names(plan.kept)}`]
+      : []),
+  ].join('\n\n');
+}
+
+/**
+ * "Delete earlier scan": asks with {@link earlierScanQuestion} as the note is now, then removes
+ * as {@link undoScanResult} says; undefined when the answer was no and nothing was done.
+ */
+export async function deleteEarlierScan(
+  t: Translator,
+  pipeline: Pick<ScanPipeline, 'previousImagesPlan' | 'removePrevious' | 'undo'>,
+  r: ScanResult,
+  confirmDelete: (message: string) => Promise<boolean>
+): Promise<{ message: string; done: boolean } | undefined> {
+  if (!(await confirmDelete(earlierScanQuestion(t, await pipeline.previousImagesPlan(r))))) return undefined;
+  return undoScanResult(t, pipeline, r, true);
+}
+
 export class ScanResultModal extends Modal {
   constructor(
     app: App,
@@ -153,16 +182,9 @@ export class ScanResultModal extends Modal {
             .setTooltip(t('This page was filed before; remove the earlier scan and its image.'))
             .onClick(() =>
               void guardScanAction(t, async () => {
-                // Say what goes before it goes: a photo filed as this page by
-                // an older release was trashed without a word (#576).
-                const names = this.pipeline.previousImages(r).map(f => `- ${f.name}`);
-                const question = t(
-                  'Delete the earlier scan of this page? Its entry leaves the note, and its image goes to the trash unless the note still links it.'
-                );
-                if (!(await this.actions.confirmDelete(names.length ? `${question}\n\n${names.join('\n')}` : question))) {
-                  return;
-                }
-                const { message, done } = await undoScanResult(t, this.pipeline, r, true);
+                const out = await deleteEarlierScan(t, this.pipeline, r, message => this.actions.confirmDelete(message));
+                if (!out) return;
+                const { message, done } = out;
                 new Notice(message);
                 // Done: nothing earlier is left to delete, so the button goes.
                 if (done) b.buttonEl.remove();
