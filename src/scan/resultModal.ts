@@ -3,6 +3,7 @@ import { App, Modal, Notice, Setting } from 'obsidian';
 import type { Translator } from '@labnoteo/core';
 import { isPagePayload, payloadLabel } from '@labnoteo/core/lib/scanPayload';
 import type { ScanPipeline, ScanResult } from './scanPipeline';
+import { guardScanAction } from './actionGuard';
 
 /** "12 page(s): 10 filed, 1 unmatched, 1 blank". */
 export function summarizeResults(t: Translator, results: readonly ScanResult[]): string {
@@ -23,9 +24,12 @@ export function describeResult(t: Translator, r: ScanResult): string {
   switch (r.status) {
     case 'filed': {
       const where = r.block ? `${r.notePath ?? ''} › ${r.block}` : (r.notePath ?? '');
-      const filed = r.replacedMissing
+      const placed = r.replacedMissing
         ? `${t('Filed in {0}', where)} ${t('The note already had this scan, but its image was deleted, so it was filed again in its place.')}`
         : t('Filed in {0}', where);
+      const filed = r.uncertain
+        ? `${placed} ${t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', r.notePath ?? '')}`
+        : placed;
       if (r.legacy) {
         return `${filed} ${t('This printout is from before 0.123.0 and does not say which block it is, so check that it went to the right one.')}`;
       }
@@ -78,6 +82,37 @@ export function unmatchedReasonText(t: Translator, reason: string, noteId = ''):
   return why[reason] ?? '';
 }
 
+/**
+ * What a click on a result's undo or "delete earlier scan" says, and whether it is done (its
+ * button goes): a note not written, or that may not have been, keeps the button to try again.
+ */
+export async function undoScanResult(
+  t: Translator,
+  pipeline: Pick<ScanPipeline, 'undo' | 'removePrevious'>,
+  r: ScanResult,
+  earlier: boolean
+): Promise<{ message: string; done: boolean }> {
+  const out = earlier ? await pipeline.removePrevious(r) : await pipeline.undo(r);
+  const path = r.notePath ?? '';
+  if (out === 'uncertain') {
+    return { done: false, message: t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', path) };
+  }
+  if (out === 'notWritten') {
+    return { done: false, message: t('{0} was not written: it was still being saved, or it changed while the change went in. Try again in a moment.', path) };
+  }
+  if (typeof out === 'object') {
+    // What was done, both counts: the entries out of the note and the images moved to the trash.
+    return {
+      done: true,
+      message:
+        out.removed === out.trashed
+          ? t('Removed {0} earlier scan(s).', String(out.removed))
+          : t('Removed {0} earlier scan(s) from the note and moved {1} image(s) to the trash.', String(out.removed), String(out.trashed)),
+    };
+  }
+  return { done: true, message: out ? t('Removed the scan from {0}.', path) : t('The scan was no longer in the note.') };
+}
+
 export class ScanResultModal extends Modal {
   constructor(
     app: App,
@@ -116,20 +151,23 @@ export class ScanResultModal extends Modal {
           b
             .setButtonText(t('Delete earlier scan'))
             .setTooltip(t('This page was filed before; remove the earlier scan and its image.'))
-            .onClick(async () => {
-              // Say what goes before it goes: a photo filed as this page by
-              // an older release was trashed without a word (#576).
-              const names = this.pipeline.previousImages(r).map(f => `- ${f.name}`);
-              const question = t(
-                'Delete the earlier scan of this page? Its entry leaves the note and its image goes to the trash.'
-              );
-              if (!(await this.actions.confirmDelete(names.length ? `${question}\n\n${names.join('\n')}` : question))) {
-                return;
-              }
-              const n = await this.pipeline.removePrevious(r);
-              new Notice(t('Removed {0} earlier scan(s).', String(n)));
-              b.setDisabled(true);
-            })
+            .onClick(() =>
+              void guardScanAction(t, async () => {
+                // Say what goes before it goes: a photo filed as this page by
+                // an older release was trashed without a word (#576).
+                const names = this.pipeline.previousImages(r).map(f => `- ${f.name}`);
+                const question = t(
+                  'Delete the earlier scan of this page? Its entry leaves the note, and its image goes to the trash unless the note still links it.'
+                );
+                if (!(await this.actions.confirmDelete(names.length ? `${question}\n\n${names.join('\n')}` : question))) {
+                  return;
+                }
+                const { message, done } = await undoScanResult(t, this.pipeline, r, true);
+                new Notice(message);
+                // Done: nothing earlier is left to delete, so the button goes.
+                if (done) b.buttonEl.remove();
+              })
+            )
         );
       }
       if (r.status === 'filed') {
@@ -137,13 +175,16 @@ export class ScanResultModal extends Modal {
           b
             .setButtonText(t('Undo'))
             .setWarning()
-            .onClick(async () => {
-              const ok = await this.pipeline.undo(r);
-              r.status = 'skipped';
-              new Notice(ok ? t('Removed the scan from {0}.', r.notePath ?? '') : t('The scan was no longer in the note.'));
-              row.setDesc(t('Undone'));
-              row.controlEl.empty();
-            })
+            .onClick(() =>
+              void guardScanAction(t, async () => {
+                const { message, done } = await undoScanResult(t, this.pipeline, r, false);
+                new Notice(message);
+                if (!done) return;
+                r.status = 'skipped';
+                row.setDesc(t('Undone'));
+                row.controlEl.empty();
+              })
+            )
         );
       }
     }

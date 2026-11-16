@@ -26,6 +26,7 @@ import {
   planSectionAppend,
   sectionText,
   stripFrontMatter,
+  frontMatterLineCountOf,
   stripAiCallouts,
   stripTemplatePlaceholders,
   stripIssueMarkers,
@@ -68,24 +69,25 @@ import { buildApprovalMessage, erasesRecordedLines } from './approvalMessage';
 import { getObsidianLanguage } from '../i18n';
 import { getSeoulDateString } from '@labnoteo/core/lib/dateUtils';
 import { aiAnswerModal } from '../modals';
+import { NoteSwitchedError } from '../obsidianHost';
 import { sampleUsages } from '../sampleActions';
 
 /**
  * Tool context for AI-driven edits.
  *
- * `writeNote` matters here for the same reason it does on the MCP path: the AI
+ * `processNote` matters here for the same reason it does on the MCP path: the AI
  * edits notes the user is plausibly looking at, and an adapter-level write
  * would be overwritten by the open editor's next flush.
  */
 function toolContext(plugin: LabnotePlugin): ToolContext {
   return {
-    fs: plugin.fs,
+    fs: plugin.toolFs(),
     workspaceRoot: '.',
     globalSampleFolder: plugin.settings.globalSampleFolder,
     customTypes: plugin.settings.customSampleTypes,
     locale: getObsidianLanguage(),
     sortUnitOpToc: plugin.settings.autoSyncUnitOpToc,
-    writeNote: (path, content) => plugin.writeNoteStamped(path, content),
+    processNote: (path, change, lone) => plugin.processNoteStamped(path, change, lone),
     findSampleUsages: (folder, type, id) => sampleUsages(plugin.app, plugin, folder, type, id),
   };
 }
@@ -140,7 +142,7 @@ export function toolRunNotice(plugin: LabnotePlugin, executed: AgentRun['execute
   if (c.denied > 0) parts.push(plugin.t('{0} denied by you', String(c.denied)));
   if (c.failed > 0) parts.push(plugin.t('{0} failed', String(c.failed)));
   const summary = plugin.t('AI tool calls: {0}.', parts.join(', '));
-  const why = failureReasons(plugin, executed);
+  const why = [failureReasons(plugin, executed), ...uncertainWrites(plugin, executed)].filter(Boolean).join(' ');
   const text = why ? `${summary} ${why}` : summary;
   return c.changed > 0 ? text : `${text} ${plugin.t('Nothing in the vault changed.')}`;
 }
@@ -193,6 +195,10 @@ function failureReasonText(plugin: LabnotePlugin, code: string, params: readonly
       );
     case 'section_not_found':
       return plugin.t('The note has no "{0}" section.', a);
+    case 'note_write_uncertain':
+      return plugin.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', a);
+    case 'note_not_written':
+      return plugin.t('{0} was not written: it was still being saved, or it changed while the change went in. Try again in a moment.', a);
     default:
       return undefined;
   }
@@ -243,6 +249,13 @@ function guardedProvider(plugin: LabnotePlugin, settings: LabnoteSettings): LlmP
     if (!(await gate.allow(provider.name, endpoint))) throw new TransmissionCancelled();
     return provider.chat(messages, options);
   } };
+}
+
+/** Changes done that a note may or may not have (its save failed as another change reached it). */
+function uncertainWrites(plugin: LabnotePlugin, executed: AgentRun['executed']): string[] {
+  return executed
+    .filter(e => e.outcome === 'done' && e.code === 'note_write_uncertain')
+    .map(e => failureReasonText(plugin, 'note_write_uncertain', e.params ?? []) ?? '');
 }
 
 async function completeWithSettings(
@@ -341,7 +354,14 @@ async function deliverToNote(
   const writeIfOpen = async (): Promise<boolean> => {
     const current = plugin.host.editTarget();
     if (current?.path !== note.path) return false;
-    await write(current);
+    try {
+      await write(current);
+    } catch (err) {
+      // Switched to another note as it was written: said, and the answer is offered to copy.
+      if (!(err instanceof NoteSwitchedError)) throw err;
+      plugin.host.notify('warn', err.message);
+      return false;
+    }
     new Notice(plugin.t(doneMessage, note.path.split('/').pop() ?? note.path));
     return true;
   };
@@ -384,9 +404,11 @@ async function writeMethodDraft(
 }
 
 /** The model context for one unit operation: the note's head plus that block. */
-function unitOpContext(text: string, loc: UnitOpMethodLocation): string {
+export function unitOpContext(text: string, loc: UnitOpMethodLocation): string {
   const lines = text.split('\n');
-  const firstUnitOp = lines.findIndex(l => /^###\s+\[/.test(l));
+  // A `### [ID …]` YAML comment in the front matter is no unit operation.
+  const fm = frontMatterLineCountOf(lines, { crKept: true });
+  const firstUnitOp = lines.findIndex((l, i) => i >= fm && /^###[ \t]+\[/.test(l));
   const head = lines.slice(0, firstUnitOp === -1 ? 40 : Math.min(firstUnitOp, 40)).join('\n');
   const block = lines.slice(loc.unitOpStartLine, loc.unitOpEndLine).join('\n');
   return `Note front matter and workflow description:\n${head.slice(0, 2000)}\n\nUnit operation:\n${block.slice(0, 4000)}`;
@@ -397,6 +419,7 @@ function unitOpContext(text: string, loc: UnitOpMethodLocation): string {
  * operation's `#### Method` body (asking first when the researcher already
  * wrote one); anywhere else it goes in as a block after the cursor's line.
  */
+// front matter: strips `### ` off the unit operation heading findUnitOpMethodAt found, past the front matter.
 export async function draftMethodCommand(plugin: LabnotePlugin): Promise<void> {
   const settings = { ...plugin.settings };
   const target = plugin.host.editTarget();
@@ -422,7 +445,7 @@ export async function draftMethodCommand(plugin: LabnotePlugin): Promise<void> {
     if (methods.length > 0) {
       const chosen = await plugin.host.pick(
         methods.map(m => ({
-          label: m.unitOpHeading.replace(/^###\s+/, ''),
+          label: m.unitOpHeading.replace(/^###[ \t]+/, ''),
           detail: m.isPlaceholder ? undefined : plugin.t('Has a Method already'),
           value: m,
         })),
@@ -481,7 +504,7 @@ export async function draftMethodCommand(plugin: LabnotePlugin): Promise<void> {
     },
     {
       role: 'user',
-      content: `Draft the Method body for the unit operation "${loc.unitOpHeading.replace(/^###\s+/, '')}".\n\n${unitOpContext(text, loc)}`,
+      content: `Draft the Method body for the unit operation "${loc.unitOpHeading.replace(/^###[ \t]+/, '')}".\n\n${unitOpContext(text, loc)}`,
     },
   ]);
   if (!out) return;
@@ -1131,10 +1154,17 @@ export async function askAgentCommand(plugin: LabnotePlugin): Promise<void> {
           }
           // A tool the agent ran, or the user writing on, moved everything the
           // saved cursor pointed at: the answer goes at the end instead.
-          const latest = await current.getText();
-          await insertBlock(plugin, current, answer, {
-            caret: latest === textBefore ? caretBefore : latest.length,
-          });
+          try {
+            const latest = await current.getText();
+            await insertBlock(plugin, current, answer, {
+              caret: latest === textBefore ? caretBefore : latest.length,
+            });
+          } catch (err) {
+            // Switched to another note as it went in: said, and the answer stays to copy.
+            if (!(err instanceof NoteSwitchedError)) throw err;
+            plugin.host.notify('warn', err.message);
+            return false;
+          }
           return true;
         },
       });

@@ -4,9 +4,9 @@
  * queue, and taking a note's scans along when it moves to another experiment.
  */
 import { MarkdownView, Notice, Platform, TFile, TFolder, type App } from 'obsidian';
-import { scanEntryLine, type LabnoteHost, type Translator } from '@labnoteo/core';
+import { parseFrontMatterYaml, scanEntryLine, type LabnoteHost, type Translator } from '@labnoteo/core';
 import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
-import { readNoteId } from '@labnoteo/core/lib/noteId';
+import { isValidNoteId, NOTE_ID_KEY, noteIdUnwritable, readNoteId } from '@labnoteo/core/lib/noteId';
 import { isSameSampleFolder, loadSampleLocationLookup, noteLabsamplesFolder } from '@labnoteo/core/lib/sampleStorage';
 import { getSampleDisplayMeta } from '@labnoteo/core/lib/sampleUtils';
 import { isValidWorkflowPath } from '@labnoteo/core/lib/workflowStructure';
@@ -25,6 +25,7 @@ import { ScanResultModal, summarizeResults } from '../scan/resultModal';
 import { UnmatchedModal, listUnmatched } from '../scan/unmatchedModal';
 import { isScanOfNote, SCANS_SUBFOLDER } from '../scan/imageStore';
 import { SlackInbox } from '../scan/slack';
+import { logFailure, sayFailure } from '../unawaited';
 
 export { isBarcodeNote };
 
@@ -39,6 +40,20 @@ export function planScanMoves(
 ): { move: string[]; keep: string[] } {
   const own = names.filter(n => isScanOfNote(n, noteId));
   return { move: own.filter(n => !takenInTarget.has(n)), keep: own.filter(n => takenInTarget.has(n)) };
+}
+
+/**
+ * Whether `content` has a `labnote_id` that cannot be written (over several lines) and that YAML (and so
+ * Obsidian) reads as a valid note ID, as {@link NoteIdService.idOf} counts one: an ID the note
+ * may share with another or have its scans named after. Any other value (an empty block, a
+ * list, a string that is no ID such as `LN-AAAAAAAA\n` from a `|` block) or front matter YAML
+ * cannot read gives no such ID, so the note is handled as one without an ID, as 0.140.2 does.
+ */
+function unwritableIdInUse(content: string): boolean {
+  if (!noteIdUnwritable(content)) return false;
+  const { frontMatter, parseError } = parseFrontMatterYaml(content.replace(/\r\n/g, '\n'));
+  const value = parseError ? undefined : frontMatter[NOTE_ID_KEY];
+  return isValidNoteId(value);
 }
 
 export class BarcodeFeature {
@@ -184,10 +199,10 @@ export class BarcodeFeature {
     plugin.registerEvent(this.app.vault.on('delete', file => this.noteIds.forget(file.path)));
     if (this.watcher) {
       const watcher = this.watcher;
-      plugin.registerInterval(window.setInterval(() => void watcher.tick(), POLL_MS));
+      plugin.registerInterval(window.setInterval(() => logFailure('scan folder check', watcher.tick()), POLL_MS));
       plugin.register(() => watcher.stop());
     }
-    plugin.registerInterval(window.setInterval(() => void this.slack.poll(), this.slack.pollMs));
+    plugin.registerInterval(window.setInterval(() => logFailure('Slack poll', this.slack.poll()), this.slack.pollMs));
     plugin.register(() => this.slack.stop());
   }
 
@@ -219,7 +234,11 @@ export class BarcodeFeature {
         this.plugin.settings.worksheetPaperSize = paper;
         await this.plugin.saveSettings();
       },
-      ensureNoteId: file => this.noteIds.ensureId(file),
+      ensureNoteId: async file => {
+        const id = await this.noteIds.ensureId(file);
+        if (id) await this.noteIds.warnIfIdNotOnDisk(file, id);
+        return id;
+      },
       sampleLookup: async file => {
         if (!this.plugin.sampleTrackingFor(file.path)) return undefined;
         const { globalSampleFolder, customSampleTypes } = this.plugin.settings;
@@ -234,6 +253,7 @@ export class BarcodeFeature {
   async showBarcode(file: TFile): Promise<void> {
     const id = await this.noteIds.ensureId(file);
     if (!id) return;
+    await this.noteIds.warnIfIdNotOnDisk(file, id);
     // The window opens for the notes "Print whole note with barcodes" takes, so it is always offered.
     new BarcodeModal(this.app, this.t, { title: noteTitleOf(this.app, file), id }, {
       worksheet: isValidWorkflowPath(file.path)
@@ -244,7 +264,7 @@ export class BarcodeFeature {
   }
 
   private async assignId(file: TFile): Promise<void> {
-    const current = readNoteId(await this.app.vault.read(file));
+    const current = readNoteId(await this.noteIds.textOf(file));
     if (current) {
       const others = this.noteIds.filesWithId(current).filter(f => f.path !== file.path);
       if (others.length === 0) {
@@ -261,11 +281,25 @@ export class BarcodeFeature {
     if (id) this.host.notify('info', this.t('{0} now has the note ID {1}.', file.basename, id));
   }
 
-  /** Copies made in Obsidian get their own ID right away, like their issue markers. */
-  async reassignCopiedId(file: TFile): Promise<void> {
-    if (!readNoteId(await this.app.vault.read(file))) return;
+  /**
+   * Copies made in Obsidian get their own ID right away, like their issue markers:
+   * 'renewed', or 'none' for a note without one. A `labnote_id` that cannot be written
+   * (over several lines) and reads as an ID ({@link unwritableIdInUse}) is said once and
+   * left as it is: 'refused', and the caller goes no further with the copy. Any other failure (front matter that cannot be read)
+   * was said by NoteIdService and is 'failed': the caller goes on with the copy, as 0.140.2 does.
+   */
+  async reassignCopiedId(file: TFile): Promise<'renewed' | 'none' | 'refused' | 'failed'> {
+    const content = await this.noteIds.textOf(file);
+    if (!readNoteId(content)) {
+      if (!unwritableIdInUse(content)) return 'none';
+      this.noteIds.warnUnwritable(file, true);
+      return 'refused';
+    }
+    // NoteIdService warns when it cannot write the new ID.
     const id = await this.noteIds.ensureId(file, { reassign: true });
-    if (id) this.host.notify('info', this.t('Gave the copy {0} its own note ID {1}.', file.basename, id));
+    if (!id) return noteIdUnwritable(await this.noteIds.textOf(file)) ? 'refused' : 'failed';
+    this.host.notify('info', this.t('Gave the copy {0} its own note ID {1}.', file.basename, id));
+    return 'renewed';
   }
 
   // --- scans -------------------------------------------------------------
@@ -316,7 +350,7 @@ export class BarcodeFeature {
     const open = (): void =>
       new ScanResultModal(this.app, this.t, this.pipeline, results, {
         openNote: (path, hash) => {
-          void this.openScanInNote(path, hash);
+          sayFailure(this.openScanInNote(path, hash));
           this.offerResultsAgain(open);
         },
         openUnmatched: () => this.openUnmatched(),
@@ -365,16 +399,26 @@ export class BarcodeFeature {
    * A workflow note moved to another experiment: move its scans
    * (`images/scans/<labnote_id>_*`) along, like its table CSVs.
    */
-  async moveScansWithNote(newPath: string, fromDir: string, toDir: string): Promise<void> {
+  async moveScansWithNote(newPath: string, fromDir: string, toDir: string): Promise<'refused' | undefined> {
     const file = this.app.vault.getAbstractFileByPath(newPath);
     if (!(file instanceof TFile)) return;
-    const noteId = readNoteId(await this.app.vault.read(file));
-    if (!noteId) return;
+    // As the note is: scans are filed under an ID its open editor may keep unsaved.
+    const content = await this.noteIds.textOf(file);
+    const noteId = readNoteId(content);
+    // Scans are named after an ID: without one YAML reads, there are none of the note's to move.
+    if (!noteId && !unwritableIdInUse(content)) return;
     const fromExp = getExperimentDir(posix.join(fromDir, 'x.md')) ?? fromDir;
     const toExp = getExperimentDir(newPath) ?? toDir;
     if (fromExp === toExp) return;
     const source = this.app.vault.getAbstractFileByPath(posix.join(fromExp, SCANS_SUBFOLDER));
     if (!(source instanceof TFolder)) return;
+    if (!noteId) {
+      // Its scans are named after an ID that cannot be read: with scans to look through,
+      // say so rather than leave them. Without any there is nothing to move, as before.
+      if (!source.children.some(c => c instanceof TFile)) return;
+      this.noteIds.warnUnwritable(file);
+      return 'refused';
+    }
     const targetDir = posix.join(toExp, SCANS_SUBFOLDER);
     const target = this.app.vault.getAbstractFileByPath(targetDir);
     const taken = new Set(target instanceof TFolder ? target.children.map(c => c.name) : []);

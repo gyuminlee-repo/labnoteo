@@ -131,6 +131,13 @@ describe('extractMethodBody', () => {
 
   it('unwraps a fenced reply and keeps `#` lines inside code', () => {
     expect(extractMethodBody('```markdown\n1. run\n```')).toBe('1. run');
+    // A fence never closed runs on to the end: its lines are code and stay.
+    expect(extractMethodBody('#### Method\n```python\n# KEEP\nprint(1)\n')).toBe('```python\n# KEEP\nprint(1)');
+    expect(extractMethodBody('#### Method\n```\n## not a heading\ncode\n')).toBe('```\n## not a heading\ncode');
+    expect(extractMethodBody('#### Method\n\nStep 1\n```python\n# comment\nx=1\n```\nStep 2\n')).toBe('Step 1\n```python\n# comment\nx=1\n```\nStep 2');
+    expect(extractMethodBody('#### Method\n```python\n# KEEP\nprint(1)\n```\n')).toBe('```python\n# KEEP\nprint(1)\n```');
+    expect(extractMethodBody('```python\n# KEEP\nprint(1)\n')).toBe('```python\n# KEEP\nprint(1)');
+    expect(extractMethodBody('Steps\n\n```md\n#### Method\nKEEP\n')).toBe('Steps\n\n```md\n#### Method\nKEEP');
     expect(extractMethodBody('1. run\n```bash\n# comment\n```')).toBe('1. run\n```bash\n# comment\n```');
   });
 });

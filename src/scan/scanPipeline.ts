@@ -9,6 +9,7 @@ import { TFile, type App } from 'obsidian';
 import { unzipSync } from 'fflate';
 import type { LabnoteHost, Translator } from '@labnoteo/core';
 import {
+  hasScanSection,
   insertScanEntries,
   listFiledScans,
   listUnitOpBlocks,
@@ -20,8 +21,10 @@ import { getSeoulDateString } from '@labnoteo/core/lib/dateUtils';
 import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
 import { hasPage, isPagePayload, unitOpFingerprint, type PagePayload, type ScanPayload } from '@labnoteo/core/lib/scanPayload';
 import * as posix from '@labnoteo/core/posix';
-import { processNoteThroughVault } from '../commands';
+import { changeNotWritten, processNoteThroughVault, processNoteThroughVaultOnDisk } from '../commands';
+import { openEditorText, openSourceView } from '../openEditorWrite';
 import type { NoteIdService } from '../barcode/noteIdService';
+import { linkedNames, mayLinkName } from './noteLinks';
 import {
   SCANS_SUBFOLDER,
   UNMATCHED_FOLDER,
@@ -71,6 +74,12 @@ export interface ScanResult {
   unmatchedPath?: string;
   /** Scans of the same page filed before this one. */
   previous?: { hash: string; embed: string }[];
+  /**
+   * Entries an undo (`undo`) or "delete earlier scan" (`earlier`) took out of the open editor
+   * alone (its save failed), not yet on disk: counted as removed by the same operation's try
+   * that finds the note saved, each apart.
+   */
+  removedPending?: { undo?: number; earlier?: number };
   /** The unit operation it was filed under, as its heading reads (`[UHW290 Name] alias`). */
   block?: string;
   /**
@@ -80,8 +89,15 @@ export interface ScanResult {
   matchedBy?: 'index' | 'opId' | 'fingerprint';
   /** The printout carries no block fingerprint (printed before 0.123.0). */
   legacy?: boolean;
+  /**
+   * Filed in a note that may or may not have it: its save failed as another change reached
+   * it. The image stays, as the note's editor may keep the entry for its next save.
+   */
+  uncertain?: boolean;
   /** The note already had this scan, but its image was gone, so it was filed again (#432). */
   replacedMissing?: boolean;
+  /** The Worksheet scans section it went into was there before: an undo leaves its heading. */
+  sectionExisted?: boolean;
 }
 
 /** One page image, decoded. */
@@ -203,7 +219,8 @@ export class ScanPipeline {
   private async readNote(path: string, cache: Map<string, string>): Promise<string> {
     let text = cache.get(path);
     if (text === undefined) {
-      text = await this.deps.host.fs.read(path);
+      // As the note is: an open editor keeps scans its save could not write yet, already filed.
+      text = (await openEditorText(this.deps.app, path)) ?? (await this.deps.host.fs.read(path));
       cache.set(path, text);
     }
     return text;
@@ -259,13 +276,17 @@ export class ScanPipeline {
           s.hash !== page.hash
       )
       .map(s => ({ hash: s.hash, embed: s.embed }));
-    // A deleted image's name stays taken while an entry still links it (#433).
-    const linked = new Set(
-      filed
+    // A deleted image's name stays taken while an entry still links it (#433), or any other
+    // link in the note: a new scan under that name would be what the link shows.
+    // This page's own entry, filed again in its place (#432), does not keep its name from it.
+    const own = new Set(same.map(s => posix.basename(embedLinkPath(s.embed) ?? '').toLowerCase()));
+    const linked = new Set([
+      ...filed
         .filter(s => s.hash !== page.hash)
         .map(s => posix.basename(embedLinkPath(s.embed) ?? '').toLowerCase())
-        .filter(Boolean)
-    );
+        .filter(Boolean),
+      ...[...linkedNames(text)].filter(n => !own.has(n)),
+    ]);
     const stored = await this.store(notePath, payload, unitOpIndex, await page.render(), saved, linked);
     const result: ScanResult = {
       ...base,
@@ -351,7 +372,7 @@ export class ScanPipeline {
     );
   }
 
-  private async unmatched(page: DecodedPage, base: ScanResult, reason: UnmatchedReason): Promise<ScanResult> {
+  private async unmatched(page: DecodedPage, base: ScanResult, reason?: UnmatchedReason): Promise<ScanResult> {
     const payload = base.payload && isPagePayload(base.payload) ? base.payload : undefined;
     const name = unmatchedFileName(timestamp(), page.source, base.payload?.noteId, page.sourcePage, {
       payload,
@@ -362,8 +383,11 @@ export class ScanPipeline {
     return { ...base, status: 'unmatched', reason, unmatchedPath: file.path };
   }
 
-  /** Write every note of the batch once, then date it. */
-  private async flush(pending: readonly Pending[]): Promise<void> {
+  /**
+   * Write every note of the batch once, then date it. `settled`: the caller checks the note
+   * afterwards and says the outcome itself, so a write not known to have landed is not said here.
+   */
+  private async flush(pending: readonly Pending[], { settled = false }: { settled?: boolean } = {}): Promise<void> {
     const byNote = new Map<string, Pending[]>();
     for (const p of pending) byNote.set(p.notePath, [...(byNote.get(p.notePath) ?? []), p]);
     for (const [notePath, items] of byNote) {
@@ -378,39 +402,87 @@ export class ScanPipeline {
             out = removeScanEntry(out, item.entry.hash).md;
             target = resolveScanTarget(listUnitOpBlocks(out), unitOpIndex, opId, fingerprint);
           }
-          if (target.kind === 'block') out = insertScanEntries(out, target.block, [item.entry]);
-          else if (target.kind === 'note') out = insertScanEntries(out, null, [item.entry]);
+          if (target.kind === 'block' || target.kind === 'note') {
+            const block = target.kind === 'block' ? target.block : null;
+            // Whether the note had the section before this batch, not before this page: undoing
+            // every page of the batch takes out a section the batch made.
+            const was = resolveScanTarget(listUnitOpBlocks(content), unitOpIndex, opId, fingerprint);
+            item.result.sectionExisted =
+              was.kind === 'block' || was.kind === 'note' ? hasScanSection(content, was.kind === 'block' ? was.block : null) : false;
+            out = insertScanEntries(out, block, [item.entry]);
+          }
           else missed.set(item, target.kind === 'missing' ? 'no-unit-op' : target.kind);
         }
         return out;
       };
+      let failure: string | undefined;
       try {
-        await processNoteThroughVault(this.deps.app, this.deps.host, notePath, apply);
-        this.deps.markUserEdit(notePath);
+        // An open note is judged by its editor's text, which the scans were placed against, not
+        // by the file first: a unit operation renamed there and not saved yet is still found.
+        const open = (await openEditorText(this.deps.app, notePath)) !== undefined;
+        const written = await processNoteThroughVault(this.deps.app, this.deps.host, notePath, apply, open);
+        if (written === 'uncertain') {
+          // The entries may be in the note, or kept by its editor for its next save: their
+          // images stay, and they are not queued, which would file them twice. Scans the text
+          // written had no unit operation for are not in it: queued below, as always.
+          if (!settled) this.deps.host.notify('warn', this.deps.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', notePath));
+          for (const item of items) if (!missed.has(item)) item.result.uncertain = true;
+        } else if (!written && (await changeNotWritten(this.deps.app, this.deps.host, notePath, apply))) {
+          // Not written: a save of the open note did not end in time.
+          failure = this.deps.t('The scans were not written into the note: it was still being saved, or it changed while they went in.');
+        } else {
+          this.deps.markUserEdit(notePath);
+        }
       } catch (err) {
-        console.error('[labnoteo] could not file scans in', notePath, err);
-        for (const item of items) Object.assign(item.result, { status: 'error', message: String(err) });
+        failure = String(err);
+      }
+      if (failure !== undefined) {
+        // Each scan goes to the unmatched queue, to be assigned from there, and says why it failed;
+        // but one the note on disk may have (the write failed after it landed, or the disk could
+        // not be read) keeps its image, which the entry links, and is said may be filed.
+        console.error('[labnoteo] could not file scans in', notePath, failure);
+        let maybe = false;
+        for (const item of items) {
+          if (!missed.has(item) && (await this.referenced(notePath, [item.entry.hash]))) {
+            item.result.uncertain = true;
+            maybe = true;
+            continue;
+          }
+          await this.requeue(item);
+          if (item.result.status === 'unmatched') Object.assign(item.result, { status: 'error', message: failure });
+        }
+        if (maybe && !settled) this.deps.host.notify('warn', this.deps.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', notePath));
         continue;
       }
       // The note changed between reading and writing so that the unit operation is gone.
-      for (const [item, reason] of missed) {
-        try {
-          const image = this.deps.app.vault.getAbstractFileByPath(item.result.imagePath!);
-          if (!(image instanceof TFile)) throw new Error('Saved scan image is missing');
-          const queued = await this.unmatched({
-            source: item.result.source,
-            sourcePage: item.result.sourcePage,
-            hash: item.entry.hash,
-            blank: false,
-            render: () => this.deps.app.vault.readBinary(image),
-          }, item.result, reason);
-          Object.assign(item.result, queued);
-          await this.deps.app.fileManager.trashFile(image);
-          delete item.result.imagePath;
-        } catch (err) {
-          Object.assign(item.result, { status: 'error', message: String(err) });
-        }
+      for (const [item, reason] of missed) await this.requeue(item, reason);
+    }
+  }
+
+  /** Put a scan saved for a note into the unmatched queue instead, and trash the saved image. */
+  private async requeue(item: Pending, reason?: UnmatchedReason): Promise<void> {
+    try {
+      const image = this.deps.app.vault.getAbstractFileByPath(item.result.imagePath!);
+      if (!(image instanceof TFile)) throw new Error('Saved scan image is missing');
+      const queued = await this.unmatched({
+        source: item.result.source,
+        sourcePage: item.result.sourcePage,
+        hash: item.entry.hash,
+        blank: false,
+        render: () => this.deps.app.vault.readBinary(image),
+      }, item.result, reason);
+      Object.assign(item.result, queued);
+      // The saved image goes only when the note links it neither on disk nor in its open editor.
+      if (await this.linksImage(item.notePath, image.path)) return;
+      try {
+        await this.deps.app.fileManager.trashFile(image);
+        delete item.result.imagePath;
+      } catch (err) {
+        // The copy is queued already; the saved image stays, and imagePath says where.
+        console.warn('[labnoteo] could not trash a scan queued as unmatched', image.path, err);
       }
+    } catch (err) {
+      Object.assign(item.result, { status: 'error', message: String(err) });
     }
   }
 
@@ -438,7 +510,8 @@ export class ScanPipeline {
     const bytes = await app.vault.readBinary(image);
     // The queue keeps the page as JPEG; the hash of the scan as imported is in its name (#495).
     const hash = unmatchedInfoFromName(image.name).hash ?? shortHash(await sha256Hex(bytes));
-    const block = unitOpIndex > 0 ? listUnitOpBlocks(await app.vault.read(note))[unitOpIndex - 1] : undefined;
+    // As the note is, as the picker listed it and as the write will find it.
+    const block = unitOpIndex > 0 ? listUnitOpBlocks((await openEditorText(app, note.path)) ?? (await app.vault.read(note)))[unitOpIndex - 1] : undefined;
     const payload: PagePayload = {
       noteId,
       unitOpIndex: block?.index ?? 0,
@@ -457,36 +530,205 @@ export class ScanPipeline {
     };
     const pending: Pending[] = [];
     const result = await this.filePage(decoded, {}, pending, new Set(), new Map(), new Set());
-    await this.flush(pending);
-    if (result.status === 'filed' || result.status === 'duplicate') await app.fileManager.trashFile(image);
-    if (result.status === 'unmatched' && result.unmatchedPath) {
-      // The image is still in the queue; the copy filePage made there is not needed.
+    await this.flush(pending, { settled: true });
+    // The copy saved for the note stays whenever the note may link it.
+    let keepCopy = false;
+    if (result.status === 'filed' || result.status === 'duplicate') {
+      // The queued image goes only once the note on disk has the scan: one its open editor alone
+      // keeps (its save failed) would be lost with the queued image if the editor is closed unsaved.
+      // Trashed only when the disk is read and has the scan: unread is not saved. A scan filed is
+      // known by its entry and the link to its image under it (the note may have renamed its
+      // section since), a duplicate by its entry. Read strictly: a name merely mentioned, which
+      // keeps an image from being trashed, is no proof the scan went in.
+      const name = result.status === 'filed' && result.imagePath ? posix.basename(result.imagePath) : undefined;
+      const disk = !result.notePath
+        ? true
+        : name
+          ? await this.diskFiled(result.notePath, result.hash, name)
+          : result.hash
+            ? await this.onDisk(result.notePath, [result.hash])
+            : true;
+      const editor = !result.notePath
+        ? false
+        : name
+          ? mayLinkName(openSourceView(this.deps.app, result.notePath)?.editor.getValue() ?? '', name)
+          : result.hash
+            ? this.inEditor(result.notePath, [result.hash])
+            : false;
+      if (disk === true) {
+        // On disk: filed, whatever the write could not tell.
+        delete result.uncertain;
+        await app.fileManager.trashFile(image);
+      } else if (result.status === 'filed' && disk === false && !editor) {
+        // Neither the note on disk nor its open editor has the scan: it was not filed. Said so
+        // once, as an error; the image saved for it goes below, the queued one stays.
+        Object.assign(result, {
+          status: 'error',
+          message: this.deps.t('The scan did not go into {0}. Its image stays in the unmatched queue; assign it again.', result.notePath!),
+        });
+        delete result.uncertain;
+      } else if (disk === false) {
+        // In the open editor alone: said once, as the result, and the copy the editor links stays.
+        Object.assign(result, {
+          status: 'error',
+          message: this.deps.t(
+            '{0} has the scan only in its open editor: the note could not be saved yet, so its image stays in the unmatched queue. Assign it again once the note is saved.',
+            result.notePath!
+          ),
+        });
+        delete result.uncertain;
+        keepCopy = true;
+      } else {
+        // The note could not be read to see whether it links the copy: it may, so the copy stays,
+        // and the result says where.
+        Object.assign(result, {
+          status: 'error',
+          message: result.imagePath
+            ? this.deps.t(
+                '{0} could not be read to check the scan went in. Its image stays in the unmatched queue, and the copy saved for the note stays at {1}; check the note before assigning it again.',
+                result.notePath!,
+                result.imagePath
+              )
+            : this.deps.t('{0} could not be read to check the scan went in. Its image stays in the unmatched queue; check the note before assigning it again.', result.notePath!),
+        });
+        delete result.uncertain;
+        keepCopy = true;
+      }
+    }
+    if ((result.status === 'unmatched' || result.status === 'error') && result.unmatchedPath) {
+      // The image is still in the queue; the copy filePage or flush made there is not needed.
       const copy = app.vault.getAbstractFileByPath(result.unmatchedPath);
       if (copy instanceof TFile && copy !== image) await app.fileManager.trashFile(copy);
       result.unmatchedPath = image.path;
     }
+    if ((result.status === 'unmatched' || result.status === 'error') && result.imagePath && !keepCopy) {
+      // flush could not trash the image it saved; the queued image stands for it. Not while the
+      // note links it (on disk or in its editor; unread, it may).
+      const saved = app.vault.getAbstractFileByPath(result.imagePath);
+      try {
+        if (saved instanceof TFile && saved !== image && !(result.notePath && (await this.linksImage(result.notePath, saved.path)))) {
+          await app.fileManager.trashFile(saved);
+          delete result.imagePath;
+        }
+      } catch (err) {
+        console.warn('[labnoteo] could not trash a scan image saved before filing failed', result.imagePath, err);
+      }
+    }
     return result;
   }
 
-  /** Take a filed scan out of its note again and trash its image. */
-  async undo(result: ScanResult): Promise<boolean> {
+  /**
+   * Take a filed scan out of its note again and trash its image: whether it was there, or
+   * 'notWritten' / 'uncertain' when the note was not written or may not have been.
+   */
+  async undo(result: ScanResult): Promise<boolean | 'notWritten' | 'uncertain'> {
     if (result.status !== 'filed' || !result.notePath || !result.hash) return false;
     const hash = result.hash;
     let removed = false;
-    await processNoteThroughVault(this.deps.app, this.deps.host, result.notePath, content => {
-      const out = removeScanEntry(content, hash);
+    // A section the note had before the scan went in stays, emptied: the undo puts the note back.
+    const keepSection = result.sectionExisted === true;
+    const remove = (content: string): string => {
+      const out = removeScanEntry(content, hash, { keepSection });
       removed = out.removed;
       return out.md;
-    });
+    };
+    // Its image is trashed only once the note on disk no longer has the entry: one kept in the
+    // editor alone (its save failed) leaves the disk pointing at the image.
+    const written = await processNoteThroughVaultOnDisk(this.deps.app, this.deps.host, result.notePath, remove);
+    // Taken out of the editor alone (its save failed): remembered, so the try that finds the
+    // note saved says the scan was removed rather than gone already.
+    if (written === 'kept') {
+      result.removedPending = { ...result.removedPending, undo: (result.removedPending?.undo ?? 0) + (removed ? 1 : 0) };
+      return 'notWritten';
+    }
+    // Not written (a save of the open note did not end in time), or not known to be: the entry
+    // and its image stay.
+    if (written === 'uncertain') return 'uncertain';
+    if (!written && (await changeNotWritten(this.deps.app, this.deps.host, result.notePath, remove))) return 'notWritten';
+    // Read from the note itself, not from the write's result: an undo tried again while the
+    // editor keeps the first one unsaved finds nothing to do there, the disk still pointing at the image.
+    if (await this.referenced(result.notePath, [hash])) return 'notWritten';
     const image = result.imagePath ? this.deps.app.vault.getAbstractFileByPath(result.imagePath) : null;
-    if (image instanceof TFile) await this.deps.app.fileManager.trashFile(image);
+    // Not while the note still links it (its entry under a section renamed since, say).
+    if (image instanceof TFile && !(await this.linksImage(result.notePath, image.path))) await this.deps.app.fileManager.trashFile(image);
     if (removed) this.deps.markUserEdit(result.notePath);
-    return removed;
+    const done = removed || (result.removedPending?.undo ?? 0) > 0;
+    if (result.removedPending) delete result.removedPending.undo;
+    return done;
+  }
+
+  /** Whether the note's open editor (saved or not) has one of the scans `hashes`. */
+  private inEditor(notePath: string, hashes: readonly string[]): boolean {
+    const editor = openSourceView(this.deps.app, notePath)?.editor.getValue();
+    return editor !== undefined && hashes.some(hash => removeScanEntry(editor, hash).removed);
+  }
+
+  /**
+   * Whether the note may still have one of the scans `hashes`, on disk or in its open editor
+   * (saved or not): their images stay then.
+   */
+  private async referenced(notePath: string, hashes: readonly string[]): Promise<boolean> {
+    if (this.inEditor(notePath, hashes)) return true;
+    // A note that cannot be read is not known not to have them, so it may.
+    return (await this.onDisk(notePath, hashes)) !== false;
+  }
+
+  /**
+   * Whether the note links the image at `imagePath`, on disk or in its open editor (saved or
+   * not); a note that cannot be read may.
+   */
+  private async linksImage(notePath: string, imagePath: string): Promise<boolean> {
+    const name = posix.basename(imagePath).toLowerCase();
+    const links = (text: string): boolean => mayLinkName(text, name);
+    const editor = openSourceView(this.deps.app, notePath)?.editor.getValue();
+    if (editor !== undefined && links(editor)) return true;
+    const file = this.deps.app.vault.getAbstractFileByPath(notePath);
+    if (!(file instanceof TFile)) return false;
+    try {
+      return links(await this.deps.app.vault.read(file));
+    } catch {
+      return true;
+    }
+  }
+
+  /**
+   * Whether the note on disk has the scan `hash` filed: its entry, with a link to the image named
+   * `name` on the embed line under it; 'unknown' when it cannot be read. The strict reading, for
+   * a success that lets the queued image go ({@link linksImage} is the loose one, for keeping).
+   */
+  private async diskFiled(notePath: string, hash: string | undefined, name: string): Promise<boolean | 'unknown'> {
+    const file = this.deps.app.vault.getAbstractFileByPath(notePath);
+    if (!(file instanceof TFile) || !hash) return false;
+    try {
+      const lower = name.toLowerCase();
+      return listFiledScans(await this.deps.app.vault.read(file)).some(scan => scan.hash === hash && linkedNames(scan.embed).has(lower));
+    } catch (err) {
+      console.warn('[labnoteo] could not read the note to see whether it links the scan', notePath, err);
+      return 'unknown';
+    }
+  }
+
+  /**
+   * Whether the note on disk has one of the scans `hashes`; 'unknown' when it cannot be read.
+   * Each caller decides what unknown means: an image to keep stays, a scan to confirm is not.
+   */
+  private async onDisk(notePath: string, hashes: readonly string[]): Promise<boolean | 'unknown'> {
+    const { app } = this.deps;
+    const file = app.vault.getAbstractFileByPath(notePath);
+    if (!(file instanceof TFile)) return false;
+    try {
+      const disk = await app.vault.read(file);
+      return hashes.some(hash => removeScanEntry(disk, hash).removed);
+    } catch (err) {
+      console.warn('[labnoteo] could not read the note to see whether its scans are on disk', notePath, err);
+      return 'unknown';
+    }
   }
 
   /**
    * The images of the earlier scans of the page `result` filed, which
-   * {@link removePrevious} trashes; named in the question before (#576).
+   * {@link removePrevious} trashes unless the note still links them; named in
+   * the question before (#576).
    */
   previousImages(result: ScanResult): TFile[] {
     const { app } = this.deps;
@@ -501,14 +743,17 @@ export class ScanPipeline {
     );
   }
 
-  /** Remove the earlier scans of the page `result` filed (and trash their images). */
-  async removePrevious(result: ScanResult): Promise<number> {
+  /**
+   * Remove the earlier scans of the page `result` filed (and trash their images): how many, or
+   * 'notWritten' / 'uncertain' when the note was not written or may not have been.
+   */
+  async removePrevious(result: ScanResult): Promise<{ removed: number; trashed: number } | 'notWritten' | 'uncertain'> {
     const { app, host } = this.deps;
-    if (!result.notePath || !result.previous?.length) return 0;
+    if (!result.notePath || !result.previous?.length) return { removed: 0, trashed: 0 };
     const notePath = result.notePath;
     const images = this.previousImages(result);
     let count = 0;
-    await processNoteThroughVault(app, host, notePath, content => {
+    const remove = (content: string): string => {
       count = 0;
       let out = content;
       for (const p of result.previous!) {
@@ -517,10 +762,29 @@ export class ScanPipeline {
         out = r.md;
       }
       return out;
-    });
-    for (const image of images) await app.fileManager.trashFile(image);
+    };
+    // Not written (a save of the open note did not end in time), or not known to be: the entries
+    // and images stay.
+    const written = await processNoteThroughVaultOnDisk(app, host, notePath, remove);
+    // Taken out of the editor alone (its save failed): remembered, as for undo.
+    if (written === 'kept') {
+      result.removedPending = { ...result.removedPending, earlier: (result.removedPending?.earlier ?? 0) + count };
+      return 'notWritten';
+    }
+    if (written === 'uncertain') return 'uncertain';
+    if (!written && (await changeNotWritten(app, host, notePath, remove))) return 'notWritten';
+    if (await this.referenced(notePath, result.previous.map(p => p.hash))) return 'notWritten';
+    // An image the note still links (an entry under a section renamed since, say) stays.
+    let trashed = 0;
+    for (const image of images) {
+      if (await this.linksImage(notePath, image.path)) continue;
+      await app.fileManager.trashFile(image);
+      trashed++;
+    }
     if (count > 0) this.deps.markUserEdit(notePath);
     result.previous = [];
-    return count;
+    const removed = count + (result.removedPending?.earlier ?? 0);
+    if (result.removedPending) delete result.removedPending.earlier;
+    return { removed, trashed };
   }
 }

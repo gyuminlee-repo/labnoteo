@@ -13,7 +13,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
 import { readNoteId } from '@labnoteo/core/lib/noteId';
-import { findEnclosingHeading, issueTitle, parseFrontMatterYaml, type IssueMarker } from '@labnoteo/core';
+import { findEnclosingHeading, findSectionMatches, issueTitle, parseFrontMatterYaml, sectionBodyEnd, type IssueMarker } from '@labnoteo/core';
 
 /** File name of the single-source-of-truth note inside each experiment folder. */
 export const README_NAME = 'README.labnote.md';
@@ -118,30 +118,15 @@ export function deriveIssueTitle(
  * (section runs until the next heading of the same or higher level). Blockquote
  * markers (`>`) are stripped so a placeholder/objective reads as plain prose.
  */
-export function getSectionBody(md: string, heading: string): string | undefined {
+export function getSectionBody(md: string, heading: string, { asNote = true }: { asNote?: boolean } = {}): string | undefined {
+  // The section core `replaceSectionBody` writes: picked and bounded as it does (front matter
+  // and code fences left out), so what is read is what is replaced. `asNote: false` for a note's
+  // body, its front matter already taken off: a `---` line there is a break, not front matter.
   const lines = md.split(/\r?\n/);
-  const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const headingRe = new RegExp(`^(#{1,6})\\s+${escaped}\\s*$`);
-  let start = -1;
-  let level = 0;
-  for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(headingRe);
-    if (m) {
-      start = i + 1;
-      level = m[1].length;
-      break;
-    }
-  }
-  if (start === -1) return undefined;
-
-  const boundary = new RegExp(`^#{1,${level}}\\s`);
-  let end = lines.length;
-  for (let i = start; i < lines.length; i++) {
-    if (boundary.test(lines[i])) {
-      end = i;
-      break;
-    }
-  }
+  const [match] = findSectionMatches(md, heading, { asNote });
+  if (!match) return undefined;
+  const start = match.line + 1;
+  const end = sectionBodyEnd(lines, match.line, match.level, { replacing: true });
 
   const body = lines
     .slice(start, end)
@@ -157,7 +142,7 @@ export function getSectionBody(md: string, heading: string): string | undefined 
  * placeholder (so issues omit a meaningless objective). NEVER uses AI.
  */
 export function extractObjective(body: string): string | undefined {
-  const section = getSectionBody(body, OBJECTIVE_HEADING);
+  const section = getSectionBody(body, OBJECTIVE_HEADING, { asNote: false });
   if (!section) return undefined;
   const normalized = section.replace(/\s+/g, ' ').trim();
   if (normalized === '' || normalized === OBJECTIVE_PLACEHOLDER) return undefined;
@@ -301,7 +286,7 @@ export function buildDiscussionIssue(
   const status = readStringField(note.frontMatter, 'status');
   const notePath = source.path;
   const fileLine = marker.line + source.bodyLineOffset;
-  const section = findEnclosingHeading(source.body, marker.line);
+  const section = findEnclosingHeading(source.body, marker.line, { asNote: false });
 
   const labels = ['experiment', 'discussion'];
   if (status) labels.push(`status:${status}`);

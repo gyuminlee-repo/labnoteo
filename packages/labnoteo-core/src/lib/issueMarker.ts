@@ -20,6 +20,8 @@
  * grammar — the plugin command that writes markers, `issue-sync` that promotes
  * them, and `validate` that reports broken ones.
  */
+import { frontMatterLineCountOf } from '../sections/frontMatter';
+import { classifyLines, isFenced } from '../sections/codeFences';
 import { isInFrontMatter } from '../sections/documentHead';
 import { overlapsMetaProperty } from '../sections/metaContext';
 import { scanMarkdownTableRanges } from './exportTablesCsv';
@@ -104,10 +106,8 @@ const MARKER_RE = /^@issue[;:]([A-Za-z0-9-]+)(?:[;:](.*))?$/i;
  */
 const MARKER_START_RE = /@issue(?=[;:])/i;
 
-/** Opening/closing fence of a code block (up to 3 leading spaces, per CommonMark). */
-const FENCE_RE = /^ {0,3}(?:`{3,}|~{3,})/;
 const INDENTED_CODE_RE = /^(?: {4}|\t)/;
-const LIST_ITEM_RE = /^\s*(?:[-*+]|\d+[.)])(?:\s|$)/;
+const LIST_ITEM_RE = /^[ \t]*(?:[-*+]|\d+[.)])(?:[ \t]|$)/;
 
 /**
  * Which of `lines` are code: fenced blocks (fence lines included; a fence
@@ -117,21 +117,20 @@ const LIST_ITEM_RE = /^\s*(?:[-*+]|\d+[.)])(?:\s|$)/;
  * Every reader of markers goes through this, so what the editor styles is
  * what `issue-sync` and `validate` read (#120, #224).
  */
-function codeLines(lines: readonly string[]): boolean[] {
-  const code: boolean[] = [];
-  let inFence = false;
+// front matter: a note's lines, read from `from` (past its front matter, so a fence in the YAML
+// reaches no line below), or a fragment's from its first line.
+function codeLines(lines: readonly string[], from = 0): boolean[] {
+  const code: boolean[] = new Array<boolean>(Math.min(from, lines.length)).fill(false);
   let inIndented = false;
   let inList = false;
   let prevBlank = true;
-  for (const line of lines) {
-    if (FENCE_RE.test(line)) {
-      inFence = !inFence;
+  // Fences as the one block reading has them (classifyLines).
+  const kinds = classifyLines(lines, from);
+  for (const [i, line] of lines.entries()) {
+    if (i < from) continue;
+    if (isFenced(kinds[i])) {
       code.push(true);
       prevBlank = false;
-      continue;
-    }
-    if (inFence) {
-      code.push(true);
       continue;
     }
     if (line.trim() === '') {
@@ -202,7 +201,7 @@ function scanCommentsAndSpans(md: string): { comments: IssueMarkerRange[]; spans
   const ranges: IssueMarkerRange[] = [];
   const spans: IssueMarkerRange[] = [];
   const raws = md.split('\n');
-  const code = codeLines(raws.map(raw => raw.replace(/\r$/, '')));
+  const code = codeLines(raws.map(raw => raw.replace(/\r$/, '')), frontMatterLineCountOf(raws, { crKept: true }));
   let open: { close: string; start: number } | undefined;
   let offset = 0;
   for (let li = 0; li < raws.length; li++) {
@@ -269,7 +268,8 @@ export function parseIssueMarkers(md: string): IssueMarkerScan {
   const malformed: MalformedIssueMarker[] = [];
 
   const lines = md.split('\n');
-  const code = codeLines(lines);
+  // Fences are read from past the front matter: one in the YAML reaches no line below.
+  const code = codeLines(lines, frontMatterLineCountOf(lines, { crKept: true }));
   const comments = markerHiddenRanges(md);
   const tables = scanMarkdownTableRanges(md).filter(r => r.kind === 'table');
   let offset = 0;
@@ -426,15 +426,16 @@ export function fencedCodeRanges(md: string): IssueMarkerRange[] {
   const ranges: IssueMarkerRange[] = [];
   let offset = 0;
   let start = -1;
-  for (const line of md.split('\n')) {
+  const lines = md.split('\n');
+  const fm = frontMatterLineCountOf(lines, { crKept: true });
+  // Fences as the one block reading has them (classifyLines), from past the front matter.
+  const kinds = classifyLines(lines, fm);
+  for (const [i, line] of lines.entries()) {
     const end = offset + line.length;
-    if (FENCE_RE.test(line)) {
-      if (start === -1) {
-        start = offset;
-      } else {
-        ranges.push({ start, end });
-        start = -1;
-      }
+    if (kinds[i].kind === 'opener') start = offset;
+    if (kinds[i].ends) {
+      ranges.push({ start, end });
+      start = -1;
     }
     offset = end + 1;
   }
@@ -450,7 +451,7 @@ export function fencedCodeRanges(md: string): IssueMarkerRange[] {
 export function codeBlockRanges(md: string): IssueMarkerRange[] {
   const ranges: IssueMarkerRange[] = [];
   const lines = md.split('\n');
-  const code = codeLines(lines);
+  const code = codeLines(lines, frontMatterLineCountOf(lines, { crKept: true }));
   let offset = 0;
   let open: IssueMarkerRange | undefined;
   for (let i = 0; i < lines.length; i++) {
@@ -506,7 +507,7 @@ export function reassignIssueMarkerIds(
 ): { content: string; count: number } {
   let count = 0;
   const raws = md.split('\n');
-  const code = codeLines(raws.map(raw => raw.replace(/\r$/, '')));
+  const code = codeLines(raws.map(raw => raw.replace(/\r$/, '')), frontMatterLineCountOf(raws, { crKept: true }));
   const comments = markerHiddenRanges(md);
   let offset = 0;
   const lines = raws.map((raw, i) => {
@@ -534,7 +535,8 @@ export function reassignIssueMarkerIds(
  */
 export function stripIssueMarkers(md: string): string {
   const raws = md.split('\n');
-  const code = codeLines(raws.map(raw => raw.replace(/\r$/, '')));
+  // As markerHiddenRanges reads it: fences from past a front matter.
+  const code = codeLines(raws.map(raw => raw.replace(/\r$/, '')), frontMatterLineCountOf(raws, { crKept: true }));
   const comments = markerHiddenRanges(md);
   let offset = 0;
   return raws
@@ -581,8 +583,9 @@ export type IssueMarkerInsertion =
   | { edit: { from: number; to: number; insert: string }; cursor: number }
   | { reason: 'conflict' | 'table' | 'frontMatter' | 'codeBlock' | 'comment' | 'meta' };
 
-const isHeadingLine = (line: string): boolean => /^ {0,3}#{1,6}(?:\s|$)/.test(line);
-const isTableRow = (line: string): boolean => /^\s*\|/.test(line);
+// front matter: one line; planIssueMarkerInsertion refuses an offset in the front matter first.
+const isHeadingLine = (line: string): boolean => /^ {0,3}#{1,6}(?:[ \t]|$)/.test(line);
+const isTableRow = (line: string): boolean => /^[ \t]*\|/.test(line);
 
 /**
  * Whether `line` holds a sample reference the marker would damage (#373): an
@@ -650,7 +653,7 @@ export function planIssueMarkerInsertion(
   const title = multiLine
     ? selected
         .split('\n')
-        .map(l => l.replace(/^\s*(?:>\s*)*(?:(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?)?/, '').trim())
+        .map(l => l.replace(/^[ \t]*(?:>\s*)*(?:(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?)?/, '').trim())
         .filter(Boolean)
         .join(' ')
     : (topic ?? selected).trim().replace(/\s*\n\s*/g, ' ');
@@ -746,14 +749,19 @@ export function issueSentenceRange(
  * section it came from (`Results` vs `Methods`) without copying the note.
  *
  * Headings inside code blocks are ignored, for the same reason markers are.
+ * `asNote: false` for a note's body, its front matter already taken off: a `---` line
+ * there is a break, not front matter.
  */
-export function findEnclosingHeading(md: string, line: number): string | undefined {
+export function findEnclosingHeading(md: string, line: number, { asNote = true }: { asNote?: boolean } = {}): string | undefined {
   const lines = md.split('\n');
-  const code = codeLines(lines);
+  // Not above the front matter's end: a `## …` YAML comment there is no heading, and no fence
+  // in it reaches the body (code is read from past it).
+  const fm = asNote ? frontMatterLineCountOf(lines, { crKept: true }) : 0;
+  const code = [...new Array<boolean>(fm).fill(false), ...codeLines(lines.slice(fm))];
 
-  for (let i = Math.min(line, lines.length) - 1; i >= 0; i--) {
+  for (let i = Math.min(line, lines.length) - 1; i >= fm; i--) {
     if (code[i]) continue;
-    const m = lines[i].match(/^#{1,6}\s+(.*?)\s*$/);
+    const m = lines[i].match(/^#{1,6}[ \t]+(.*?)\s*$/);
     if (m && m[1]) return m[1];
   }
   return undefined;

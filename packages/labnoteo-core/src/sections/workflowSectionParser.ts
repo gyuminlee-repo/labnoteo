@@ -8,9 +8,12 @@
  * unit-op blocks at the cursor and keeps the TOC in sync with these targeted
  * helpers.
  */
+import { classifyLines, headingLevel, headingText, isFenced } from './codeFences';
 import { normalizeHeadingText } from './sectionEdit';
+import { joinLineBuffer, spliceLineBuffer, splitLineBuffer } from '../util/lineEnds';
+import { frontMatterLineCount, frontMatterLineCountOf } from './frontMatter';
 
-export const UNIT_OP_HEADING_PATTERN = /^###\s+\[([A-Z]+\d+)\s+(.+?)\]\s*(.*)/;
+export const UNIT_OP_HEADING_PATTERN = /^###[ \t]+\[([A-Z]+\d+)\s+(.+?)\]\s*(.*)/;
 
 const UNIT_OP_SECTION_NAMES = ['related unit operations', '관련 유닛 오퍼레이션'];
 
@@ -29,7 +32,7 @@ export function isUnitOpTocEntryLine(text: string): boolean {
  * The workflow's title, `## [WD070 Name]`. The same shape as `lib/workflowStructure`'s,
  * kept here so `sections` does not import `lib`.
  */
-const WORKFLOW_TITLE_RE = /^##\s+\[[A-Z]{2}\d{3}\s+[^\]]+\]/;
+const WORKFLOW_TITLE_RE = /^##[ \t]+\[[A-Z]{2}\d{3}\s+[^\]]+\]/;
 
 /** The heading {@link ensureUnitOpSection} writes. */
 const UNIT_OP_SECTION_HEADING = '## Related Unit Operations';
@@ -44,9 +47,10 @@ const UNIT_OP_SECTION_HEADING = '## Related Unit Operations';
  * and the TOC would go between the title and its description (#564). Fenced
  * lines are skipped.
  */
-export function findUnitOpSection(lines: readonly { text: string; fenced: boolean }[]): number {
-  const isH2 = (j: number): boolean => !lines[j].fenced && /^##\s/.test(lines[j].text);
-  const named = lines.findIndex((_, j) => isH2(j) && isUnitOpSectionTitle(lines[j].text.replace(/^##\s+/, '')));
+// front matter: lines from scanLines, which marks the front matter fenced.
+export function findUnitOpSection(lines: readonly MdLine[]): number {
+  const isH2 = (j: number): boolean => lines[j].heading === 2;
+  const named = lines.findIndex((_, j) => isH2(j) && isUnitOpSectionTitle(lines[j].title));
   if (named !== -1) return named;
   for (let j = 0; j < lines.length; j++) {
     if (!isH2(j)) continue;
@@ -81,7 +85,7 @@ export function missingUnitOpSectionEdit(md: string): { offset: number; text: st
     // one the researcher renamed takes it, as it did before (#455).
     const conclusions = findConclusionsIdx(lines);
     for (let j = (conclusions === -1 ? lines.length : conclusions) - 1; j > title; j--) {
-      if (!lines[j].fenced && /^##\s/.test(lines[j].text)) return null;
+      if (lines[j].heading === 2) return null;
     }
   }
   const nl = md.includes('\r\n') ? '\r\n' : '\n';
@@ -93,7 +97,7 @@ export function missingUnitOpSectionEdit(md: string): { offset: number; text: st
     let last = title;
     let j = title + 1;
     while (j < stop && lines[j].text.trim() === '') j++;
-    while (j < stop && /^\s*>/.test(lines[j].text)) last = j++;
+    while (j < stop && /^[ \t]*>/.test(lines[j].text)) last = j++;
     return { offset: lines[last].end, text: `${nl}${nl}${UNIT_OP_SECTION_HEADING}` };
   }
   if (firstBlock === -1) return null;
@@ -116,10 +120,11 @@ export function unitOpSectionLine(md: string): number {
 }
 
 /** Line index of the note's conclusions `##` heading (`## Conclusions and Discussion`), or -1. */
-function findConclusionsIdx(lines: readonly { text: string; fenced: boolean }[]): number {
+// front matter: lines from scanLines, which marks the front matter fenced.
+function findConclusionsIdx(lines: readonly MdLine[]): number {
   return lines.findIndex(l => {
-    if (l.fenced || !/^##\s/.test(l.text)) return false;
-    const text = normalizeHeadingText(l.text.replace(/^##\s+/, ''));
+    if (l.heading !== 2) return false;
+    const text = normalizeHeadingText(l.title);
     return text.includes('conclusion') || text.includes('결론');
   });
 }
@@ -183,16 +188,22 @@ export function appendUnitOpToWorkflowToc(
   opName: string,
   alias?: string
 ): string {
-  const newline = md.includes('\r\n') ? '\r\n' : '\n';
-  const lines = md.split(/\r?\n/);
+  // Every other line keeps its own line break, even in mixed endings.
+  const buf = splitLineBuffer(md);
+  const { lines } = buf;
 
   const headingIdx = findUnitOpSection(scanLines(md));
   if (headingIdx === -1) return md;
 
-  // Section spans until the next `## ` heading or a thematic break `---`.
+  // Lines as the one block reading has them (no fence in the front matter, as scanLines reads it).
+  const kinds = classifyLines(lines, frontMatterLineCount(md));
+  // A closed fence or an HTML block (a fence never closed is text here, as before).
+  const code = (j: number): boolean => (isFenced(kinds[j]) && kinds[j].closed) || kinds[j].kind === 'html';
+  // Section spans until the next `## ` line or a thematic break `---`, as before, or a `#` heading.
   let endIdx = lines.length;
   for (let j = headingIdx + 1; j < lines.length; j++) {
-    if (/^##\s/.test(lines[j]) || lines[j].trim() === '---') {
+    const title = headingLevel(kinds[j]) === 1;
+    if (title || /^##[ \t]/.test(lines[j]) || lines[j].trim() === '---') {
       endIdx = j;
       break;
     }
@@ -200,13 +211,24 @@ export function appendUnitOpToWorkflowToc(
 
   const entryLine = buildUnitOpTocLine(opId, opName, alias);
 
+  const isEntry = (j: number): boolean => /^\s*- \[/.test(lines[j]);
+  // The entry goes after the last `- [` line no closed fence and no HTML block holds, as the one
+  // block reading has the note (a fence never closed is text here, as before). When every such
+  // line is in one, there is no safe place: the note stays as it is.
+  // A line holding a lone CR: CommonMark ends a line there, this reading (split on LF) does not,
+  // so no line is taken for code; the entry goes after the last one, as before.
+  const loneCr = lines.slice(0, endIdx).some(l => l.includes('\r'));
   let lastEntry = -1;
+  let entries = false;
   for (let j = headingIdx + 1; j < endIdx; j++) {
-    if (/^\s*- \[/.test(lines[j])) lastEntry = j;
+    if (!isEntry(j)) continue;
+    entries = true;
+    if (loneCr || !code(j)) lastEntry = j;
   }
+  if (entries && lastEntry === -1) return md;
 
   if (lastEntry !== -1) {
-    lines.splice(lastEntry + 1, 0, entryLine);
+    spliceLineBuffer(buf, lastEntry + 1, 0, [entryLine]);
   } else {
     let insertAt = headingIdx + 1;
     // Skip the single blank line that follows the heading.
@@ -214,10 +236,10 @@ export function appendUnitOpToWorkflowToc(
     const toInsert = [entryLine];
     // Keep a blank separator before following non-blank prose.
     if (lines[insertAt] !== undefined && lines[insertAt].trim() !== '') toInsert.push('');
-    lines.splice(insertAt, 0, ...toInsert);
+    spliceLineBuffer(buf, insertAt, 0, toInsert);
   }
 
-  return lines.join(newline);
+  return joinLineBuffer(buf);
 }
 
 /**
@@ -250,7 +272,7 @@ export function findUnitOpInsertOffset(md: string): number {
   if (headingIdx === -1) return md.length;
 
   for (let i = headingIdx + 1; i < lineStarts.length; i++) {
-    if (/^##\s/.test(lineAt(i))) return lineStarts[i];
+    if (/^##[ \t]/.test(lineAt(i))) return lineStarts[i];
   }
   return md.length;
 }
@@ -300,7 +322,7 @@ export function findUnitOpInsertPointAt(md: string, cursor: number): UnitOpInser
   }
   let endIdx = lineStarts.length;
   for (let i = headingIdx + 1; i < lineStarts.length; i++) {
-    if (/^##\s/.test(lineAt(i))) {
+    if (/^##[ \t]/.test(lineAt(i))) {
       endIdx = i;
       break;
     }
@@ -310,13 +332,13 @@ export function findUnitOpInsertPointAt(md: string, cursor: number): UnitOpInser
   const blocks: { start: number; heading: string }[] = [];
   for (let i = headingIdx + 1; i < endIdx; i++) {
     const line = lineAt(i);
-    if (!/^###\s+\[/.test(line)) continue;
+    if (!/^###[ \t]+\[/.test(line)) continue;
     // A block begins at its `---` separator when it has one.
     let start = i;
     let j = i - 1;
     while (j > headingIdx && lineAt(j).trim() === '') j--;
     if (j > headingIdx && lineAt(j).trim() === '---') start = j;
-    blocks.push({ start, heading: line.replace(/^###\s+/, '').trim() });
+    blocks.push({ start, heading: line.replace(/^###[ \t]+/, '').trim() });
   }
   if (blocks.length === 0) return { offset: sectionEnd, place: 'empty' };
 
@@ -349,26 +371,33 @@ interface MdLine {
   end: number;
   text: string;
   fenced: boolean;
+  /** Its heading level as the one block reading has it ({@link headingLevel}), or 0. */
+  heading: number;
+  /** Its heading text ({@link headingText}), or ''. */
+  title: string;
+  /** Its heading level read up to three spaces in, as GitHub numbers anchors, or 0. */
+  anchorHeading: number;
 }
 
 /** Split into lines with offsets, marking ``` / ~~~ fenced code (fence lines included). */
 function scanLines(md: string): MdLine[] {
   const lines: MdLine[] = [];
-  let fence: { ch: string; len: number } | null = null;
+  // Lines as the one block reading has them (classifyLines), over the lines split as below; none
+  // in the front matter, which Obsidian reads as properties.
+  const frontMatter = frontMatterLineCount(md);
+  const pieces = md.split('\n');
+  const kinds = classifyLines(pieces.map((p, k) => (k < pieces.length - 1 && p.endsWith('\r') ? p.slice(0, -1) : p)), frontMatter);
   let start = 0;
   for (;;) {
     const nl = md.indexOf('\n', start);
     const end = nl === -1 ? md.length : nl > start && md[nl - 1] === '\r' ? nl - 1 : nl;
     const text = md.slice(start, end);
-    const m = /^ {0,3}(`{3,}|~{3,})/.exec(text);
-    let fenced = fence !== null;
-    if (fence) {
-      if (m && m[1][0] === fence.ch && m[1].length >= fence.len && text.trim() === m[1]) fence = null;
-    } else if (m) {
-      fence = { ch: m[1][0], len: m[1].length };
-      fenced = true;
-    }
-    lines.push({ start, end, text, fenced });
+    // Front matter is YAML, no Markdown: a `## …` comment in it is no heading, a `- [ID …]` no TOC entry.
+    const fenced = lines.length < frontMatter || isFenced(kinds[lines.length]);
+    const read = kinds[lines.length];
+    const heading = lines.length < frontMatter ? 0 : headingLevel(read);
+    const anchorHeading = lines.length < frontMatter ? 0 : headingLevel(read, { indented: true });
+    lines.push({ start, end, text, fenced, heading, title: anchorHeading ? headingText(read) : '', anchorHeading });
     if (nl === -1) break;
     start = nl + 1;
   }
@@ -385,18 +414,13 @@ const isTocEntry = (line: MdLine): boolean => !line.fenced && tocEntryOpId(line.
  * the TOC. Front matter and fenced code hold no headings.
  */
 function headingAnchors(lines: MdLine[]): Map<number, string> {
-  let start = 0;
-  if (lines[0]?.text.trim() === '---') {
-    const close = lines.findIndex((l, i) => i > 0 && l.text.trim() === '---');
-    if (close !== -1) start = close + 1;
-  }
+  const start = frontMatterLineCountOf(lines.map(l => l.text));
   const anchors = new Map<number, string>();
   const seen = new Map<string, number>();
   for (let j = start; j < lines.length; j++) {
-    if (lines[j].fenced) continue;
-    const m = /^ {0,3}#{1,6}(?:[ \t]+(.*?))?[ \t]*$/.exec(lines[j].text);
-    if (!m) continue;
-    const base = githubHeadingAnchor((m[1] ?? '').replace(/(?:^|[ \t]+)#+$/, ''));
+    // Up to three spaces in, as GitHub reads headings for anchors (and as before).
+    if (!lines[j].anchorHeading) continue;
+    const base = githubHeadingAnchor(lines[j].title.replace(/(?:^|[ \t]+)#+$/, ''));
     const n = seen.get(base) ?? 0;
     seen.set(base, n + 1);
     anchors.set(j, n > 0 ? `${base}-${n}` : base);
@@ -458,13 +482,17 @@ function pairTocEntries(scan: UnitOpTocScan): Map<number, number> {
   return pairs;
 }
 
-/** The rebuilt entries, each with the tail of the current entry paired with it (see {@link pairTocEntries}). */
-function entriesWithTails(scan: UnitOpTocScan): string[] {
+/**
+ * The rebuilt entries, each with the tail of the current entry paired with it, and those
+ * pairs ({@link pairTocEntries}), worked out once for the caller.
+ */
+function entriesWithTails(scan: UnitOpTocScan): { entries: string[]; pairs: Map<number, number> } {
   const pairs = pairTocEntries(scan);
-  return scan.entries.map((line, k) => {
+  const entries = scan.entries.map((line, k) => {
     const idx = pairs.get(k);
     return line + (idx === undefined ? '' : splitTocEntry(scan.lines[idx].text).tail);
   });
+  return { entries, pairs };
 }
 
 /**
@@ -512,7 +540,7 @@ function scanUnitOpToc(md: string): UnitOpTocScan | null {
   let tocEndIdx = lines.length;
   for (let j = headingIdx + 1; j < lines.length; j++) {
     const l = lines[j];
-    if (!l.fenced && (/^#{1,6}\s/.test(l.text) || l.text.trim() === '---')) {
+    if (l.heading || (!l.fenced && l.text.trim() === '---')) {
       tocEndIdx = j;
       break;
     }
@@ -547,18 +575,39 @@ function scanUnitOpToc(md: string): UnitOpTocScan | null {
  */
 function tocEdit(md: string, scan: UnitOpTocScan): TextEdit | null {
   const { lines, newline, headingIdx, entryIdxs } = scan;
-  const entries = entriesWithTails(scan);
+  const { entries, pairs } = entriesWithTails(scan);
+  // The line break after line `j` as written (mixed endings stay), or for the
+  // last line the one before it; new lines take the break of the line above.
+  const breakAfter = (j: number): string =>
+    j + 1 < lines.length ? md.slice(lines[j].end, lines[j + 1].start) : j > 0 ? md.slice(lines[j - 1].end, lines[j].start) : newline;
 
   if (entryIdxs.length > 0) {
     const first = entryIdxs[0];
     const last = entryIdxs[entryIdxs.length - 1];
-    const kept: string[] = [];
-    for (let j = first; j <= last; j++) {
-      if (!isTocEntry(lines[j])) kept.push(lines[j].text);
-    }
+    // The break a line ended with, '' for the last line of the note.
+    const own = (j: number): string => (j + 1 < lines.length ? md.slice(lines[j].end, lines[j + 1].start) : '');
+    // The ordered entries, then the interleaved lines. An entry rebuilt from
+    // an existing one, and every interleaved line, keeps that line's break; a
+    // new entry takes the break of the line above it.
+    const out: { text: string; end: string }[] = [];
+    let above = breakAfter(first - 1);
+    const push = (text: string, end: string): void => {
+      out.push({ text, end: end || above });
+      above = end || above;
+    };
+    entries.forEach((text, k) => {
+      const idx = pairs.get(k);
+      push(text, idx === undefined ? '' : own(idx));
+    });
+    for (let j = first; j <= last; j++) if (!isTocEntry(lines[j])) push(lines[j].text, own(j));
+    // The range runs to the next line, so the line now last carries its own break too.
+    // With no line left, the break the last entry ended on stays, so the text
+    // above does not run into what follows (a `---` would make it a heading).
+    const toEnd = out.length === 0 || last + 1 >= lines.length;
+    const text = out.map((l, k) => l.text + (toEnd && k === out.length - 1 ? '' : l.end)).join('');
     const from = lines[first].start;
-    const to = lines[last].end;
-    const d = minimalReplacement(md.slice(from, to), [...entries, ...kept].join(newline));
+    const to = toEnd ? lines[last].end : lines[last + 1].start;
+    const d = minimalReplacement(md.slice(from, to), text);
     return d && { from: from + d.start, to: from + d.end, insert: d.text };
   }
 
@@ -566,10 +615,11 @@ function tocEdit(md: string, scan: UnitOpTocScan): TextEdit | null {
   let insertAt = headingIdx + 1;
   if (lines[insertAt] !== undefined && lines[insertAt].text.trim() === '') insertAt++;
   const target = lines[insertAt];
-  if (!target) return { from: md.length, to: md.length, insert: newline + entries.join(newline) };
+  const above = breakAfter(insertAt - 1);
+  if (!target) return { from: md.length, to: md.length, insert: above + entries.join(above) };
   // Keep a blank separator before following non-blank prose.
-  const gap = target.text.trim() !== '' ? newline : '';
-  return { from: target.start, to: target.start, insert: entries.join(newline) + newline + gap };
+  const gap = target.text.trim() !== '' ? above : '';
+  return { from: target.start, to: target.start, insert: entries.join(above) + above + gap };
 }
 
 /**
@@ -602,12 +652,13 @@ function isReorder(scan: UnitOpTocScan): boolean {
  * a `---` followed by other content is the user's and is kept (runs of
  * back-to-back breaks are merged into one).
  */
+// front matter: lines from scanLines, which marks the front matter fenced.
 function separatorEdits(md: string, scan: UnitOpTocScan): TextEdit[] {
   const { lines, newline, headingIdx } = scan;
 
   let sectionEnd = lines.length;
   for (let j = headingIdx + 1; j < lines.length; j++) {
-    if (!lines[j].fenced && /^#{1,2}\s/.test(lines[j].text)) {
+    if (lines[j].heading === 1 || lines[j].heading === 2) {
       sectionEnd = j;
       break;
     }
@@ -617,7 +668,7 @@ function separatorEdits(md: string, scan: UnitOpTocScan): TextEdit[] {
   const isBreak = (j: number): boolean => {
     if (lines[j].fenced || lines[j].text.trim() !== '---') return false;
     const prev = lines[j - 1].text.trim();
-    return prev === '' || prev === '---' || /^#{1,6}\s/.test(lines[j - 1].text);
+    return prev === '' || prev === '---' || lines[j - 1].heading > 0;
   };
 
   const items: { idx: number; kind: 'break' | 'unitOp' | 'other' }[] = [];
@@ -734,6 +785,7 @@ const tocEntryOpId = (text: string): string | undefined => /^\s*- \[([A-Z]+\d+)\
  * block's, else after the last entry. Unchanged when the section or the
  * heading is not found.
  */
+// front matter: lines from scanLines, which marks the front matter fenced.
 export function addUnitOpTocEntry(md: string, headingOffset: number): string {
   const scan = scanUnitOpToc(md);
   if (!scan) return md;

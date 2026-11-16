@@ -15,6 +15,7 @@ import type { LabnoteHost } from '@labnoteo/core';
 import { MemFileSystem } from '../../packages/labnoteo-core/src/fs/memFileSystem';
 import { parseWorkflowChecklistFromReadme } from '../../packages/labnoteo-core/src/lib/workflowStructure';
 import { renumberWorkflowsCommand, netRenames, type ReadmeSyncControl } from '../../src/commands';
+import { OPEN_SAVE_WAIT_MS } from '../../src/openEditorWrite';
 
 const DIR = 'labnote/001_Test';
 const README = `${DIR}/README.labnote.md`;
@@ -232,6 +233,34 @@ describe('renumberWorkflowsCommand with unlisted files (#56)', () => {
     expect(h.calls).not.toContain('notify Workflow numbering already follows the README checklist.');
     expect(h.calls.at(-1)).toBe('notify Added 1 workflow file(s) to the README checklist.');
   });
+
+  // Obsidian still saving the open README past the wait: the entry is not written, nor said added.
+  it('says nothing was added when the README was not written', async () => {
+    const h = harness({ relink: false });
+    await h.fs.remove(`${DIR}/${C_OLD}`);
+    await h.fs.write(`${DIR}/002_WT100_Moved.labnote.md`, 'x');
+    const before = README_BEFORE.replace(`- [ ] [WT020 C 형광 측정](./${C_OLD})\n`, '');
+    await h.fs.write(README, before);
+    // The save starts once the README entry is planned: after the write's first wait.
+    const view: { file: { path: string }; savePromise: Promise<unknown> | null } = { file: { path: README }, savePromise: null };
+    Object.assign(h.app.workspace, { getLeavesOfType: () => [{ view }] });
+    const settle = h.sync.settle;
+    let armed = false;
+    h.sync.settle = async () => {
+      armed = true;
+      return settle();
+    };
+    const getFile = h.app.vault.getFileByPath.bind(h.app.vault);
+    h.app.vault.getFileByPath = (path: string) => {
+      if (armed && path === README) view.savePromise ??= new Promise(() => {});
+      return getFile(path);
+    };
+
+    await renumberWorkflowsCommand(h.app, h.host, h.sync);
+
+    expect(await h.fs.read(README)).toBe(before);
+    expect(h.calls.filter(c => c.startsWith('notify Added'))).toEqual([]);
+  }, OPEN_SAVE_WAIT_MS + 10000);
 });
 
 // #60: "Export tables to CSV" names files after the note, so they must follow it.

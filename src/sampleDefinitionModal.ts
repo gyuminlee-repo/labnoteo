@@ -24,6 +24,7 @@ import {
 } from './sampleActions';
 import { openInPartbank } from './partbank/partbankActions';
 import { refreshOneLocation } from './partbank/partbankLocation';
+import { sayFailure } from './unawaited';
 
 /** Experiment groups shown open in the usage list; the rest start folded. */
 const OPEN_USAGE_GROUPS = 5;
@@ -150,7 +151,7 @@ class SampleDefinitionModal extends Modal {
     this.renderDefinedIn(contentEl, folder);
     const usagesEl = contentEl.createDiv({ cls: 'labnote-sample-def-section' });
     usagesEl.createEl('h4', { text: t('Usages') });
-    void this.renderUsages(usagesEl.createDiv({ cls: 'labnote-sample-def-usages' }), folder);
+    sayFailure(this.renderUsages(usagesEl.createDiv({ cls: 'labnote-sample-def-usages' }), folder));
 
     const isEditable = scope !== 'catalog';
     const canOpenFile = isEditable && Platform.isDesktopApp;
@@ -171,29 +172,31 @@ class SampleDefinitionModal extends Modal {
         btn
           .setButtonText(t('Edit sample'))
           .setCta()
-          .onClick(async () => {
-            const ok = await editSampleInteractive(this.app, this.plugin, {
-              folder,
-              type: this.type,
-              id: this.id,
-              record,
-            });
-            if (ok) this.close();
-          })
+          .onClick(() =>
+            this.plugin.run(async () => {
+              const ok = await editSampleInteractive(this.app, this.plugin, {
+                folder,
+                type: this.type,
+                id: this.id,
+                record,
+              });
+              if (ok) this.close();
+            })
+          )
       );
       buttons.addButton(btn =>
-        btn.setButtonText(t('Delete sample')).setWarning().onClick(async () => {
+        btn.setButtonText(t('Delete sample')).setWarning().onClick(() => sayFailure(async () => {
           const ok = await deleteSampleInteractive(this.app, this.plugin, {
             folder,
             type: this.type,
             id: this.id,
           });
           if (ok) this.close();
-        })
+        }))
       );
       // #451: the Samples sidebar's context menu has it; so does this window.
       buttons.addButton(btn =>
-        btn.setButtonText(record.discarded ? t('Unmark discarded') : t('Mark as discarded')).onClick(async () => {
+        btn.setButtonText(record.discarded ? t('Unmark discarded') : t('Mark as discarded')).onClick(() => sayFailure(async () => {
           const ok = await setSampleDiscardedInteractive(this.plugin, {
             folder,
             type: this.type,
@@ -201,14 +204,14 @@ class SampleDefinitionModal extends Modal {
             discarded: !record.discarded,
           });
           if (ok) this.close();
-        })
+        }))
       );
       // #121: reachable from the keyboard through "Open sample definition",
       // unlike the Samples sidebar's context menu.
       const move = this.moveTarget();
       if (move) {
         buttons.addButton(btn =>
-          btn.setButtonText(move.label).onClick(async () => {
+          btn.setButtonText(move.label).onClick(() => sayFailure(async () => {
             const ok = await moveSampleInteractive(this.app, this.plugin, {
               fromScope: scope === 'local' ? 'local' : 'global',
               fromFolder: folder,
@@ -217,13 +220,13 @@ class SampleDefinitionModal extends Modal {
               id: this.id,
             });
             if (ok) this.close();
-          })
+          }))
         );
       }
       if (record.source) {
         const source = record.source;
         buttons.addButton(btn =>
-          btn.setButtonText(t('Refresh storage location from partbank')).onClick(async () => {
+          btn.setButtonText(t('Refresh storage location from partbank')).onClick(() => sayFailure(async () => {
             const stored = await refreshOneLocation(this.plugin, {
               type: this.type,
               id: this.id,
@@ -231,23 +234,23 @@ class SampleDefinitionModal extends Modal {
               record,
             });
             if (stored) this.close();
-          })
+          }))
         );
         buttons.addButton(btn =>
           btn
             .setButtonText(t('Open in partbank'))
-            .onClick(() => void openInPartbank(this.plugin, source))
+            .onClick(() => sayFailure(openInPartbank(this.plugin, source)))
         );
       }
       buttons.addButton(btn =>
-        btn.setButtonText(t('Change type')).onClick(async () => {
+        btn.setButtonText(t('Change type')).onClick(() => sayFailure(async () => {
           const ok = await changeSampleTypeInteractive(this.app, this.plugin, {
             folder,
             type: this.type,
             id: this.id,
           });
           if (ok) this.close();
-        })
+        }))
       );
     }
     if (canOpenFile) {
@@ -275,7 +278,7 @@ class SampleDefinitionModal extends Modal {
     link.addEventListener('click', evt => {
       evt.preventDefault();
       this.close();
-      void this.plugin.host.openFile(file.path, at);
+      sayFailure(this.plugin.host.openFile(file.path, at));
     });
   }
 

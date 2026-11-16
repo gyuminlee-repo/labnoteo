@@ -129,6 +129,56 @@ export class MarkdownView {
     return this.data;
   }
 
+  /**
+   * The text last read or saved, as Obsidian 1.15.0 keeps it (not in the API): the file's own
+   * text once read, null before, what was saved after a save (null again after `save(true)`
+   * wrote; a `save(true)` with nothing to write keeps it).
+   */
+  lastSavedData: string | null = null;
+
+  /** How many times the note was saved (`save`). */
+  saved = 0;
+
+  /** Read `text` as the file's, as `loadFileInternal` and `setData` do. */
+  loadText(text: string): void {
+    this.lastSavedData = text;
+    this.data = text;
+  }
+
+  /** The save under way, as Obsidian 1.15.0 keeps it (not in the API); null when none. */
+  savePromise: Promise<void> | null = null;
+  dirty = false;
+
+  /**
+   * As Obsidian 1.15.0: after any save under way, written only when it differs from what was
+   * last read or saved, with `savePromise` set while it writes.
+   */
+  async save(clear = false): Promise<void> {
+    this.saved++;
+    for (this.dirty = false; this.savePromise !== null; ) await this.savePromise.catch(() => undefined);
+    if (!this.file) return;
+    const text = this.getViewData();
+    if (this.lastSavedData !== text && this.lastSavedData !== null) {
+      const previous = this.lastSavedData;
+      this.data = text;
+      this.lastSavedData = text;
+      // A write that fails puts back the text last saved, as Obsidian 1.15.0's writeData does.
+      this.savePromise = this.writeData(this.file, text).catch(err => {
+        this.lastSavedData = previous;
+        throw err;
+      });
+      try {
+        await this.savePromise;
+      } finally {
+        this.savePromise = null;
+      }
+      if (clear) this.lastSavedData = null;
+    }
+  }
+
+  /** Where `save` writes; a test sets it. */
+  async writeData(_file: TFile, _text: string): Promise<void> {}
+
   getState(): Record<string, unknown> {
     return { mode: this.mode };
   }

@@ -7,7 +7,7 @@
  * Pure formatting/ID logic lives in `@labnoteo/core`; this module only wires
  * the modals, persists JSON via the vault fs, and surfaces notices.
  */
-import { App, MarkdownView, Notice, type Editor } from 'obsidian';
+import { App, MarkdownView, Notice, type Editor, type TFile } from 'obsidian';
 import { isOffsetBeforeBody, maskAiCallouts, planReferenceInsert, type EditTarget, type PickItem } from '@labnoteo/core';
 import {
   generateSampleId,
@@ -62,9 +62,9 @@ import { caretBeforeModal, caretIn } from '@labnoteo/core/lib/caret';
 import { invalidVaultFolderReason } from '@labnoteo/core/lib/regexUtils';
 import type LabnotePlugin from './main';
 import { invalidFolderText } from './settings';
-import { processNoteThroughVault } from './commands';
+import { changeNotWritten, processNoteThroughVault } from './commands';
 import { promptModal, confirmModal, pickModal } from './modals';
-import { isReadingViewTarget, tableCellEditorOf } from './obsidianHost';
+import { NoteSwitchedError, isReadingViewTarget, tableCellEditorOf } from './obsidianHost';
 import { writeIntoCell } from './tableCellTarget';
 import obsidianKo from './l10n.ko';
 
@@ -388,8 +388,8 @@ async function updateSampleListTables(
         if (shadowed.get(local)) continue;
       }
     }
-    if (note.editor) {
-      const editor = note.editor;
+    const editor = liveEditor(app, note);
+    if (editor) {
       const edits = planSampleListRowUpdate(editor.getValue(), headers, id, cells);
       if (edits.length === 0) continue;
       editor.transaction({
@@ -397,7 +397,7 @@ async function updateSampleListTables(
       });
       updated++;
     } else if (
-      await processNoteThroughVault(app, plugin.host, note.path, content =>
+      await writeNoteSaid(app, plugin, pathOf(note), content =>
         planSampleListRowUpdate(content, headers, id, cells).reduceRight(
           (out, e) => out.slice(0, e.start) + e.text + out.slice(e.end),
           content
@@ -1025,23 +1025,32 @@ export async function editSampleInteractive(
   // file only). Plain `id;alias` references are left as written.
   const target = plugin.host.editTarget();
   if (target && isReadingViewTarget(target)) {
-    await processNoteThroughVault(app, plugin.host, target.path, content => {
+    const define = (content: string): string => {
       const match = findSampleDefinitionMatch(content, type, id, record.alias ?? null);
       return match
         ? content.slice(0, match.start) +
             buildSampleDefinitionText(type, id, alias, description) +
             content.slice(match.start + match.length)
         : content;
-    });
+    };
+    // The record is saved already; the note's definition not written, or maybe not, is said.
+    await writeNoteSaid(app, plugin, target.path, define);
   } else if (target) {
-    const text = await target.getText();
-    const match = findSampleDefinitionMatch(text, type, id, record.alias ?? null);
-    if (match) {
-      await target.replaceRange(
-        match.start,
-        match.start + match.length,
-        buildSampleDefinitionText(type, id, alias, description)
-      );
+    try {
+      const text = await target.getText();
+      const match = findSampleDefinitionMatch(text, type, id, record.alias ?? null);
+      if (match) {
+        await target.replaceRange(
+          match.start,
+          match.start + match.length,
+          buildSampleDefinitionText(type, id, alias, description)
+        );
+      }
+    } catch (err) {
+      // The record is saved already, and the rest follows it: the note's definition, its view
+      // gone to another note, is said not changed.
+      if (!(err instanceof NoteSwitchedError)) throw err;
+      plugin.host.notify('warn', err.message);
     }
   }
 
@@ -1322,6 +1331,41 @@ export interface ScopedNote {
   path: string;
   text: string;
   editor?: Editor;
+  /** The note's file, whose path follows a rename made meanwhile (a dialog open, say). */
+  file?: TFile;
+}
+
+/** Where `note` is now: renamed meanwhile, its file says. */
+const pathOf = (note: ScopedNote): string => note.file?.path ?? note.path;
+
+/**
+ * `note`'s editor while its view still shows that note in source mode: the view may have
+ * closed, or opened another note, since the note was read.
+ */
+/**
+ * `transform` written to the note at `path` through the vault: whether it was (counted then).
+ * A note not written (a save of it did not end in time), or that may not have been, is said
+ * with its path, the sample record having changed already: it is not left behind unsaid.
+ */
+async function writeNoteSaid(app: App, plugin: LabnotePlugin, path: string, transform: (content: string) => string): Promise<boolean> {
+  const written = await processNoteThroughVault(app, plugin.host, path, transform);
+  if (written === 'uncertain') {
+    plugin.host.notify('warn', plugin.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', path));
+  } else if (!written && (await changeNotWritten(app, plugin.host, path, transform))) {
+    plugin.host.notify('warn', plugin.t('{0} was not written: it was still being saved, or it changed while the change went in. Try again in a moment.', path));
+  }
+  return written === true;
+}
+
+function liveEditor(app: App, note: ScopedNote): Editor | undefined {
+  if (!note.editor) return undefined;
+  for (const leaf of app.workspace.getLeavesOfType('markdown')) {
+    const view = leaf.view;
+    if (view instanceof MarkdownView && view.editor === note.editor && view.file?.path === pathOf(note) && view.getMode() === 'source') {
+      return note.editor;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -1355,7 +1399,7 @@ export async function notesInSampleScope(
   for (const f of files) {
     const editor = editors.get(f.path);
     const text = editor ? editor.getValue() : await app.vault.cachedRead(f);
-    docs.push({ path: f.path, text, editor });
+    docs.push({ path: f.path, text, editor, file: f });
   }
   return docs;
 }
@@ -1472,10 +1516,10 @@ async function rewriteStaleAliases(
 
   let updated = 0;
   for (const note of planned) {
-    if (note.editor) {
+    const editor = liveEditor(app, note);
+    if (editor) {
       // Re-planned on the live text (the user may have typed meanwhile), as
       // one transaction so a single undo reverts the note.
-      const editor = note.editor;
       const edits = planAliasRewrite(editor.getValue(), type, id, oldAlias, newAlias, sampleListHeaders(plugin));
       if (edits.length === 0) continue;
       editor.transaction({
@@ -1487,7 +1531,7 @@ async function rewriteStaleAliases(
       });
       updated++;
     } else if (
-      await processNoteThroughVault(app, plugin.host, note.path, content =>
+      await writeNoteSaid(app, plugin, pathOf(note), content =>
         applyAliasRewrite(content, planAliasRewrite(content, type, id, oldAlias, newAlias, sampleListHeaders(plugin)))
       )
     ) {
@@ -1627,15 +1671,15 @@ async function removeSampleListRows(
         if (shadowed.get(local)) continue;
       }
     }
-    if (note.editor) {
-      const editor = note.editor;
+    const editor = liveEditor(app, note);
+    if (editor) {
       const edits = planSampleListRowRemoval(editor.getValue(), headers, id);
       if (edits.length === 0) continue;
       editor.transaction({
         changes: edits.map(e => ({ from: editor.offsetToPos(e.start), to: editor.offsetToPos(e.end), text: e.text })),
       });
       removed++;
-    } else if (await processNoteThroughVault(app, plugin.host, note.path, apply)) {
+    } else if (await writeNoteSaid(app, plugin, pathOf(note), apply)) {
       removed++;
     }
   }
@@ -1735,16 +1779,16 @@ export async function changeSampleTypeInteractive(
   await deleteSampleRecord(plugin.fs, folder, type, id);
   let updated = 0;
   for (const note of planned) {
-    if (note.editor) {
+    const editor = liveEditor(app, note);
+    if (editor) {
       // Re-planned on the live text, as one transaction so one undo reverts the note.
-      const editor = note.editor;
       const edits = plan(editor.getValue());
       if (edits.length === 0) continue;
       editor.transaction({
         changes: edits.map(e => ({ from: editor.offsetToPos(e.start), to: editor.offsetToPos(e.end), text: e.text })),
       });
       updated++;
-    } else if (await processNoteThroughVault(app, plugin.host, note.path, content => applyAliasRewrite(content, plan(content)))) {
+    } else if (await writeNoteSaid(app, plugin, pathOf(note), content => applyAliasRewrite(content, plan(content)))) {
       updated++;
     }
   }

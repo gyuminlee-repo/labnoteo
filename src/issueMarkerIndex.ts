@@ -10,6 +10,7 @@
 import { parseFrontMatterYaml, parseIssueMarkers, type LabnoteFs } from '@labnoteo/core';
 import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
 import * as posix from '@labnoteo/core/posix';
+import { logFailure } from './unawaited';
 
 const LABNOTE_SUFFIX = '.labnote.md';
 
@@ -104,7 +105,7 @@ export class IssueMarkerIndex {
     if (!dir || !path) return undefined;
     const files = this.dirs.get(dir);
     if (!files) {
-      void this.load(dir);
+      logFailure('loading the issue marker index', this.load(dir));
       return undefined;
     }
     const version = this.versions.get(dir) ?? 0;

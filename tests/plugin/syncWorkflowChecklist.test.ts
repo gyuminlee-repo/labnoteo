@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import type { App } from 'obsidian';
-import { TFile } from '../stubs/obsidian';
+import { MarkdownView, TFile } from '../stubs/obsidian';
 import type { LabnoteHost, PickItem, PickManyOpts } from '@labnoteo/core';
 import { MemFileSystem } from '../../packages/labnoteo-core/src/fs/memFileSystem';
 import { parseWorkflowChecklistFromReadme } from '../../packages/labnoteo-core/src/lib/workflowStructure';
@@ -29,12 +29,17 @@ const readme = (entries: string[]) =>
  * `answer` is the reply to every confirmation; a multi-select keeps its ticked
  * items on true and returns none on false, unless `untick` drops some (#574).
  */
-function harness(files: Record<string, string>, answer: boolean, untick: (label: string) => boolean = () => false) {
+function harness(
+  files: Record<string, string>,
+  answer: boolean,
+  leaves: { view: unknown }[] = [],
+  untick: (label: string) => boolean = () => false
+) {
   const fs = new MemFileSystem(files);
   const calls: string[] = [];
   const prompts: string[] = [];
   const app = {
-    workspace: { getActiveFile: () => new TFile(README) },
+    workspace: { getActiveFile: () => new TFile(README), getLeavesOfType: () => leaves },
     fileManager: {
       renameFile: async (file: TFile, newPath: string) => {
         calls.push(`rename ${file.path} -> ${newPath}`);
@@ -45,6 +50,7 @@ function harness(files: Record<string, string>, answer: boolean, untick: (label:
     vault: {
       getFiles: () => Object.keys(fs.snapshot()).map(p => new TFile(p)),
       getFileByPath: (path: string) => (path in fs.snapshot() ? new TFile(path) : null),
+      read: async (file: TFile) => fs.read(file.path),
       process: async (file: TFile, fn: (data: string) => string) => {
         calls.push('write');
         const next = fn(await fs.read(file.path));
@@ -270,6 +276,31 @@ describe('syncWorkflowChecklistCommand', () => {
       );
     });
 
+    // The note open, its save failing: the editor keeps the new title for its next save, and
+    // the label is planned from that, not from the file.
+    it('plans the label from the new title an open note keeps when its save fails', async () => {
+      const view = new MarkdownView();
+      let text = files[`${DIR}/${RENAMED}`];
+      view.file = new TFile(`${DIR}/${RENAMED}`);
+      view.lastSavedData = text;
+      view.editor = {
+        getValue: () => text,
+        offsetToPos: (o: number) => o,
+        replaceRange: (t: string, from: number, to: number) => {
+          text = text.slice(0, from) + t + text.slice(to);
+        },
+      };
+      view.getViewData = () => text;
+      view.writeData = async () => {
+        throw new Error('disk full');
+      };
+      const h = harness(files, true, [{ view }]);
+      await syncWorkflowChecklistCommand(h.app, h.host, h.sync, DIR);
+      expect(text).toBe('---\ntitle: WD030 Design 2차\n---\n\n## [WD030 Design] 2차\n');
+      expect(h.prompts[1]).toContain('- WD030 Design → WD030 Design 2차');
+      expect(links(await h.fs.read(README))).toEqual([`WD030 Design 2차 -> ${RENAMED}`]);
+    });
+
     it('changes nothing on no', async () => {
       const h = harness(files, false);
       await syncWorkflowChecklistCommand(h.app, h.host, h.sync, DIR);
@@ -383,7 +414,7 @@ describe('syncWorkflowChecklistCommand', () => {
       });
 
       it('leaves an unticked unit operation empty and fills the rest', async () => {
-        const h = harness(longFiles, true, label => label === '[UHW380 Microplate Reading]');
+        const h = harness(longFiles, true, [], label => label === '[UHW380 Microplate Reading]');
         await syncWorkflowChecklistCommand(h.app, h.host, h.sync, DIR);
         const out = await h.fs.read(`${DIR}/${REGISTERED}`);
         expect(out).toContain('experimenter: 김테크, 이포닥');
@@ -470,6 +501,32 @@ describe('syncWorkflowChecklistCommand', () => {
       expect(h.prompts).toHaveLength(1);
       expect(await h.fs.read(README)).toContain(`- [x] [WD040 Assay](./${NOTE})`);
       expect(parseWorkflowChecklistFromReadme(await h.fs.read(README))).toHaveLength(2);
+    });
+
+    // The README open, its save failing: the editor keeps the relinked entry for its next save,
+    // and the rest is planned from that, so the entry is not taken for a note gone.
+    it('plans from the relinked README an open editor keeps when its save fails', async () => {
+      const files = base(`images/${NOTE}`);
+      const view = new MarkdownView();
+      let text = files[README];
+      view.file = new TFile(README);
+      view.lastSavedData = text;
+      view.editor = {
+        getValue: () => text,
+        offsetToPos: (o: number) => o,
+        replaceRange: (t: string, from: number, to: number) => {
+          text = text.slice(0, from) + t + text.slice(to);
+        },
+      };
+      view.getViewData = () => text;
+      view.writeData = async () => {
+        throw new Error('disk full');
+      };
+      const h = harness(files, true, [{ view }]);
+      await syncWorkflowChecklistCommand(h.app, h.host, h.sync, DIR);
+      expect(h.prompts).toHaveLength(1);
+      expect(text).toContain(`- [x] [WD040 Assay](./${NOTE})`);
+      expect(parseWorkflowChecklistFromReadme(text)).toHaveLength(2);
     });
 
     it('keeps the note and its entry when declined, and does not offer to remove it', async () => {

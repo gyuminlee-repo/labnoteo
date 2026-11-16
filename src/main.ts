@@ -74,7 +74,7 @@ import {
 } from '@labnoteo/core/lib/sampleStorage';
 import { VaultFileSystem } from './vaultFileSystem';
 import { bilingualName, createObsidianTranslator } from './i18n';
-import { createObsidianHost } from './obsidianHost';
+import { createObsidianHost, NoteSwitchedError } from './obsidianHost';
 import {
   createExperimentCommand,
   changeExperimentStatusCommand,
@@ -108,9 +108,11 @@ import {
   rebuildExperimentReadmeFile,
   unlinkableWorkflowNotice,
   processNoteThroughVault,
-  writeNoteThroughVault,
+  processOrCreateNote,
+  changeNotWritten,
   type ReadmeSyncControl,
 } from './commands';
+import { openEditorText, openViewHasDisk, processNote, processNoteResult, type NoteWritten } from './openEditorWrite';
 import { loadWorkflows } from '@labnoteo/core/lib/workflowDataLoader';
 import * as posix from '@labnoteo/core/posix';
 import {
@@ -169,7 +171,7 @@ import { discoverSampleTypes } from './sampleDiscovery';
 import { LastUpdatedTracker } from './lastUpdatedTracker';
 import { IssueMarkerIndex, markerExperimentDir } from './issueMarkerIndex';
 import { SampleIdIndex } from './sampleIdIndex';
-import { isLabNotePath, stampNoteAndReadme, writeNoteStamped } from './lastUpdatedStamp';
+import { isLabNotePath, processNoteStamped, stampNoteAndReadme } from './lastUpdatedStamp';
 import { createOutlineDropTidy, type OutlineDropSnapshot } from './outlineDropTidy';
 import { WorkflowTreeView, WORKFLOW_VIEW_TYPE } from './views/workflowView';
 import { SampleTreeView, SAMPLE_VIEW_TYPE } from './views/sampleView';
@@ -203,6 +205,7 @@ import { downloadPartbankCatalog } from './partbank/partbankCatalog';
 import { handleImportUri, IMPORT_ACTION } from './partbank/partbankUri';
 import { handleOpenUri, OPEN_ACTION } from './labnoteOpenUri';
 import { PartbankUsageSync } from './partbank/partbankUsageSync';
+import { logFailure, sayFailure } from './unawaited';
 
 /** The front matter of a copied experiment's README that making it a new experiment reads or resets. */
 interface CopiedReadme {
@@ -434,6 +437,11 @@ export default class LabnotePlugin extends Plugin {
    */
   run(fn: () => Promise<unknown>): void {
     fn().catch((err: unknown) => {
+      // The note was switched under the command: said as it is, nothing changed.
+      if (err instanceof NoteSwitchedError) {
+        this.host.notify('warn', err.message);
+        return;
+      }
       console.error('[labnoteo] command failed:', err);
       if (isPathTooLongError(err)) {
         this.host.notify(
@@ -493,7 +501,7 @@ export default class LabnotePlugin extends Plugin {
     }
     const path = active?.file?.path ?? '';
     this.run(async () => {
-      const inserted = await insertIssueMarkerCommand(editor, this.host, path);
+      const inserted = await insertIssueMarkerCommand(editor, this.host, path, () => active?.file?.path);
       if (inserted) this.markUserEdit(path);
       if (!inserted || this.issueAutomationHintShown) return;
       const state = await issueAutomationState(this.host);
@@ -868,7 +876,7 @@ export default class LabnotePlugin extends Plugin {
               .setTitle(this.t('Insert workflow'))
               .setIcon('git-branch-plus')
               .onClick(() =>
-                this.run(() => insertWorkflowLinkCommand(this.app, this.host, editor, this.stampLastUpdated))
+                this.run(() => insertWorkflowLinkCommand(this.app, this.host, editor, this.stampLastUpdated, () => info.file?.path))
               )
           );
           menu.addItem(item =>
@@ -1139,7 +1147,7 @@ export default class LabnotePlugin extends Plugin {
     if (!dir || this.readmeSyncHolds.has(dir)) return;
     const from = posix.basename(oldPath);
     const to = posix.basename(newPath);
-    if (from !== to) void this.queueSampleSourceRenames(dir, new Map([[from, to]]));
+    if (from !== to) logFailure('renaming sample sources', this.queueSampleSourceRenames(dir, new Map([[from, to]])));
   }
 
   /**
@@ -1155,9 +1163,9 @@ export default class LabnotePlugin extends Plugin {
       })
       .catch(err => console.error('Labnote: renaming sample sources failed', err));
     this.sampleSourceRenames.set(dir, next);
-    void next.then(() => {
+    logFailure('renaming sample sources', next.then(() => {
       if (this.sampleSourceRenames.get(dir) === next) this.sampleSourceRenames.delete(dir);
-    });
+    }));
     return next;
   }
 
@@ -1264,8 +1272,9 @@ export default class LabnotePlugin extends Plugin {
     if (!newTitle || newTitle === title || this.unloaded || folder.path !== renamedPath) return;
     const file = this.app.vault.getAbstractFileByPath(posix.join(renamedPath, 'README.labnote.md'));
     if (!(file instanceof TFile)) return;
-    await processNoteThroughVault(this.app, this.host, file.path, content => setFrontMatterKeys(content, { title: newTitle }));
-    this.host.notify('info', this.t('The README title of {0} is now "{1}".', folder.name, newTitle));
+    if (await this.processNoteSaid(file, content => setFrontMatterKeys(content, { title: newTitle }))) {
+      this.host.notify('info', this.t('The README title of {0} is now "{1}".', folder.name, newTitle));
+    }
   }
 
   /**
@@ -1886,8 +1895,7 @@ export default class LabnotePlugin extends Plugin {
     if (this.unloaded || !this.copiedWorkflows.has(copyPath) || file.path !== copyPath) return;
     // Before any prompt, so cancelling one still leaves no shared issue ID (#89).
     const markers = reassignIssueMarkerIds(await this.app.vault.read(file)).count;
-    if (markers > 0) {
-      await this.app.vault.process(file, data => reassignIssueMarkerIds(data).content);
+    if (markers > 0 && (await this.processNoteSaid(file, data => reassignIssueMarkerIds(data).content))) {
       this.host.notify(
         'info',
         this.t(
@@ -1896,8 +1904,9 @@ export default class LabnotePlugin extends Plugin {
         )
       );
     }
-    // Same for the note ID, or scans of either note could be filed in the other.
-    await this.barcode.reassignCopiedId(file);
+    // Same for the note ID, or scans of either note could be filed in the other. One that
+    // cannot be written was said; the copy is then left as it is.
+    if ((await this.barcode.reassignCopiedId(file)) === 'refused') return;
     const suggestion = suggestCopiedWorkflowFileName(file.name, await this.fs.list(dir));
     const target = suggestion ? posix.join(dir, suggestion) : undefined;
     if (!settled || !suggestion || !target || this.app.vault.getAbstractFileByPath(target)) {
@@ -1908,7 +1917,8 @@ export default class LabnotePlugin extends Plugin {
     // A copy under the original's name and label is indistinguishable from it
     // in the checklist (#65): ask for the copy's own alias when the note has
     // its `## [ID name]` heading to rebuild the name from.
-    const content = await this.app.vault.read(file);
+    // As the note is: an open editor keeps a change above its save could not write yet.
+    const content = (await openEditorText(this.app, file.path)) ?? (await this.app.vault.read(file));
     const heading = parseWorkflowHeading(content);
     const parts = parseWorkflowFileName(suggestion);
     if (heading && parts && heading.id === parts.id) {
@@ -2009,6 +2019,7 @@ export default class LabnotePlugin extends Plugin {
     await this.waitForCopiedNotes(folder, posix.join(labnoteDir, origin));
     if (this.unloaded || folder.path !== copyPath) return;
     const renewed = new Set<string>();
+    let refused = false;
     let markers = 0;
     let scans = 0;
     for (const note of markdownFilesIn(folder)) {
@@ -2017,12 +2028,16 @@ export default class LabnotePlugin extends Plugin {
       const reassigned = reassignIssueMarkerIds(before);
       const stripped = removeAllScanEntries(before);
       if (reassigned.count > 0 || stripped.count > 0) {
-        markers += reassigned.count;
-        scans += stripped.count;
-        await this.app.vault.process(note, data => removeAllScanEntries(reassignIssueMarkerIds(data).content).md);
+        if (await this.processNoteSaid(note, data => removeAllScanEntries(reassignIssueMarkerIds(data).content).md)) {
+          markers += reassigned.count;
+          scans += stripped.count;
+        }
       }
+      // Recorded first, so no question about the shared ID comes while the copy is
+      // handled. A note ID that cannot be written was said and stays as it is; the copy is then
+      // not made a new experiment.
       renewed.add(note.path);
-      await this.barcode.reassignCopiedId(note);
+      if ((await this.barcode.reassignCopiedId(note)) === 'refused') refused = true;
     }
     this.copyIdsRenewed.set(copyPath, renewed);
     if (markers > 0) {
@@ -2043,6 +2058,7 @@ export default class LabnotePlugin extends Plugin {
         ].join(' ')
       );
     }
+    if (refused) return;
 
     const readme = this.app.vault.getAbstractFileByPath(posix.join(copyPath, 'README.labnote.md'));
     if (!(readme instanceof TFile)) {
@@ -2061,8 +2077,7 @@ export default class LabnotePlugin extends Plugin {
         .filter((v): v is string | number => typeof v === 'string' || typeof v === 'number')
         .map(String);
       const nextId = nextExperimentId(id, taken);
-      await this.app.vault.process(readme, data => setExperimentReadmeId(data, nextId));
-      this.host.notify(
+      if (await this.processNoteSaid(readme, data => setExperimentReadmeId(data, nextId))) this.host.notify(
         'info',
         nextId
           ? this.t('Changed the copy\'s id from {0} to {1}, so the automation does not take it for the original.', id, nextId)
@@ -2198,7 +2213,7 @@ export default class LabnotePlugin extends Plugin {
       ));
     if (this.unloaded || folder.path !== copyPath) return;
     const today = getSeoulDateString();
-    await this.app.vault.process(readme, data => {
+    const readmeDone = await this.processNoteSaid(readme, data => {
       const reset = resetCopiedExperimentReadme(data, newTitle, today);
       return markRetry ? setRetryOf(reset, retryOfLink(retryTarget)) : reset;
     });
@@ -2208,17 +2223,21 @@ export default class LabnotePlugin extends Plugin {
       for (const note of markdownFilesIn(folder)) {
         if (!parseWorkflowFileName(note.name)) continue;
         let changed = false;
-        await this.app.vault.process(note, data => {
+        const written = await this.processNoteSaid(note, data => {
           const next = resetCopiedWorkflowDates(data, today);
           changed = next !== data;
           return next;
         });
-        if (changed) redated++;
+        // Not written (a save of the open note did not end in time), or not known to be: not
+        // counted as redated.
+        if (written && changed) redated++;
       }
     }
     if (target !== folder.path) await this.app.fileManager.renameFile(folder, target);
+    // What the README got is said only when it got it (else said above).
+    const readmeSaid = (lines: string[]) => (readmeDone ? lines : []);
     const done = [
-      this.t('Made the copy the experiment {0}, created today.', posix.basename(target)),
+      ...readmeSaid([this.t('Made the copy the experiment {0}, created today.', posix.basename(target))]),
       ...(redated > 0
         ? [
             this.t(
@@ -2227,17 +2246,19 @@ export default class LabnotePlugin extends Plugin {
             ),
           ]
         : []),
-      ...(status && status !== 'planned' ? [this.t('Its status went from {0} back to planned.', status)] : []),
-      ...(discussed
-        ? [this.t('The discussion flag was turned off; run "{0}" if the copy needs its own discussion.', this.t('Toggle discussion flag'))]
-        : []),
-      ...(markRetry
-        ? [this.t('It is marked as a retry of {0}.', posix.basename(retryTarget))]
-        : retryOf
-          ? [this.t('It is no longer marked as a retry of {0}.', posix.basename(retryOf))]
+      ...readmeSaid([
+        ...(status && status !== 'planned' ? [this.t('Its status went from {0} back to planned.', status)] : []),
+        ...(discussed
+          ? [this.t('The discussion flag was turned off; run "{0}" if the copy needs its own discussion.', this.t('Toggle discussion flag'))]
           : []),
+        ...(markRetry
+          ? [this.t('It is marked as a retry of {0}.', posix.basename(retryTarget))]
+          : retryOf
+            ? [this.t('It is no longer marked as a retry of {0}.', posix.basename(retryOf))]
+            : []),
+      ]),
     ];
-    this.host.notify('info', done.join(' '));
+    if (done.length > 0) this.host.notify('info', done.join(' '));
     await this.relinkCopiedChecklist(target);
   }
 
@@ -2265,11 +2286,27 @@ export default class LabnotePlugin extends Plugin {
     if (!(this.app.vault.getAbstractFileByPath(readmePath) instanceof TFile)) return;
     const names = folder.children.filter((c): c is TFile => c instanceof TFile).map(c => c.name);
     let count = 0;
-    await processNoteThroughVault(this.app, this.host, readmePath, content => {
+    const relink = (content: string): string => {
       const r = relinkCopiedExperimentChecklist(content, dir, names);
       count = r.count;
       return r.content;
-    });
+    };
+    const written = await processNoteThroughVault(this.app, this.host, readmePath, relink);
+    if (written !== true) {
+      // Not written (a save of the open README did not end in time), or not known to be: said
+      // as when not done, which asks for a check.
+      if (written === 'uncertain' || (await changeNotWritten(this.app, this.host, readmePath, relink))) {
+        this.host.notify(
+          'warn',
+          this.t(
+            'Check that the checklist of {0} links to its own notes, not the original\'s; run "{1}" to fix it.',
+            folder.name,
+            this.t('Sync workflow checklist with folder')
+          )
+        );
+      }
+      return;
+    }
     if (count > 0) {
       this.host.notify(
         'info',
@@ -2315,7 +2352,7 @@ export default class LabnotePlugin extends Plugin {
     let changed = false;
     let scans = 0;
     let outputIds: string[] = [];
-    await this.app.vault.process(file, data => {
+    const written = await this.processNoteSaid(file, data => {
       const dated = resetCopiedWorkflowDates(data, today);
       changed = dated !== data;
       const stripped = removeAllScanEntries(dated);
@@ -2323,6 +2360,12 @@ export default class LabnotePlugin extends Plugin {
       if (this.sampleTrackingFor(file.path)) outputIds = outputSampleIds(stripped.md, types);
       return stripped.md;
     });
+    // Not written (a save of the open copy did not end in time), or not known to be (said so):
+    // neither is said as done.
+    if (!written) {
+      changed = false;
+      scans = 0;
+    }
     if (changed) {
       this.host.notify(
         'info',
@@ -2420,7 +2463,8 @@ export default class LabnotePlugin extends Plugin {
     }
     // Dropped first so the rename below is not taken for a rename by hand.
     this.copiedWorkflows.delete(copyPath);
-    await this.app.vault.process(file, data => rewriteWorkflowTitle(data, heading.id, heading.name, alias));
+    // Not written is said; the copy is still renamed and listed, as asked.
+    await this.processNoteSaid(file, data => rewriteWorkflowTitle(data, heading.id, heading.name, alias));
     await this.resetCopyDates(file);
     await this.app.fileManager.renameFile(file, target);
     if (await addWorkflowFileToChecklist(this.app, this.host, dir, fileName)) {
@@ -2435,7 +2479,8 @@ export default class LabnotePlugin extends Plugin {
     const settled = await this.waitForNoModal();
     if (this.unloaded || !settled || file.path !== path) return;
     // Before asking (#194): the title and heading follow the new name even if the copy is not listed.
-    await this.app.vault.process(file, data => planWorkflowRetitle(data, file.name)?.content ?? data);
+    // Not written is said before the question, which is about the checklist only.
+    await this.processNoteSaid(file, data => planWorkflowRetitle(data, file.name)?.content ?? data);
     const ok = await this.host.confirm(this.t('Add "{0}" to the README checklist?', file.name), {
       confirmLabel: this.t('Add to checklist'),
     });
@@ -2652,12 +2697,18 @@ export default class LabnotePlugin extends Plugin {
         const path = file.path;
         const prev = this.unitOpTocTimers.get(path);
         if (prev !== undefined) window.clearTimeout(prev);
-        const handle = window.setTimeout(() => {
+        const handle = window.setTimeout(async () => {
           this.unitOpTocTimers.delete(path);
           // The editor may have switched to another note since the edit.
           if (info.file?.path !== path) return;
           if (this.lastChangeFromHistory.get(path)) return;
-          const before = editor.getValue();
+          const seen = editor.getValue();
+          // A change to the file Obsidian has yet to read back: left to the next edit.
+          if (!(await openViewHasDisk(this.app, file))) return;
+          // Looked at again after the read: an undo or edit meanwhile is left as it is.
+          if (this.unloaded || info.file?.path !== path || this.lastChangeFromHistory.get(path) || this.unitOpTocTimers.has(path)) return;
+          if (editor.getValue() !== seen) return;
+          const before = seen;
           if (this.reportDamagedHeading(path, before, editor.getCursor().line)) return;
           const after = this.settings.autoSyncUnitOpToc
             ? rebuildUnitOpToc(before)
@@ -2705,9 +2756,41 @@ export default class LabnotePlugin extends Plugin {
     this.lastUpdatedTracker.clear();
   }
 
-  /** `writeNote` hook for AI tools: writes through the vault, stamping lab notes. */
-  writeNoteStamped(path: string, content: string): Promise<void> {
-    return writeNoteStamped(this.app, this.host, path, content, this.stampLastUpdated);
+  /**
+   * {@link processNoteResult}, saying when the note did not get the change: whether it is done
+   * (written, or the note needed nothing), so the caller says it only then. A note that may or
+   * may not have it (its save failed as another change reached it) is said so, not asked for
+   * again; one not written (a save of the open note did not end in time, or another writer
+   * changed it meanwhile), to try again.
+   */
+  private async processNoteSaid(file: TFile, transform: (content: string) => string): Promise<boolean> {
+    const result = await processNoteResult(this.app, file, transform);
+    if (result === 'written') return true;
+    if (result === 'uncertain') {
+      this.host.notify('warn', this.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', file.path));
+      return false;
+    }
+    if (result === 'notWritten' && !(await changeNotWritten(this.app, this.host, file.path, transform))) return true;
+    this.host.notify('warn', this.t('{0} was not written: it was still being saved, or it changed while the change went in. Try again in a moment.', file.path));
+    return false;
+  }
+
+  /** `processNote` hook for AI tools: changes the note as it is when written, stamping lab notes. */
+  processNoteStamped(path: string, change: (content: string) => string, lone?: boolean): Promise<NoteWritten> {
+    return processNoteStamped(this.app, this.host, path, change, this.stampLastUpdated, lone);
+  }
+
+  /**
+   * The vault's files for AI tools: a note open in source or live preview mode reads as its
+   * editor holds it, typing not saved yet included, the text a tool's change is made of
+   * ({@link processNoteStamped}), so the approval shows what the change replaces.
+   */
+  toolFs(): VaultFileSystem {
+    const fs = this.fs;
+    const app = this.app;
+    return Object.assign(Object.create(fs) as VaultFileSystem, {
+      read: async (path: string) => (await openEditorText(app, path)) ?? fs.read(path),
+    });
   }
 
   /**
@@ -2763,8 +2846,13 @@ export default class LabnotePlugin extends Plugin {
         return;
       }
       if (decision !== 'stamp') return;
-      stampNoteAndReadme(this.app, this.host, path, this.stampLastUpdated, readme =>
-        this.lastUpdatedTracker.keepsHandSet(readme)
+      stampNoteAndReadme(
+        this.app,
+        this.host,
+        path,
+        this.stampLastUpdated,
+        readme => this.lastUpdatedTracker.keepsHandSet(readme),
+        () => !this.unloaded
       ).catch(err =>
         console.warn('[labnoteo] last_updated_date update failed:', err)
       );
@@ -2801,6 +2889,7 @@ export default class LabnotePlugin extends Plugin {
       now: () => Date.now(),
       process: async (path, fn) => {
         const file = vault.getAbstractFileByPath(path);
+        // To the file, not the editor: the tidy reads offsets in the file as the Outline wrote it.
         if (file instanceof TFile) await vault.process(file, fn);
       },
     });
@@ -2820,7 +2909,7 @@ export default class LabnotePlugin extends Plugin {
       },
       { capture: true }
     );
-    this.registerEvent(vault.on('modify', file => void tidy.onModify(file.path)));
+    this.registerEvent(vault.on('modify', file => logFailure('tidying a modified note', tidy.onModify(file.path))));
   }
 
   /**
@@ -2864,7 +2953,7 @@ export default class LabnotePlugin extends Plugin {
     if (this.readmeSyncHolds.has(dir)) return;
     const handle = window.setTimeout(() => {
       this.readmeSyncTimers.delete(dir);
-      void this.startReadmeFlush(dir);
+      logFailure('README sync', this.startReadmeFlush(dir));
     }, 400);
     this.readmeSyncTimers.set(dir, handle);
   }
@@ -2887,9 +2976,9 @@ export default class LabnotePlugin extends Plugin {
       return q ? this.flushReadmeSync(dir, q) : 0;
     });
     this.readmeSyncInFlight.set(dir, run);
-    void run.finally(() => {
+    logFailure('README sync', run.finally(() => {
       if (this.readmeSyncInFlight.get(dir) === run) this.readmeSyncInFlight.delete(dir);
-    });
+    }));
     return run;
   }
 
@@ -2988,26 +3077,26 @@ export default class LabnotePlugin extends Plugin {
     this.registerView(WORKFLOW_VIEW_TYPE, leaf => new WorkflowTreeView(leaf, this));
     this.registerView(SAMPLE_VIEW_TYPE, leaf => new SampleTreeView(leaf, this));
 
-    this.addRibbonIcon('box', this.t('Workflows'), () => void this.activateView(WORKFLOW_VIEW_TYPE));
-    this.addRibbonIcon('test-tube', this.t('Samples'), () => void this.activateView(SAMPLE_VIEW_TYPE));
+    this.addRibbonIcon('box', this.t('Workflows'), () => sayFailure(this.activateView(WORKFLOW_VIEW_TYPE)));
+    this.addRibbonIcon('test-tube', this.t('Samples'), () => sayFailure(this.activateView(SAMPLE_VIEW_TYPE)));
 
     this.addCommand({
       id: 'open-workflow-view',
       name: this.paletteName('Open workflow view'),
-      callback: () => void this.activateView(WORKFLOW_VIEW_TYPE),
+      callback: () => sayFailure(this.activateView(WORKFLOW_VIEW_TYPE)),
     });
     this.addCommand({
       id: 'open-sample-view',
       name: this.paletteName('Open sample view'),
-      callback: () => void this.activateView(SAMPLE_VIEW_TYPE),
+      callback: () => sayFailure(this.activateView(SAMPLE_VIEW_TYPE)),
     });
     this.addCommand({
       id: 'open-user-guide',
       name: this.paletteName('Open user guide'),
       callback: () =>
-        void openUserGuide(this.host, this.manifest.version, (path, content) =>
-          writeNoteThroughVault(this.app, this.host, path, content)
-        ),
+        sayFailure(openUserGuide(this.host, this.manifest.version, (path, change) =>
+          processOrCreateNote(this.app, this.host, path, change)
+        )),
     });
   }
 
@@ -3200,7 +3289,7 @@ export default class LabnotePlugin extends Plugin {
     if (prev !== undefined) window.clearTimeout(prev);
     const handle = window.setTimeout(() => {
       this.sampleSyncTimers.delete(file.path);
-      void this.syncSamples(file);
+      logFailure('sample sync', this.syncSamples(file));
     }, 800);
     this.sampleSyncTimers.set(file.path, handle);
   }
@@ -3260,7 +3349,7 @@ export default class LabnotePlugin extends Plugin {
    */
   refreshSampleViews(opts: { fromNoteSync?: boolean } = {}): void {
     for (const leaf of this.app.workspace.getLeavesOfType(SAMPLE_VIEW_TYPE)) {
-      if (leaf.view instanceof SampleTreeView) void leaf.view.refresh();
+      if (leaf.view instanceof SampleTreeView) logFailure('sample view refresh', leaf.view.refresh());
     }
     this.sampleIds?.invalidate();
     // A registry change can change what a note's references resolve to.
@@ -3279,7 +3368,7 @@ export default class LabnotePlugin extends Plugin {
   /** Refresh any open workflow view(s), which read the catalogs only when refreshed. */
   refreshWorkflowViews(): void {
     for (const leaf of this.app.workspace.getLeavesOfType(WORKFLOW_VIEW_TYPE)) {
-      if (leaf.view instanceof WorkflowTreeView) void leaf.view.refresh();
+      if (leaf.view instanceof WorkflowTreeView) logFailure('workflow view refresh', leaf.view.refresh());
     }
   }
 

@@ -3,6 +3,7 @@ import { isInFrontMatter } from './documentHead';
 import { findMetaDateFieldInLine } from '../lib/dateUtils';
 import { endsAliasedReference } from '../sample/referenceInsert';
 import { overlapsMetaProperty } from './metaContext';
+import { joinLineBuffer, spliceLineBuffer, spliceLineBufferMany, splitLineBuffer, type LineBuffer, type LineRef } from '../util/lineEnds';
 
 /** Result of {@link parseFrontMatterYaml}. */
 export interface FrontMatterParse {
@@ -19,9 +20,50 @@ export interface FrontMatterParse {
   parseError?: string;
 }
 
-/** `md` without its leading `---` YAML front matter, when it has one. */
+/**
+ * Where the body of `md` starts after its front matter, 0 without one, as Obsidian
+ * (getFrontMatterInfo, 1.14.5) finds it: an opening `---` line, then the first `---` that
+ * starts a line and ends it (or the text); an empty block `---\n---` included. YAML that
+ * does not read is front matter all the same.
+ */
+export function frontMatterEnd(md: string): number {
+  const open = /^---\r?\n/.exec(md);
+  if (!open) return 0;
+  const close = /---(\r?\n|$)/g;
+  close.lastIndex = open[0].length;
+  for (let m = close.exec(md); m; m = close.exec(md)) {
+    if (md.charAt(m.index - 1) === '\n') return close.lastIndex;
+  }
+  return 0;
+}
+
+/** `md` without its leading `---` YAML front matter, when it has one ({@link frontMatterEnd}). */
 export function stripFrontMatter(md: string): string {
-  return md.replace(/^---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/, '');
+  return md.slice(frontMatterEnd(md));
+}
+
+/**
+ * {@link frontMatterLineCount} of a note split into `lines`: the lines Obsidian reads as
+ * properties (YAML), where a `## …` comment is no heading and a fence-like line opens nothing.
+ * Every parser of headings, sections and entries skips them. Lines split on `\r?\n` by
+ * default, so a CR left at a line's end is text (a closing `---\r` is none); `crKept` for
+ * lines split on `\n` alone, whose CR ends the line.
+ */
+export function frontMatterLineCountOf(lines: readonly string[], { crKept = false }: { crKept?: boolean } = {}): number {
+  if (lines[0]?.trim() !== '---') return 0;
+  // A CR that is text is kept from reading as a line break: followed by a character no line ends with.
+  return frontMatterLineCount(crKept ? lines.join('\n') : lines.map(l => (l.endsWith('\r') ? `${l}\u0000` : l)).join('\n'));
+}
+
+/**
+ * How many lines at the top of `md` are its front matter, `---` lines included, as
+ * {@link stripFrontMatter} finds it (0 without one). Obsidian reads them as properties,
+ * so a fence-like line there opens no code block in the note.
+ */
+export function frontMatterLineCount(md: string): number {
+  const head = md.slice(0, md.length - stripFrontMatter(md).length);
+  if (head === '') return 0;
+  return head.split('\n').length - (head.endsWith('\n') ? 1 : 0);
 }
 
 /**
@@ -132,8 +174,9 @@ export function setFrontMatterKeys(
   values: Readonly<Record<string, unknown>>,
   { add = true }: { add?: boolean } = {}
 ): string {
-  const newline = content.includes('\r\n') ? '\r\n' : '\n';
-  const lines = content.split(/\r?\n/);
+  // Every line not set keeps its own line break, even in mixed endings.
+  const buf = splitLineBuffer(content);
+  const { lines, newline } = buf;
   const fmEnd = lines[0]?.trim() === '---' ? lines.findIndex((l, i) => i > 0 && l.trim() === '---') : -1;
   const added = (seen: ReadonlySet<string>): string[] =>
     add
@@ -147,32 +190,58 @@ export function setFrontMatterKeys(
     return ['---', ...entries, '---', '', content.replace(/^(\r?\n)+/, '')].join(newline);
   }
   const continues = (line: string): boolean => /^\s+[^\s#]/.test(line) || /^-(\s|$)/.test(line);
-  const out = [lines[0]];
   const seen = new Set<string>();
+  const { edit, apply } = lineEdits(buf);
   for (let i = 1; i < fmEnd; i++) {
     const key = /^([A-Za-z_][\w-]*)\s*:/.exec(lines[i])?.[1];
-    if (key === undefined || !Object.prototype.hasOwnProperty.call(values, key)) {
-      out.push(lines[i]);
-      continue;
-    }
+    if (key === undefined || !Object.prototype.hasOwnProperty.call(values, key)) continue;
     seen.add(key);
     const first = lines[i];
-    let multiline = false;
-    while (i + 1 < fmEnd && continues(lines[i + 1])) {
-      i++;
-      multiline = true;
-    }
+    let end = i + 1;
+    while (end < fmEnd && continues(lines[end])) end++;
+    const multiline = end > i + 1;
     const value = values[key];
     if (value === undefined) {
+      // A one-line key that goes keeps its trailing comment on its own line (#517).
       const comment = multiline ? '' : trailingComment(first).trimStart();
-      if (comment) out.push(comment);
-      continue;
+      edit(i, end - i, comment ? [comment] : []);
+    } else {
+      const entry = serializeFrontMatterEntry(key, value);
+      const comment = !multiline && !entry.includes('\n') ? trailingComment(first) : '';
+      edit(i, end - i, [comment ? `${entry.replace(/\s+$/, '')}${comment}` : entry]);
     }
-    const entry = serializeFrontMatterEntry(key, value);
-    const comment = !multiline && !entry.includes('\n') ? trailingComment(first) : '';
-    out.push(comment ? `${entry.replace(/\s+$/, '')}${comment}` : entry);
+    i = end - 1;
   }
-  return [...out, ...added(seen), ...lines.slice(fmEnd)].join(newline);
+  edit(fmEnd, 0, added(seen));
+  apply();
+  return joinLineBuffer(buf);
+}
+
+/**
+ * Edits of `buf`, each given on its lines as written and in order from the top, applied in
+ * one pass (many edits cost the text's length, not its length per edit). Edits that touch
+ * run together as one, and a one-line replacement equal to a line it replaces keeps that
+ * line as written, so the line breaks come out as {@link spliceLineBuffer} gives them with
+ * the edits applied one after another from the top.
+ */
+export function lineEdits(buf: LineBuffer): { edit(start: number, count: number, items: readonly string[]): void; apply(): void } {
+  const { lines } = buf;
+  const edits: { start: number; count: number; body: (string | LineRef)[] }[] = [];
+  return {
+    edit(start, count, items) {
+      const body = items.map((t, k): string | LineRef =>
+        k > 0 || items.length > 1 ? t : t === lines[start] && count > 0 ? { line: start } : count > 1 && t === lines[start + count - 1] ? { line: start + count - 1 } : t
+      );
+      const last = edits[edits.length - 1];
+      if (last && last.start + last.count === start) {
+        last.count += count;
+        last.body.push(...body);
+      } else edits.push({ start, count, body });
+    },
+    apply() {
+      spliceLineBufferMany(buf, edits);
+    },
+  };
 }
 
 /** The front-matter lines `[start, end)` of `key` with its continuation lines, if present. */
@@ -198,9 +267,10 @@ export function copyFrontMatterKeys(source: string, content: string, keys: reado
   const from = source.replace(/\r\n/g, '\n');
   const parsed = parseFrontMatterYaml(from);
   if (parsed.parseError) return content;
-  const newline = content.includes('\r\n') ? '\r\n' : '\n';
   const fromLines = from.split('\n');
-  let lines = content.split(/\r?\n/);
+  // Lines not copied over keep their own line breaks, even in mixed endings.
+  const buf = splitLineBuffer(content);
+  const { lines } = buf;
   for (const key of keys) {
     const value = parsed.frontMatter[key];
     const empty =
@@ -213,13 +283,13 @@ export function copyFrontMatterKeys(source: string, content: string, keys: reado
     const copied = fromLines.slice(block.start, block.end);
     const target = frontMatterKeyBlock(lines, key);
     if (target) {
-      lines = [...lines.slice(0, target.start), ...copied, ...lines.slice(target.end)];
+      spliceLineBuffer(buf, target.start, target.end - target.start, copied);
       continue;
     }
     const fmEnd = lines[0]?.trim() === '---' ? lines.findIndex((l, i) => i > 0 && l.trim() === '---') : -1;
-    if (fmEnd > 0) lines = [...lines.slice(0, fmEnd), ...copied, ...lines.slice(fmEnd)];
+    if (fmEnd > 0) spliceLineBuffer(buf, fmEnd, 0, copied);
   }
-  return lines.join(newline);
+  return joinLineBuffer(buf);
 }
 
 /**

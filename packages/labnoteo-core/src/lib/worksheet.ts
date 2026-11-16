@@ -8,7 +8,7 @@
  * and sections still holding the template placeholder print their heading only.
  */
 import { listUnitOpBlocks, WORKSHEET_SCANS_HEADING } from '../sections/scanInsert';
-import { stepFence, type OpenFence } from '../sections/sectionEdit';
+import { classifyLines, headingLevel, headingText, isFenced } from '../sections/codeFences';
 import { fitRow, isTableHeaderLine, isTableRowLine, splitTableCells } from './exportTablesCsv';
 import { HW_PLACEHOLDERS, SW_PLACEHOLDERS } from './unitOpTemplate';
 import { stripAiCallouts } from './aiCallout';
@@ -93,7 +93,7 @@ const META_FILL_IN = ['Start_date', 'End_date'];
 export function classifyUnitOp(opId: string, metaLines: readonly string[]): UnitOpKind {
   if (/^UHW/.test(opId)) return 'hw';
   if (/^USW/.test(opId)) return 'sw';
-  return metaLines.some(l => /^\s*-\s*Software\s*:/.test(l)) ? 'sw' : 'hw';
+  return metaLines.some(l => /^[ \t]*-\s*Software\s*:/.test(l)) ? 'sw' : 'hw';
 }
 
 interface RawSection {
@@ -101,16 +101,14 @@ interface RawSection {
   lines: string[];
 }
 
+// front matter: reads one unit operation block's lines, below the front matter.
 function splitSections(lines: readonly string[]): { description: string; sections: RawSection[] } {
   const sections: RawSection[] = [];
   const intro: string[] = [];
   let current: RawSection | null = null;
-  let fence: OpenFence | null = null;
-  for (const line of lines) {
-    const next = stepFence(line, fence);
-    const inCode = fence !== null || next !== fence;
-    fence = next;
-    const m = !inCode && /^####\s+(.+?)\s*$/.exec(line);
+  const kinds = classifyLines(lines);
+  for (const [i, line] of lines.entries()) {
+    const m = headingLevel(kinds[i]) === 4 && headingText(kinds[i]) !== '' && ['', headingText(kinds[i])];
     if (m) {
       current = { title: m[1], lines: [] };
       sections.push(current);
@@ -121,19 +119,19 @@ function splitSections(lines: readonly string[]): { description: string; section
     }
   }
   const description = intro
-    .filter(l => /^\s*>/.test(l))
-    .map(l => l.replace(/^\s*>\s?/, '').trim())
+    .filter(l => /^[ \t]*>/.test(l))
+    .map(l => l.replace(/^[ \t]*>\s?/, '').trim())
     .filter(Boolean)
     .join(' ');
   // What the user wrote between the title and the first `####`, such as a
   // caution for whoever runs the step, prints first without a heading (#383).
-  const written = intro.filter(l => !/^\s*>/.test(l) && !/^\s*-{3,}\s*$/.test(l));
+  const written = intro.filter(l => !/^[ \t]*>/.test(l) && !/^\s*-{3,}\s*$/.test(l));
   if (written.some(l => l.trim() !== '')) sections.unshift({ title: '', lines: written });
   return { description, sections };
 }
 
 const LIST_ITEM_RE = /^[ \t]*(?:[-*+]|\d+[.)])\s+(?:\[([ xX])\]\s+)?(.*)$/;
-const FOOTNOTE_DEF_RE = /^\s*\[\^[^\]\s]+\]:/;
+const FOOTNOTE_DEF_RE = /^[ \t]*\[\^[^\]\s]+\]:/;
 const QUOTE_RE = /^[ \t]*>[ \t]?(.*)$/;
 const CALLOUT_RE = /^\[!([^\]\s]+)\][+-]?\s*(.*)$/;
 
@@ -167,19 +165,20 @@ export function parseWorksheetBlocks(lines: readonly string[]): WorksheetBlock[]
   const blocks: WorksheetBlock[] = [];
   const open: number[] = [];
   let afterBlank = false;
-  let fence: OpenFence | null = null;
-  let code: string[] | null = null;
+  let code: string[] = [];
+  // Each line as the one block reading has it (classifyLines): a fence ended by the end of its list
+  // item or block quote keeps its last line as code.
+  const kinds = classifyLines(lines);
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const next = stepFence(line, fence);
-    if (next !== fence || fence) {
-      if (!fence) {
+    const kind = kinds[i].kind;
+    if (isFenced(kinds[i])) {
+      if (kind === 'opener') {
         code = [];
         blocks.push({ kind: 'code', lines: code });
-      } else if (next === fence) {
-        code?.push(line);
+      } else if (kind === 'code') {
+        code.push(line);
       }
-      fence = next;
       open.length = 0;
       afterBlank = false;
       continue;
@@ -209,7 +208,7 @@ export function parseWorksheetBlocks(lines: readonly string[]): WorksheetBlock[]
     if (isTableHeaderLine(lines, i)) {
       const header = splitTableCells(line);
       const rows = [header];
-      for (i += 2; i < lines.length && isTableRowLine(lines[i]); i++) {
+      for (i += 2; i < lines.length && isTableRowLine(lines[i], kinds[i]); i++) {
         rows.push(fitRow(splitTableCells(lines[i]), header.length));
       }
       i--;
@@ -302,12 +301,9 @@ const trimBlankEdges = (lines: string[]): string[] => {
  * line, not none, so the paragraphs around it stay apart.
  */
 function blankPlaceholders(lines: readonly string[]): string[] {
-  let fence: OpenFence | null = null;
-  return lines.map(line => {
-    const next = stepFence(line, fence);
-    const inCode = fence !== null || next !== fence;
-    fence = next;
-    return !inCode && PLACEHOLDERS.has(line.trim()) ? '' : line;
+  const kinds = classifyLines(lines);
+  return lines.map((line, i) => {
+    return !isFenced(kinds[i]) && PLACEHOLDERS.has(line.trim()) ? '' : line;
   });
 }
 
@@ -319,7 +315,7 @@ function toSection(raw: RawSection): WorksheetSection {
   const text = body.join('\n').trim();
   if (raw.title === 'Meta') {
     const fields = body
-      .map(l => /^\s*-\s*([^:]+?)\s*:\s*(.*)$/.exec(l))
+      .map(l => /^[ \t]*-\s*([^:]+?)\s*:\s*(.*)$/.exec(l))
       .filter((m): m is RegExpExecArray => m !== null)
       .map(m => ({ label: m[1], value: m[2].replace(/^(['"])(.*)\1$/, '$2').trim() }));
     for (const label of META_FILL_IN) {

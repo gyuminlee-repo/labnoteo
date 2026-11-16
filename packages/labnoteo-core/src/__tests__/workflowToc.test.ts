@@ -133,6 +133,19 @@ describe('resolveGithubAnchor', () => {
   });
 });
 
+describe('rebuildUnitOpToc emptying the toc', () => {
+  // The line break the removed entries ended on stays, so the text above them
+  // does not become a setext heading over the separator.
+  it.each([
+    ['LF', '## Related Unit Operations\ntext\n- [U1 A](#u1-a)\n---\n', '## Related Unit Operations\ntext\n\n---\n'],
+    ['CRLF', '## Related Unit Operations\r\ntext\r\n- [U1 A](#u1-a)\r\n---\r\n', '## Related Unit Operations\r\ntext\r\n\r\n---\r\n'],
+    ['mixed', '## Related Unit Operations\r\ntext\n- [U1 A](#u1-a)\r\n---\n', '## Related Unit Operations\r\ntext\n\r\n---\n'],
+    ['two entries', '## Related Unit Operations\ntext\n- [U1 A](#u1-a)\n- [U2 B](#u2-b)\n---\n', '## Related Unit Operations\ntext\n\n---\n'],
+  ])('keeps the break before the separator (%s)', (_name, md, want) => {
+    expect(rebuildUnitOpToc(md)).toBe(want);
+  });
+});
+
 describe('rebuildUnitOpToc anchors', () => {
   const note = (head: string[], body: string[]): string =>
     [...head, '## Related Unit Operations', '', ...body, '', '## Conclusions and Discussion', ''].join('\n');
@@ -212,6 +225,34 @@ describe('findUnitOpInsertOffset', () => {
   });
 });
 
+// The new entry goes after the last `- [` line, a hand-written link included; code examples aside.
+// A list fence's closer (`  ~~~` under `- ~~~md`) closes it, as CommonMark and Obsidian read it,
+// so the `~~~` below opens a fence left open to the end: the toc is code there, and nothing is
+// written into it (read as an opener, the closer had paired with that `~~~` and the entry went
+// into the ```md example).
+describe('appendUnitOpToWorkflowToc after a list fence', () => {
+  it('leaves the toc of a fence left open after a list fence alone', () => {
+    const md = '\n### [UHW010 A]\n\n#### Method\n\n\n- ~~~md\n\n  ~~~\n\n---\n\n### [UHW010 A]\n\n#### Method\n\n\n~~~\n- [ ] [A](./001_WD010_A.labnote.md)\n### [UHW030 C]\n- [Protocol](https://example.org)\n\n---\n\n\n## Related Unit Operations\n- [UHW010 A](#uhw010-a)\n- [UHW010 A](#uhw010-a)\n- [UHW030 C](#uhw030-c)\n```md\n- [Protocol](https://example.org/p)\n```\n## Related Workflows\n';
+    expect(appendUnitOpToWorkflowToc(md, 'UHW020', 'B')).toBe(md);
+  });
+});
+
+describe('appendUnitOpToWorkflowToc after a hand-written link', () => {
+  // A one-line ```inline``` is no fence (CommonMark), so the code block after it is read right.
+  it('reads a one-line inline code span as no fence', () => {
+    const t = '```';
+    const md = ['## Related Unit Operations', '', `${t}inline${t}`, t, '- [UHW010 Example](#uhw010-example)', t, '- [Protocol](https://example.org/protocol)', ''].join('\n');
+    expect(appendUnitOpToWorkflowToc(md, 'UHW020', 'B')).toBe(md.replace(/\n$/, '\n- [UHW020 B](#uhw020-b)\n'));
+  });
+
+  it.each([['LF', '\n'], ['CRLF', '\r\n']])('goes after the last list link (%s)', (_name, nl) => {
+    const md = ['## Related Unit Operations', '', '- [UHW010 Spin](#uhw010-spin)', '- [Protocol](https://example.org/protocol)', ''].join(nl);
+    expect(appendUnitOpToWorkflowToc(md, 'USW020', 'Align')).toBe(
+      ['## Related Unit Operations', '', '- [UHW010 Spin](#uhw010-spin)', '- [Protocol](https://example.org/protocol)', '- [USW020 Align](#usw020-align)', ''].join(nl)
+    );
+  });
+});
+
 describe('appendUnitOpToWorkflowToc', () => {
   const fresh = createWorkflowContent(
     { id: 'WD010', name: 'Design', description: 'desc' },
@@ -265,6 +306,84 @@ describe('appendUnitOpToWorkflowToc', () => {
     expect(appendUnitOpToWorkflowToc(md, 'UHW010', 'X')).toBe(md);
   });
 
+  // The last `- [` line in a closed unindented fence is no place for the entry.
+  it.each([['```', '\n'], ['```', '\r\n'], ['~~~', '\n'], ['~~~', '\r\n']])('goes after the last entry out of code (%s, %j)', (f, nl) => {
+    const md = ['## Related Unit Operations', '- [U1 A](#u1-a)', f + 'md', '- [X](#x)', f, ''].join(nl);
+    expect(appendUnitOpToWorkflowToc(md, 'U3', 'C')).toBe(['## Related Unit Operations', '- [U1 A](#u1-a)', '- [U3 C](#u3-c)', f + 'md', '- [X](#x)', f, ''].join(nl));
+  });
+
+  // An indented fence may be a list item's and end with it (CommonMark): the entry goes last, as before.
+  it.each([['\n'], ['\r\n']])('goes after the last entry past a list item fence (%j)', nl => {
+    const md = ['## Related Unit Operations', '- [U1 A](#u1-a)', '  ~~~md', '  example', '- [Protocol](https://example.org/p)', ''].join(nl);
+    expect(appendUnitOpToWorkflowToc(md, 'U9', 'New')).toBe(['## Related Unit Operations', '- [U1 A](#u1-a)', '  ~~~md', '  example', '- [Protocol](https://example.org/p)', '- [U9 New](#u9-new)', ''].join(nl));
+  });
+
+  // A line in an HTML block is no entry (CommonMark: the block is HTML, a fence in it no code):
+  // the entry goes after the last one out of it.
+  it.each([['<!--', '-->', '\n'], ['<!--', '-->', '\r\n'], ['<div>', '</div>', '\n']])('goes after the last entry out of an HTML block (%s, %j)', (open, close, nl) => {
+    const md = ['## Related Unit Operations', '- [U1 A](#u1-a)', '', open, '```', '- [U2 B](#u2-b)', '```', close, ''].join(nl);
+    expect(appendUnitOpToWorkflowToc(md, 'U3', 'C')).toBe(['## Related Unit Operations', '- [U1 A](#u1-a)', '- [U3 C](#u3-c)', '', open, '```', '- [U2 B](#u2-b)', '```', close, ''].join(nl));
+  });
+
+  // A run closed with a space CommonMark does not count (NBSP and the like) is no closer
+  // there: the entry goes after the last entry line, as before.
+  const oddSpaces = ['\u00a0', '\u2000', '\u2003', '\u202f', '\u205f', '\u3000', '\ufeff', '\u1680'];
+  it.each(oddSpaces.flatMap(sp => ['~~~', '```'].flatMap(f => [['\n', f, sp], ['\r\n', f, sp]])))(
+    'goes after the last entry when a run is closed with another space (%j, %s, %j)',
+    (nl, f, sp) => {
+      const md = ['## Related Unit Operations', f, f + sp, '- [U1 A](#u1-a)', f, '- [U2 B](#u2-b)', f, ''].join(nl);
+      expect(appendUnitOpToWorkflowToc(md, 'U3', 'C')).toBe(['## Related Unit Operations', f, f + sp, '- [U1 A](#u1-a)', f, '- [U2 B](#u2-b)', '- [U3 C](#u3-c)', f, ''].join(nl));
+    }
+  );
+
+  // A lone CR ends a line for CommonMark, not for this reading: the entry goes last, as before.
+  it.each(['~~~', '```'].flatMap(f => [[f, '\n'], [f, '\r\n']]))('goes after the last entry when a fence line holds a lone CR (%s, %j)', (f, nl) => {
+    const md = ['## Related Unit Operations', '- [U1 A](#u1-a)', f + '\r' + f, '- [U2 B](#u2-b)', f, ''].join(nl);
+    expect(appendUnitOpToWorkflowToc(md, 'U3', 'C')).toBe(['## Related Unit Operations', '- [U1 A](#u1-a)', f + '\r' + f, '- [U2 B](#u2-b)', '- [U3 C](#u3-c)', f, ''].join(nl));
+  });
+
+  // Other separators are no line end to CommonMark either: after a closing run they make it
+  // no closer (as before), and inside a ~~~ opener's info the fence holds the entry line below.
+  const seps = ['\u2028', '\u2029', '\u0085', '\f', '\v'];
+  it.each(seps.flatMap(c => ['~~~', '```'].flatMap(f => [[f, c, '\n'], [f, c, '\r\n']])))('goes after the last entry when a closing run has %s then %j (%j)', (f, c, nl) => {
+    const md = ['## Related Unit Operations', f, f + c, '- [U1 A](#u1-a)', f, '- [U2 B](#u2-b)', f, ''].join(nl);
+    expect(appendUnitOpToWorkflowToc(md, 'U3', 'C')).toBe(['## Related Unit Operations', f, f + c, '- [U1 A](#u1-a)', f, '- [U2 B](#u2-b)', '- [U3 C](#u3-c)', f, ''].join(nl));
+  });
+  it.each(seps.flatMap(c => [[c, '\n'], [c, '\r\n']]))('keeps the entry out of a ~~~ fence whose info holds %j (%j)', (c, nl) => {
+    const md = ['## Related Unit Operations', '- [U1 A](#u1-a)', '~~~' + c + '~~~', '- [U2 B](#u2-b)', '~~~', ''].join(nl);
+    expect(appendUnitOpToWorkflowToc(md, 'U3', 'C')).toBe(['## Related Unit Operations', '- [U1 A](#u1-a)', '- [U3 C](#u3-c)', '~~~' + c + '~~~', '- [U2 B](#u2-b)', '~~~', ''].join(nl));
+  });
+
+  it.each([['\n'], ['\r\n']])('adds nothing when the only entry line is in a code example (%j)', nl => {
+    const md = ['## Related Unit Operations', '', '```md', '- [UHW001 Example](#x)', '```', '', 'Text', '', '## Conclusions', ''].join(nl);
+    expect(appendUnitOpToWorkflowToc(md, 'UHW010', 'Spin')).toBe(md);
+  });
+
+  // The section ends where it did before, a `##` line in code included; only a place in code is passed over.
+  it('ends the section at a `##` line as before, a code example included', () => {
+    const md = '## Related Unit Operations\n\n```md\n## Not a heading\n```\n\n- [UHW010 A](#uhw010-a)\n\n## Conclusions\n';
+    expect(appendUnitOpToWorkflowToc(md, 'USW020', 'B')).toBe(
+      '## Related Unit Operations\n\n- [USW020 B](#usw020-b)\n\n```md\n## Not a heading\n```\n\n- [UHW010 A](#uhw010-a)\n\n## Conclusions\n'
+    );
+  });
+
+  it.each([['```', '\n'], ['```', '\r\n'], ['~~~', '\n'], ['~~~', '\r\n']])('appends past a unit operation heading in a code example (%s, %j)', (f, nl) => {
+    const md = ['## Related Unit Operations', '- [U1 A](#u1-a)', f + 'md', '### [U99 Example]', f, '- [U2 B](#u2-b)', ''].join(nl);
+    expect(appendUnitOpToWorkflowToc(md, 'U3', 'C')).toBe(['## Related Unit Operations', '- [U1 A](#u1-a)', f + 'md', '### [U99 Example]', f, '- [U2 B](#u2-b)', '- [U3 C](#u3-c)', ''].join(nl));
+  });
+
+  it.each([['\n'], ['\r\n']])('appends under a bracketed subheading that names no unit operation (%j)', nl => {
+    const md = ['## Related Unit Operations', '### [Group]', '- [U1 A](#u1-a)', ''].join(nl);
+    expect(appendUnitOpToWorkflowToc(md, 'U3', 'C')).toBe(['## Related Unit Operations', '### [Group]', '- [U1 A](#u1-a)', '- [U3 C](#u3-c)', ''].join(nl));
+  });
+
+  it.each([
+    ['front matter fence', '---\ndescription: |\n  ```inline```\n  ```\n---\n## Related Unit Operations\n\n- [UHW010 A](#uhw010-a)\n\n---\n### [UHW010 A]\n', '---\ndescription: |\n  ```inline```\n  ```\n---\n## Related Unit Operations\n\n- [UHW010 A](#uhw010-a)\n- [UHW020 B](#uhw020-b)\n\n---\n### [UHW010 A]\n'],
+    ['unit op body', '## Related Unit Operations\n- [UHW010 A](#uhw010-a)\n```md\n## Example heading\n```\n### [UHW010 A]\n- [Protocol](https://example.org)\n## Notes\ntail\n', '## Related Unit Operations\n- [UHW010 A](#uhw010-a)\n- [UHW020 B](#uhw020-b)\n```md\n## Example heading\n```\n### [UHW010 A]\n- [Protocol](https://example.org)\n## Notes\ntail\n'],
+  ])('appends as before after a %s', (_name, md, want) => {
+    expect(appendUnitOpToWorkflowToc(md, 'UHW020', 'B')).toBe(want);
+  });
+
   it('preserves CRLF line endings', () => {
     const md = '## Related Unit Operations\r\n\r\n## Conclusions and Discussion\r\n';
     const out = appendUnitOpToWorkflowToc(md, 'UHW010', 'X');
@@ -274,6 +393,19 @@ describe('appendUnitOpToWorkflowToc', () => {
 });
 
 describe('rebuildUnitOpToc', () => {
+  it('leaves an up-to-date TOC with mixed line endings byte for byte', () => {
+    const md = '## Related Unit Operations\n\n- [U1 A](#u1-a)\r\n- [U2 B](#u2-b)\n\n### [U1 A]\n### [U2 B]\n';
+    expect(rebuildUnitOpToc(md)).toBe(md);
+    expect(computeUnitOpSyncEdits(md)).toEqual([]);
+  });
+
+  it('moves reordered entries with their own line endings and gives a new one the ending above it', () => {
+    const md = '## Related Unit Operations\r\n\n- [U2 B](#u2-b)\n- [U1 A](#u1-a)\r\n\n### [U1 A]\n### [U2 B]\n### [U3 C]\n';
+    expect(rebuildUnitOpToc(md)).toBe(
+      '## Related Unit Operations\r\n\n- [U1 A](#u1-a)\r\n- [U2 B](#u2-b)\n- [U3 C](#u3-c)\n\n### [U1 A]\n### [U2 B]\n### [U3 C]\n'
+    );
+  });
+
   it('reorders the TOC to match document heading order (A, C, B)', () => {
     const md = [
       '## Related Unit Operations',

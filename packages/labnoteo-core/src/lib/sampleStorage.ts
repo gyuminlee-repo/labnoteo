@@ -784,7 +784,7 @@ function planAliasAddition(
     const idStart = match.index + match[0].indexOf(match[1]);
     const end = idStart + match[1].length;
     const row = listRows.find(r => r.start <= idStart && idStart < r.end);
-    if (row && /^\s*\|?\s*$/.test(text.slice(row.start, idStart))) continue;
+    if (row && /^[ \t]*\|?\s*$/.test(text.slice(row.start, idStart))) continue;
     // `DNA-1;` with nothing after the `;` reads as no alias too.
     const at = text[end] === ';' ? end + 1 : end;
     edits.push({ start: end, end: at, text: `;${aliasEsc}`, kind: 'reference' });

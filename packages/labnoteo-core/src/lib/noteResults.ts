@@ -7,8 +7,8 @@
  * the sections results are written in count, plus any section the researcher
  * added themselves.
  */
-import { stepFence, type OpenFence } from '../sections/sectionEdit';
-import { stripFrontMatter } from '../sections/frontMatter';
+import { classifyLines, headingLevel, headingText } from '../sections/codeFences';
+import { frontMatterLineCount } from '../sections/frontMatter';
 import { HW_PLACEHOLDERS, SW_PLACEHOLDERS } from './unitOpTemplate';
 import { stripAiCallouts } from './aiCallout';
 import { stripIssueMarkers } from './issueMarker';
@@ -41,7 +41,7 @@ const PLACEHOLDERS = new Set<string>([...Object.values(HW_PLACEHOLDERS), ...Obje
 /** `## [WD010 Design]` and `### [UHW010 Liquid Handling]`: template headings too. */
 const BRACKET_HEADING_RE = /^\[[A-Za-z]+\d+\s/;
 
-const HEADING_RE = /^(#{1,6})\s+(.*)$/;
+const HEADING_RE = /^(#{1,6})[ \t]+(.*)$/;
 
 /** `md` without the template's `- (…)` placeholder lines, for the model's context. */
 export function stripTemplatePlaceholders(md: string): string {
@@ -66,13 +66,16 @@ const isTemplateSection = (s: HeadingSection): boolean => TEMPLATE_HEADINGS.has(
 function sections(md: string): HeadingSection[] {
   const out: HeadingSection[] = [];
   const unitOpLine = unitOpSectionLine(md);
-  let fence: OpenFence | null = null;
+  // No fence in the front matter, as unitOpSectionLine reads it.
+  const frontMatter = frontMatterLineCount(md);
   let current: HeadingSection | null = null;
-  for (const [i, line] of md.split(/\r?\n/).entries()) {
-    const next = stepFence(line, fence);
-    const inFence = fence !== null || next !== null;
-    fence = next;
-    const heading = inFence ? null : HEADING_RE.exec(line);
+  const lines = md.split(/\r?\n/);
+  // Lines as the one block reading has them (classifyLines): a heading is on a text line, so none
+  // in the front matter (YAML: a `## …` comment there), a fence or an HTML block.
+  const kinds = classifyLines(lines, frontMatter);
+  for (const [i, line] of lines.entries()) {
+    const level = headingLevel(kinds[i]);
+    const heading = level ? ['', '#'.repeat(level), headingText(kinds[i])] : null;
     if (heading) {
       current = { level: heading[1].length, title: heading[2].trim(), body: [], unitOps: i === unitOpLine };
       out.push(current);
@@ -98,6 +101,7 @@ function written(body: readonly string[]): boolean {
 }
 
 /** Whether `md` follows the workflow template (a `## [ID Name]` heading or unit operations). */
+// front matter: titles from sections(), past the front matter.
 function isWorkflowNote(md: string): boolean {
   return sections(md).some(s => BRACKET_HEADING_RE.test(s.title) || isTemplateSection(s));
 }
@@ -115,6 +119,7 @@ interface ResultSection {
  * operation's `Output` (#317) — what the run produced, where a lab step's
  * Output only lists the samples passed on — the note's `Conclusions and
  * Discussion`, and any section the researcher added. Empty ones included.
+ * front matter: titles from sections(), past the front matter.
  */
 function resultSectionsOf(text: string): ResultSection[] {
   const out: ResultSection[] = [];
@@ -160,7 +165,11 @@ export function hasRecordedResults(md: string): boolean {
  * Empty when nothing is written in.
  */
 export function extractResultSections(md: string): string {
-  const text = stripIssueMarkers(stripTemplatePlaceholders(stripAiCallouts(stripFrontMatter(md))));
+  // The front matter's lines left blank rather than cut, so a `---` block the body starts with
+  // is not read as front matter in its place: nothing of the front matter is read, as before.
+  const frontMatter = frontMatterLineCount(md);
+  const body = frontMatter === 0 ? md : md.split('\n').map((line, i) => (i < frontMatter ? '' : line)).join('\n');
+  const text = stripIssueMarkers(stripTemplatePlaceholders(stripAiCallouts(body)));
   const out: string[] = [];
   for (const { block, title, body } of resultSectionsOf(text)) {
     if (!written(body)) continue;
@@ -179,7 +188,7 @@ export function extractResultSections(md: string): string {
  */
 function echoKey(line: string): string {
   return line
-    .replace(/^\s*(?:>\s*)*(?:(?:[-*+]|\d+[.)])\s+)?/, '')
+    .replace(/^[ \t]*(?:>\s*)*(?:(?:[-*+]|\d+[.)])\s+)?/, '')
     .replace(/^[^:：]{1,30}[:：]\s*/, '')
     .replace(/[\s\p{P}\p{S}]/gu, '')
     .toLowerCase();

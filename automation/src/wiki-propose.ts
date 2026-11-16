@@ -23,7 +23,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { replaceSectionBody } from '@labnoteo/core';
+import { findSectionMatches, listHeadings, replaceSectionBody } from '@labnoteo/core';
 import {
   deriveIdentifier,
   getSectionBody,
@@ -52,6 +52,7 @@ export interface WikiFact {
  * and non-empty prose lines, excluding headings, blockquotes and the note's own
  * conclusion sections. NO AI, NO interpretation. Pure/testable.
  */
+// front matter: reads `note.body`, the note without it.
 export function extractFacts(note: ExperimentNote): WikiFact[] {
   const evidenceId = deriveIdentifier(note.frontMatter, note.folderName);
   const lines = note.body.split(/\r?\n/);
@@ -196,13 +197,15 @@ export function renderSentences(sentences: ProposedSentence[]): string {
 function readFindingTitles(): string[] {
   const path = `${WIKI_STAGING}/Results.md`;
   if (!existsSync(path)) return [];
-  const md = readFileSync(path, 'utf8');
-  const titles: string[] = [];
-  for (const line of md.split(/\r?\n/)) {
-    const m = line.match(/^#{2,6}\s+(.*?)\s*$/);
-    if (m && m[1].trim() && m[1].trim().toLowerCase() !== 'results') titles.push(m[1].trim());
-  }
-  return titles;
+  return findingTitlesIn(readFileSync(path, 'utf8'));
+}
+
+/** The `##`..`######` Finding headings of a Results file's text: the body's, none from the front matter or a code block. */
+export function findingTitlesIn(md: string): string[] {
+  return listHeadings(md)
+    .filter(h => h.level >= 2)
+    .map(h => h.text.trim())
+    .filter(t => t && t.toLowerCase() !== 'results');
 }
 
 /** Read the gate/propose prompt from the vault `ai/` folder. */
@@ -243,15 +246,20 @@ function ensureSectionFile(file: string, heading: string): string {
     const base = file.endsWith('Results.md') ? '# Results\n' : `# ${heading}\n`;
     writeFileSync(file, base, 'utf8');
   }
-  let md = readFileSync(file, 'utf8');
-  // Ensure the target heading exists so replaceSectionBody can find it.
-  const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  if (!new RegExp(`^#{1,6}\\s+${escaped}\\s*$`, 'm').test(md)) {
-    const level = file.endsWith('Results.md') && heading !== 'Results' ? '###' : '##';
-    md = `${md.replace(/\s*$/, '')}\n\n${level} ${heading}\n`;
-    writeFileSync(file, md, 'utf8');
-  }
-  return md;
+  const md = readFileSync(file, 'utf8');
+  const withHeading = withSectionHeading(md, file, heading);
+  if (withHeading !== md) writeFileSync(file, withHeading, 'utf8');
+  return withHeading;
+}
+
+/**
+ * `md` with the target heading added at its end unless `replaceSectionBody` finds one already,
+ * found as it finds it (a `## …` YAML comment in the front matter is none).
+ */
+export function withSectionHeading(md: string, file: string, heading: string): string {
+  if (findSectionMatches(md, heading).length > 0) return md;
+  const level = file.endsWith('Results.md') && heading !== 'Results' ? '###' : '##';
+  return `${md.replace(/\s*$/, '')}\n\n${level} ${heading}\n`;
 }
 
 /** Run the proposer. Returns the process exit code (0 = ok, 1 = a failure). */

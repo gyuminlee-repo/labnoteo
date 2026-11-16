@@ -38,7 +38,8 @@ describe('classifyFileSize', () => {
   });
 });
 
-describe('large-file guard against a real Git index', () => {
+// Each case runs git in a temporary repository: seconds under load, so its own timeout.
+describe('large-file guard against a real Git index', { timeout: 60000 }, () => {
   let repo: string;
   let cwd: string;
   // Windows cannot create a name containing LF; keep Unicode/space coverage there.

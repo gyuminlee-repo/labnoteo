@@ -108,3 +108,28 @@ describe('insertIssueMarkerCommand with a long topic', () => {
     expect(notes.filter(n => n.startsWith('The topic sentence is'))).toHaveLength(warnings);
   });
 });
+
+// The note the editor shows changes while the topic prompt is open: that note is not marked.
+// Another leaf showing the first note does not make it the editor's.
+describe('insertIssueMarkerCommand when the editor goes to another note during the prompt', () => {
+  it('warns and marks nothing', async () => {
+    const TEXT = 'A sentence to discuss.';
+    const { editor, text } = fakeEditor(TEXT, TEXT.length);
+    let shown = 'labnote/001_Test/001_WD010_A.labnote.md';
+    const notices: [string, string][] = [];
+    const host = {
+      t: (s: string) => s,
+      notify: (level: string, msg: string) => notices.push([level, msg]),
+      prompt: async () => {
+        shown = 'labnote/001_Test/002_WD020_B.labnote.md';
+        return 'Topic';
+      },
+      // Another leaf, still on A, is the active one.
+      editTarget: () => ({ path: 'labnote/001_Test/001_WD010_A.labnote.md' }),
+    } as unknown as LabnoteHost;
+    expect(await insertIssueMarkerCommand(editor, host, 'labnote/001_Test/001_WD010_A.labnote.md', () => shown)).toBe(false);
+    expect(text()).toBe(TEXT);
+    expect(notices).toEqual([['warn', 'The note was switched to another while the command ran, so it was not changed. Run the command again.']]);
+  });
+});
+

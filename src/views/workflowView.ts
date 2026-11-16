@@ -41,6 +41,7 @@ import {
 } from '../commands';
 import { experimentMarkerSpots, noteMarkerIds } from '../issueMarkerIndex';
 import { focusTree, renderTree, resetTreeFocus } from './treeRender';
+import { sayFailure } from '../unawaited';
 
 const README = 'README.labnote.md';
 
@@ -194,7 +195,7 @@ export class WorkflowTreeView extends ItemView {
         groupBy.value === 'updated'
           ? groupBy.value
           : 'status';
-      void this.plugin.saveSettings();
+      sayFailure(this.plugin.saveSettings());
       this.render();
     });
   }
@@ -444,7 +445,7 @@ export class WorkflowTreeView extends ItemView {
   private onClick(node: TreeNode): void {
     if (node.kind !== 'experiment') return;
     const { readmePath } = node.payload as { readmePath: string };
-    void this.plugin.host.openFile(readmePath);
+    sayFailure(this.plugin.host.openFile(readmePath));
   }
 
   /** Pick one of the experiment's `@issue` markers and open its note at that line (#379). */
@@ -473,7 +474,7 @@ export class WorkflowTreeView extends ItemView {
           .onClick(() => {
             const { app, host, stampLastUpdated } = this.plugin;
             this.kept.add(folder);
-            void changeExperimentStatusCommand(app, host, stampLastUpdated, folder);
+            sayFailure(changeExperimentStatusCommand(app, host, stampLastUpdated, folder));
           })
       );
       menu.addItem(item =>
@@ -483,7 +484,7 @@ export class WorkflowTreeView extends ItemView {
           .onClick(() => {
             const { app, host, stampLastUpdated } = this.plugin;
             this.kept.add(folder);
-            void toggleDiscussionFlagCommand(app, host, stampLastUpdated, folder);
+            sayFailure(toggleDiscussionFlagCommand(app, host, stampLastUpdated, folder));
           })
       );
       if (this.markerCount(folder) > 0) {
@@ -491,7 +492,7 @@ export class WorkflowTreeView extends ItemView {
           item
             .setTitle(this.plugin.t('Show @issue markers'))
             .setIcon('message-square-quote')
-            .onClick(() => void this.showMarkers(folder))
+            .onClick(() => sayFailure(this.showMarkers(folder)))
         );
       }
       if (status === 'failed' || status === 'needs-repeat') {
@@ -515,7 +516,7 @@ export class WorkflowTreeView extends ItemView {
           .setIcon('plus')
           .onClick(() => {
             const { app, host, stampLastUpdated } = this.plugin;
-            void createWorkflowForItem(app, host, wf, stampLastUpdated);
+            sayFailure(createWorkflowForItem(app, host, wf, stampLastUpdated));
           })
       );
       menu.showAtMouseEvent(evt);
@@ -531,7 +532,7 @@ export class WorkflowTreeView extends ItemView {
         .setTitle(this.plugin.t('Insert unit operation'))
         .setIcon('plus')
         .onClick(() =>
-          void insertUnitOpAndUpdateToc(
+          this.plugin.run(() => insertUnitOpAndUpdateToc(
             this.plugin.host,
             {
               opId: op.id,
@@ -543,7 +544,7 @@ export class WorkflowTreeView extends ItemView {
             },
             unitOpAliasPrompt(this.app, this.plugin.host),
             { sortToc: this.plugin.settings.autoSyncUnitOpToc }
-          )
+          ))
         )
     );
     menu.showAtMouseEvent(evt);

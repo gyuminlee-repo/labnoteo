@@ -108,6 +108,114 @@ describe('resolveScanTarget with a block fingerprint (#304)', () => {
   });
 });
 
+describe('scan entries kept in a rewritten section keep their line endings', () => {
+  const head = '## Worksheet scans\n\n';
+  const a1 = '<!-- labnoteo-scan page=1/3 sha=aa -->\r\n![[a.jpg]]\r\n*a*\r\n';
+  const b = '<!-- labnoteo-scan page=2/3 sha=bb -->\r\n![[b.jpg]]\r\n*KEEP*\r\n';
+  const a3 = '<!-- labnoteo-scan page=3/3 sha=aa -->\r\n![[a.jpg]]\r\n*a*\r\n';
+
+  it('when entries around them go', () => {
+    expect(removeScanEntry(`${head}${a1}\r\n${b}\r\n${a3}`, 'aa').md).toBe(`${head}${b}`);
+  });
+
+  it('when entries go in before and after them', () => {
+    const add = (page: number, hash: string) => ({ page, pageCount: 3, hash, embed: `![[${hash}.jpg]]`, caption: hash });
+    const out = insertScanEntries(`${head}${b}`, null, [add(1, 'cc'), add(3, 'dd')]);
+    expect(out).toContain(b);
+    expect(out.indexOf('sha=cc')).toBeLessThan(out.indexOf('sha=bb'));
+    expect(out.indexOf('sha=bb')).toBeLessThan(out.indexOf('sha=dd'));
+  });
+});
+
+describe('scan listing and editing read code fences the same way', () => {
+  it('neither lists nor removes a scan in an example fence that never closes', () => {
+    const md = '## Worksheet scans\n\n<!-- labnoteo-scan page=1/1 sha=aa -->\n![[real.jpg]]\n\n## Example\n~~~\n## Worksheet scans\n\n<!-- labnoteo-scan page=1/1 sha=aa -->\n![[example.jpg]]\nKEEP';
+    const kept = '\n## Example\n~~~\n## Worksheet scans\n\n<!-- labnoteo-scan page=1/1 sha=aa -->\n![[example.jpg]]\nKEEP';
+    expect(listFiledScans(md).map(s => s.embed)).toEqual(['![[real.jpg]]']);
+    expect(removeAllScanEntries(md)).toEqual({ md: kept, count: 1 });
+    expect(removeScanEntry(md, 'aa')).toEqual({ md: kept, removed: true });
+  });
+
+  it('neither lists nor puts in the toc a heading after an opener that never closes', () => {
+    const md = '### [UHW010 A]\n\n```\nnot closed\n\n### [UHW020 B]\n\nb\n';
+    expect(listUnitOpBlocks(md).map(b => b.index)).toEqual([1]);
+    expect(rebuildUnitOpToc(`## Related Unit Operations\n\n---\n\n${md}`)).not.toContain('- [UHW020 B](#uhw020-b)');
+  });
+});
+
+// The entry goes as the section is rendered again: any caption insertScanEntries wrote goes whole.
+describe('removeScanEntry and a caption over several lines', () => {
+  it.each([
+    ['LF', 'source\nname.png'],
+    ['CR', 'source\rname.png'],
+    ['U+2028', 'source\u2028name.png'],
+    ['U+2029', 'source\u2029name.png'],
+    ['blank line', 'a\n\nb'],
+    ['trailing backslash', 'a\\'],
+    ['numbered list', 'source\n1. item'],
+    ['bullet list', 'source\n- item\n* other'],
+    ['emphasis', '**bold** and _it_ and *em*'],
+    ['emphasis over lines', 'a *b\nc* d'],
+    ['table', '| a | b |\n|---|---|\n| 1 | 2 |'],
+    ['list, table and blank line', '1. a\n\n| x |\n- *y*'],
+  ])('removes the whole caption (%s)', (_name, caption) => {
+    for (const note of ['# Note\n', '# Note\r\n']) {
+      const md = insertScanEntries(note, null, [{ page: 1, pageCount: 1, hash: 'aa', embed: '![[a.jpg]]', caption }]);
+      expect(removeScanEntry(md, 'aa')).toEqual({ md: note, removed: true });
+      expect(removeAllScanEntries(md)).toEqual({ md: note, count: 1 });
+    }
+  });
+
+  it('removes the lines after the caption with the entry, as before', () => {
+    const md = '## Worksheet scans\n\n<!-- labnoteo-scan page=1/1 sha=aa -->\n![[a.jpg]]\n*cap\nmore*\nUSER\n';
+    expect(removeScanEntry(md, 'aa')).toEqual({ md: '', removed: true });
+  });
+
+  it.each([['LF', '\n'], ['CRLF', '\r\n']])('keeps the blank line after the preface when the last scan goes (%s)', (_name, nl) => {
+    const md = ['## Worksheet scans', '', 'intro', '', '<!-- labnoteo-scan page=1/1 sha=aa -->', '![[a.png]]', '*A*', ''].join(nl);
+    expect(removeScanEntry(md, 'aa')).toEqual({ md: ['## Worksheet scans', '', 'intro', '', ''].join(nl), removed: true });
+  });
+});
+
+// A code block right under an entry's caption stays right under it, with no blank line put before it.
+describe('scan sections and a code block written right under a caption', () => {
+  const cases = ['~~~', '```', '  ~~~'].flatMap(fence => [['LF', '\n'], ['CRLF', '\r\n']].map(([n, nl]) => [`${fence} ${n}`, fence, nl]));
+  const note = (fence: string, nl: string, withB: boolean) =>
+    [
+      '## Worksheet scans',
+      '',
+      '<!-- labnoteo-scan page=1/2 sha=aa -->',
+      '![[a.jpg]]',
+      '*A*',
+      fence,
+      'KEEP',
+      fence,
+      ...(withB ? ['', '<!-- labnoteo-scan page=2/2 sha=bb -->', '![[b.jpg]]', '*B*'] : []),
+      '',
+    ].join(nl);
+
+  it.each(cases)('removes the entry after it (%s)', (_name, fence, nl) => {
+    expect(removeScanEntry(note(fence, nl, true), 'bb')).toEqual({ md: note(fence, nl, false), removed: true });
+  });
+
+  it.each(cases)('adds an entry after it and removes it again (%s)', (_name, fence, nl) => {
+    const md = note(fence, nl, true);
+    const out = insertScanEntries(md, null, [{ page: 1, pageCount: 2, hash: 'cc', embed: '![[c.jpg]]', caption: 'C' }]);
+    expect(out).toContain(['*A*', fence, 'KEEP', fence, ''].join(nl));
+    expect(removeScanEntry(out, 'cc').md).toBe(md);
+  });
+});
+
+// The blank lines before kept code stay as written; a line after the code goes with its entry, as before.
+describe('scan sections and the lines around a kept code block', () => {
+  it.each([0, 1, 2, 3])('keeps %i blank lines before the code when the entry after it goes', n => {
+    const head = ['## Worksheet scans', '', '<!-- labnoteo-scan page=1/3 sha=aa -->', '![[aa.jpg]]', '*aa*', ...Array(n).fill(''), '~~~', 'code', '~~~'];
+    const md = [...head, '', '<!-- labnoteo-scan page=3/3 sha=bb -->', '![[bb.jpg]]', '*bb*', ''].join('\n');
+    expect(removeScanEntry(md, 'bb')).toEqual({ md: [...head, ''].join('\n'), removed: true });
+  });
+
+});
+
 describe('insertScanEntries / removeScanEntry', () => {
   it('adds a Worksheet scans section at the end of the block, in page order', () => {
     const md = buildNote(['UHW010', 'UHW020', 'UHW030']);
@@ -218,5 +326,73 @@ describe('insertScanEntries / removeScanEntry', () => {
     expect(scanEntryLine(md, 'abcd')).toBe(7);
     expect(scanEntryLine(md, 'ab')).toBe(6);
     expect(scanEntryLine(md, 'ffff')).toBeUndefined();
+  });
+});
+
+describe('scan removal and an entry comment in code', () => {
+  it.each([['\n'], ['\r\n']])('keeps the user line after an entry with image and caption too (%j)', nl => {
+    const md = ['## Worksheet scans', '', '<!-- labnoteo-scan page=1/3 sha=aa -->', '![[aa.jpg]]', '*aa*', '```md', '<!-- labnoteo-scan page=2/3 sha=bb -->', '```', 'KEEP', ''].join(nl);
+    expect(removeScanEntry(md, 'aa').md.split(nl)).toContain('KEEP');
+  });
+
+  it.each([['\n'], ['\r\n']])('counts the scans removeAllScanEntries removed (%j)', nl => {
+    const md = ['---', 'description: |', '  ~~~', '---', '~~~', '#### Worksheet scans', '~~~', '- ~~~md', '<!-- labnoteo-scan page=2/3 sha=bb -->', '![[bb.jpg]]', '*bb*', '  ```', '<!-- labnoteo-scan page=1/3 sha=aa -->', '![[aa.jpg]]', '*aa*', ''].join(nl);
+    const r = removeAllScanEntries(md);
+    const left = (t: string): number => t.split(nl).filter(l => l.startsWith('<!-- labnoteo-scan')).length;
+    expect(r.count).toBe(left(md) - left(r.md));
+  });
+});
+
+// Only an entry's comment and the paragraph under it (embed, caption) go when it is removed: a
+// code block, a paragraph or a list the researcher wrote under it stays.
+describe('removing a scan keeps what the researcher wrote under it', () => {
+  const entry = (h: string, page: number) => [`<!-- labnoteo-scan page=${page}/2 sha=${h} -->`, `![[${h}.jpg]]`, `*${h}*`];
+  const mine = ['~~~', 'KEEP', '~~~', 'user text', '- item'];
+  const md = ['## Worksheet scans', '', ...entry('aa', 1), ...mine, '', ...entry('bb', 2), ''].join('\n');
+
+  it('removeScanEntry: the lines stay where they were', () => {
+    expect(removeScanEntry(md, 'aa').md).toBe(['## Worksheet scans', '', ...mine, '', ...entry('bb', 2), ''].join('\n'));
+  });
+
+  it('removeAllScanEntries: the section stays with them', () => {
+    expect(removeAllScanEntries(md)).toEqual({ md: ['## Worksheet scans', '', ...mine, '', ''].join('\n'), count: 2 });
+  });
+
+  it('an undo that keeps the section keeps them too', () => {
+    expect(removeScanEntry(md, 'aa', { keepSection: true }).md).toBe(['## Worksheet scans', '', ...mine, '', ...entry('bb', 2), ''].join('\n'));
+  });
+
+  it('a later entry keeps the lines of the one removed before it', () => {
+    const two = ['## Worksheet scans', '', ...entry('bb', 2), '', ...entry('aa', 1), '', 'user text', ''].join('\n');
+    expect(removeScanEntry(two, 'aa').md).toBe(['## Worksheet scans', '', ...entry('bb', 2), '', 'user text', ''].join('\n'));
+  });
+});
+
+describe('removing a scan reads the section as the note shows it', () => {
+  it('keeps the fences, and what a caption left open runs into, under a removed entry', () => {
+    const md = [
+      '## Worksheet scans',
+      '',
+      '<!-- labnoteo-scan page=1/3 sha=aa -->',
+      '![[aa.jpg]]',
+      '*cap*',
+      '',
+      '~~~',
+      '<!-- labnoteo-scan page=2/3 sha=ee -->',
+      '~~~',
+      'USER',
+      '<!-- labnoteo-scan page=3/3 sha=bb -->',
+      '![[bb.jpg]]',
+      '*a\\*',
+      '~~~',
+      '## Inner heading',
+      '# KEEP',
+      '*x*',
+      '',
+    ].join('\n');
+    const out = removeAllScanEntries(md).md.split('\n');
+    for (const line of ['<!-- labnoteo-scan page=2/3 sha=ee -->', 'USER', '## Inner heading', '# KEEP', '*x*']) expect(out).toContain(line);
+    expect(out.filter(l => l === '~~~')).toHaveLength(3);
+    expect(out.join('\n')).not.toMatch(/sha=(aa|bb)/);
   });
 });

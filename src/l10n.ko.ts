@@ -292,6 +292,10 @@ const obsidianKo: Record<string, string> = {
   'Added {0} workflow file(s) to the README checklist.':
     'README 체크리스트에 워크플로 파일 {0}개를 등록했습니다.',
   'This experiment has no README.labnote.md.': '이 실험에는 README.labnote.md가 없습니다.',
+  '{0} was still being saved, so its labnote_id was not written. Try again in a moment.':
+    '{0}을(를) 아직 저장하는 중이라 labnote_id를 쓰지 못했습니다. 잠시 뒤 다시 시도하면 들어갑니다.',
+  'The labnote_id of {0} could not be written, so its value was left as it is: write it on one line (labnote_id: LN-…) and try again.':
+    '{0}의 labnote_id를 쓰지 못해 값을 그대로 두었습니다. 한 줄로 적고(labnote_id: LN-…) 다시 시도하세요.',
   'README.labnote.md has no "Related Workflows" section.':
     'README.labnote.md에 "Related Workflows" 절이 없습니다.',
   'These checklist entries do not point to a workflow file in this folder. Remove them from the checklist?':
@@ -416,6 +420,12 @@ const obsidianKo: Record<string, string> = {
     '이 Start_date/End_date에는 이미 값이 있습니다. 날짜를 바꾸려면 옆의 📅 피커를 쓰세요.',
   'This line already has an issue marker. A line can hold only one.':
     '이 줄에는 이미 이슈 마커가 있습니다. 한 줄에 하나만 둘 수 있습니다.',
+  '{0} was not written: it was still being saved, or it changed while the change went in. Try again in a moment.':
+    '{0}에 변경을 쓰지 못했습니다. 아직 저장하는 중이었거나 쓰는 사이에 파일이 바뀌었습니다. 잠시 뒤 다시 시도하세요.',
+  '{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.':
+    '{0}에 변경이 들어갔는지 확인하지 못했습니다. 저장하는 사이에 다른 변경이 겹쳤습니다. 노트를 확인하고 변경이 없을 때만 다시 시도하세요.',
+  'The user guide changed while you were deciding, so it was not updated. Run "{0}" again to update it.':
+    '고르는 사이에 사용자 가이드가 바뀌어 갱신하지 않았습니다. 갱신하려면 "{0}"을(를) 다시 실행하세요.',
   'Front matter of {0} could not be read, so it was left unchanged. Fix the YAML and try again: {1}':
     '{0}의 front matter를 읽을 수 없어 변경하지 않았습니다. YAML을 고친 뒤 다시 시도하세요: {1}',
   '{0} differs from the new version. Edits made after it was installed are lost if you replace it. Replace it with the new version?':
@@ -516,6 +526,10 @@ const obsidianKo: Record<string, string> = {
     '"{0}"은(는) 보관함 폴더를 포함한 경로가 {1}자로, Windows가 허용하는 {2}자를 넘습니다. Windows에서 열거나 git으로 받을 때 실패할 수 있으니 보관함을 더 짧은 경로의 폴더로 옮기거나 이름을 줄이세요.',
   'Yes': '예',
   'Workflow created: {0}': '워크플로가 생성되었습니다: {0}',
+  'README.labnote.md was not written: it was still being saved, or it changed while the entry went in, so {0} was not added to its checklist. Run "{1}" in a moment to add it.':
+    'README.labnote.md를 쓰지 못해 {0}을(를) 체크리스트에 넣지 못했습니다. 아직 저장하는 중이었거나 항목을 넣는 사이에 파일이 바뀌었습니다. 잠시 뒤 "{1}"을(를) 실행하면 넣을 수 있습니다.',
+  '{0} was not written: it was still being saved, or it changed while the entry went in, so {1} was not added to its checklist. Run "{2}" in a moment to add it.':
+    '{0}을(를) 쓰지 못해 {1}을(를) 체크리스트에 넣지 못했습니다. 아직 저장하는 중이었거나 항목을 넣는 사이에 파일이 바뀌었습니다. 잠시 뒤 "{2}"을(를) 실행하면 넣을 수 있습니다.',
   'This experiment has no README.labnote.md, so the workflow was not added to a checklist.':
     '이 실험에는 README.labnote.md가 없어 워크플로를 체크리스트에 등록하지 못했습니다.',
   'Unit operation inserted: {0} {1}': '유닛 오퍼레이션이 삽입되었습니다: {0} {1}',
@@ -597,6 +611,24 @@ const obsidianKo: Record<string, string> = {
     '읽기 화면이던 노트를 편집 화면으로 바꿔서 고쳤습니다.',
   'The note changed while switching to editing view. Run the command again.':
     '편집 화면으로 바꾸는 사이에 노트 내용이 달라졌습니다. 명령을 다시 실행해 주세요.',
+  '{0} has the note ID {1} only in its open editor: the note could not be saved yet. Save the note before printing, or a worksheet printed now may not find it.':
+    '{0}의 note ID {1}은(는) 열린 편집기에만 있습니다. 노트를 아직 저장하지 못했습니다. 인쇄하기 전에 노트를 저장하세요. 지금 인쇄한 worksheet는 노트를 찾지 못할 수 있습니다.',
+  '{0} could not be read to check the scan went in. Its image stays in the unmatched queue, and the copy saved for the note stays at {1}; check the note before assigning it again.':
+    '{0}을(를) 읽지 못해 스캔이 들어갔는지 확인하지 못했습니다. 이미지는 미배정 대기열에 남아 있고 노트용으로 저장한 사본은 {1}에 남아 있습니다. 노트를 확인한 뒤 다시 배정하세요.',
+  'The scan did not go into {0}. Its image stays in the unmatched queue; assign it again.':
+    '{0}에 스캔이 들어가지 않았습니다. 이미지는 미배정 대기열에 남아 있으니 다시 배정하세요.',
+  '{0} could not be read to check the scan went in. Its image stays in the unmatched queue; check the note before assigning it again.':
+    '{0}을(를) 읽지 못해 스캔이 들어갔는지 확인하지 못했습니다. 이미지는 미배정 대기열에 남아 있으니 노트를 확인한 뒤 다시 배정하세요.',
+  '{0} has the scan only in its open editor: the note could not be saved yet, so its image stays in the unmatched queue. Assign it again once the note is saved.':
+    '{0}의 스캔은 열린 편집기에만 있습니다. 노트를 아직 저장하지 못해 이미지를 미배정 대기열에 남겼습니다. 노트를 저장한 뒤 다시 배정하세요.',
+  'Removed {0} earlier scan(s) from the note and moved {1} image(s) to the trash.':
+    '이전 스캔 {0}개를 노트에서 지우고 이미지 {1}개를 휴지통으로 옮겼습니다.',
+  'The note was switched to another while the command ran, so it was not changed. Run the command again.':
+    '명령이 도는 사이에 다른 노트로 바뀌어 노트를 바꾸지 않았습니다. 명령을 다시 실행해 주세요.',
+  '{0} was not written: it was still being saved, so its checklist does not follow the renamed or deleted workflow notes yet. Run "{1}" to update it.':
+    '{0}에 쓰지 못했습니다. 아직 저장하는 중이어서 체크리스트가 이름을 바꾸거나 지운 workflow 노트를 아직 따르지 않습니다. "{1}"을 실행해 맞춰 주세요.',
+  'The note was switched to another while the workflow was made, so the link to it was not inserted.':
+    'workflow를 만드는 사이에 다른 노트로 바뀌어 그 링크를 넣지 않았습니다.',
   'Open a note of an experiment to list its samples.': '시료 목록을 넣으려면 실험 안의 노트를 여세요.',
   'This experiment has no samples yet.': '이 실험에는 아직 시료가 없습니다.',
   'Inserted {0} sample(s).': '시료 {0}개를 표로 넣었습니다.',
@@ -1186,8 +1218,8 @@ const obsidianKo: Record<string, string> = {
   'Assign it with "{0}".': '"{0}"(으)로 할당하세요.',
   'Open note': '노트 열기',
   'Delete earlier scan': '이전 스캔 삭제',
-  'Delete the earlier scan of this page? Its entry leaves the note and its image goes to the trash.':
-    '이 페이지의 이전 스캔을 지울까요? 노트에서 항목이 빠지고 이미지는 휴지통으로 갑니다.',
+  'Delete the earlier scan of this page? Its entry leaves the note, and its image goes to the trash unless the note still links it.':
+    '이 페이지의 이전 스캔을 지울까요? 노트에서 항목이 빠지고 노트가 아직 링크하지 않는 이미지는 휴지통으로 갑니다.',
   'This page was filed before; remove the earlier scan and its image.': '이 페이지는 전에도 붙였습니다. 이전 스캔과 이미지를 지웁니다.',
   'Removed {0} earlier scan(s).': '이전 스캔 {0}개를 지웠습니다.',
   Undo: '되돌리기',
@@ -1292,6 +1324,8 @@ const obsidianKo: Record<string, string> = {
   'Slack gave no download link (the file may be deleted, or hidden by the free plan limit).':
     'Slack이 내려받기 링크를 주지 않았습니다(삭제됐거나 무료 요금제 한도로 숨겨진 파일일 수 있습니다).',
   'Slack refused the download (check the files:read permission).': 'Slack이 내려받기를 거부했습니다(files:read 권한을 확인하세요).',
+  'The scans were not written into the note: it was still being saved, or it changed while they went in.':
+    '스캔을 노트에 넣지 못했습니다. 노트를 아직 저장하는 중이었거나 넣는 사이에 노트가 바뀌었습니다.',
   'Slack had more messages than one check reads; the oldest may have been skipped.':
     '한 번에 읽는 양보다 Slack 메시지가 많았습니다. 가장 오래된 메시지는 건너뛰었을 수 있습니다.',
   'The Slack bot cannot add the 👀 reaction (reactions:write). Fine on one PC, but do not link a second one.':

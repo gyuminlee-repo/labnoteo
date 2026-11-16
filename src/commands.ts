@@ -12,6 +12,7 @@
  */
 import { MarkdownView, Platform, TFile, type App, type Editor } from 'obsidian';
 import type {
+  EditTarget,
   LabnoteHost,
   WorkflowItem,
   UnitOperationItem,
@@ -52,6 +53,7 @@ import {
 import { ISSUE_SYNC_WORKFLOW_PATH, SETUP_DOC_PATH } from './scaffold/assets';
 import * as posix from '@labnoteo/core/posix';
 import { workflowAliasModal } from './modals';
+import { OPEN_SAVE_WAIT_MS, openEditorText, openSourceView, processInOpenEditorOnDisk, waitForOpenSaves, type NoteWritten, type NoteWrittenOnDisk } from './openEditorWrite';
 import { getObsidianLanguage } from './i18n';
 import {
   createLabnoteStructure,
@@ -712,9 +714,12 @@ export async function changeExperimentStatusCommand(
       cleared = true;
     }
   }
-  const updated = setFrontMatterKeys(parsed.text, changes);
-
-  await writeNoteThroughVault(app, host, readmePath, stamp(updated, readmePath));
+  // The chosen status, put on the README as it is when written.
+  const written = await changeFrontMatter(app, host, readmePath, text => ({
+    text: stamp(setFrontMatterKeys(text, changes), readmePath),
+    data: undefined,
+  }));
+  if (!written) return;
   let message = host.t('Experiment status changed ({0}): {1} → {2}.', folderName, current ?? host.t('(none)'), chosen);
   if (cleared) {
     message += ` ${host.t('Discussion flag cleared.')}`;
@@ -958,7 +963,16 @@ export function insertDateCommand(
  * The ID exists so the topic can be reworded later without orphaning the issue
  * it opened, which is also why it is generated rather than typed.
  */
-export async function insertIssueMarkerCommand(editor: Editor, host: LabnoteHost, notePath?: string): Promise<boolean> {
+/**
+ * `shows`: the note the editor's view shows now, looked at after the prompt so another note
+ * the view went to meanwhile is not marked.
+ */
+export async function insertIssueMarkerCommand(
+  editor: Editor,
+  host: LabnoteHost,
+  notePath?: string,
+  shows?: () => string | undefined
+): Promise<boolean> {
   // IDs are a timestamp plus a counter, so generating a duplicate is not
   // actually possible; this scan is kept only because it costs nothing.
   //
@@ -1035,6 +1049,11 @@ export async function insertIssueMarkerCommand(editor: Editor, host: LabnoteHost
       })
     )?.trim();
     if (!topic) return false;
+    // The editor may show another note now: that one is not marked.
+    if (notePath !== undefined && shows && shows() !== notePath) {
+      host.notify('warn', host.t('The note was switched to another while the command ran, so it was not changed. Run the command again.'));
+      return false;
+    }
     // The note may have changed while the prompt was open.
     doc = editor.getValue();
     const caret = editor.posToOffset(editor.getCursor('from'));
@@ -1087,6 +1106,57 @@ export async function issueAutomationState(host: LabnoteHost): Promise<'none' | 
   return (await isVaultGitRepository(host)) ? 'ready' : 'no-git';
 }
 
+/** Thrown by a front-matter edit whose YAML cannot be read as the note is when written. */
+class FrontMatterUnreadable extends Error {}
+
+/**
+ * Change the front matter of the README at `readmePath` as it is when written (an open
+ * editor's text, typing not saved yet included), its YAML read again there: unreadable, the
+ * README is left alone with the warning {@link readNoteForFrontMatterEdit} gives. `change`
+ * gives the new text and what to report of it, from the call written. Undefined, with a
+ * warning, when nothing was written: the YAML, or a save of the open note that did not end
+ * in time.
+ */
+async function changeFrontMatter<T>(
+  app: App,
+  host: LabnoteHost,
+  readmePath: string,
+  change: (text: string, frontMatter: Record<string, unknown>) => { text: string; data: T }
+): Promise<{ data: T } | undefined> {
+  let last: { input: string; text: string; data: T } | undefined;
+  try {
+    const written = await processNoteThroughVault(
+      app,
+      host,
+      readmePath,
+      text => {
+        const { frontMatter, parseError } = parseFrontMatterYaml(text.replace(/\r\n/g, '\n'));
+        if (parseError) throw new FrontMatterUnreadable(parseError);
+        last = { input: text, ...change(text, frontMatter) };
+        return last.text;
+      },
+      true
+    );
+    if (written === 'uncertain') {
+      host.notify('warn', host.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', readmePath));
+      return undefined;
+    }
+    if (last && (written || last.text === last.input)) return { data: last.data };
+    host.notify('warn', host.t('{0} was not written: it was still being saved, or it changed while the change went in. Try again in a moment.', readmePath));
+  } catch (err) {
+    if (!(err instanceof FrontMatterUnreadable)) throw err;
+    host.notify(
+      'warn',
+      host.t(
+        'Front matter of {0} could not be read, so it was left unchanged. Fix the YAML and try again: {1}',
+        readmePath,
+        err.message
+      )
+    );
+  }
+  return undefined;
+}
+
 /**
  * Read an experiment README for a front-matter edit, refusing to continue when
  * the YAML cannot be parsed.
@@ -1103,9 +1173,11 @@ async function readNoteForFrontMatterEdit(
   readmePath: string
 ): Promise<{ frontMatter: Record<string, unknown>; body: string; text: string } | undefined> {
   // `parseFrontMatterYaml` requires LF-normalised text (a bare `\n` after the
-  // opening `---`); normalise CRLF so Windows-authored notes parse correctly.
-  const original = (await host.fs.read(readmePath)).replace(/\r\n/g, '\n');
-  const { frontMatter, body, parseError } = parseFrontMatterYaml(original);
+  // opening `---`); parse a CRLF copy normalised so Windows-authored notes
+  // parse correctly, but edit the text as read, so every line the edit leaves
+  // keeps its own line ending.
+  const original = await host.fs.read(readmePath);
+  const { frontMatter, body, parseError } = parseFrontMatterYaml(original.replace(/\r\n/g, '\n'));
   if (parseError) {
     host.notify(
       'warn',
@@ -1148,13 +1220,13 @@ export async function toggleDiscussionFlagCommand(
   const parsed = await readNoteForFrontMatterEdit(host, readmePath);
   if (!parsed) return;
 
-  const next = !isDiscussFlagged(parsed.frontMatter);
-  await writeNoteThroughVault(
-    app,
-    host,
-    readmePath,
-    stamp(setFrontMatterKeys(parsed.text, { [DISCUSS_FLAG_KEY]: next ? true : undefined }), readmePath)
-  );
+  // Turned over as the README is when written: what it says then decides on or off.
+  const written = await changeFrontMatter(app, host, readmePath, (text, frontMatter) => {
+    const on = !isDiscussFlagged(frontMatter);
+    return { text: stamp(setFrontMatterKeys(text, { [DISCUSS_FLAG_KEY]: on ? true : undefined }), readmePath), data: on };
+  });
+  if (!written) return;
+  const next = written.data;
 
   const state = await issueAutomationState(host);
   let message: string;
@@ -1229,6 +1301,17 @@ function notifyWorkflowCreated(host: LabnoteHost, created: CreatedWorkflow): voi
       'warn',
       host.t('This experiment has no README.labnote.md, so the workflow was not added to a checklist.')
     );
+  } else if (created.registered === 'notWritten') {
+    host.notify(
+      'warn',
+      host.t(
+        'README.labnote.md was not written: it was still being saved, or it changed while the entry went in, so {0} was not added to its checklist. Run "{1}" in a moment to add it.',
+        created.fileName,
+        host.t('Sync workflow checklist with folder')
+      )
+    );
+  } else if (created.registered === 'uncertain') {
+    host.notify('warn', host.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', posix.join(posix.dirname(created.path), README)));
   } else if (created.registered === 'noSection') {
     host.notify(
       'warn',
@@ -1306,15 +1389,17 @@ async function createWorkflowFile(
 }
 
 /** What {@link registerWorkflowInReadme} did. */
-export type WorkflowRegistration = 'registered' | 'noSection' | 'noReadme';
+export type WorkflowRegistration = 'registered' | 'noSection' | 'noReadme' | 'notWritten' | 'uncertain';
 
 /**
  * Add a new workflow to the README "Related Workflows" checklist
  * (non-destructive) and stamp the README's `last_updated_date`: creating a
- * workflow is a change to the experiment. Applied through the vault to the
- * README as it is at write time, so an open README editor neither overwrites it
- * nor loses its own unsaved text. Writes nothing without a README or without
- * the section to list it in (#298), and says which. A date the reader set by
+ * workflow is a change to the experiment. Applied to the README as it is at
+ * write time: a README open in an editor gets the entry in the editor, with its
+ * unsaved text, and is saved there ({@link processNoteThroughVault}); a CRLF
+ * file is then LF, as Obsidian keeps CRLF for no open note. Writes nothing without a README or without
+ * the section to list it in (#298), and says which; 'notWritten' when the entry was
+ * not written (a save of the open README did not end in time). A date the reader set by
  * hand in the README today is left as it is, as `stamp` decides (#363).
  */
 export async function registerWorkflowInReadme(
@@ -1325,16 +1410,23 @@ export async function registerWorkflowInReadme(
   stamp: (content: string, path?: string) => string = c => c
 ): Promise<WorkflowRegistration> {
   if (!(await host.fs.exists(readmePath))) return 'noReadme';
-  if (!hasWorkflowChecklistSection(await host.fs.read(readmePath))) return 'noSection';
-  await processNoteThroughVault(app, host, readmePath, readme => {
-    if (!hasWorkflowChecklistSection(readme)) return readme;
+  // Decided on the text the entry goes into (an open editor's, saved or not), when it goes in.
+  let noSection = false;
+  const add = (readme: string) => {
+    noSection = !hasWorkflowChecklistSection(readme);
+    if (noSection) return readme;
     // Named, so a README date its reader set by hand today stands (#363).
     return stamp(
       insertWorkflowChecklistEntries(readme, [{ done: false, title: entry.title, fileName: entry.fileName }]),
       readmePath
     );
-  });
-  return 'registered';
+  };
+  const written = await processNoteThroughVault(app, host, readmePath, add);
+  if (written === 'uncertain') return 'uncertain';
+  if (written) return 'registered';
+  if (noSection) return 'noSection';
+  // Nothing written: the entry is there already, or the README did not get it.
+  return (await changeNotWritten(app, host, readmePath, add)) ? 'notWritten' : 'registered';
 }
 
 /**
@@ -1412,8 +1504,12 @@ export async function insertWorkflowLinkCommand(
   app: App,
   host: LabnoteHost,
   editor: Editor,
-  stamp: (content: string, path?: string) => string = c => c
+  stamp: (content: string, path?: string) => string = c => c,
+  shows: () => string | undefined = () => app.workspace.getActiveFile()?.path
 ): Promise<void> {
+  // The note the link goes into, before any wait: the editor's view may show another one by
+  // the time the workflow is made.
+  const notePath = shows();
   const labnoteDir = await resolveLabnoteDir(app, host);
   if (!labnoteDir) return;
 
@@ -1436,7 +1532,7 @@ export async function insertWorkflowLinkCommand(
   // the cursor would duplicate it (the reported bug). So only add a cursor link
   // when editing some other note.
   const readmePath = posix.join(labnoteDir, README);
-  if (app.workspace.getActiveFile()?.path === readmePath) {
+  if (notePath === readmePath) {
     notifyWorkflowCreated(host, created);
     return;
   }
@@ -1449,12 +1545,18 @@ export async function insertWorkflowLinkCommand(
     file = app.vault.getAbstractFileByPath(created.path);
   }
 
-  const sourcePath = app.workspace.getActiveFile()?.path ?? '';
+  // Relative to the note it goes into, not whichever pane is active now.
+  const sourcePath = notePath ?? '';
   const link =
     file instanceof TFile
       ? app.fileManager.generateMarkdownLink(file, sourcePath, undefined, created.displayTitle)
       : `[[${created.fileName.replace(/\.md$/, '')}|${created.displayTitle}]]`;
 
+  if (shows() !== notePath) {
+    notifyWorkflowCreated(host, created);
+    host.notify('warn', host.t('The note was switched to another while the workflow was made, so the link to it was not inserted.'));
+    return;
+  }
   const text = editor.getValue();
   const from = caretIn(caret, text);
   const to = Math.max(from, caretIn(caretTo, text));
@@ -1477,12 +1579,16 @@ export async function insertUnitOpAndUpdateToc(
   host: LabnoteHost,
   input: InsertUnitOperationInput,
   askAlias?: (input: InsertUnitOperationInput) => Promise<string | undefined>,
-  opts: { sortToc: boolean; caret?: number } = { sortToc: true }
+  opts: { sortToc: boolean; caret?: number; target?: EditTarget } = { sortToc: true }
 ): Promise<boolean> {
   // Asked only where the insert will go ahead: `insertUnitOperation` refuses a
   // note that is no workflow, which would come after the alias was typed.
   let alias = input.alias;
-  const opened = host.editTarget();
+  // The note the command started on (a caller whose picker came first passes it), written to
+  // throughout: after the prompt the editor may show another note, which a target looks at on
+  // every call and refuses.
+  const opened = opts.target ?? host.editTarget();
+  const onOpened: LabnoteHost = { ...host, editTarget: () => opened };
   // Read before the alias prompt opens: a modal takes the focus, and the
   // Source-mode editor then reports the cursor at the start of the note (#544).
   // A caller whose own picker already moved it passes what it read instead.
@@ -1494,7 +1600,7 @@ export async function insertUnitOpAndUpdateToc(
 
   // Resolve the insertion point BEFORE inserting and hand it to the insert, so
   // the new heading can be found again after the whole-doc TOC rewrite.
-  const before = host.editTarget();
+  const before = opened;
   // A deleted section heading comes back first, or the list would go under the title (#564).
   if (before && isValidWorkflowPath(before.path)) {
     const fix = missingUnitOpSectionEdit(await before.getText());
@@ -1508,7 +1614,7 @@ export async function insertUnitOpAndUpdateToc(
 
   // The TOC follows before the notice, which says whether there was one (#455).
   const afterInsert = async (): Promise<boolean> => {
-    const target = host.editTarget();
+    const target = opened;
     if (!target) return false;
     const md = await target.getText();
     const updated = syncUnitOpTocAfterInsert(md, insertOffset, opts.sortToc);
@@ -1524,7 +1630,7 @@ export async function insertUnitOpAndUpdateToc(
     return unitOpSectionLine(updated) !== -1;
   };
 
-  return insertUnitOperation(host, { ...input, alias, at, afterInsert });
+  return insertUnitOperation(onOpened, { ...input, alias, at, afterInsert });
 }
 
 /** Insert a unit-operation block after the one the cursor is in + update the workflow TOC. */
@@ -1583,7 +1689,7 @@ export async function insertUnitOperationCommand(
       software: op.software,
     },
     unitOpAliasPrompt(app, host),
-    { ...opts, caret }
+    { ...opts, caret, target: opened }
   );
 }
 
@@ -1783,6 +1889,8 @@ export async function renumberWorkflowsCommand(
 
   const moved: WorkflowRename[] = [];
   let added = 0;
+  // The README's checklist as the renumbering left it: false when it did not get it (said).
+  let readmeDone = true;
   let csvSkipped = 0;
   // Live folder listing, so a CSV is never moved onto a name taken mid-run.
   const names = new Set(existing);
@@ -1808,11 +1916,20 @@ export async function renumberWorkflowsCommand(
             : relinkMissing(content);
         const { names, notes } = await readWorkflowFolder(host, labnoteDir);
         const titles = workflowLabels(notes);
-        await processNoteThroughVault(app, host, readmePath, content => {
+        const sync = (content: string): string => {
           const plan = planWorkflowChecklistSync(relink(content), names, titles, undefined, labnoteDir);
           added = plan.added.length;
           return plan.content;
-        });
+        };
+        const written = await processNoteThroughVault(app, host, readmePath, sync);
+        if (written === 'uncertain') {
+          readmeDone = false;
+          host.notify('warn', host.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', readmePath));
+        } else if (!written && (await changeNotWritten(app, host, readmePath, sync))) {
+          readmeDone = false;
+          host.notify('warn', host.t('{0} was not written: it was still being saved, or it changed while the change went in. Try again in a moment.', readmePath));
+        }
+        if (written !== true) added = 0;
       }
     } finally {
       await readmeSync.release(labnoteDir, { dropRenames: true });
@@ -1835,7 +1952,7 @@ export async function renumberWorkflowsCommand(
   if (added > 0) {
     host.notify('info', host.t('Added {0} workflow file(s) to the README checklist.', String(added)));
   }
-  if (relinked > 0 && renames.length === 0) {
+  if (readmeDone && relinked > 0 && renames.length === 0) {
     host.notify('info', host.t('Pointed {0} README checklist entry(ies) back at their file.', String(relinked)));
   }
   if (csvSkipped > 0) {
@@ -1979,7 +2096,7 @@ export async function retitleWorkflowAfterRename(
 ): Promise<boolean> {
   const notePath = posix.join(dir, to);
   if (!(await host.fs.exists(notePath))) return false;
-  return processNoteThroughVault(app, host, notePath, content => planWorkflowRetitle(content, to, from)?.content ?? content);
+  return (await processNoteThroughVault(app, host, notePath, content => planWorkflowRetitle(content, to, from)?.content ?? content)) === true;
 }
 
 /** A workflow note's text, or undefined when it cannot be read (moved or deleted meanwhile). */
@@ -2065,7 +2182,8 @@ export async function rebuildExperimentReadmeFile(host: LabnoteHost, dir: string
 
 /**
  * Add one workflow file of `labnoteDir` to its README checklist unless it is
- * already listed. Returns whether the README changed.
+ * already listed. Returns whether the README changed. A README not written (its save did not
+ * end in time), or that may not have been, is said, with the command that lists it.
  */
 export async function addWorkflowFileToChecklist(
   app: App,
@@ -2076,12 +2194,41 @@ export async function addWorkflowFileToChecklist(
   const readmePath = posix.join(labnoteDir, README);
   if (!(await host.fs.exists(readmePath))) return false;
   const titles = new Map([[fileName, await readWorkflowLabel(host, labnoteDir, fileName)]]);
-  return processNoteThroughVault(
-    app,
-    host,
-    readmePath,
-    content => planWorkflowChecklistSync(content, [fileName], titles, undefined, labnoteDir).content
-  );
+  const add = (content: string): string => planWorkflowChecklistSync(content, [fileName], titles, undefined, labnoteDir).content;
+  const written = await processNoteThroughVault(app, host, readmePath, add);
+  if (written === 'uncertain') {
+    host.notify('warn', host.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', readmePath));
+  } else if (!written && (await changeNotWritten(app, host, readmePath, add))) {
+    host.notify(
+      'warn',
+      host.t(
+        '{0} was not written: it was still being saved, or it changed while the entry went in, so {1} was not added to its checklist. Run "{2}" in a moment to add it.',
+        readmePath,
+        fileName,
+        host.t('Sync workflow checklist with folder')
+      )
+    );
+  }
+  return written === true;
+}
+
+/**
+ * A note `transform` was written to: whether it was. Not written (its save did not end in
+ * time), or that may not have been, is said with its path, and not counted.
+ */
+async function noteWrittenSaid(
+  app: App,
+  host: LabnoteHost,
+  notePath: string,
+  transform: (content: string) => string,
+  written: NoteWritten
+): Promise<boolean> {
+  if (written === 'uncertain') {
+    host.notify('warn', host.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', notePath));
+  } else if (!written && (await changeNotWritten(app, host, notePath, transform))) {
+    host.notify('warn', host.t('{0} was not written: it was still being saved, or it changed while the change went in. Try again in a moment.', notePath));
+  }
+  return written === true;
 }
 
 /**
@@ -2159,10 +2306,18 @@ export async function syncWorkflowChecklistCommand(
       }
       // Obsidian rewrites the link only when "Automatically update internal links" is on.
       if (relinks.length > 0) {
-        await processNoteThroughVault(app, host, readmePath, content => relinkWorkflowChecklistEntries(content, relinks));
+        const relink = (content: string): string => relinkWorkflowChecklistEntries(content, relinks);
+        const written = await processNoteThroughVault(app, host, readmePath, relink);
+        // Said when the README did not get the links of the notes moved back, or may not have.
+        if (written === 'uncertain') {
+          host.notify('warn', host.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', readmePath));
+        } else if (!written && (await changeNotWritten(app, host, readmePath, relink))) {
+          host.notify('warn', host.t('{0} was not written: it was still being saved, or it changed while the change went in. Try again in a moment.', readmePath));
+        }
       }
       if (movedBack > 0) {
-        readme = await host.fs.read(readmePath);
+        // As the README is: an open editor keeps a relink its save could not write yet.
+        readme = (await openEditorText(app, readmePath)) ?? (await host.fs.read(readmePath));
         ({ names, notes } = await readWorkflowFolder(host, labnoteDir));
         titles = workflowLabels(notes);
         subfolders = workflowNotesInSubfolders(app, labnoteDir);
@@ -2219,16 +2374,12 @@ export async function syncWorkflowChecklistCommand(
     if (ok) {
       for (const { name } of retitles) {
         const notePath = posix.join(labnoteDir, name);
-        const changed = await processNoteThroughVault(
-          app,
-          host,
-          notePath,
-          content => planWorkflowRetitle(content, name)?.content ?? content
-        );
-        if (changed) {
-          updatedNotes.add(name);
-          notes.set(name, await readWorkflowNote(host, labnoteDir, name));
-        }
+        const retitle = (content: string): string => planWorkflowRetitle(content, name)?.content ?? content;
+        const changed = await noteWrittenSaid(app, host, notePath, retitle, await processNoteThroughVault(app, host, notePath, retitle));
+        if (changed) updatedNotes.add(name);
+        // As the note is, written or not: an open editor keeps a title its save could not write
+        // yet, and a write that may have gone in may have changed the title the labels follow.
+        notes.set(name, (await openEditorText(app, notePath)) ?? (await readWorkflowNote(host, labnoteDir, name)));
       }
       titles = workflowLabels(notes);
       plan = planWorkflowChecklistSync(readme, names, titles, subfolders);
@@ -2313,13 +2464,11 @@ export async function syncWorkflowChecklistCommand(
         frontMatter: mine.some(p => 'frontMatter' in p),
         blocks: mine.flatMap(p => ('block' in p ? [p.block] : [])),
       };
-      const changed = await processNoteThroughVault(
-        app,
-        host,
-        posix.join(labnoteDir, name),
-        content => planWorkflowExperimenterSync(content, author, now, only)?.content ?? content
-      );
-      if (changed) updatedNotes.add(name);
+      const notePath = posix.join(labnoteDir, name);
+      const sync = (content: string): string => planWorkflowExperimenterSync(content, author, now, only)?.content ?? content;
+      if (await noteWrittenSaid(app, host, notePath, sync, await processNoteThroughVault(app, host, notePath, sync))) {
+        updatedNotes.add(name);
+      }
     }
   }
   const notesUpdated = updatedNotes.size;
@@ -2398,7 +2547,7 @@ export async function syncWorkflowChecklistCommand(
 
   // Links are shortened first, so the entries to remove are matched in that form.
   const removeLinks = remove.map(link => normalizeChecklistLink(link, labnoteDir));
-  await processNoteThroughVault(app, host, readmePath, content => {
+  const sync = (content: string): string => {
     const shortened = normalizeWorkflowChecklistLinks(content, labnoteDir).content;
     return normalizeWorkflowChecklistLabels(
       dedupeWorkflowChecklistEntries(
@@ -2414,23 +2563,33 @@ export async function syncWorkflowChecklistCommand(
         labnoteDir
       )
     );
-  });
-  const parts = [
-    host.t(
-      'Workflow checklist updated: {0} added, {1} removed.',
-      String(plan.added.length),
-      String(remove.length + pruned)
-    ),
-  ];
+  };
+  const written = await processNoteThroughVault(app, host, readmePath, sync);
+  // The checklist is said as updated only when the README got it (or needed nothing).
+  const listed = written === true || (written === false && !(await changeNotWritten(app, host, readmePath, sync)));
+  if (written === 'uncertain') {
+    host.notify('warn', host.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', readmePath));
+  } else if (!listed) {
+    host.notify('warn', host.t('{0} was not written: it was still being saved, or it changed while the change went in. Try again in a moment.', readmePath));
+  }
+  const parts = listed
+    ? [
+        host.t(
+          'Workflow checklist updated: {0} added, {1} removed.',
+          String(plan.added.length),
+          String(remove.length + pruned)
+        ),
+      ]
+    : [];
   if (movedBack > 0) parts.push(host.t('{0} note(s) moved back to the experiment folder.', String(movedBack)));
   if (notesUpdated > 0) parts.push(host.t('{0} note(s) updated.', String(notesUpdated)));
-  if (relabel.length > 0) parts.push(host.t('{0} label(s) updated.', String(relabel.length)));
-  if (duplicates.length > 0) parts.push(host.t('{0} duplicate entry(ies) removed.', String(duplicates.length)));
-  if (relinked > 0) parts.push(host.t('{0} checklist link(s) fixed.', String(relinked)));
+  if (listed && relabel.length > 0) parts.push(host.t('{0} label(s) updated.', String(relabel.length)));
+  if (listed && duplicates.length > 0) parts.push(host.t('{0} duplicate entry(ies) removed.', String(duplicates.length)));
+  if (listed && relinked > 0) parts.push(host.t('{0} checklist link(s) fixed.', String(relinked)));
   if (samplesBrought > 0) {
     parts.push(host.t('Brought {0} local sample(s) into {1}.', String(samplesBrought), posix.basename(labnoteDir)));
   }
-  host.notify('info', parts.join(' '));
+  if (parts.length > 0) host.notify('info', parts.join(' '));
   clashNotice();
 }
 
@@ -2460,38 +2619,9 @@ export function unlinkableWorkflowNotice(host: Pick<LabnoteHost, 't'>, names: re
 // (reconcileWorkflowChecklist / removeWorkflowFromReadme / removeSourcesForDocument);
 // these helpers sequence the Obsidian-side reads/writes.
 
-/**
- * Write note content, preferring the Vault API so an already-open README
- * refreshes immediately. `vault.process` fires only a 'modify' event (never
- * rename/delete), so it cannot re-enter the workflow README sync listeners.
- * Falls back to the adapter when the file is not (yet) in the vault index.
- * (Data files such as `{Type}.json` keep using the adapter directly.)
- *
- * Exported as the `writeNote` hook for `ToolContext`: AI tools edit notes the
- * user may have open, and writing those through the adapter would be silently
- * undone the next time the editor flushed its buffer.
- */
-export async function writeNoteThroughVault(
-  app: App,
-  host: LabnoteHost,
-  notePath: string,
-  content: string
-): Promise<void> {
-  const file = app.vault.getFileByPath(notePath);
-  if (file instanceof TFile) {
-    await app.vault.process(file, () => content);
-  } else {
-    await host.fs.write(notePath, content);
-  }
-}
-
 /** The editor `path` is open in, in source or live preview mode. */
 function openSourceEditor(app: App, path: string): Editor | undefined {
-  for (const leaf of app.workspace.getLeavesOfType('markdown')) {
-    const view = leaf.view;
-    if (view instanceof MarkdownView && view.file?.path === path && view.getMode() === 'source') return view.editor;
-  }
-  return undefined;
+  return openSourceView(app, path)?.editor;
 }
 
 /**
@@ -2500,23 +2630,89 @@ function openSourceEditor(app: App, path: string): Editor | undefined {
  * "update links?" prompt, and overwriting with a stale copy would undo that.
  * Does nothing (no save, no 'modify' event) when `transform` would not change
  * the note. Returns whether a write happened.
+ *
+ * `asWritten`, for a change made whole (an AI tool's, say): judged by the text it
+ * is made of when written, an open editor's with typing not saved yet, not by the
+ * file first; `transform` may refuse that text by throwing, and nothing is written.
  */
 export async function processNoteThroughVault(
   app: App,
   host: LabnoteHost,
   notePath: string,
-  transform: (content: string) => string
-): Promise<boolean> {
-  const current = await host.fs.read(notePath);
-  const next = transform(current);
-  if (next === current) return false;
+  transform: (content: string) => string,
+  asWritten = false
+): Promise<NoteWritten> {
+  const written = await processNoteThroughVaultOnDisk(app, host, notePath, transform, asWritten);
+  return written === 'kept' ? true : written;
+}
+
+/**
+ * {@link processNoteThroughVault}, saying 'kept' for a change only the open note's editor holds
+ * (its save failed): for a step after it that goes by the disk and cannot be undone.
+ */
+export async function processNoteThroughVaultOnDisk(
+  app: App,
+  host: LabnoteHost,
+  notePath: string,
+  transform: (content: string) => string,
+  asWritten = false
+): Promise<NoteWrittenOnDisk> {
+  // A save Obsidian has under way on the open note first, so it does not write over this;
+  // one deadline for the whole write.
+  const deadline = Date.now() + OPEN_SAVE_WAIT_MS;
+  if (!(await waitForOpenSaves(app, notePath, deadline))) return false;
   const file = app.vault.getFileByPath(notePath);
+  // `asWritten`: a note in the vault is not judged by the file first, which an open editor's
+  // text (typing not saved yet) may differ from; the change is made of the text it is written
+  // over, and a note not open is written through the vault even when unchanged.
+  let next = '';
+  if (!asWritten || !(file instanceof TFile)) {
+    const current = await host.fs.read(notePath);
+    next = transform(current);
+    if (next === current) return false;
+  }
   if (file instanceof TFile) {
+    // Open in an editor: applied there ({@link processInOpenEditor}).
+    const inEditor = await processInOpenEditorOnDisk(app, file, transform, deadline);
+    if (inEditor !== undefined) return inEditor;
+    // A save another write started on the note may still be writing: it would land over this one.
+    if (!(await waitForOpenSaves(app, file.path, deadline))) return false;
     await app.vault.process(file, data => transform(data));
   } else {
     await host.fs.write(notePath, next);
   }
   return true;
+}
+
+/**
+ * {@link processNoteThroughVault} judged by the text written over (`asWritten`), or a note
+ * made of `''` when there is none yet. False when the note would change and was not written.
+ */
+export async function processOrCreateNote(
+  app: App,
+  host: LabnoteHost,
+  notePath: string,
+  transform: (content: string) => string
+): Promise<NoteWritten> {
+  if (await host.fs.exists(notePath)) return processNoteThroughVault(app, host, notePath, transform, true);
+  await host.fs.write(notePath, transform(''));
+  return true;
+}
+
+/**
+ * After {@link processNoteThroughVault} returned false: whether the note still lacks the
+ * change `transform` makes, so the change was not written (a save of the open note did not
+ * end in time, or another writer changed the note meanwhile) rather than had nothing to do.
+ */
+export async function changeNotWritten(
+  app: App,
+  host: LabnoteHost,
+  notePath: string,
+  transform: (content: string) => string
+): Promise<boolean> {
+  // As the note is: an open editor keeps a change its save could not write yet.
+  const now = (await openEditorText(app, notePath)) ?? (await host.fs.read(notePath));
+  return transform(now) !== now;
 }
 
 /**
@@ -2541,17 +2737,32 @@ export async function syncReadmeOrderOnRename(
   for (const { to } of collapseWorkflowRenames(renames)) {
     labels.set(to, await readWorkflowLabel(host, labnoteDir, to));
   }
-  await processNoteThroughVault(
-    app,
-    host,
-    readmePath,
-    content =>
-      reconcileWorkflowChecklist(content, renames, {
-        labelFor: name => labels.get(name) ?? defaultWorkflowTitle(name),
-        dir: labnoteDir,
-        move: true,
-      }).content
-  );
+  const reconcile = (content: string): string =>
+    reconcileWorkflowChecklist(content, renames, {
+      labelFor: name => labels.get(name) ?? defaultWorkflowTitle(name),
+      dir: labnoteDir,
+      move: true,
+    }).content;
+  await warnChecklistNotFollowed(app, host, readmePath, reconcile, await processNoteThroughVault(app, host, readmePath, reconcile));
+}
+
+/**
+ * The README of renamed or deleted workflow notes, its checklist not written (its save did not
+ * end in time) or maybe not: said, with the command that brings it up to date, since nothing
+ * runs again on its own for those notes.
+ */
+async function warnChecklistNotFollowed(
+  app: App,
+  host: LabnoteHost,
+  readmePath: string,
+  transform: (content: string) => string,
+  written: NoteWritten
+): Promise<void> {
+  if (written === 'uncertain') {
+    host.notify('warn', host.t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', readmePath));
+  } else if (!written && (await changeNotWritten(app, host, readmePath, transform))) {
+    host.notify('warn', host.t('{0} was not written: it was still being saved, so its checklist does not follow the renamed or deleted workflow notes yet. Run "{1}" to update it.', readmePath, host.t('Sync workflow checklist with folder')));
+  }
 }
 
 /** Sample-tree cleanup context for {@link syncReadmeAndSamplesOnDelete}. */
@@ -2602,7 +2813,9 @@ export async function syncReadmeAndSamplesOnDelete(
       else removed = 0;
     } else {
       const written = await processNoteThroughVault(app, host, readmePath, prune);
-      if (!written) removed = 0;
+      // Before the count is dropped: the check runs `prune` again, which counts anew.
+      await warnChecklistNotFollowed(app, host, readmePath, prune, written);
+      if (written !== true) removed = 0;
     }
   }
 

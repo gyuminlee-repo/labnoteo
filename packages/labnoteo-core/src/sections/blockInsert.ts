@@ -7,10 +7,11 @@
  * that unit operation's `#### Method` body; anywhere else it goes in as its own
  * block after the cursor's line. The Obsidian side only applies the result.
  */
-import { findSectionMatches, sectionBodyEnd, stepFence, type OpenFence } from './sectionEdit';
+import { classifyLines, headingLevel } from './codeFences';
+import { findSectionMatches, sectionBodyEnd } from './sectionEdit';
 import { UNIT_OP_HEADING_PATTERN } from './workflowSectionParser';
 import { scanDocumentHead, isBeforeBody } from './documentHead';
-import { stripFrontMatter } from './frontMatter';
+import { frontMatterLineCountOf, stripFrontMatter } from './frontMatter';
 import { SW_PLACEHOLDERS, HW_PLACEHOLDERS } from '../lib/unitOpTemplate';
 
 /** The `#### Method` subsection of one unit operation. */
@@ -28,7 +29,7 @@ export interface UnitOpMethodLocation {
   isPlaceholder: boolean;
 }
 
-const ANY_HEADING_RE = /^(#{1,6})\s/;
+const ANY_HEADING_RE = /^(#{1,6})[ \t]/;
 
 interface HeadingLine {
   line: number;
@@ -38,20 +39,17 @@ interface HeadingLine {
 /** Every ATX heading outside code fences, in document order. */
 function scanHeadings(lines: readonly string[]): HeadingLine[] {
   const headings: HeadingLine[] = [];
-  let fence: OpenFence | null = null;
-  for (let i = 0; i < lines.length; i++) {
-    const next = stepFence(lines[i], fence);
-    if (next !== fence) {
-      fence = next;
-      continue;
-    }
-    if (fence) continue;
-    const m = ANY_HEADING_RE.exec(lines[i]);
-    if (m) headings.push({ line: i, level: m[1].length });
+  const start = frontMatterLineCountOf(lines);
+  // Lines as the one block reading has them (classifyLines): a heading is on a text line.
+  const kinds = classifyLines(lines, start);
+  for (let i = start; i < lines.length; i++) {
+    const level = headingLevel(kinds[i]);
+    if (level) headings.push({ line: i, level });
   }
   return headings;
 }
 
+// front matter: tests a heading scanHeadings found, past the front matter.
 const isUnitOpHeading = (lines: readonly string[], h: HeadingLine): boolean =>
   h.level === 3 && UNIT_OP_HEADING_PATTERN.test(lines[h.line]);
 
@@ -130,7 +128,7 @@ export function cleanMethodDraft(output: string): string {
   if (body) return body;
   return noFront
     .split(/\r?\n/)
-    .filter(l => !/^#{1,6}\s/.test(l))
+    .filter(l => !/^#{1,6}[ \t]/.test(l))
     .join('\n')
     .trim();
 }
@@ -161,22 +159,39 @@ export function findUnitOpMethodByIndex(
  */
 export function extractMethodBody(output: string): string {
   let text = output.trim();
-  const fenced = /^(`{3,}|~{3,})[^\n]*\n([\s\S]*?)\n\1\s*$/.exec(text);
-  if (fenced) text = fenced[2];
+  // A reply wrapped whole in one fence, read as the one block reading has it (classifyLines).
+  const whole = text.split(/\r?\n/);
+  const wrap = classifyLines(whole);
+  const last = whole.length - 1;
+  // As before: the opener at the start of the first line, and the same run alone on the last.
+  const atStart = (k: number): boolean => wrap[k].depth === 0 && whole[k] === whole[k].trimStart();
+  const closer = whole[last]?.trimEnd() ?? '';
+  if (
+    last >= 2 &&
+    wrap[0].kind === 'opener' &&
+    wrap[last].kind === 'closer' &&
+    atStart(0) &&
+    atStart(last) &&
+    whole[0].startsWith(closer) &&
+    // The closer's run as long as the opener's: no more of its character right after it (an info
+    // string may start with any other, a backtick after tildes too).
+    whole[0].charAt(closer.length) !== closer.charAt(0) &&
+    wrap.slice(1, last).every(l => l.kind === 'code')
+  )
+    text = whole.slice(1, last).join('\n');
 
   let lines = text.split(/\r?\n/);
-  const [method] = findSectionMatches(text, 'Method');
+  // A reply, not a note: a `---` it starts with is a rule, not front matter.
+  const [method] = findSectionMatches(text, 'Method', { asNote: false });
   if (method) {
     lines = lines.slice(method.line + 1, sectionBodyEnd(lines, method.line, method.level));
   }
 
   const kept: string[] = [];
-  let fence: OpenFence | null = null;
-  for (const line of lines) {
-    const next = stepFence(line, fence);
-    const inCode = fence !== null || next !== fence;
-    fence = next;
-    if (!inCode && /^#{1,4}\s/.test(line)) continue;
+  const kinds = classifyLines(lines);
+  for (const [i, line] of lines.entries()) {
+    const level = headingLevel(kinds[i]);
+    if (level && level <= 4) continue;
     kept.push(line);
   }
   return kept.join('\n').trim();

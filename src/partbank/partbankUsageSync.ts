@@ -27,6 +27,7 @@ import { resolveSampleDefinition, sampleListHeaders, type ResolvedSampleDefiniti
 import { contentHash } from '../scaffold/installRecord';
 import { createPcStore, type PcStore } from '../scan/pcStore';
 import { PartbankError, type NoteUsage, type NoteUsageRef, type PartbankClient } from './client';
+import { logFailure } from '../unawaited';
 
 const CLIENT_ID_KEY = 'partbankUsageClientId';
 const SENT_KEY = 'partbankUsageSent';
@@ -216,7 +217,7 @@ export class PartbankUsageSync {
       })
     );
     workspace.onLayoutReady(() => {
-      this.startupTimer = setTimeout(() => void this.syncAll(), STARTUP_DELAY_MS);
+      this.startupTimer = setTimeout(() => logFailure('partbank usage sync', this.syncAll()), STARTUP_DELAY_MS);
     });
     plugin.register(() => {
       clearTimeout(this.saveTimer);
@@ -230,7 +231,7 @@ export class PartbankUsageSync {
     this.dirty.add(path);
     this.store.set(DIRTY_KEY, [...this.dirty]);
     clearTimeout(this.saveTimer);
-    this.saveTimer = setTimeout(() => void this.syncDirty(), SAVE_DEBOUNCE_MS);
+    this.saveTimer = setTimeout(() => logFailure('partbank usage sync', this.syncDirty()), SAVE_DEBOUNCE_MS);
   }
 
   /**
@@ -240,7 +241,7 @@ export class PartbankUsageSync {
    */
   scheduleReconcile(): void {
     clearTimeout(this.reconcileTimer);
-    this.reconcileTimer = setTimeout(() => void this.syncAll(), RECONCILE_DEBOUNCE_MS);
+    this.reconcileTimer = setTimeout(() => logFailure('partbank usage sync', this.syncAll()), RECONCILE_DEBOUNCE_MS);
   }
 
   syncDirty(): Promise<void> {

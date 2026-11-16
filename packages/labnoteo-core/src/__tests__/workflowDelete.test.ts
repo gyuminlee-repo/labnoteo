@@ -1,33 +1,72 @@
 // Globals convention (no `import ... from 'vitest'`) — see sampleDefinition.test.ts.
 import { removeWorkflowFromReadme } from '../lib/workflowDelete';
-import { insertWorkflowChecklistEntries } from '../lib/workflowStructure';
+import { insertWorkflowChecklistEntries, removeWorkflowChecklistEntries } from '../lib/workflowStructure';
+
+// A blank line in a code example stays when an entry next to it goes (the entry goes as before).
+describe('removing an entry next to blank lines in code', () => {
+  // A list fence's closer, read line by line, closes nothing here: the blank line after the
+  // unclosed ~~~ is code and stays.
+  it('keeps a blank line in an unclosed fence after a list fence', () => {
+    const md = '## Related Workflows\n\n- [ ] [B](./002_WD010_B.labnote.md)\n- ~~~md\n  x\n  ~~~\n~~~\n\n- [ ] [A](./001_WD010_A.labnote.md)\n\nbeta\n';
+    expect(removeWorkflowChecklistEntries(md, ['001_WD010_A.labnote.md'])).toBe('## Related Workflows\n\n- [ ] [B](./002_WD010_B.labnote.md)\n- ~~~md\n  x\n  ~~~\n~~~\n\n\nbeta\n');
+  });
+
+  const md = '## Related Workflows\n```text\nalpha\n\n- [ ] [A](./001_WD010_A.labnote.md)\n\nbeta\n```\n## Notes\ntail\n';
+  const want = '## Related Workflows\n```text\nalpha\n\n\nbeta\n```\n## Notes\ntail\n';
+  it('leaves the example to removeWorkflowFromReadme, which reads no entry in code', () => {
+    expect(removeWorkflowFromReadme(md, '001_WD010_A.labnote.md')).toEqual({ changed: false, content: md });
+  });
+  it('keeps them in removeWorkflowFromReadme next to an entry it removes', () => {
+    const two = `${md}\n## Related Workflows\n\n- [ ] [A](./001_WD010_A.labnote.md)\n\n~~~\n\nx\n~~~\n`;
+    expect(removeWorkflowFromReadme(two, '001_WD010_A.labnote.md').content).toContain('~~~\n\nx\n~~~\n');
+  });
+  it('keeps them in removeWorkflowChecklistEntries', () => {
+    expect(removeWorkflowChecklistEntries(md, ['001_WD010_A.labnote.md'])).toBe(want);
+  });
+});
 
 describe('workflow deletion section boundaries', () => {
   const entry = '- [ ] [Design](./001_WD010_Design.labnote.md)';
   const file = '001_WD010_Design.labnote.md';
 
   it.each(['\n', '\r\n'])('preserves other sections and fenced examples with %j', newline => {
-    const before = ['# Experiment', entry, '```md', '## Related Workflows', entry, '```', ''];
-    const section = ['## 🗂️ Related Workflows', '> Instructions  ', '~~~~md', '## Notes', entry, '```', entry, '~~~~', '### Nested'];
+    const section = ['## 🗂️ Related Workflows', '> Instructions  ', '~~~~md', entry, '```', entry, '~~~~', '### Nested'];
     const after = ['## Notes', entry, '# Appendix', entry, ''];
-    const md = [...before, ...section, entry, ...after].join(newline);
+    const md = ['# Experiment', entry, ...section, entry, ...after].join(newline);
     expect(removeWorkflowFromReadme(md, file)).toEqual({
       changed: true,
-      content: [...before, ...section, ...after].join(newline),
+      content: ['# Experiment', entry, ...section, ...after].join(newline),
     });
   });
 
-  it.each(['## Notes', '# Notes'])('stops at the next same or higher heading %s', boundary => {
-    const md = ['## Related Workflows', entry, boundary, entry].join('\n');
+  // Sections are found both as in v0.130.0 (a fenced example heading takes the
+  // section, as for parse and add) and with fenced headings ignored, so the
+  // real section after a fenced example still loses its entry; the fenced
+  // example line stays.
+  it.each(['\n', '\r\n'])('removes the entry of the real section after a fenced example heading with %j', newline => {
+    const head = ['# Experiment', '```md', '## Related Workflows', entry, '```', '## 🗂️ Related Workflows'];
+    const md = [...head, entry, ''].join(newline);
+    expect(removeWorkflowFromReadme(md, file)).toEqual({ changed: true, content: [...head, ''].join(newline) });
+  });
+
+  it('stops at the next ## heading', () => {
+    const md = ['## Related Workflows', entry, '## Notes', entry].join('\n');
     expect(removeWorkflowFromReadme(md, file)).toEqual({
-      changed: true, content: ['## Related Workflows', boundary, entry].join('\n'),
+      changed: true, content: ['## Related Workflows', '## Notes', entry].join('\n'),
     });
+  });
+
+  // Deletion stops at a `#` heading, as 0.140.2 and main (#442) do: the entry under `# Notes`
+  // is that part's and stays. Reading and adding still go past it, as they did there.
+  it('stops at a # heading', () => {
+    const md = ['## Related Workflows', entry, '# Notes', entry].join('\n');
+    expect(removeWorkflowFromReadme(md, file)).toEqual({ changed: true, content: ['## Related Workflows', '# Notes', entry].join('\n') });
   });
 
   it.each([
     ['## Related Workflows', '## Notes', entry],
     ['```md', '## Related Workflows', entry, '```'],
-    ['## Related Workflows', '~~~', entry],
+    ['## Related Workflows', '```md', entry, '```'],
   ])('preserves content without a real matching checklist: %j', (...lines) => {
     const md = lines.join('\r\n');
     expect(removeWorkflowFromReadme(md, file)).toEqual({ changed: false, content: md });
@@ -140,6 +179,36 @@ describe('removeWorkflowFromReadme', () => {
 });
 
 // #412: a file name with a space is linked as `%20`.
+describe('removeWorkflowFromReadme and the blank lines around an entry', () => {
+  const A = '- [ ] [A](./001_WD010_A.labnote.md)';
+  const B = '- [ ] [B](./002_WD020_B.labnote.md)';
+  const C = '- [ ] [C](./003_WD030_C.labnote.md)';
+  const del = (lines: string[], f = '002_WD020_B.labnote.md'): string => removeWorkflowFromReadme(lines.join('\n'), f).content;
+
+  it('leaves no blank line ending the README when the last entry goes', () => {
+    expect(del(['## Related Workflows', A, '', B, ''])).toBe(['## Related Workflows', A, ''].join('\n'));
+    expect(del(['## Related Workflows', '', A, '', B, ''])).toBe(['## Related Workflows', '', A, ''].join('\n'));
+    // Without a final newline the blank line already goes as the line break of the line left last.
+    expect(del(['## Related Workflows', A, '', B])).toBe(['## Related Workflows', A, ''].join('\n'));
+    expect(del(['## Related Workflows', A, B, ''])).toBe(['## Related Workflows', A, ''].join('\n'));
+    expect(del(['## Related Workflows', A, '', '', B, ''])).toBe(['## Related Workflows', A, ''].join('\n'));
+  });
+
+  it('leaves no two blank lines in a row where an entry went', () => {
+    expect(del(['## Related Workflows', A, '', B, '', C, ''])).toBe(['## Related Workflows', A, '', C, ''].join('\n'));
+    expect(del(['## Related Workflows', A, '', B, '', '## Notes', ''])).toBe(['## Related Workflows', A, '', '## Notes', ''].join('\n'));
+    expect(del(['## Related Workflows', '', B, '', '## Notes', ''])).toBe(['## Related Workflows', '', '## Notes', ''].join('\n'));
+    expect(removeWorkflowFromReadme(['## Related Workflows', A, '', B, '', C, ''].join('\r\n'), '002_WD020_B.labnote.md').content).toBe(
+      ['## Related Workflows', A, '', C, ''].join('\r\n')
+    );
+  });
+
+  it('keeps blank lines the entry did not touch', () => {
+    expect(del(['## Related Workflows', A, B, '', C, ''])).toBe(['## Related Workflows', A, '', C, ''].join('\n'));
+    expect(del(['## Related Workflows', A, '', '', B, C, ''])).toBe(['## Related Workflows', A, '', '', C, ''].join('\n'));
+  });
+});
+
 describe('removeWorkflowFromReadme with a space in the name', () => {
   it('removes the %20 entry', () => {
     const readme = README.replace('./001_WD010_Design.labnote.md', './001_WD010_Design%201.labnote.md');

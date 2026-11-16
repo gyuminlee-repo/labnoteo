@@ -27,6 +27,12 @@ import { pickModal, pickManyModal, promptModal, confirmModal } from './modals';
 import { activeTableCellEditor, editorView, noteTargetBelowTable, tableCellHostView } from './tableCellTarget';
 
 const readingViewChecks = new WeakMap<EditTarget, () => boolean>();
+
+/**
+ * An edit target called once its view showed another note: nothing was read or changed. Its
+ * message is for the user as it is, not a failure of the command.
+ */
+export class NoteSwitchedError extends Error {}
 const tableCellEditors = new WeakMap<EditTarget, Editor>();
 
 /**
@@ -77,8 +83,26 @@ export function createObsidianHost(
     const cell = cellEditor ?? (tableCellHostView(editor) ? editor : null);
     const cellHost = cell ? tableCellHostView(cell) ?? editorView(editor) : undefined;
     const cellDom = cell ? editorView(cell)?.dom : undefined;
+    // Looked at on every call: a call after a wait (a prompt, a read) may find the view gone
+    // to another note, whose editor this one now is; it is not read or changed as this note.
+    const stillOnNote = (): void => {
+      if (noteView.file?.path !== file.path) {
+        throw new NoteSwitchedError(t('The note was switched to another while the command ran, so it was not changed. Run the command again.'));
+      }
+    };
+    const onNote = <T extends EditTarget>(target: T): T => {
+      for (const key of Object.keys(target) as (keyof T)[]) {
+        const call = target[key];
+        if (typeof call !== 'function') continue;
+        target[key] = (async (...args: unknown[]) => {
+          stillOnNote();
+          return (call as (...a: unknown[]) => unknown).apply(target, args);
+        }) as T[keyof T];
+      }
+      return target;
+    };
     if (cell && cellHost && cellDom) {
-      const target = noteTargetBelowTable(file.path, cellHost, cellDom);
+      const target = onNote(noteTargetBelowTable(file.path, cellHost, cellDom));
       tableCellEditors.set(target, cell);
       return target;
     }
@@ -91,6 +115,8 @@ export function createObsidianHost(
       if (!inPreview()) return;
       const before = noteView.getViewData();
       await noteView.setState({ ...noteView.getState(), mode: 'source' }, { history: false });
+      // Looked at again before the editor is: the view may have gone to another note meanwhile.
+      stillOnNote();
       if (editor.getValue() !== before) {
         throw new Error(t('The note changed while switching to editing view. Run the command again.'));
       }
@@ -104,6 +130,7 @@ export function createObsidianHost(
       async insertAtCursor(text: string) {
         if (inPreview()) {
           await toSource();
+          stillOnNote();
           const end = editor.offsetToPos(editor.getValue().length);
           editor.replaceRange(text, end, end);
           return;
@@ -112,6 +139,9 @@ export function createObsidianHost(
       },
       async replaceRange(start: number, end: number, text: string) {
         await toSource();
+        // Looked at after every wait, whatever the mode: even an await with nothing to wait for
+        // lets the view go to another note first.
+        stillOnNote();
         editor.replaceRange(text, editor.offsetToPos(start), editor.offsetToPos(end));
       },
       async getCursorOffset() {
@@ -126,6 +156,7 @@ export function createObsidianHost(
       },
       async revealOffset(offset: number) {
         await toSource();
+        stillOnNote();
         // setCursor treats a bare number as a line index, so convert first.
         const pos = editor.offsetToPos(offset);
         editor.setCursor(pos);
@@ -133,6 +164,7 @@ export function createObsidianHost(
         editor.focus();
       },
     };
+    onNote(target);
     readingViewChecks.set(target, inPreview);
     return target;
   }

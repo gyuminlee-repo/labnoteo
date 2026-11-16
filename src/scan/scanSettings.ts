@@ -10,6 +10,7 @@ import {
 import { commitOnChange, type SettingSection } from '../settingRows';
 import { isInsideFolder, type ScanFolderMode } from './scanFolderWatcher';
 import { describeSlackError, slackChannelId, type SlackMode } from './slack';
+import { sayFailure } from '../unawaited';
 
 /** What the settings tab lends the sections it draws. */
 export interface SettingsContext {
@@ -55,7 +56,7 @@ function numberField(
       }
       if (n !== opts.get()) {
         opts.set(n);
-        void plugin.saveSettings();
+        sayFailure(plugin.saveSettings());
       }
       return String(n);
     })
@@ -65,7 +66,7 @@ function numberField(
 export function scanSettingSections(plugin: LabnotePlugin, ctx: SettingsContext): SettingSection[] {
   const { t, settings: s } = plugin;
   const feature = plugin.barcode;
-  const save = () => void plugin.saveSettings();
+  const save = () => sayFailure(plugin.saveSettings());
   const hasWatcher = () => Boolean(feature.watcher) && Platform.isDesktopApp;
   let mode: ScanFolderMode = 'dedicated';
 

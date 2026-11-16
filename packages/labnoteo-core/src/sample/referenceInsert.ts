@@ -50,7 +50,7 @@ const ADJACENT = /[\p{L}\p{N}_;-]/u;
 /** The `;alias;desc` tail a reference may carry, stopping at whitespace; `\|` belongs to it. */
 const REFERENCE_TAIL = /^(?:[;|](?:\\\||[^\s;:|])*){0,2}/;
 
-const TABLE_ROW = /^\s*\|/;
+const TABLE_ROW = /^[ \t]*\|/;
 
 /** Index of the first unescaped `|` at or after `from`, or -1. */
 function nextCellPipe(line: string, from: number): number {

@@ -8,6 +8,9 @@
  */
 
 import { escapeRegExp } from '../lib/regexUtils';
+import { classifyLines, closedFencedLines, headingLevel, headingText, isFenced, lineReader } from './codeFences';
+import { joinLineBuffer, spliceLineBuffer, splitLineBuffer } from '../util/lineEnds';
+import { frontMatterLineCountOf } from './frontMatter';
 
 export interface SectionEditResult {
   ok: boolean;
@@ -26,38 +29,6 @@ export interface SectionBody {
   subheadings: number;
 }
 
-/** An open code fence: which character opened it, and how long the run was. */
-export interface OpenFence {
-  char: string;
-  length: number;
-}
-
-/** A fence line: up to 3 leading spaces, then a run of 3+ backticks or tildes. */
-const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
-
-/**
- * Advance code-fence state across one line.
- *
- * Per CommonMark a fence is closed only by a run of the SAME character that is
- * at least as long as the opener, and a closing fence carries no info string.
- * Tracking that matters: a plain boolean toggle read the ``` inside a `~~~`
- * block as a close, then read the real `~~~` as an open — and from there every
- * heading in the rest of the document looked like it was inside code, so the
- * section body ran to EOF and replacing it deleted every following section.
- * Showing fenced Markdown inside a fenced example is a normal thing to write in
- * a protocol note.
- */
-export function stepFence(line: string, open: OpenFence | null): OpenFence | null {
-  const match = line.match(FENCE_RE);
-  if (!match) return open;
-
-  const run = match[1];
-  if (open === null) return { char: run[0], length: run.length };
-
-  const afterRun = line.slice(line.indexOf(run) + run.length);
-  const closes = run[0] === open.char && run.length >= open.length && afterRun.trim() === '';
-  return closes ? null : open;
-}
 
 /** One heading that {@link findSectionMatches} found. */
 export interface SectionMatch {
@@ -71,7 +42,7 @@ export interface SectionMatch {
   occurrence: number;
 }
 
-const ANY_HEADING_RE = /^(#{1,6})\s+(.*?)\s*$/;
+const ANY_HEADING_RE = /^(#{1,6})[ \t]+(.*?)\s*$/;
 
 /**
  * Heading text as {@link findSectionMatches} compares it when no heading
@@ -98,24 +69,23 @@ export interface NoteHeading {
   parentHeading: string;
 }
 
-/** Every heading of `md` outside code fences, in document order. */
-export function listHeadings(md: string): NoteHeading[] {
+/**
+ * Every heading of `md` outside code fences, in document order. A note's front matter holds
+ * none; `asNote: false` reads a fragment (a model's reply), whose `---` lines are rules.
+ */
+export function listHeadings(md: string, { asNote = true }: { asNote?: boolean } = {}): NoteHeading[] {
   const lines = md.split(/\r?\n/);
   const ancestors: { level: number; text: string }[] = [];
   const out: NoteHeading[] = [];
   // A fenced code block can contain lines that look like ATX headings; those
   // must NOT be treated as real headings.
-  let fence: OpenFence | null = null;
-  for (let i = 0; i < lines.length; i++) {
-    const next = stepFence(lines[i], fence);
-    if (next !== fence) {
-      fence = next;
-      continue;
-    }
-    if (fence) continue;
-    const h = lines[i].match(ANY_HEADING_RE);
-    if (!h) continue;
-    const level = h[1].length;
+  const start = asNote ? frontMatterLineCountOf(lines) : 0;
+  // Lines as the one block reading has them: a heading is a text line (no fence, code or HTML block).
+  const kinds = classifyLines(lines, start);
+  for (let i = start; i < lines.length; i++) {
+    const level = headingLevel(kinds[i]);
+    if (!level) continue;
+    const h = [lines[i], '', headingText(kinds[i])];
     while (ancestors.length > 0 && ancestors[ancestors.length - 1].level >= level) ancestors.pop();
     out.push({ line: i, level, text: h[2], parentHeading: ancestors[ancestors.length - 1]?.text ?? '' });
     ancestors.push({ level, text: h[2] });
@@ -130,10 +100,10 @@ export function listHeadings(md: string): NoteHeading[] {
  * Only when none matches exactly are headings compared by
  * {@link normalizeHeadingText} (#145).
  */
-export function findSectionMatches(md: string, heading: string): SectionMatch[] {
+export function findSectionMatches(md: string, heading: string, opts: { asNote?: boolean } = {}): SectionMatch[] {
   const lines = md.split(/\r?\n/);
-  const headingRe = new RegExp(`^(#{1,6})\\s+${escapeRegExp(heading)}\\s*$`);
-  const headings = listHeadings(md);
+  const headingRe = new RegExp(`^(#{1,6})[ \\t]+${escapeRegExp(heading)}\\s*$`);
+  const headings = listHeadings(md, opts);
   let found = headings.filter(h => headingRe.test(lines[h.line]));
   if (found.length === 0) {
     const wanted = normalizeHeadingText(heading);
@@ -150,6 +120,7 @@ export function findSectionMatches(md: string, heading: string): SectionMatch[] 
  * is the same as {@link findSectionMatches}'s fallback. Blank lines it leaves
  * at either end go too.
  */
+// front matter: content sent for a section, no note.
 export function stripRepeatedHeading(content: string, heading: string): string {
   const lines = content.split(/\r?\n/);
   const wanted = normalizeHeadingText(heading);
@@ -198,22 +169,20 @@ export function replaceSectionBody(
  * Returns `{ ok: false, md }` unchanged when that line is not a heading. CRLF
  * vs LF endings are detected and preserved.
  */
+// front matter: the heading line is given; the body runs below it.
 export function replaceSectionBodyAt(md: string, line: number, newBody: string): SectionEditResult {
-  const newline = md.includes('\r\n') ? '\r\n' : '\n';
-  const lines = md.split(/\r?\n/);
+  // Lines outside the body keep their own line breaks, even in mixed endings.
+  const buf = splitLineBuffer(md);
+  const lines = [...buf.lines];
   const headingIdx = line;
   const m = lines[headingIdx]?.match(ANY_HEADING_RE);
   if (!m) return { ok: false, md };
-  const bodyEnd = sectionBodyEnd(lines, headingIdx, m[1].length);
+  const bodyEnd = sectionBodyEnd(lines, headingIdx, m[1].length, { replacing: true });
 
   const bodyLines = newBody === '' ? [''] : ['', ...newBody.split(/\r?\n/), ''];
-  const next: string[] = [
-    ...lines.slice(0, headingIdx + 1),
-    ...bodyLines,
-    ...lines.slice(bodyEnd),
-  ];
+  spliceLineBuffer(buf, headingIdx + 1, bodyEnd - headingIdx - 1, bodyLines);
 
-  return { ok: true, md: next.join(newline), removed: summarizeBody(lines.slice(headingIdx + 1, bodyEnd)) };
+  return { ok: true, md: joinLineBuffer(buf), removed: summarizeBody(lines.slice(headingIdx + 1, bodyEnd)) };
 }
 
 /**
@@ -221,11 +190,13 @@ export function replaceSectionBodyAt(md: string, line: number, newBody: string):
  * {@link replaceSectionBodyAt} would replace — or undefined when that line is
  * not a heading.
  */
+// front matter: the heading line is given; the body runs below it.
 export function sectionBodyAt(md: string, line: number): SectionBody | undefined {
   const lines = md.split(/\r?\n/);
   const m = lines[line]?.match(ANY_HEADING_RE);
   if (!m) return undefined;
-  return summarizeBody(lines.slice(line + 1, sectionBodyEnd(lines, line, m[1].length)));
+  // What replaceSectionBodyAt would replace, so its preview reads the same range.
+  return summarizeBody(lines.slice(line + 1, sectionBodyEnd(lines, line, m[1].length, { replacing: true })));
 }
 
 /**
@@ -262,16 +233,12 @@ export function diffBodyLines(before: string, after: string): { removed: string[
   return { removed, added };
 }
 
+// front matter: a section body's lines.
 function summarizeBody(body: readonly string[]): SectionBody {
   let subheadings = 0;
-  let fence: OpenFence | null = null;
-  for (const l of body) {
-    const next = stepFence(l, fence);
-    if (next !== fence) {
-      fence = next;
-      continue;
-    }
-    if (!fence && ANY_HEADING_RE.test(l)) subheadings++;
+  const kinds = classifyLines(body);
+  for (const [i, l] of body.entries()) {
+    if (headingLevel(kinds[i])) subheadings++;
   }
   return {
     text: body.join('\n').replace(/^\s*\n/, '').trimEnd(),
@@ -290,24 +257,47 @@ const THEMATIC_BREAK_RE = /^ {0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/;
  * the template puts one between unit operations — so the body ends before
  * it (#332). One right under a line of text is that line's setext underline
  * and stays in the body, as does a rule at the end of the note.
+ *
+ * A `#` line inside a code block after the heading is not a boundary; fences
+ * are read line by line, so an opener never closed runs on to the end.
+ * With `replacing` (a writer about to delete or replace the body, and its
+ * preview) the body also ends at a heading that only the closed-blocks
+ * reading shows (that opener is text), so a replacement cannot delete the
+ * sections after an opener never closed. {@link sectionBodyAt} reads the body
+ * with `replacing` too, so the section read, appended to and described by the
+ * tools is the range a replacement writes. The method body and summary
+ * insertion readers (blockInsert, summaryInsert) read it line by line only.
  */
-export function sectionBodyEnd(lines: readonly string[], headingIdx: number, level: number): number {
-  // The heading was matched outside any fence, so restart fence tracking here;
-  // a `#` line inside a code block after the heading is not a real boundary.
-  const boundaryRe = new RegExp(`^#{1,${level}}\\s`);
-  let bodyFence: OpenFence | null = null;
-  for (let i = headingIdx + 1; i < lines.length; i++) {
-    const next = stepFence(lines[i], bodyFence);
-    if (next !== bodyFence) {
-      bodyFence = next;
-      continue;
+// front matter: reads down from a heading, below the front matter.
+export function sectionBodyEnd(
+  lines: readonly string[],
+  headingIdx: number,
+  level: number,
+  { replacing = false }: { replacing?: boolean } = {}
+): number {
+  const boundaryRe = new RegExp(`^#{1,${level}}[ \\t]`);
+  // Fences read from just after the heading, which was matched outside one.
+  const from = headingIdx + 1;
+  const scan = (closed?: readonly boolean[]): number => {
+    // Read lazily: the scan stops at the section's end. A line in an HTML block is no boundary.
+    const at = lineReader(lines, from);
+    for (let i = from; i < lines.length; i++) {
+      const read = at(i);
+      if (read.kind === 'html') continue;
+      if (isFenced(read) && (closed === undefined || closed[i - from])) continue;
+      // In the closed-blocks reading a line of a fence never closed is text, and may be a heading.
+      const lv = headingLevel(read, { code: closed !== undefined });
+      if (!lv || lv > level) continue;
+      let j = i - 1;
+      while (j > headingIdx && lines[j].trim() === '') j--;
+      if (j > headingIdx && THEMATIC_BREAK_RE.test(lines[j]) && (j - 1 === headingIdx || lines[j - 1].trim() === '')) return j;
+      return i;
     }
-    if (bodyFence) continue;
-    if (!boundaryRe.test(lines[i])) continue;
-    let j = i - 1;
-    while (j > headingIdx && lines[j].trim() === '') j--;
-    if (j > headingIdx && THEMATIC_BREAK_RE.test(lines[j]) && (j - 1 === headingIdx || lines[j - 1].trim() === '')) return j;
-    return i;
-  }
-  return lines.length;
+    return lines.length;
+  };
+  // Up to a boundary the line-by-line reading finds, every fence it opened has closed, and
+  // the closed-blocks reading has the same code: only past an opener never closed (the
+  // reading then runs to the end) can that reading end the body sooner.
+  const end = scan();
+  return replacing && end === lines.length ? scan(closedFencedLines(lines.slice(from))) : end;
 }

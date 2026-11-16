@@ -11,6 +11,7 @@ import { runAgent } from '../../src/llm/agent';
 import { aiAnswerModal, type AiAnswerOpts } from '../../src/modals';
 import { createObsidianTranslator } from '../../src/i18n';
 import type LabnotePlugin from '../../src/main';
+import { NoteSwitchedError } from '../../src/obsidianHost';
 
 vi.mock('../../src/llm/provider', () => ({
   createLlmProvider: vi.fn(() => ({ name: 'Fake', chat: vi.fn() })),
@@ -53,6 +54,7 @@ beforeEach(() => {
       confirm: vi.fn(),
     },
     markUserEdit: vi.fn(),
+    toolFs: () => undefined,
   } as unknown as LabnotePlugin;
   vi.mocked(runAgent).mockResolvedValue({ content: '**답변**', executed: [], stoppedAtLimit: false });
 });
@@ -80,6 +82,23 @@ describe('askAgentCommand (#77)', () => {
     const messages = vi.mocked(runAgent).mock.calls[0][0];
     expect(messages[1].content).toBe(`요약해 줘\n\nActive note:\n${BODY}`);
     expect(messages[0].content).toContain('not written to the note');
+  });
+
+  // The view goes to another note as the answer goes in: said once, as it is, and the answer
+  // stays to copy, nothing left unhandled.
+  it('says the answer not inserted when the view goes to another note as it goes in', async () => {
+    const SWITCHED = 'The note was switched to another while the command ran, so it was not changed. Run the command again.';
+    const notices: [string, string][] = [];
+    (plugin.host as unknown as { notify: (level: string, msg: string) => void }).notify = (level, msg) => void notices.push([level, msg]);
+    const opts = await ask();
+    open = {
+      ...makeTarget(),
+      replaceRange: vi.fn(async () => {
+        throw new NoteSwitchedError(SWITCHED);
+      }),
+    };
+    expect(await opts.onInsert()).toBe(false);
+    expect(notices).toEqual([['warn', SWITCHED]]);
   });
 
   it('inserts the answer when asked while the note is still open', async () => {

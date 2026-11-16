@@ -11,6 +11,8 @@ import type { NoteIdService } from '../barcode/noteIdService';
 import { unmatchedInfoFromName, UNMATCHED_FOLDER } from './imageStore';
 import type { ScanPipeline } from './scanPipeline';
 import { describeResult, unmatchedReasonText } from './resultModal';
+import { openEditorText } from '../openEditorWrite';
+import { guardScanAction } from './actionGuard';
 
 const IMAGE_RE = /\.(jpe?g|png|webp)$/i;
 
@@ -75,15 +77,17 @@ export class UnmatchedModal extends Modal {
       Object.assign(img.style, { display: 'block', maxWidth: '220px', maxHeight: '220px', marginTop: '4px', cursor: 'zoom-in' });
       img.addEventListener('click', () => window.open(this.app.vault.getResourcePath(file)));
       row
-        .addButton(b => b.setButtonText(t('Assign')).setCta().onClick(() => void this.assign(file)))
+        .addButton(b => b.setButtonText(t('Assign')).setCta().onClick(() => void guardScanAction(this.t, () => this.assign(file))))
         .addButton(b =>
           b
             .setButtonText(t('Delete'))
             .setWarning()
-            .onClick(async () => {
-              await this.app.fileManager.trashFile(file);
-              this.render();
-            })
+            .onClick(() =>
+              void guardScanAction(this.t, async () => {
+                await this.app.fileManager.trashFile(file);
+                this.render();
+              })
+            )
         );
     }
   }
@@ -106,7 +110,8 @@ export class UnmatchedModal extends Modal {
       { title: t('Assign to which note?'), placeholder: t('Search workflow notes') }
     );
     if (!note) return;
-    const blocks = listUnitOpBlocks(await this.app.vault.read(note));
+    // As the note is: an open editor's unit operations, saved or not, are the ones filing finds.
+    const blocks = listUnitOpBlocks((await openEditorText(this.app, note.path)) ?? (await this.app.vault.read(note)));
     const items: PickItem<number>[] = [
       ...blocks.map(b => ({ label: `${b.index}. [${b.opId} ${b.opName}]${b.alias ? ` ${b.alias}` : ''}`, value: b.index })),
       { label: t('The whole note (no unit operation)'), value: 0 },

@@ -1,5 +1,5 @@
 /**
- * `writeNoteThroughVault` is the seam that keeps an AI or sync-driven edit from
+ * `processOrCreateNote` is the seam that keeps an AI or sync-driven edit from
  * being silently undone.
  *
  * When a note is open, Obsidian's editor holds its own buffer and flushes it on
@@ -14,7 +14,7 @@ import type { App } from 'obsidian';
 import { TFile, TFolder } from '../stubs/obsidian';
 import type { LabnoteHost } from '@labnoteo/core';
 import { MemFileSystem } from '../../packages/labnoteo-core/src/fs/memFileSystem';
-import { writeNoteThroughVault } from '../../src/commands';
+import { processOrCreateNote } from '../../src/commands';
 
 /** Records which path each write took, so a silent fallback cannot pass. */
 function makeApp(indexed: Record<string, TFile | TFolder>) {
@@ -38,35 +38,40 @@ function makeHost(fs: MemFileSystem) {
 
 const NOTE = 'labnote/001_Test/README.labnote.md';
 
-describe('writeNoteThroughVault', () => {
+describe('processOrCreateNote', () => {
   it('routes through vault.process when the note is in the vault index', async () => {
-    const file = new TFile(NOTE);
-    const { app, processed } = makeApp({ [NOTE]: file });
-    const fs = new MemFileSystem();
+    const { app, processed } = makeApp({ [NOTE]: new TFile(NOTE) });
+    const fs = new MemFileSystem({ [NOTE]: 'on disk' });
 
-    await writeNoteThroughVault(app, makeHost(fs), NOTE, 'new content');
+    expect(await processOrCreateNote(app, makeHost(fs), NOTE, () => 'new content')).toBe(true);
 
     expect(processed).toEqual([{ path: NOTE, content: 'new content' }]);
     // The adapter must NOT also be written: that is the path the open editor
     // cannot see, and doing both would defeat the point.
-    expect(fs.snapshot()).toEqual({});
+    expect(await fs.read(NOTE)).toBe('on disk');
   });
 
-  it('replaces the contents wholesale, ignoring what process hands it', async () => {
+  it('makes the change of the text as it is when written, not of an earlier read', async () => {
     const { app, processed } = makeApp({ [NOTE]: new TFile(NOTE) });
 
-    await writeNoteThroughVault(app, makeHost(new MemFileSystem()), NOTE, 'replacement');
+    await processOrCreateNote(app, makeHost(new MemFileSystem({ [NOTE]: 'read earlier' })), NOTE, c => `${c}!`);
 
-    // The updater is a constant function; the previous contents are discarded
-    // because callers have already computed the full new document.
-    expect(processed[0].content).toBe('replacement');
+    expect(processed[0].content).toBe('previous contents!');
   });
 
-  it('falls back to the adapter when the note is not in the index', async () => {
+  it('writes a note the change leaves as it is through the vault all the same', async () => {
+    const { app, processed } = makeApp({ [NOTE]: new TFile(NOTE) });
+
+    await processOrCreateNote(app, makeHost(new MemFileSystem({ [NOTE]: 'x' })), NOTE, c => c);
+
+    expect(processed).toEqual([{ path: NOTE, content: 'previous contents' }]);
+  });
+
+  it('makes a note that does not exist of an empty one, on the adapter', async () => {
     const { app, processed } = makeApp({});
     const fs = new MemFileSystem();
 
-    await writeNoteThroughVault(app, makeHost(fs), NOTE, 'brand new');
+    expect(await processOrCreateNote(app, makeHost(fs), NOTE, c => `${c}brand new`)).toBe(true);
 
     expect(processed).toEqual([]);
     expect(await fs.read(NOTE)).toBe('brand new');
@@ -78,9 +83,9 @@ describe('writeNoteThroughVault', () => {
     const folder = new TFolder();
     folder.path = NOTE;
     const { app, processed } = makeApp({ [NOTE]: folder });
-    const fs = new MemFileSystem();
+    const fs = new MemFileSystem({ [NOTE]: 'old' });
 
-    await writeNoteThroughVault(app, makeHost(fs), NOTE, 'content');
+    await processOrCreateNote(app, makeHost(fs), NOTE, () => 'content');
 
     expect(processed).toEqual([]);
     expect(await fs.read(NOTE)).toBe('content');
@@ -90,7 +95,7 @@ describe('writeNoteThroughVault', () => {
     const { app, processed } = makeApp({ [NOTE]: new TFile(NOTE) });
     const content = '# 실험 노트\n\n- 항목 1\n\n';
 
-    await writeNoteThroughVault(app, makeHost(new MemFileSystem()), NOTE, content);
+    await processOrCreateNote(app, makeHost(new MemFileSystem({ [NOTE]: 'x' })), NOTE, () => content);
 
     expect(processed[0].content).toBe(content);
   });
@@ -98,7 +103,7 @@ describe('writeNoteThroughVault', () => {
   it('writes an empty document rather than skipping the write', async () => {
     const { app, processed } = makeApp({ [NOTE]: new TFile(NOTE) });
 
-    await writeNoteThroughVault(app, makeHost(new MemFileSystem()), NOTE, '');
+    await processOrCreateNote(app, makeHost(new MemFileSystem({ [NOTE]: 'x' })), NOTE, () => '');
 
     expect(processed).toEqual([{ path: NOTE, content: '' }]);
   });

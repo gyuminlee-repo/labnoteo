@@ -3,6 +3,8 @@
  * heading. Shared by the insert planners that must not put content in the front
  * matter or above the title (#50, #63).
  */
+import { frontMatterLineCountOf } from './frontMatter';
+import { classifyLines, headingLevel } from './codeFences';
 export interface DocumentHead {
   /** Line index of the closing `---`, or -1 when there is no (closed) front matter. */
   fmEndLine: number;
@@ -12,40 +14,21 @@ export interface DocumentHead {
   headingLines: Set<number>;
 }
 
+/** `lines` is the note split on `\n`, each CR kept as part of its line break, as every caller splits it. */
 export function scanDocumentHead(lines: readonly string[]): DocumentHead {
-  // Front matter: first line `---`, closed by the next `---`.
-  let fmEndLine = -1;
-  if (lines[0]?.trim() === '---') {
-    for (let i = 1; i < lines.length; i++) {
-      if (lines[i].trim() === '---') {
-        fmEndLine = i;
-        break;
-      }
-    }
-  }
+  // Front matter as Obsidian finds it: its closing `---` line, or -1 without one.
+  const fmEndLine = frontMatterLineCountOf(lines, { crKept: true }) - 1;
 
   // Ignore `#` lines inside fenced code blocks and inside the front matter
   // (YAML comments look like headings).
   const headingLines = new Set<number>();
   let firstHeadingLine = -1;
-  let inFence = false;
-  let fenceChar = '';
+  // Lines as the one block reading has them (classifyLines): a heading is on a text line.
+  const kinds = classifyLines(lines, fmEndLine + 1);
   for (let i = 0; i < lines.length; i++) {
     if (fmEndLine !== -1 && i <= fmEndLine) continue;
-    const trimmed = lines[i].trimStart();
-    const fence = /^(```+|~~~+)/.exec(trimmed);
-    if (fence) {
-      const ch = fence[1][0];
-      if (!inFence) {
-        inFence = true;
-        fenceChar = ch;
-      } else if (ch === fenceChar) {
-        inFence = false;
-      }
-      continue;
-    }
-    if (inFence) continue;
-    if (/^#{1,6}\s/.test(trimmed)) {
+    // Up to three spaces in, as the head was read before (indented code is no heading).
+    if (headingLevel(kinds[i], { indented: true })) {
       headingLines.add(i);
       if (firstHeadingLine === -1) firstHeadingLine = i;
     }

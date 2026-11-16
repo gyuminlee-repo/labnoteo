@@ -5,10 +5,11 @@ import { isDesktopOrigin } from '@labnoteo/core';
 import type LabnotePlugin from '../main';
 import { isValidPartbankUrl } from '../settings';
 import type { SettingRow, SettingSection } from '../settingRows';
+import { sayFailure } from '../unawaited';
 
 export function partbankSettingSection(plugin: LabnotePlugin): SettingSection {
   const { t, settings: s } = plugin;
-  const save = (): void => void plugin.saveSettings();
+  const save = (): void => sayFailure(plugin.saveSettings());
 
   // The desktop app runs on this machine, so it is unreachable from a phone.
   const kinds: PartbankConnection[] = Platform.isDesktopApp ? ['desktop', 'web'] : ['web'];
@@ -51,7 +52,7 @@ export function partbankSettingSection(plugin: LabnotePlugin): SettingSection {
         toggle.setValue(s.partbankSendUsages).onChange(on => {
           s.partbankSendUsages = on;
           save();
-          void (on ? plugin.partbankUsages.syncAll() : plugin.partbankUsages.disable());
+          sayFailure((on ? plugin.partbankUsages.syncAll() : plugin.partbankUsages.disable()));
         })
       ),
   });

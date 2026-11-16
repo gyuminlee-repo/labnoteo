@@ -10,7 +10,8 @@ import { minimalReplacement } from '@labnoteo/core';
 import * as posix from '@labnoteo/core/posix';
 import { getExperimentDir } from '@labnoteo/core/lib/labnoteStructure';
 import { isValidWorkflowPath } from '@labnoteo/core/lib/workflowStructure';
-import { processNoteThroughVault, writeNoteThroughVault } from './commands';
+import { changeNotWritten, processNoteThroughVault, processOrCreateNote } from './commands';
+import { openViewHasDisk, type NoteWritten } from './openEditorWrite';
 
 /**
  * Rewrites a note's `last_updated_date`; identity when the setting is off.
@@ -34,18 +35,26 @@ export function experimentReadmeOf(path: string): string | undefined {
 /**
  * Stamp one note. An open editor (source or live preview) is edited in place,
  * changing only the date span, so the caret stays put and unsaved typing is
- * not overwritten; otherwise the file is rewritten through the vault.
+ * not overwritten; otherwise the file is rewritten through the vault, as is an
+ * open note whose file changed since its editor last read it.
  */
 export async function stampNote(
   app: App,
   host: LabnoteHost,
   path: string,
-  stamp: StampNote
+  stamp: StampNote,
+  /** False once the plugin is unloaded: nothing is changed after a wait then. */
+  alive: () => boolean = () => true
 ): Promise<void> {
   for (const leaf of app.workspace.getLeavesOfType('markdown')) {
     const view = leaf.view;
     if (!(view instanceof MarkdownView) || view.file?.path !== path) continue;
     if (view.getMode() !== 'source') continue;
+    // A change to the file Obsidian has yet to read back: stamped in the file, not the editor.
+    if (view.file && !(await openViewHasDisk(app, view.file))) break;
+    if (!alive()) return;
+    // The view may show another note, or reading mode, once the file is read: stamped in the file.
+    if (view.file?.path !== path || view.getMode() !== 'source') break;
     const editor = view.editor;
     const before = editor.getValue();
     const edit = minimalReplacement(before, stamp(before, path));
@@ -54,9 +63,24 @@ export async function stampNote(
     }
     return;
   }
-  if (!(await host.fs.exists(path))) return;
-  await processNoteThroughVault(app, host, path, content => stamp(content, path));
+  if (!(await host.fs.exists(path)) || !alive()) return;
+  const dated = (content: string) => stamp(content, path);
+  // Not written (a save of the open note did not end in time): tried once more a while later,
+  // so the date is not lost to one slow save; no more than once.
+  if ((await processNoteThroughVault(app, host, path, dated)) !== false) return;
+  if (!(await changeNotWritten(app, host, path, dated))) return;
+  setTimeout(() => {
+    if (!alive()) return;
+    void (async () => {
+      if ((await processNoteThroughVault(app, host, path, dated)) === false && (await changeNotWritten(app, host, path, dated))) {
+        console.warn('[labnoteo] last_updated_date not written, the note still being saved:', path);
+      }
+    })().catch(err => console.warn('[labnoteo] last_updated_date not written:', path, err));
+  }, STAMP_RETRY_MS);
 }
+
+/** How long a date not written waits before it is tried once more. */
+export const STAMP_RETRY_MS = 1000;
 
 /**
  * Stamp a note and, for a workflow note, its experiment README unless
@@ -67,30 +91,36 @@ export async function stampNoteAndReadme(
   host: LabnoteHost,
   path: string,
   stamp: StampNote,
-  keepReadme: (readme: string) => boolean = () => false
+  keepReadme: (readme: string) => boolean = () => false,
+  alive: () => boolean = () => true
 ): Promise<void> {
-  await stampNote(app, host, path, stamp);
+  await stampNote(app, host, path, stamp, alive);
   const readme = experimentReadmeOf(path);
-  if (readme && !keepReadme(readme)) await stampNote(app, host, readme, stamp);
+  if (readme && !keepReadme(readme) && alive()) await stampNote(app, host, readme, stamp, alive);
 }
 
 /**
- * The `writeNote` hook for AI tools: stamp a lab note before writing it, then
- * the experiment README of a workflow note. Resolves only once the README is
- * written, because `create_workflow` re-reads it right after.
+ * The `processNote` hook for AI tools: `change` applied to the note as it is when written
+ * (an open editor's text, typing not saved yet included; a note that does not exist yet is
+ * made of `''`), a lab note stamped with it, then the experiment README of a workflow note
+ * unless `lone`.
+ * Resolves only once the README is written, because `create_workflow` re-reads it right
+ * after. False when the note would change and was not written: a save of the open note did
+ * not end in time.
  */
-export async function writeNoteStamped(
+export async function processNoteStamped(
   app: App,
   host: LabnoteHost,
   path: string,
-  content: string,
-  stamp: StampNote
-): Promise<void> {
-  if (!isLabNotePath(path)) {
-    await writeNoteThroughVault(app, host, path, content);
-    return;
-  }
-  await writeNoteThroughVault(app, host, path, stamp(content, path));
-  const readme = experimentReadmeOf(path);
+  change: (content: string) => string,
+  stamp: StampNote,
+  lone = false
+): Promise<NoteWritten> {
+  const lab = isLabNotePath(path);
+  const made = lab ? (c: string) => stamp(change(c), path) : change;
+  const written = await processOrCreateNote(app, host, path, made);
+  // `lone`: the caller writes the README next, which stamps it in the same change.
+  const readme = lab && !lone ? experimentReadmeOf(path) : undefined;
   if (readme) await stampNote(app, host, readme, stamp);
+  return written;
 }

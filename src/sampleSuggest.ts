@@ -41,6 +41,7 @@ import {
 import type LabnotePlugin from './main';
 import { createSampleInteractive, pickCatalogReference } from './sampleActions';
 import { pickPartbankReference, strainTypeOf } from './partbank/partbankRegister';
+import { sayFailure } from './unawaited';
 
 /**
  * A rendered suggestion: either an existing sample reference, or a synthetic
@@ -306,7 +307,7 @@ export class SampleEditorSuggest extends EditorSuggest<SuggestEntry> {
     const action = item;
     // What was typed after `@type;` fills the prompt or search box (#142).
     const typed = /^@[\p{L}\p{N}_]+[;:]?(.*)$/u.exec(originalRange)?.[1];
-    void (async () => {
+    sayFailure((async () => {
       let referenceText: string | undefined;
       if (action.kind === 'partbank') {
         referenceText = await pickPartbankReference(plugin, {
@@ -342,6 +343,6 @@ export class SampleEditorSuggest extends EditorSuggest<SuggestEntry> {
         line: start.line,
         ch: start.ch + referenceText.length,
       });
-    })();
+    })());
   }
 }

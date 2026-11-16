@@ -3,7 +3,9 @@
  * section (`Conclusions and Discussion` of a workflow note, `Summary and
  * Discussion` of a README), replacing the summary an earlier run put there.
  */
-import { findSectionMatches, listHeadings, sectionBodyEnd, stepFence, type OpenFence } from './sectionEdit';
+import { classifyLines, isPlain } from './codeFences';
+import { findSectionMatches, listHeadings, sectionBodyEnd } from './sectionEdit';
+import { frontMatterLineCountOf } from './frontMatter';
 
 /** Where {@link locateSummary} found the summary's section. */
 export type SummaryPlace =
@@ -39,23 +41,21 @@ function locate(md: string, heading: string, titles: readonly string[] = []): Lo
   const lines = md.split('\n');
   const match = findSectionMatches(md, heading)[0];
   if (match) {
-    const text = lines[match.line].replace(/^#{1,6}\s+/, '').trim();
+    const text = lines[match.line].replace(/^#{1,6}[ \t]+/, '').trim();
     return { lines, line: match.line, end: sectionBodyEnd(lines, match.line, match.level), place: { kind: 'named', heading: text } };
   }
   if (titles.length === 0) return undefined;
   let callout = -1;
-  let fence: OpenFence | null = null;
-  for (let i = 0; i < lines.length; i++) {
-    const next = stepFence(lines[i], fence);
-    if (next !== fence) {
-      fence = next;
-      continue;
-    }
-    if (!fence && isSummaryCallout(lines[i], titles)) callout = i;
+  const fm = frontMatterLineCountOf(lines, { crKept: true });
+  // Lines as the one block reading has them (classifyLines): the callout is on a text line.
+  const kinds = classifyLines(lines, fm);
+  for (let i = fm; i < lines.length; i++) {
+    if (isPlain(kinds[i]) && isSummaryCallout(lines[i], titles)) callout = i;
   }
   if (callout === -1) return undefined;
   const above = listHeadings(md).filter(h => h.line < callout).pop();
-  if (!above) return { lines, line: -1, end: sectionBodyEnd(lines, -1, 6), place: { kind: 'callout', heading: '' } };
+  // No heading above: the part of the note from past its front matter.
+  if (!above) return { lines, line: fm - 1, end: sectionBodyEnd(lines, fm - 1, 6), place: { kind: 'callout', heading: '' } };
   return { lines, line: above.line, end: sectionBodyEnd(lines, above.line, above.level), place: { kind: 'callout', heading: above.text } };
 }
 

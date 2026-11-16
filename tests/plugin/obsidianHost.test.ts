@@ -232,3 +232,51 @@ describe('openFile', () => {
     expect(reading.editor.setCursor).not.toHaveBeenCalled();
   });
 });
+
+// The view gone to another note between two calls (a prompt, a read in between): its editor is
+// that note's now, so the target neither reads nor changes it as this one.
+describe('editTarget after its view went to another note', () => {
+  it('refuses to read or write', async () => {
+    const { host, view, editor } = setup({ mode: 'source', data: 'note A\n', editorText: 'note A\n' });
+    const target = host.editTarget()!;
+    expect(await target.getText()).toBe('note A\n');
+    view.file = new TFile('labnote/001_Test/002_WD020_B.labnote.md');
+    editor.text = 'note B\n';
+    const switched = 'The note was switched to another while the command ran, so it was not changed. Run the command again.';
+    await expect(target.getText()).rejects.toThrow(switched);
+    await expect(target.replaceRange(0, 0, 'X')).rejects.toThrow(switched);
+    expect(editor.text).toBe('note B\n');
+  });
+});
+
+// The view goes to another note, alike, while the target switches it to editing: nothing is
+// written into that note.
+describe('editTarget whose view goes to another note as it switches to editing', () => {
+  it('refuses the write', async () => {
+    const { host, view, editor, setState } = setup({ mode: 'preview', data: 'same\n', editorText: 'same\n' });
+    setState.mockImplementation(async state => {
+      if (state.mode) view.mode = state.mode;
+      view.file = new TFile('labnote/001_Test/002_WD020_B.labnote.md');
+      editor.text = 'same\n';
+    });
+    const target = host.editTarget()!;
+    await expect(target.replaceRange(0, 0, 'X')).rejects.toThrow('The note was switched to another while the command ran, so it was not changed. Run the command again.');
+    expect(editor.text).toBe('same\n');
+  });
+});
+
+// In editing view too: the target's own wait, with nothing to wait for, still lets the view go
+// to another note before the editor is touched.
+describe('editTarget whose view goes to another note in editing view, as a call waits', () => {
+  it.each(['replaceRange', 'revealOffset'] as const)('%s refuses', async method => {
+    const { host, view, editor } = setup({ mode: 'source', data: 'AAAA', editorText: 'AAAA' });
+    const target = host.editTarget()!;
+    const call = method === 'replaceRange' ? target.replaceRange(0, 0, 'X') : target.revealOffset!(1);
+    view.file = new TFile('labnote/001_Test/002_WD020_B.labnote.md');
+    editor.text = 'BBBB';
+    await expect(call).rejects.toThrow('The note was switched to another while the command ran, so it was not changed. Run the command again.');
+    expect(editor.text).toBe('BBBB');
+    expect(editor.setCursor).not.toHaveBeenCalled();
+  });
+});
+

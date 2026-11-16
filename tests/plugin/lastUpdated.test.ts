@@ -10,7 +10,7 @@ import { EXPERIMENT_STATUSES } from '@labnoteo/core';
 import { touchLastUpdatedDate } from '@labnoteo/core/lib/dateUtils';
 import { MemFileSystem } from '../../packages/labnoteo-core/src/fs/memFileSystem';
 import { changeExperimentStatusCommand, toggleDiscussionFlagCommand } from '../../src/commands';
-import { stampNote, writeNoteStamped } from '../../src/lastUpdatedStamp';
+import { processNoteStamped, stampNote } from '../../src/lastUpdatedStamp';
 
 const DIR = 'labnote/001_Test';
 const README = `${DIR}/README.labnote.md`;
@@ -57,6 +57,18 @@ describe('plugin operations stamp last_updated_date', () => {
     await fs.write(README, note());
     await toggleDiscussionFlagCommand(makeApp(), makeHost(fs), stamp);
     expect(await fs.read(README)).toContain(`last_updated_date: ${TODAY}`);
+  });
+
+  it('keeps the line endings of the lines it does not change', async () => {
+    for (const md of [note().replace(/\n/g, '\r\n'), '---\r\nstatus: planned\r\ncreated_date: 2026-10-01\n---\n\n# Body\r\n']) {
+      const fs = new MemFileSystem();
+      await fs.write(README, md);
+      await changeExperimentStatusCommand(makeApp(), makeHost(fs, 'in-progress'));
+      expect(await fs.read(README)).toBe(md.replace('status: planned', 'status: in-progress'));
+      await toggleDiscussionFlagCommand(makeApp(), makeHost(fs));
+      expect(await fs.read(README)).toContain('status: in-progress');
+      expect((await fs.read(README)).endsWith(md.slice(md.indexOf('# Body')))).toBe(true);
+    }
   });
 
   // #108: the flag lives in the README, whichever experiment note it was run from.
@@ -385,24 +397,24 @@ describe('changing the status to completed', () => {
   });
 });
 
-describe('writeNoteStamped (AI writes)', () => {
+describe('processNoteStamped (AI writes)', () => {
   it('stamps a workflow note and its experiment README', async () => {
     const fs = new MemFileSystem();
     await fs.write(README, note());
-    await writeNoteStamped(makeApp(), makeHost(fs), WORKFLOW, note('\n'), stamp);
+    await processNoteStamped(makeApp(), makeHost(fs), WORKFLOW, () => note('\n'), stamp);
     expect(await fs.read(WORKFLOW)).toContain(`last_updated_date: ${TODAY}`);
     expect(await fs.read(README)).toContain(`last_updated_date: ${TODAY}`);
   });
 
   it('writes other notes unchanged', async () => {
     const fs = new MemFileSystem();
-    await writeNoteStamped(makeApp(), makeHost(fs), 'wiki/Home.md', note(), stamp);
+    await processNoteStamped(makeApp(), makeHost(fs), 'wiki/Home.md', () => note(), stamp);
     expect(await fs.read('wiki/Home.md')).toBe(note());
   });
 
   it('skips a missing README', async () => {
     const fs = new MemFileSystem();
-    await writeNoteStamped(makeApp(), makeHost(fs), WORKFLOW, note(), stamp);
+    await processNoteStamped(makeApp(), makeHost(fs), WORKFLOW, () => note(), stamp);
     expect(await fs.exists(README)).toBe(false);
   });
 });
@@ -468,7 +480,7 @@ describe('a date set by hand is named to every stamp', () => {
 
   it('is left alone in the README an AI write would stamp along with the note', async () => {
     const fs = new MemFileSystem({ [README]: note() });
-    await writeNoteStamped(makeApp(), makeHost(fs), WORKFLOW, note('\n'), keeping(README));
+    await processNoteStamped(makeApp(), makeHost(fs), WORKFLOW, () => note('\n'), keeping(README));
     expect(await fs.read(WORKFLOW)).toContain(`last_updated_date: ${TODAY}`);
     expect(await fs.read(README)).toContain('last_updated_date: 2026-10-01');
   });
