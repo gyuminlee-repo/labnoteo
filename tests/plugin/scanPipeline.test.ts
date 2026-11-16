@@ -1490,3 +1490,83 @@ describe('the question before Delete earlier scan', () => {
     }
   });
 });
+
+// What "Delete earlier scan" does after its question (#576), on the real pipeline: a no changes
+// nothing; a yes keeps an image the note still links and trashes the rest; a link made while the
+// question was open is read again at the write, so that image stays and the message says so.
+describe('Delete earlier scan after its question', () => {
+  const t: Translator = (key, ...args) => formatMessage(key, args);
+  const bytes = (n: number) => async () => new Uint8Array([n, n, n]).buffer;
+  async function threeScans() {
+    const s = setup(
+      { [NOTE]: buildNote(ID, ['UHW010', 'UHW020']) },
+      {
+        'a.jpg': [page(pagePayload(), 'aaaaaaaaaaaa', { render: bytes(1) })],
+        'b.jpg': [page(pagePayload(), 'bbbbbbbbbbbb', { render: bytes(2) })],
+        'c.jpg': [page(pagePayload(), 'cccccccccccc', { render: bytes(3) })],
+      }
+    );
+    const [a] = await s.pipeline.run([input('a.jpg')]);
+    const [b] = await s.pipeline.run([input('b.jpg')]);
+    const [c] = await s.pipeline.run([input('c.jpg')]);
+    expect(c.previous?.map(p => p.hash)).toEqual(['aaaaaaaaaaaa', 'bbbbbbbbbbbb']);
+    const name = (r: typeof a) => r.imagePath!.split('/').pop()!;
+    const linkElsewhere = (r: typeof a) => s.text.set(NOTE, `${s.text.get(NOTE)!}\n## Notes\n![[${name(r)}]]\n`);
+    return { s, a, b, c, name, linkElsewhere };
+  }
+
+  it('changes nothing when the answer is no', async () => {
+    const { s, a, b, c } = await threeScans();
+    const before = s.text.get(NOTE);
+    expect(await deleteEarlierScan(t, s.pipeline, c, async () => false)).toBeUndefined();
+    expect(s.text.get(NOTE)).toBe(before);
+    expect(s.trashed).toEqual([]);
+    expect([a, b].every(r => s.binary.has(r.imagePath!))).toBe(true);
+    expect(c.previous).toHaveLength(2);
+  });
+
+  it('keeps the image the note still links and trashes the other on yes', async () => {
+    const { s, a, b, c, name, linkElsewhere } = await threeScans();
+    linkElsewhere(a);
+    let question = '';
+    const out = await deleteEarlierScan(t, s.pipeline, c, async m => {
+      question = m;
+      return true;
+    });
+    expect(question).toContain(`These images go to the trash:\n- ${name(b)}`);
+    expect(question).toContain(`1 image(s) stay, as the note still links them elsewhere:\n- ${name(a)}`);
+    expect(out).toEqual({ done: true, message: 'Removed 2 earlier scan(s) from the note and moved 1 image(s) to the trash.' });
+    expect(s.trashed).toEqual([b.imagePath]);
+    expect(s.binary.has(a.imagePath!)).toBe(true);
+    expect(listFiledScans(s.text.get(NOTE)!).map(f => f.hash)).toEqual(['cccccccccccc']);
+  });
+
+  it('reads the note again at the write: an image linked while the question was open stays', async () => {
+    const { s, a, b, c, name, linkElsewhere } = await threeScans();
+    let question = '';
+    const out = await deleteEarlierScan(t, s.pipeline, c, async m => {
+      question = m;
+      linkElsewhere(b);
+      return true;
+    });
+    expect(question).toContain(`These images go to the trash:\n- ${name(a)}\n- ${name(b)}`);
+    expect(out).toEqual({ done: true, message: 'Removed 2 earlier scan(s) from the note and moved 1 image(s) to the trash.' });
+    expect(s.trashed).toEqual([a.imagePath]);
+    expect(s.binary.has(b.imagePath!)).toBe(true);
+  });
+
+  it('keeps every image when the note cannot be read for the question', async () => {
+    const { s, a, b, c, name } = await threeScans();
+    const vault = s.app.vault as unknown as { read: (f: TFile) => Promise<string> };
+    vault.read = async () => {
+      throw new Error('EBUSY');
+    };
+    let question = '';
+    await deleteEarlierScan(t, s.pipeline, c, async m => {
+      question = m;
+      return false;
+    });
+    expect(question).toContain('No image goes to the trash.');
+    expect(question).toContain(`2 image(s) stay, as the note still links them elsewhere:\n- ${name(a)}\n- ${name(b)}`);
+  });
+});
