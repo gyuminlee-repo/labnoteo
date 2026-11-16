@@ -1219,7 +1219,7 @@ const obsidianKo: Record<string, string> = {
   'Open note': '노트 열기',
   'Delete earlier scan': '이전 스캔 삭제',
   'Delete the earlier scan of this page? Its entry leaves the note, and its image goes to the trash unless the note still links it.':
-    '이 페이지의 이전 스캔을 지울까요? 노트에서 항목이 빠지고 노트가 아직 링크하지 않는 이미지는 휴지통으로 갑니다.',
+    '이 페이지의 이전 스캔을 지울까요? 노트에서 항목이 빠지고 이미지는 노트가 다른 곳에서 링크하고 있지 않으면 휴지통으로 갑니다.',
   'This page was filed before; remove the earlier scan and its image.': '이 페이지는 전에도 붙였습니다. 이전 스캔과 이미지를 지웁니다.',
   'Removed {0} earlier scan(s).': '이전 스캔 {0}개를 지웠습니다.',
   Undo: '되돌리기',
