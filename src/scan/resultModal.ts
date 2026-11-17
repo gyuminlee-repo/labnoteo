@@ -90,9 +90,10 @@ export async function undoScanResult(
   t: Translator,
   pipeline: Pick<ScanPipeline, 'undo' | 'removePrevious'>,
   r: ScanResult,
-  earlier: boolean
+  earlier: boolean,
+  shown?: readonly string[]
 ): Promise<{ message: string; done: boolean }> {
-  const out = earlier ? await pipeline.removePrevious(r) : await pipeline.undo(r);
+  const out = earlier ? await pipeline.removePrevious(r, shown) : await pipeline.undo(r);
   const path = r.notePath ?? '';
   if (out === 'uncertain') {
     return { done: false, message: t('{0} may or may not have the change: it was being saved when another change reached it. Check the note before trying again.', path) };
@@ -151,8 +152,10 @@ export async function deleteEarlierScan(
   r: ScanResult,
   confirmDelete: (message: string) => Promise<boolean>
 ): Promise<{ message: string; done: boolean } | undefined> {
-  if (!(await confirmDelete(earlierScanQuestion(t, await pipeline.previousImagesPlan(r))))) return undefined;
-  return undoScanResult(t, pipeline, r, true);
+  const plan = await pipeline.previousImagesPlan(r);
+  if (!(await confirmDelete(earlierScanQuestion(t, plan)))) return undefined;
+  // Only the images the question named as going to the trash may go (#576).
+  return undoScanResult(t, pipeline, r, true, plan.trash.map(image => image.path));
 }
 
 export class ScanResultModal extends Modal {

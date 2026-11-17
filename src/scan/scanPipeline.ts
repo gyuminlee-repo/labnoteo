@@ -773,13 +773,18 @@ export class ScanPipeline {
 
   /**
    * Remove the earlier scans of the page `result` filed (and trash their images): how many, or
-   * 'notWritten' / 'uncertain' when the note was not written or may not have been.
+   * 'notWritten' / 'uncertain' when the note was not written or may not have been. With
+   * `shown`, the paths a question said go to the trash: no other image is trashed, whatever the
+   * note links by then (an image kept because the note could not be read stays kept).
    */
-  async removePrevious(result: ScanResult): Promise<{ removed: number; trashed: number } | 'notWritten' | 'uncertain'> {
+  async removePrevious(
+    result: ScanResult,
+    shown?: readonly string[]
+  ): Promise<{ removed: number; trashed: number } | 'notWritten' | 'uncertain'> {
     const { app, host } = this.deps;
     if (!result.notePath || !result.previous?.length) return { removed: 0, trashed: 0 };
     const notePath = result.notePath;
-    const images = this.previousImages(result);
+    const images = this.previousImages(result).filter(image => !shown || shown.includes(image.path));
     let count = 0;
     const remove = (content: string): string => {
       count = 0;

@@ -1557,6 +1557,41 @@ describe('Delete earlier scan after its question', () => {
     expect(s.binary.has(b.imagePath!)).toBe(true);
   });
 
+  // Only the images the question named as going to the trash may go: one it kept because the
+  // note could not be read stays when the note reads again at the write.
+  it('trashes no image after a question the unreadable note made, though the note reads at the write', async () => {
+    const { s, a, b, c } = await threeScans();
+    const vault = s.app.vault as unknown as { read: (f: TFile) => Promise<string> };
+    const read = vault.read;
+    vault.read = async () => {
+      throw new Error('EBUSY');
+    };
+    const out = await deleteEarlierScan(t, s.pipeline, c, async () => {
+      vault.read = read;
+      return true;
+    });
+    expect(out).toEqual({ done: true, message: 'Removed 2 earlier scan(s) from the note and moved 0 image(s) to the trash.' });
+    expect(s.trashed).toEqual([]);
+    expect([a, b].every(r => s.binary.has(r.imagePath!))).toBe(true);
+  });
+
+  // An image the question said stays is not trashed when its other link goes while it is open.
+  it('keeps an image the question said stays, though its other link went while the question was open', async () => {
+    const { s, a, b, c, name, linkElsewhere } = await threeScans();
+    linkElsewhere(a);
+    let question = '';
+    const out = await deleteEarlierScan(t, s.pipeline, c, async m => {
+      question = m;
+      s.text.set(NOTE, s.text.get(NOTE)!.replace(`\n## Notes\n![[${name(a)}]]\n`, ''));
+      return true;
+    });
+    expect(question).toContain(`These images go to the trash:\n- ${name(b)}`);
+    expect(s.text.get(NOTE)).not.toContain(`![[${name(a)}]]`);
+    expect(out).toEqual({ done: true, message: 'Removed 2 earlier scan(s) from the note and moved 1 image(s) to the trash.' });
+    expect(s.trashed).toEqual([b.imagePath]);
+    expect(s.binary.has(a.imagePath!)).toBe(true);
+  });
+
   it('keeps every image when the note cannot be read for the question', async () => {
     const { s, a, b, c, name } = await threeScans();
     const vault = s.app.vault as unknown as { read: (f: TFile) => Promise<string> };
